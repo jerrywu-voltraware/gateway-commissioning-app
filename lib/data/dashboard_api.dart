@@ -4,6 +4,17 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../core/protocol.dart';
 import 'contracts.dart';
 
+bool isLocalApiHost(String host) {
+  if (host == 'localhost') return true;
+  final address = InternetAddress.tryParse(host);
+  if (address == null || address.type != InternetAddressType.IPv4) return false;
+  final bytes = address.rawAddress;
+  return bytes[0] == 127 ||
+      bytes[0] == 10 ||
+      (bytes[0] == 192 && bytes[1] == 168) ||
+      (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31);
+}
+
 class DashboardApi implements GatewayApi {
   final _storage = const FlutterSecureStorage();
   final _http = HttpClient()..connectionTimeout = const Duration(seconds: 10);
@@ -18,7 +29,7 @@ class DashboardApi implements GatewayApi {
         (uri.scheme != 'https' &&
             !(const bool.fromEnvironment('LOCAL_DEVELOPMENT') &&
                 uri.scheme == 'http' &&
-                ['localhost', '127.0.0.1', '10.0.2.2'].contains(uri.host)))) {
+                isLocalApiHost(uri.host)))) {
       throw const GatewayFailure('https_required');
     }
     _key = null;

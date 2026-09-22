@@ -36,7 +36,10 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     'API_BASE',
     defaultValue: 'https://dashboard.voltraware.com',
   );
-  static const _localUrl = 'http://127.0.0.1:18000';
+  static const _localUrl = String.fromEnvironment(
+    'LOCAL_API_BASE',
+    defaultValue: 'http://192.168.0.12:18000',
+  );
   Future<void> _restoreEnvironment() async {
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
@@ -46,7 +49,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           ? saved!
           : 'production';
       _base.text = _environment == 'local'
-          ? _localUrl
+          ? (prefs.getString('backend_local_url') ?? _localUrl)
           : _environment == 'custom'
           ? (prefs.getString('backend_custom_url') ?? '')
           : _productionUrl;
@@ -57,6 +60,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     if (value == null) return;
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
+    if (_environment == 'local') {
+      await prefs.setString('backend_local_url', _base.text.trim());
+    }
     if (_environment == 'custom') {
       await prefs.setString('backend_custom_url', _base.text.trim());
     }
@@ -64,7 +70,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     setState(() {
       _environment = value;
       _base.text = value == 'local'
-          ? _localUrl
+          ? (prefs.getString('backend_local_url') ?? _localUrl)
           : value == 'custom'
           ? (prefs.getString('backend_custom_url') ?? '')
           : _productionUrl;
@@ -337,13 +343,13 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             ),
             items: const [
               DropdownMenuItem(value: 'production', child: Text('VPS 正式站')),
-              DropdownMenuItem(value: 'local', child: Text('本地測試（USB）')),
+              DropdownMenuItem(value: 'local', child: Text('本地測試站')),
               DropdownMenuItem(value: 'custom', child: Text('其他網址')),
             ],
             onChanged: enabled ? _selectEnvironment : null,
           ),
           const SizedBox(height: 12),
-          if (_environment == 'custom')
+          if (_environment == 'custom' || _environment == 'local')
             field(_base, '後端網址')
           else
             Padding(
@@ -351,7 +357,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               child: Text(_base.text),
             ),
           if (_environment == 'local')
-            const Text('本地測試密碼：54974211。手機需以 USB 連接電腦，並完成本地連線設定。')
+            const Text('本地測試密碼：54974211。手機與電腦需連同一個區域網路；電腦網址若變更，可在上方修改。')
           else if (_environment == 'production')
             const Text('請輸入 VPS 網頁的登入密碼。正式網址目前仍待部署確認。'),
           field(_login, '後端登入密碼', secret: true),
@@ -364,6 +370,11 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                 : null,
           ),
           button('檢查並開始', () async {
+            if (_environment == 'local') {
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setString('backend_local_url', _base.text.trim());
+              if (!mounted) return;
+            }
             if (_environment == 'custom') {
               final prefs = await SharedPreferences.getInstance();
               await prefs.setString('backend_custom_url', _base.text.trim());

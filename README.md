@@ -1,5 +1,7 @@
 # GIOS Commissioning
 
+後端選單為「VPS 正式站／本地測試站／其他網址」。本地預設 `http://192.168.0.12:18000`，手機與電腦連同一區域網路即可，不需USB。網址可修改並記住；密碼為 `54974211`。本地版建置需 `--dart-define=LOCAL_DEVELOPMENT=true`，只允許私有IPv4／loopback使用HTTP，正式站仍使用HTTPS。電腦IP改變時需更新本地網址。Windows若阻擋手機連線，請以系統管理員PowerShell執行後端 `tools/allow_local_api_lan.ps1`；僅放行本地子網的TCP 18000。
+
 Android 新站開通 APP，保留原 APP 與 GIOS0901_APP 作參考。資料流為 presentation → Riverpod controller → GatewayLink／GatewayApi；正式BLE與模擬系統使用同一介面。
 
 ```powershell
@@ -13,7 +15,6 @@ flutter build apk --debug --dart-define=DEMO_MODE=true
 
 API預設 `https://dashboard.voltraware.com`，可在畫面改設定。僅系統TLS信任，不繞過憑證。`LOCAL_DEVELOPMENT=true` 才允許localhost／127.0.0.1／Android emulator localhost的HTTP；真機連本機可用adb reverse測試。WiFi密碼不落地；登入取得的API key存安全儲存區。
 
-準備頁提供「VPS 正式站／本地測試（USB）／其他網址」下拉清單，記住上次選擇及自訂網址。USB本地測試版以 `flutter build apk --debug --dart-define=LOCAL_DEVELOPMENT=true` 建置，手機USB連線後執行 `adb reverse tcp:18000 tcp:18000`；電腦本地容器須運行。當前本地登入密碼為使用者指定的 `54974211`，不代表VPS密碼。切換環境會清除密碼輸入，防止跨環境誤送。
 
 Android minSdk24，正式release沒有debug簽章。正式keystore與發佈程序仍待備妥；目前APK只能作開發測試。
 
