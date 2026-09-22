@@ -16,7 +16,11 @@ void main() {
     await tester.pumpWidget(const ProviderScope(child: GatewayApp()));
     await tester.pumpAndSettle();
     expect(find.byType(DropdownButtonFormField<String>), findsOneWidget);
-    await tester.scrollUntilVisible(find.byType(SwitchListTile), 250);
+    await tester.scrollUntilVisible(
+      find.byType(SwitchListTile),
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.byType(SwitchListTile), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
