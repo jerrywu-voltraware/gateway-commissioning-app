@@ -485,21 +485,27 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             '目前 Wi-Fi：${(s.config['wifi_ssid']?.toString() ?? '').isEmpty ? '尚未設定' : s.config['wifi_ssid']}',
           ),
           const SizedBox(height: 16),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.wifi),
-            title: const Text('要連接的 Wi-Fi'),
-            subtitle: Text(
-              _customWifi
-                  ? '自訂網路'
-                  : _ssid.text.isEmpty
-                  ? '尚未選擇'
-                  : _ssid.text,
-            ),
-            trailing: TextButton(
-              onPressed: enabled && !_scanningWifi ? _chooseWifi : null,
-              child: Text(_scanningWifi ? '掃描中…' : '更換'),
-            ),
+          const Text('要連接的 Wi-Fi'),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              const Icon(Icons.wifi),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  _customWifi
+                      ? '自訂網路'
+                      : _ssid.text.isEmpty
+                      ? '尚未選擇'
+                      : _ssid.text,
+                ),
+              ),
+              const SizedBox(width: 8),
+              TextButton(
+                onPressed: enabled && !_scanningWifi ? _chooseWifi : null,
+                child: Text(_scanningWifi ? '掃描中…' : '更換'),
+              ),
+            ],
           ),
           if (_customWifi) field(_ssid, '自訂 Wi-Fi 名稱'),
           const SizedBox(height: 16),
