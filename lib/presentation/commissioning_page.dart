@@ -85,7 +85,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   }
 
   bool _scanningWifi = false;
+  bool _customWifi = false;
   Future<void> _chooseWifi() async {
+    FocusScope.of(context).unfocus();
     setState(() => _scanningWifi = true);
     try {
       final networks = await scanWifiNetworks();
@@ -123,6 +125,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         setState(() {
           if (_ssid.text != selected) _wifi.clear();
           _ssid.text = selected;
+          _customWifi = false;
         });
       }
     } catch (error) {
@@ -409,6 +412,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                         _gateway.text =
                             '${next.config['suggested_gateway_id'] ?? next.config['gateway_id'] ?? 1}';
                         _ssid.text = next.config['wifi_ssid']?.toString() ?? '';
+                        _customWifi = false;
                       }
                     }
                   : null,
@@ -435,13 +439,45 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         return [
           field(_site, '站點 ID（1–65535）', number: true),
           field(_gateway, '閘道器編號（1–6）', number: true),
-          field(_ssid, 'WiFi 名稱'),
-          OutlinedButton.icon(
-            onPressed: enabled && !_scanningWifi ? _chooseWifi : null,
-            icon: const Icon(Icons.wifi_find),
-            label: Text(_scanningWifi ? '正在掃描…' : '掃描周邊 Wi-Fi'),
+          DropdownButtonFormField<bool>(
+            key: ValueKey('wifi-source-$_customWifi'),
+            initialValue: _customWifi,
+            decoration: const InputDecoration(
+              labelText: 'Wi-Fi 設定方式',
+              border: OutlineInputBorder(),
+            ),
+            items: const [
+              DropdownMenuItem(value: false, child: Text('掃描選擇 Wi-Fi')),
+              DropdownMenuItem(value: true, child: Text('自訂 Wi-Fi')),
+            ],
+            onChanged: enabled && !_scanningWifi
+                ? (value) {
+                    FocusScope.of(context).unfocus();
+                    setState(() => _customWifi = value ?? false);
+                  }
+                : null,
           ),
-          const Text('使用手機掃描 2.4 GHz Wi-Fi；隱藏網路可手動輸入。'),
+          const SizedBox(height: 14),
+          if (_customWifi)
+            field(_ssid, '自訂 Wi-Fi 名稱')
+          else
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.wifi),
+              title: Text(_ssid.text.isEmpty ? '尚未選擇 Wi-Fi' : _ssid.text),
+              subtitle: const Text('按下方掃描按鈕選擇網路'),
+            ),
+          if (!_customWifi)
+            OutlinedButton.icon(
+              onPressed: enabled && !_scanningWifi ? _chooseWifi : null,
+              icon: const Icon(Icons.wifi_find),
+              label: Text(_scanningWifi ? '正在掃描…' : '掃描周邊 Wi-Fi'),
+            ),
+          Text(
+            _customWifi
+                ? '請輸入完整的 Wi-Fi 名稱，包含大小寫與空白。'
+                : '使用手機掃描 2.4 GHz Wi-Fi；隱藏網路請選「自訂 Wi-Fi」。',
+          ),
           field(_wifi, 'WiFi 密碼（8–63 bytes）', secret: true),
           button('儲存並連接 WiFi', () async {
             await c.configureWifi(
