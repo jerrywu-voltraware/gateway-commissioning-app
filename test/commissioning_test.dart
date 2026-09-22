@@ -5,6 +5,39 @@ import 'package:gateway_commissioning/application/commissioning_controller.dart'
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  test('existing station WiFi reset preserves identity and PTUs', () async {
+    SharedPreferences.setMockInitialValues({});
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    container.read(demoProvider.notifier).set(true);
+    final demo = container.read(demoSystemProvider);
+    demo.config.addAll({
+      'fleet_joined': true,
+      'site_id': 80,
+      'wifi_ssid': 'old-network',
+    });
+    final c = container.read(commissionProvider.notifier);
+    await c.prepare('https://example.invalid', '', offline: true);
+    await c.scan();
+    await c.connect(container.read(commissionProvider).peers.single);
+    expect(
+      container.read(commissionProvider).config['wifi_ssid'],
+      'old-network',
+    );
+    final selected = container.read(commissionProvider).selected;
+    c.chooseStation(newStation: false, wifiOnly: true);
+    await c.configureWifi(81, 1, 'new-network', 'password123');
+    expect(container.read(commissionProvider).error, isNotNull);
+    expect(demo.config['wifi_ssid'], 'old-network');
+    await c.configureWifi(80, 1, 'new-network', 'password123');
+    final state = container.read(commissionProvider);
+    expect(state.error, isNull);
+    expect(state.step, 6);
+    expect(state.config['wifi_ssid'], 'new-network');
+    expect(state.selected, selected);
+    expect(demo.config['site_id'], 80);
+    expect(demo.config['fleet_joined'], isTrue);
+  });
   for (final newStation in [false, true]) {
     test('existing station requires explicit choice new=$newStation', () async {
       SharedPreferences.setMockInitialValues({});

@@ -381,14 +381,15 @@ class CommissioningController extends Notifier<CommissionState> {
           message: '已連線，請設定身份與 WiFi',
         );
       });
-  void chooseStation({required bool newStation}) {
+  void chooseStation({required bool newStation, bool wifiOnly = false}) {
     if (state.busy || state.config['choose_station'] != true) return;
     state = state.copy(
-      step: newStation ? 2 : 6,
+      step: newStation || wifiOnly ? 2 : 6,
       config: {
         ...state.config,
         'choose_station': false,
         'new_station': newStation,
+        'wifi_only': wifiOnly && !newStation,
       },
       selected: newStation ? <String>{} : state.selected,
       results: {},
@@ -396,6 +397,8 @@ class CommissioningController extends Notifier<CommissionState> {
       report: '',
       message: newStation
           ? '請輸入新的站點 ID 與 Wi-Fi；儲存後才會變更閘道器。'
+          : wifiOnly
+          ? '保留目前站點與 PTU，僅更新 Wi-Fi。'
           : '沿用目前站點，檢查資料是否正常上傳。',
     );
   }
@@ -406,6 +409,10 @@ class CommissioningController extends Notifier<CommissionState> {
     String ssid,
     String password,
   ) => _run('設定身份與 WiFi', 150, (generation) async {
+    final wifiOnly = state.config['wifi_only'] == true;
+    if (wifiOnly && (newSite != site || newGateway != gateway)) {
+      throw const GatewayFailure('conflict');
+    }
     if (state.config['new_station'] == true && newSite == site) {
       throw const GatewayFailure('new_site_required');
     }
@@ -422,7 +429,7 @@ class CommissioningController extends Notifier<CommissionState> {
     if (state.config['otp_enabled'] == true) {
       throw const GatewayFailure('otp_enabled');
     }
-    if (_loggedIn) {
+    if (_loggedIn && !wifiOnly) {
       final check = await _request(
         generation,
         'GET',
@@ -507,6 +514,11 @@ class CommissioningController extends Notifier<CommissionState> {
       }
     }
     if (!connected) throw const GatewayFailure('wifi_failed');
+    state = state.copy(config: {...state.config, 'wifi_ssid': ssid});
+    if (wifiOnly) {
+      state = state.copy(step: 6, message: 'Wi-Fi 已更新，站點與 PTU 設定保留。可接著驗證資料。');
+      return;
+    }
     if (_loggedIn) {
       await _request(
         generation,
