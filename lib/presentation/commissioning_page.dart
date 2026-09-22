@@ -42,6 +42,11 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   );
   Future<void> _restoreEnvironment() async {
     final prefs = await SharedPreferences.getInstance();
+    final oldLocal = Uri.tryParse(prefs.getString('backend_local_url') ?? '');
+    if (oldLocal != null &&
+        ['127.0.0.1', 'localhost', '10.0.2.2'].contains(oldLocal.host)) {
+      await prefs.setString('backend_local_url', _localUrl);
+    }
     if (!mounted) return;
     final saved = prefs.getString('backend_environment');
     setState(() {

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../core/protocol.dart';
 import 'contracts.dart';
@@ -27,7 +28,7 @@ class DashboardApi implements GatewayApi {
         !uri.hasAuthority ||
         uri.userInfo.isNotEmpty ||
         (uri.scheme != 'https' &&
-            !(const bool.fromEnvironment('LOCAL_DEVELOPMENT') &&
+            !((kDebugMode || const bool.fromEnvironment('LOCAL_DEVELOPMENT')) &&
                 uri.scheme == 'http' &&
                 isLocalApiHost(uri.host)))) {
       throw const GatewayFailure('https_required');

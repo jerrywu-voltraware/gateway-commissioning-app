@@ -5,6 +5,18 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:gateway_commissioning/gateway_app.dart';
 
 void main() {
+  testWidgets('saved USB URL migrates to LAN backend', (tester) async {
+    SharedPreferences.setMockInitialValues({
+      'backend_environment': 'local',
+      'backend_local_url': 'http://127.0.0.1:18000',
+    });
+    await tester.pumpWidget(const ProviderScope(child: GatewayApp()));
+    await tester.pumpAndSettle();
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString('backend_local_url'), 'http://192.168.0.12:18000');
+    expect(find.text('http://127.0.0.1:18000'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
   testWidgets('initial screen renders on narrow device', (tester) async {
     SharedPreferences.setMockInitialValues({});
     tester.view.physicalSize = const Size(360, 800);
