@@ -416,6 +416,22 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           ),
         ];
       case 2:
+        if (s.config['choose_station'] == true) {
+          return [
+            Text(
+              '目前站點：${s.config['site_id']}\n閘道器編號：${s.config['gateway_id']}',
+            ),
+            const SizedBox(height: 12),
+            const Text('沿用會保留目前設定；設定新站會在儲存後變更這台閘道器的站點並重新開通。原站歷史資料不會刪除。'),
+            button('沿用目前站點', () => c.chooseStation(newStation: false), enabled),
+            button('設定新站點', () {
+              c.chooseStation(newStation: true);
+              _site.clear();
+              _gateway.text = '1';
+              _wifi.clear();
+            }, enabled),
+          ];
+        }
         return [
           field(_site, '站點 ID（1–65535）', number: true),
           field(_gateway, '閘道器編號（1–6）', number: true),

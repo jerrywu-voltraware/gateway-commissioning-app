@@ -324,12 +324,12 @@ class CommissioningController extends Notifier<CommissionState> {
               .map((d) => Map<String, dynamic>.from(d as Map))
               .toList();
           state = state.copy(
-            step: 6,
+            step: 2,
             peer: peer,
-            config: config,
+            config: {...config, 'choose_station': true},
             ptus: devices,
             selected: devices.map((d) => d['mac'].toString()).toSet(),
-            message: '已開通的閘道器可重新驗證資料；補機、換機與移機將在下一階段提供。',
+            message: '此閘道器已有站點設定，請選擇沿用或設定新站。',
           );
           return;
         }
@@ -381,12 +381,34 @@ class CommissioningController extends Notifier<CommissionState> {
           message: '已連線，請設定身份與 WiFi',
         );
       });
+  void chooseStation({required bool newStation}) {
+    if (state.busy || state.config['choose_station'] != true) return;
+    state = state.copy(
+      step: newStation ? 2 : 6,
+      config: {
+        ...state.config,
+        'choose_station': false,
+        'new_station': newStation,
+      },
+      selected: newStation ? <String>{} : state.selected,
+      results: {},
+      verified: false,
+      report: '',
+      message: newStation
+          ? '請輸入新的站點 ID 與 Wi-Fi；儲存後才會變更閘道器。'
+          : '沿用目前站點，檢查資料是否正常上傳。',
+    );
+  }
+
   Future<void> configureWifi(
     int newSite,
     int newGateway,
     String ssid,
     String password,
   ) => _run('設定身份與 WiFi', 150, (generation) async {
+    if (state.config['new_station'] == true && newSite == site) {
+      throw const GatewayFailure('new_site_required');
+    }
     if (newSite < 1 ||
         newSite > 65535 ||
         newGateway < 1 ||

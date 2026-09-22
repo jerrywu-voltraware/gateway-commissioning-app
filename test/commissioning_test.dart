@@ -5,6 +5,38 @@ import 'package:gateway_commissioning/application/commissioning_controller.dart'
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  for (final newStation in [false, true]) {
+    test('existing station requires explicit choice new=$newStation', () async {
+      SharedPreferences.setMockInitialValues({});
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      container.read(demoProvider.notifier).set(true);
+      final demo = container.read(demoSystemProvider);
+      demo.config['fleet_joined'] = true;
+      demo.config['site_id'] = 80;
+      final c = container.read(commissionProvider.notifier);
+      await c.prepare('https://example.invalid', '', offline: true);
+      await c.scan();
+      await c.connect(container.read(commissionProvider).peers.single);
+      expect(
+        container.read(commissionProvider).config['choose_station'],
+        isTrue,
+      );
+      expect(container.read(commissionProvider).step, 2);
+      c.chooseStation(newStation: newStation);
+      expect(demo.config['site_id'], 80);
+      expect(container.read(commissionProvider).step, newStation ? 2 : 6);
+      if (newStation) {
+        await c.configureWifi(80, 1, 'test', 'password123');
+        expect(container.read(commissionProvider).error, isNotNull);
+        expect(demo.config['site_id'], 80);
+        await c.configureWifi(81, 1, 'test', 'password123');
+        expect(container.read(commissionProvider).error, isNull);
+        expect(demo.config['site_id'], 81);
+        expect(container.read(commissionProvider).step, 3);
+      }
+    });
+  }
   test(
     'demo new installation assigns three PTUs and verifies three changing samples',
     () async {

@@ -46,6 +46,7 @@ class GatewayFailure implements Exception {
     'timeout' => '等待超時，請確認裝置與網路後重試。',
     'cancelled' => '操作已取消，可從最近完成的步驟重試。',
     'conflict' => '此站點或編號已被使用，請選擇其他編號。',
+    'new_site_required' => '請輸入與目前站點不同的新站點 ID。',
     'wifi_failed' => '新 WiFi 連線未成功，請檢查密碼與訊號後重試。',
     'no_devices' => '未找到 PTU。請確認已上電並靠近閘道器後重掃。',
     'incomplete' => '仍有 PTU 未連線或資料未到達，請查看各台狀態後重試。',
