@@ -13,6 +13,8 @@ flutter build apk --debug --dart-define=DEMO_MODE=true
 
 API預設 `https://dashboard.voltraware.com`，可在畫面改設定。僅系統TLS信任，不繞過憑證。`LOCAL_DEVELOPMENT=true` 才允許localhost／127.0.0.1／Android emulator localhost的HTTP；真機連本機可用adb reverse測試。WiFi密碼不落地；登入取得的API key存安全儲存區。
 
+準備頁提供「VPS 正式站／本地測試（USB）／其他網址」下拉清單，記住上次選擇及自訂網址。USB本地測試版以 `flutter build apk --debug --dart-define=LOCAL_DEVELOPMENT=true` 建置，手機USB連線後執行 `adb reverse tcp:18000 tcp:18000`；電腦本地容器須運行。當前本地登入密碼為使用者指定的 `54974211`，不代表VPS密碼。切換環境會清除密碼輸入，防止跨環境誤送。
+
 Android minSdk24，正式release沒有debug簽章。正式keystore與發佈程序仍待備妥；目前APK只能作開發測試。
 
 Wi-Fi 名稱下方可掃描手機周邊的 2.4 GHz 網路，依訊號排序，同名合併；選取後填入SSID，密碼仍需輸入。需開啟手機Wi-Fi、定位服務並允許精確位置。系統限制重複掃描時會提示稍候重試；隱藏SSID可手動輸入。手機掃描結果不保證Gateway所在位置也收得到訊號。

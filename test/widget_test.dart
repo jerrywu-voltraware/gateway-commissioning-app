@@ -15,6 +15,8 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     await tester.pumpWidget(const ProviderScope(child: GatewayApp()));
     await tester.pumpAndSettle();
+    expect(find.byType(DropdownButtonFormField<String>), findsOneWidget);
+    await tester.scrollUntilVisible(find.byType(SwitchListTile), 250);
     expect(find.byType(SwitchListTile), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../application/commissioning_controller.dart';
 import '../data/wifi_scan.dart';
 
@@ -30,6 +31,48 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   final _site = TextEditingController(text: '1'),
       _gateway = TextEditingController(text: '1');
   bool _offline = false;
+  String _environment = 'production';
+  static const _productionUrl = String.fromEnvironment(
+    'API_BASE',
+    defaultValue: 'https://dashboard.voltraware.com',
+  );
+  static const _localUrl = 'http://127.0.0.1:18000';
+  Future<void> _restoreEnvironment() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    final saved = prefs.getString('backend_environment');
+    setState(() {
+      _environment = ['production', 'local', 'custom'].contains(saved)
+          ? saved!
+          : 'production';
+      _base.text = _environment == 'local'
+          ? _localUrl
+          : _environment == 'custom'
+          ? (prefs.getString('backend_custom_url') ?? '')
+          : _productionUrl;
+    });
+  }
+
+  Future<void> _selectEnvironment(String? value) async {
+    if (value == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    if (_environment == 'custom') {
+      await prefs.setString('backend_custom_url', _base.text.trim());
+    }
+    if (!mounted) return;
+    setState(() {
+      _environment = value;
+      _base.text = value == 'local'
+          ? _localUrl
+          : value == 'custom'
+          ? (prefs.getString('backend_custom_url') ?? '')
+          : _productionUrl;
+      _login.clear();
+    });
+    await prefs.setString('backend_environment', value);
+  }
+
   bool _scanningWifi = false;
   Future<void> _chooseWifi() async {
     setState(() => _scanningWifi = true);
@@ -102,6 +145,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   @override
   void initState() {
     super.initState();
+    _restoreEnvironment();
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => ref.read(commissionProvider.notifier).restore(),
@@ -283,7 +327,33 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         return [
           const Text('先確認現場 WiFi 路由器與裝置電源已開啟。'),
           const SizedBox(height: 20),
-          field(_base, '後端網址'),
+          DropdownButtonFormField<String>(
+            key: ValueKey(_environment),
+            initialValue: _environment,
+            isExpanded: true,
+            decoration: const InputDecoration(
+              labelText: '連線環境',
+              border: OutlineInputBorder(),
+            ),
+            items: const [
+              DropdownMenuItem(value: 'production', child: Text('VPS 正式站')),
+              DropdownMenuItem(value: 'local', child: Text('本地測試（USB）')),
+              DropdownMenuItem(value: 'custom', child: Text('其他網址')),
+            ],
+            onChanged: enabled ? _selectEnvironment : null,
+          ),
+          const SizedBox(height: 12),
+          if (_environment == 'custom')
+            field(_base, '後端網址')
+          else
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text(_base.text),
+            ),
+          if (_environment == 'local')
+            const Text('本地測試密碼：54974211。手機需以 USB 連接電腦，並完成本地連線設定。')
+          else if (_environment == 'production')
+            const Text('請輸入 VPS 網頁的登入密碼。正式網址目前仍待部署確認。'),
           field(_login, '後端登入密碼', secret: true),
           CheckboxListTile(
             contentPadding: EdgeInsets.zero,
@@ -294,6 +364,11 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                 : null,
           ),
           button('檢查並開始', () async {
+            if (_environment == 'custom') {
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setString('backend_custom_url', _base.text.trim());
+              if (!mounted) return;
+            }
             await c.prepare(_base.text.trim(), _login.text, offline: _offline);
             _login.clear();
           }, enabled),
