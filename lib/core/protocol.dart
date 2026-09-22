@@ -42,7 +42,6 @@ class GatewayFailure implements Exception {
     'not_ready' || 'busy' => '閘道器正在準備或處理其他操作，請稍後重試。',
     'permission' => '需要藍牙權限，請至系統設定允許後重試。',
     'bluetooth_off' => '請開啟手機藍牙後重試。',
-    'license' => '真實裝置連線尚待管理員完成商用授權設定。可先使用模擬模式。',
     'disconnected' => '與閘道器的連線已中斷，請靠近後重新連線。',
     'timeout' => '等待超時，請確認裝置與網路後重試。',
     'cancelled' => '操作已取消，可從最近完成的步驟重試。',

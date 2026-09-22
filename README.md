@@ -9,7 +9,7 @@ flutter test
 flutter build apk --debug --dart-define=DEMO_MODE=true
 ```
 
-`DEMO_MODE=true` 完全使用模擬BLE／API，安裝報告會標示模擬。真實BLE的prepare／connect需要管理員已備妥商用授權，再以 `--dart-define=FBP_COMMERCIAL_LICENSED=true` 建置；旗標本身不代表已購買授權。使用者目前尚未備妥，請先使用模擬。
+`DEMO_MODE=true` 完全使用模擬BLE／API，安裝報告會標示模擬。不加此旗標即使用真實BLE。通訊套件已改為 `universal_ble 2.3.0`（BSD-3-Clause，允許免費商用），不再需要 FBP 商用授權旗標。授權全文保存在 `THIRD_PARTY_NOTICES.md`，發佈時應隨附。
 
 API預設 `https://dashboard.voltraware.com`，可在畫面改設定。僅系統TLS信任，不繞過憑證。`LOCAL_DEVELOPMENT=true` 才允許localhost／127.0.0.1／Android emulator localhost的HTTP；真機連本機可用adb reverse測試。WiFi密碼不落地；登入取得的API key存安全儲存區。
 

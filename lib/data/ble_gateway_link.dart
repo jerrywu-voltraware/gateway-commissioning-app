@@ -1,8 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
+import 'dart:typed_data';
 import 'package:device_info_plus/device_info_plus.dart';
-import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:universal_ble/universal_ble.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../core/protocol.dart';
 import 'contracts.dart';
@@ -10,10 +11,11 @@ import 'contracts.dart';
 class BleGatewayLink implements GatewayLink {
   @override
   bool get demo => false;
-  BluetoothDevice? _device;
-  BluetoothCharacteristic? _rx;
+  String? _device;
+  int _mtu = 23;
+  String? _rx;
   StreamSubscription<List<int>>? _notify;
-  StreamSubscription<BluetoothConnectionState>? _connection;
+  StreamSubscription<bool>? _connection;
   final _frames = JsonFrames();
   final _pending = <String, Completer<Map<String, dynamic>>>{};
   Future<void> _tail = Future.value();
@@ -22,9 +24,6 @@ class BleGatewayLink implements GatewayLink {
 
   @override
   Future<void> prepare() async {
-    if (!const bool.fromEnvironment('FBP_COMMERCIAL_LICENSED')) {
-      throw const GatewayFailure('license');
-    }
     final sdk = (await DeviceInfoPlugin().androidInfo).version.sdkInt;
     final permissions = sdk >= 31
         ? [Permission.bluetoothScan, Permission.bluetoothConnect]
@@ -33,9 +32,14 @@ class BleGatewayLink implements GatewayLink {
     if (result.values.any((p) => !p.isGranted)) {
       throw const GatewayFailure('permission');
     }
-    if (await FlutterBluePlus.adapterState.first != BluetoothAdapterState.on) {
+    if (await UniversalBle.getBluetoothAvailabilityState() !=
+        AvailabilityState.poweredOn) {
       try {
-        await FlutterBluePlus.turnOn().timeout(const Duration(seconds: 15));
+        if (!await UniversalBle.enableBluetooth(
+          timeout: const Duration(seconds: 15),
+        )) {
+          throw const GatewayFailure('bluetooth_off');
+        }
       } catch (_) {
         throw const GatewayFailure('bluetooth_off');
       }
@@ -47,25 +51,21 @@ class BleGatewayLink implements GatewayLink {
     await disconnect();
     await prepare();
     final found = <String, GatewayPeer>{};
-    final sub = FlutterBluePlus.onScanResults.listen((results) {
-      for (final result in results) {
-        final name = result.advertisementData.advName.isNotEmpty
-            ? result.advertisementData.advName
-            : result.device.platformName;
-        if (name.startsWith('GIOS-S')) {
-          found[result.device.remoteId.str] = GatewayPeer(
-            result.device.remoteId.str,
-            name,
-            result.rssi,
-          );
-        }
+    final sub = UniversalBle.scanStream.listen((result) {
+      final name = result.name ?? '';
+      if (name.startsWith('GIOS-S')) {
+        found[result.deviceId] = GatewayPeer(
+          result.deviceId,
+          name,
+          result.rssi ?? -127,
+        );
       }
     });
     try {
-      await FlutterBluePlus.startScan(timeout: const Duration(seconds: 15));
+      await UniversalBle.startScan();
       await Future<void>.delayed(const Duration(seconds: 15));
     } finally {
-      await FlutterBluePlus.stopScan();
+      await UniversalBle.stopScan();
       await sub.cancel();
     }
     return found.values.toList()..sort((a, b) => b.rssi.compareTo(a.rssi));
@@ -73,39 +73,46 @@ class BleGatewayLink implements GatewayLink {
 
   @override
   Future<void> connect(GatewayPeer peer) async {
-    if (!const bool.fromEnvironment('FBP_COMMERCIAL_LICENSED')) {
-      throw const GatewayFailure('license');
-    }
     await disconnect();
     final epoch = _epoch;
-    final device = BluetoothDevice.fromId(peer.id);
+    final device = peer.id;
     _device = device;
     for (int attempt = 0; ; attempt++) {
       if (epoch != _epoch) throw const GatewayFailure('cancelled');
       try {
-        await device.connect(
-          license: License.commercial,
+        await UniversalBle.connect(
+          device,
           timeout: const Duration(seconds: 15),
-          mtu: null,
         );
         break;
       } catch (error) {
         if (attempt >= 2 || !error.toString().contains('133')) rethrow;
-        await device.disconnect();
+        await UniversalBle.disconnect(
+          device,
+          timeout: const Duration(seconds: 5),
+        );
         await Future<void>.delayed(Duration(seconds: 1 << attempt));
       }
     }
     if (epoch != _epoch) throw const GatewayFailure('cancelled');
-    final services = await device.discoverServices().timeout(
-      const Duration(seconds: 12),
-    );
+    final services = await UniversalBle.discoverServices(
+      device,
+      timeout: const Duration(seconds: 12),
+    ).timeout(const Duration(seconds: 12));
     if (epoch != _epoch) throw const GatewayFailure('cancelled');
-    final service = services.where((s) => s.uuid == Guid(nusService)).first;
-    _rx = service.characteristics.where((c) => c.uuid == Guid(nusRx)).first;
-    final tx = service.characteristics
-        .where((c) => c.uuid == Guid(nusTx))
+    final service = services
+        .where((s) => s.uuid.toLowerCase() == nusService.toLowerCase())
         .first;
-    _notify = tx.onValueReceived.listen((bytes) {
+    _rx = service.characteristics
+        .where((c) => c.uuid.toLowerCase() == nusRx.toLowerCase())
+        .first
+        .uuid;
+    final tx = service.characteristics
+        .where((c) => c.uuid.toLowerCase() == nusTx.toLowerCase())
+        .first;
+    _notify = UniversalBle.characteristicValueStream(device, tx.uuid).listen((
+      bytes,
+    ) {
       if (epoch != _epoch) return;
       try {
         for (final frame in _frames.add(bytes)) {
@@ -116,15 +123,15 @@ class BleGatewayLink implements GatewayLink {
         _frames.clear();
       }
     });
-    await tx.setNotifyValue(true).timeout(const Duration(seconds: 12));
+    await UniversalBle.subscribeNotifications(
+      device,
+      nusService,
+      tx.uuid,
+      timeout: const Duration(seconds: 12),
+    ).timeout(const Duration(seconds: 12));
     if (epoch != _epoch) throw const GatewayFailure('cancelled');
-    try {
-      await device.requestMtu(247);
-    } catch (_) {
-      /* Fall back to MTU 23. */
-    }
-    _connection = device.connectionState.listen((state) {
-      if (state == BluetoothConnectionState.disconnected) {
+    _connection = UniversalBle.connectionStream(device).listen((state) {
+      if (!state && epoch == _epoch) {
         _rx = null;
         _frames.clear();
         for (final p in _pending.values) {
@@ -135,6 +142,18 @@ class BleGatewayLink implements GatewayLink {
         _pending.clear();
       }
     });
+    try {
+      _mtu = await UniversalBle.requestMtu(
+        device,
+        247,
+        timeout: const Duration(seconds: 12),
+      );
+    } catch (_) {
+      /* Fall back to MTU 23. */
+    }
+    if (epoch != _epoch || _rx == null) {
+      throw const GatewayFailure('disconnected');
+    }
   }
 
   @override
@@ -179,16 +198,20 @@ class BleGatewayLink implements GatewayLink {
     final response = ack.future.timeout(commandTimeout(op, params));
     unawaited(response.catchError((Object e) => <String, dynamic>{}));
     try {
-      final size = max(1, (_device?.mtuNow ?? 23) - 3);
+      final size = max(1, _mtu - 3);
       for (int offset = 0; offset < bytes.length; offset += size) {
         final rx = _rx;
         if (rx == null) throw const GatewayFailure('disconnected');
-        await rx
-            .write(
-              bytes.sublist(offset, min(offset + size, bytes.length)),
-              withoutResponse: false,
-            )
-            .timeout(commandTimeout(op, params));
+        await UniversalBle.write(
+          _device!,
+          nusService,
+          rx,
+          Uint8List.fromList(
+            bytes.sublist(offset, min(offset + size, bytes.length)),
+          ),
+          timeout: commandTimeout(op, params),
+          withoutResponse: false,
+        ).timeout(commandTimeout(op, params));
         if (size <= 20) {
           await Future<void>.delayed(const Duration(milliseconds: 30));
         }
@@ -219,6 +242,7 @@ class BleGatewayLink implements GatewayLink {
   @override
   Future<void> disconnect() async {
     _epoch++;
+    _mtu = 23;
     _rx = null;
     _frames.clear();
     for (final p in _pending.values) {
@@ -233,7 +257,10 @@ class BleGatewayLink implements GatewayLink {
     _device = null;
     if (device != null) {
       try {
-        await device.disconnect();
+        await UniversalBle.disconnect(
+          device,
+          timeout: const Duration(seconds: 5),
+        );
       } catch (_) {}
     }
   }
