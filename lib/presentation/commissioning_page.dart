@@ -431,7 +431,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               '目前設定的 Wi-Fi：${(s.config['wifi_ssid']?.toString() ?? '').isEmpty ? '尚未設定' : s.config['wifi_ssid']}',
             ),
             const SizedBox(height: 12),
-            const Text('沿用會保留目前設定；設定新站會在儲存後變更這台閘道器的站點並重新開通。原站歷史資料不會刪除。'),
+            const Text('沿用會保留目前設定；設定新站點與 Wi-Fi 可一起修改站號及無線網路，儲存後重新開通。原站歷史資料不會刪除。'),
             button('沿用目前站點', () => c.chooseStation(newStation: false), enabled),
             button('保留站點，重設 Wi-Fi', () {
               c.chooseStation(newStation: false, wifiOnly: true);
@@ -441,7 +441,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               _wifi.clear();
               _customWifi = false;
             }, enabled),
-            button('設定新站點', () {
+            button('設定新站點與 Wi-Fi', () {
               c.chooseStation(newStation: true);
               _site.clear();
               _gateway.text = '1';
