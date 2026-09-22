@@ -91,7 +91,20 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     FocusScope.of(context).unfocus();
     setState(() => _scanningWifi = true);
     try {
-      final networks = await scanWifiNetworks();
+      var networks = <WifiNetwork>[];
+      String? scanMessage;
+      try {
+        networks = await scanWifiNetworks();
+      } catch (error) {
+        final code = error is PlatformException ? error.code : '';
+        scanMessage = switch (code) {
+          'permission' => '請允許精確位置權限後重試，或選擇自訂網路。',
+          'wifi_off' => '請開啟手機 Wi-Fi 後重試，或選擇自訂網路。',
+          'location_off' => '請開啟手機定位服務後重試，或選擇自訂網路。',
+          'throttled' => '掃描太頻繁，請稍候重試，或選擇自訂網路。',
+          _ => '掃描未完成，請重試或選擇自訂網路。',
+        };
+      }
       if (!mounted || ref.read(commissionProvider).step != 2) return;
       final selected = await showDialog<String>(
         context: context,
@@ -99,9 +112,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           title: const Text('選擇 2.4 GHz Wi-Fi'),
           children: [
             if (networks.isEmpty)
-              const Padding(
-                padding: EdgeInsets.all(24),
-                child: Text('未找到周邊 2.4 GHz Wi-Fi。請靠近路由器重掃，或手動輸入名稱。'),
+              Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(scanMessage ?? '未找到周邊 2.4 GHz Wi-Fi，可稍後重試或選擇自訂網路。'),
               ),
             ...networks.map(
               (network) => SimpleDialogOption(
@@ -111,6 +124,13 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                   title: Text(network.ssid),
                   subtitle: Text('訊號 ${network.rssi} dBm'),
                 ),
+              ),
+            ),
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, ''),
+              child: const ListTile(
+                leading: Icon(Icons.edit_outlined),
+                title: Text('自訂／隱藏網路'),
               ),
             ),
             TextButton(
@@ -126,7 +146,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         setState(() {
           if (_ssid.text != selected) _wifi.clear();
           _ssid.text = selected;
-          _customWifi = false;
+          _customWifi = selected.isEmpty;
         });
       }
     } catch (error) {
@@ -431,7 +451,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               '目前設定的 Wi-Fi：${(s.config['wifi_ssid']?.toString() ?? '').isEmpty ? '尚未設定' : s.config['wifi_ssid']}',
             ),
             const SizedBox(height: 12),
-            const Text('沿用會保留目前設定；設定新站點與 Wi-Fi 可一起修改站號及無線網路，儲存後重新開通。原站歷史資料不會刪除。'),
+            const Text(
+              '沿用會保留目前設定；設定新站點與 Wi-Fi 可一起修改站號及無線網路，儲存後重新開通。原站歷史資料不會刪除。',
+            ),
             button('沿用目前站點', () => c.chooseStation(newStation: false), enabled),
             button('保留站點，重設 Wi-Fi', () {
               c.chooseStation(newStation: false, wifiOnly: true);
@@ -458,46 +480,30 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             field(_site, '站點 ID（1–65535）', number: true),
             field(_gateway, '閘道器編號（1–6）', number: true),
           ],
-          DropdownButtonFormField<bool>(
-            key: ValueKey('wifi-source-$_customWifi'),
-            initialValue: _customWifi,
-            decoration: const InputDecoration(
-              labelText: 'Wi-Fi 設定方式',
-              border: OutlineInputBorder(),
-            ),
-            items: const [
-              DropdownMenuItem(value: false, child: Text('掃描選擇 Wi-Fi')),
-              DropdownMenuItem(value: true, child: Text('自訂 Wi-Fi')),
-            ],
-            onChanged: enabled && !_scanningWifi
-                ? (value) {
-                    FocusScope.of(context).unfocus();
-                    setState(() => _customWifi = value ?? false);
-                  }
-                : null,
-          ),
-          const SizedBox(height: 14),
-          if (_customWifi)
-            field(_ssid, '自訂 Wi-Fi 名稱')
-          else
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.wifi),
-              title: Text(_ssid.text.isEmpty ? '尚未選擇 Wi-Fi' : _ssid.text),
-              subtitle: const Text('按下方掃描按鈕選擇網路'),
-            ),
-          if (!_customWifi)
-            OutlinedButton.icon(
-              onPressed: enabled && !_scanningWifi ? _chooseWifi : null,
-              icon: const Icon(Icons.wifi_find),
-              label: Text(_scanningWifi ? '正在掃描…' : '掃描周邊 Wi-Fi'),
-            ),
+          const SizedBox(height: 16),
           Text(
-            _customWifi
-                ? '請輸入完整的 Wi-Fi 名稱，包含大小寫與空白。'
-                : '使用手機掃描 2.4 GHz Wi-Fi；隱藏網路請選「自訂 Wi-Fi」。',
+            '目前 Wi-Fi：${(s.config['wifi_ssid']?.toString() ?? '').isEmpty ? '尚未設定' : s.config['wifi_ssid']}',
           ),
-          field(_wifi, 'WiFi 密碼（8–63 bytes）', secret: true),
+          const SizedBox(height: 16),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.wifi),
+            title: const Text('要連接的 Wi-Fi'),
+            subtitle: Text(
+              _customWifi
+                  ? '自訂網路'
+                  : _ssid.text.isEmpty
+                  ? '尚未選擇'
+                  : _ssid.text,
+            ),
+            trailing: TextButton(
+              onPressed: enabled && !_scanningWifi ? _chooseWifi : null,
+              child: Text(_scanningWifi ? '掃描中…' : '更換'),
+            ),
+          ),
+          if (_customWifi) field(_ssid, '自訂 Wi-Fi 名稱'),
+          const SizedBox(height: 16),
+          field(_wifi, 'Wi-Fi 密碼', secret: true),
           button('儲存並連接 WiFi', () async {
             await c.configureWifi(
               int.tryParse(_site.text) ?? 0,
