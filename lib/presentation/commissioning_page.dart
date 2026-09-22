@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../application/commissioning_controller.dart';
+import '../data/wifi_scan.dart';
 
 class CommissioningPage extends ConsumerStatefulWidget {
   const CommissioningPage({
@@ -29,6 +30,65 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   final _site = TextEditingController(text: '1'),
       _gateway = TextEditingController(text: '1');
   bool _offline = false;
+  bool _scanningWifi = false;
+  Future<void> _chooseWifi() async {
+    setState(() => _scanningWifi = true);
+    try {
+      final networks = await scanWifiNetworks();
+      if (!mounted || ref.read(commissionProvider).step != 2) return;
+      final selected = await showDialog<String>(
+        context: context,
+        builder: (context) => SimpleDialog(
+          title: const Text('選擇 2.4 GHz Wi-Fi'),
+          children: [
+            if (networks.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(24),
+                child: Text('未找到周邊 2.4 GHz Wi-Fi。請靠近路由器重掃，或手動輸入名稱。'),
+              ),
+            ...networks.map(
+              (network) => SimpleDialogOption(
+                onPressed: () => Navigator.pop(context, network.ssid),
+                child: ListTile(
+                  leading: const Icon(Icons.wifi),
+                  title: Text(network.ssid),
+                  subtitle: Text('訊號 ${network.rssi} dBm'),
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+          ],
+        ),
+      );
+      if (mounted &&
+          selected != null &&
+          ref.read(commissionProvider).step == 2) {
+        setState(() {
+          if (_ssid.text != selected) _wifi.clear();
+          _ssid.text = selected;
+        });
+      }
+    } catch (error) {
+      if (!mounted) return;
+      final code = error is PlatformException ? error.code : '';
+      final message = switch (code) {
+        'permission' => '掃描 Wi-Fi 需要位置權限，請允許精確位置後重試。',
+        'wifi_off' => '請先開啟手機 Wi-Fi。',
+        'location_off' => '請先開啟手機定位服務，再重新掃描。',
+        'throttled' => '系統暫時限制掃描，請稍候再試，或手動輸入名稱。',
+        _ => 'Wi-Fi 掃描未完成，請重試或手動輸入名稱。',
+      };
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+    } finally {
+      if (mounted) setState(() => _scanningWifi = false);
+    }
+  }
+
   static const labels = [
     '準備',
     '找到閘道器',
@@ -269,6 +329,12 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           field(_site, '站點 ID（1–65535）', number: true),
           field(_gateway, '閘道器編號（1–6）', number: true),
           field(_ssid, 'WiFi 名稱'),
+          OutlinedButton.icon(
+            onPressed: enabled && !_scanningWifi ? _chooseWifi : null,
+            icon: const Icon(Icons.wifi_find),
+            label: Text(_scanningWifi ? '正在掃描…' : '掃描周邊 Wi-Fi'),
+          ),
+          const Text('使用手機掃描 2.4 GHz Wi-Fi；隱藏網路可手動輸入。'),
           field(_wifi, 'WiFi 密碼（8–63 bytes）', secret: true),
           button('儲存並連接 WiFi', () async {
             await c.configureWifi(
