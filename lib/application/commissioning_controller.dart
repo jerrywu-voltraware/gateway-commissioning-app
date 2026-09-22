@@ -7,6 +7,7 @@ import '../data/ble_gateway_link.dart';
 import '../data/contracts.dart';
 import '../data/dashboard_api.dart';
 import '../data/demo_system.dart';
+import '../data/ptu_inventory.dart';
 
 class DemoMode extends Notifier<bool> {
   @override
@@ -577,20 +578,16 @@ class CommissioningController extends Notifier<CommissionState> {
     }
     throw const GatewayFailure('timeout');
   });
-  Future<void> discover() => _run('搜尋附近 PTU', 18, (generation) async {
+  Future<void> discover() => _run('搜尋周邊與已連線 PTU', 35, (generation) async {
     final response = await _command(generation, 'scan_ble_discover', {
       'duration': 10,
     });
     _check(generation);
-    final ptus =
-        (response['devices'] as List? ?? [])
-            .map((p) => Map<String, dynamic>.from(p as Map))
-            .toList()
-          ..sort(
-            (a, b) => ((b['rssi'] as num?) ?? -100).compareTo(
-              (a['rssi'] as num?) ?? -100,
-            ),
-          );
+    final connected = await _command(generation, 'get_ble_devices');
+    final ptus = mergePtuInventory(
+      response['devices'] as List? ?? [],
+      connected['devices'] as List? ?? [],
+    );
     for (final p in ptus) {
       if (p['device_number'] == 0 &&
           _restoredAssignments.containsKey(p['mac'])) {

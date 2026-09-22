@@ -535,14 +535,17 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       case 5:
         return [
           const Text('勾選要由這台閘道器監控的 PTU，最多五台。'),
-          button('搜尋 PTU', () => c.discover(), enabled),
+          button('搜尋周邊與已連線 PTU', () => c.discover(), enabled),
+          Text(
+            '已連線 ${s.ptus.where((p) => p['connected'] == true).length} 台／周邊未連線 ${s.ptus.where((p) => p['connected'] != true).length} 台',
+          ),
           ...s.ptus.map(
             (ptu) => CheckboxListTile(
               contentPadding: EdgeInsets.zero,
               value: s.selected.contains(ptu['mac']),
               title: Text(ptu['mac'].toString()),
               subtitle: Text(
-                '目前編號 ${ptu['device_number'] ?? 0} · 訊號 ${ptu['rssi'] ?? '—'} dBm\n${s.results[ptu['mac']] ?? ''}',
+                '${ptu['connected'] == true ? '已連線至此 Gateway' : '周邊未連線'}\n目前編號 ${ptu['device_number'] ?? 0} · 訊號 ${ptu['rssi'] ?? '—'} dBm\n${s.results[ptu['mac']] ?? ''}',
               ),
               onChanged: enabled
                   ? (value) => c.select(ptu['mac'].toString(), value ?? false)
