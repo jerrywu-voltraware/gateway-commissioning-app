@@ -58,6 +58,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           : _environment == 'custom'
           ? (prefs.getString('backend_custom_url') ?? '')
           : _productionUrl;
+      _login.text = _environment == 'local' ? '54974211' : '';
     });
   }
 
@@ -79,7 +80,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           : value == 'custom'
           ? (prefs.getString('backend_custom_url') ?? '')
           : _productionUrl;
-      _login.clear();
+      _login.text = value == 'local' ? '54974211' : '';
     });
     await prefs.setString('backend_environment', value);
   }
