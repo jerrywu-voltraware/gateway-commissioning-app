@@ -50,10 +50,9 @@ class MqttTarget {
   /// 正式站 / 本地 host (button text).
   String get shortLabel => isLocal ? '本地 $host' : '正式站';
 
-  /// Plain wording for non-developers: 正式站 / 本地測試主機（host）.
-  String get plainLabel => isLocal
-      ? '本地測試主機（$host${port == defaultMqttPort ? '' : ':$port'}）'
-      : '正式站';
+  /// Plain wording for non-developers: 正式站 / 本地測試主機（host）. The
+  /// port is technical detail and never shown here.
+  String get plainLabel => isLocal ? '本地測試主機（$host）' : '正式站';
 
   /// `params` of the `set_mqtt_target` request.
   Map<String, dynamic> get params => isLocal

@@ -40,6 +40,11 @@ class EnvironmentChip extends ConsumerWidget {
   }
 }
 
+/// Why a switch is refused while [s] is busy. 「取消操作」 is named only
+/// where the page has that button (after the 準備 step).
+String switchBlockedText(CommissionState s) =>
+    '正在進行「${s.message}」，${s.step > 0 ? '完成或按「取消操作」後' : '完成後'}才能切換。';
+
 /// Bottom sheet with 本地測試 / 正式站 / 其他網址. Returns the chosen
 /// environment (its local IP or URL already stored), or null.
 Future<BackendEnv?> showEnvironmentSheet(BuildContext context) =>
@@ -179,7 +184,7 @@ class _EnvironmentSheetState extends ConsumerState<_EnvironmentSheet> {
           padding: const EdgeInsets.all(12),
           color: colors.secondaryContainer,
           child: Text(
-            '正在進行「${commission.message}」，完成或按「取消操作」後才能切換。',
+            switchBlockedText(commission),
             style: TextStyle(color: colors.onSecondaryContainer),
           ),
         ),

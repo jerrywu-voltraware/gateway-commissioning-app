@@ -49,9 +49,15 @@ class UploadWatchTiming {
   const UploadWatchTiming({
     this.interval = const Duration(seconds: 5),
     this.cap = const Duration(minutes: 2),
+    this.slowAfter = const Duration(seconds: 30),
   });
-  final Duration interval, cap;
+
+  /// [slowAfter]: polling time without upload after which a guess about the
+  /// cause (e.g. another subnet) may be shown.
+  final Duration interval, cap, slowAfter;
   int get maxTicks => (cap.inMilliseconds / interval.inMilliseconds).ceil();
+  int get slowTicks =>
+      (slowAfter.inMilliseconds / interval.inMilliseconds).ceil();
 }
 
 final uploadWatchTimingProvider = Provider<UploadWatchTiming>(
@@ -60,6 +66,12 @@ final uploadWatchTimingProvider = Provider<UploadWatchTiming>(
 
 /// Gateway network fields copied from get_net_status (firmware cmd_handler.c).
 const gatewayNetKeys = ['wifi_state', 'ip', 'ssid', 'rssi'];
+
+/// Step 7 after a backend switch: the earlier result belongs to the old one.
+const backendSwitchedDoneText = '已切換連線環境，資料要在新的環境重新確認。';
+
+/// Step 6 after a backend switch.
+const backendSwitchedVerifyText = '已切換連線環境，請按「開始資料驗證」重新確認。';
 
 class CommissionState {
   const CommissionState({
@@ -82,6 +94,7 @@ class CommissionState {
     this.loggedIn = false,
     this.net = const {},
     this.uploadWatch = UploadWatch.idle,
+    this.uploadSlow = false,
   });
   final int step, seconds;
   final bool busy, verified, online;
@@ -93,6 +106,9 @@ class CommissionState {
   /// Gateway network status (wifi_state / ip / ssid / rssi) last read.
   final Map<String, dynamic> net;
   final UploadWatch uploadWatch;
+
+  /// Still polling after [UploadWatchTiming.slowAfter] without upload.
+  final bool uploadSlow;
 
   /// Outcome of the last upload-target switch or refresh (shown in its card).
   final String uploadNotice;
@@ -124,10 +140,12 @@ class CommissionState {
     bool? loggedIn,
     Map<String, dynamic>? net,
     UploadWatch? uploadWatch,
+    bool? uploadSlow,
   }) => CommissionState(
     loggedIn: loggedIn ?? this.loggedIn,
     net: net ?? this.net,
     uploadWatch: uploadWatch ?? this.uploadWatch,
+    uploadSlow: uploadSlow ?? this.uploadSlow,
     step: step ?? this.step,
     busy: busy ?? this.busy,
     message: message ?? this.message,
@@ -1036,11 +1054,20 @@ class CommissioningController extends Notifier<CommissionState> {
   /// lease on the old backend is not handed back here (a fire-and-forget
   /// request could race a new login's key); it expires by its TTL or is
   /// returned by 「結束並重新選擇閘道器」. The running step is not touched.
+  ///
+  /// On step 6/7 the shown result (verification error, 「開通驗證通過」,
+  /// data health) came from the old backend, so it is cleared.
   void backendChanged(String base) {
     final next = base.trim();
     if (_loginBase == next && _loggedIn) return;
     if (!state.busy) _backend = describeBackend(Uri.tryParse(next));
     _setLoggedIn(false);
+    if (!ref.mounted || state.busy) return;
+    if (state.step == 7) {
+      state = state.copy(online: false, message: backendSwitchedDoneText);
+    } else if (state.step == 6) {
+      state = state.copy(message: backendSwitchedVerifyText);
+    }
   }
 
   /// Logs in to [base] outside a step (after switching environments).
@@ -1071,7 +1098,11 @@ class CommissioningController extends Notifier<CommissionState> {
     }
     _poll?.cancel();
     _pollTicks = 0;
-    state = state.copy(uploadWatch: UploadWatch.polling, error: state.error);
+    state = state.copy(
+      uploadWatch: UploadWatch.polling,
+      uploadSlow: false,
+      error: state.error,
+    );
     _poll = Timer.periodic(_timing.interval, (_) => unawaited(_pollTick()));
     Timer.run(() => unawaited(_pollTick(count: false)));
   }
@@ -1079,8 +1110,12 @@ class CommissioningController extends Notifier<CommissionState> {
   void _stopWatch(UploadWatch reason) {
     _poll?.cancel();
     _poll = null;
-    if (ref.mounted && state.uploadWatch != reason) {
-      state = state.copy(uploadWatch: reason, error: state.error);
+    if (ref.mounted && (state.uploadWatch != reason || state.uploadSlow)) {
+      state = state.copy(
+        uploadWatch: reason,
+        uploadSlow: false,
+        error: state.error,
+      );
     }
   }
 
@@ -1095,6 +1130,9 @@ class CommissioningController extends Notifier<CommissionState> {
     if (state.busy || _pollInFlight || !_foreground) return;
     if (count) _pollTicks++;
     if (_pollTicks > _timing.maxTicks) return _stopWatch(UploadWatch.gaveUp);
+    if (!state.uploadSlow && _pollTicks >= _timing.slowTicks) {
+      state = state.copy(uploadSlow: true, error: state.error);
+    }
     _pollInFlight = true;
     final generation = _generation;
     try {
@@ -1349,11 +1387,15 @@ class CommissioningController extends Notifier<CommissionState> {
   Future<void> refreshHealth() async {
     if (!_foreground || _healthBusy || state.busy || !_loggedIn) return;
     _healthBusy = true;
+    final loginBase = _loginBase;
+    // A switch of backend while the request runs makes its answer stale.
+    bool stale() => !_loggedIn || _loginBase != loginBase;
     try {
       final latest = await _api.request(
         'GET',
         '/api/latest?site_id=$site&gateway_id=$gateway',
       );
+      if (stale()) return;
       final rows = (latest['items'] as List? ?? []).cast<Map>();
       final expected = state.ptus.map((p) => p['device_number']).toSet();
       final complete =
@@ -1381,7 +1423,7 @@ class CommissioningController extends Notifier<CommissionState> {
         );
       }
     } catch (_) {
-      if (ref.mounted) {
+      if (ref.mounted && !stale()) {
         state = state.copy(online: false, message: '無法確認最新資料，請檢查網路');
       }
     } finally {
@@ -1389,8 +1431,19 @@ class CommissioningController extends Notifier<CommissionState> {
     }
   }
 
-  Future<void> repair() => _run('重新連接閘道器', 60, (generation) async {
-    // After an environment switch the old login must not reach the new site.
+  /// [base] / [password] log in first when the backend was switched since
+  /// the last login (step 7 offers the password field for that).
+  Future<void> repair({String? base, String? password}) => _run('重新連接閘道器', 60, (
+    generation,
+  ) async {
+    if (!_loggedIn && base != null && (password ?? '').isNotEmpty) {
+      _backend = describeBackend(Uri.tryParse(base.trim()));
+      await _api.login(base.trim(), password!);
+      _check(generation);
+      _setLoggedIn(true, base);
+    }
+    // After an environment switch the old login must not reach the new
+    // site.
     if (!_loggedIn) throw const GatewayFailure('authentication');
     await _request(generation, 'POST', '$_path/commands', {
       'op': 'reconnect_ble',

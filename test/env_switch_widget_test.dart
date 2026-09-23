@@ -22,14 +22,44 @@ const _release = EnvSwitchPolicy(
 );
 
 class _Prober implements LocalBackendProber {
+  final probed = <String>[];
   @override
-  Future<ProbeResult> probe(Uri base, {Duration? connectTimeout}) async =>
-      const ProbeResult(ProbeOutcome.healthy, status: 200, version: '1.1.0');
+  Future<ProbeResult> probe(Uri base, {Duration? connectTimeout}) async {
+    probed.add('$base');
+    return const ProbeResult(
+      ProbeOutcome.healthy,
+      status: 200,
+      version: '1.1.0',
+    );
+  }
 }
 
 class SimGateway extends DemoSystem {
   final commands = <String>[];
-  Completer<void>? connectGate;
+  Completer<void>? connectGate, prepareGate;
+  final logins = <(String, String)>[];
+
+  /// An existing station with three numbered PTUs, ready for step 6.
+  SimGateway.commissioned() {
+    config['fleet_joined'] = true;
+    for (final (i, device) in devices.indexed) {
+      device
+        ..['device_number'] = i + 1
+        ..['connected'] = true
+        ..['notify_enabled'] = true;
+    }
+  }
+  SimGateway();
+
+  @override
+  Future<void> prepare() async {
+    await prepareGate?.future;
+  }
+
+  @override
+  Future<void> login(String base, String password) async =>
+      logins.add((base, password));
+
   @override
   Future<void> connect(GatewayPeer peer) async {
     await connectGate?.future;
@@ -60,6 +90,7 @@ Future<ProviderContainer> _pumpApp(
   SimGateway fake, {
   Map<String, Object> prefs = _productionPrefs,
   EnvSwitchPolicy policy = _debug,
+  _Prober? prober,
 }) async {
   SharedPreferences.setMockInitialValues(prefs);
   await tester.pumpWidget(
@@ -68,7 +99,7 @@ Future<ProviderContainer> _pumpApp(
         linkProvider.overrideWithValue(fake),
         apiProvider.overrideWithValue(fake),
         envSwitchPolicyProvider.overrideWithValue(policy),
-        localBackendProberProvider.overrideWithValue(_Prober()),
+        localBackendProberProvider.overrideWithValue(prober ?? _Prober()),
         phoneIpv4Provider.overrideWithValue(() async => '192.168.1.23'),
       ],
       child: const GatewayApp(),
@@ -306,7 +337,8 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.byKey(const Key('env-sheet-busy')), findsOneWidget);
-    expect(find.textContaining('正在進行「連線並讀取閘道器設定」'), findsOneWidget);
+    expect(find.text('正在進行「連線並讀取閘道器設定」，完成或按「取消操作」後才能切換。'), findsOneWidget);
+    expect(find.text('取消操作'), findsOneWidget, reason: 'the page has it');
     await tester.tap(find.byKey(const Key('env-option-local')));
     await tester.pump(const Duration(milliseconds: 500));
     expect(
@@ -324,6 +356,175 @@ void main() {
     expect(state.error, isNull);
     expect(fake.targetRequests, isEmpty);
     expect(_chipText(tester), '正式站');
+  });
+
+  testWidgets('switch refused on step 0 names no missing button', (
+    tester,
+  ) async {
+    final fake = SimGateway()..prepareGate = Completer<void>();
+    final container = await _pumpApp(tester, fake);
+    await tester.tap(find.text('檢查並開始'));
+    await tester.pump();
+    final state = container.read(commissionProvider);
+    expect(state.busy, isTrue);
+    expect(state.step, 0);
+    expect(find.text('取消操作'), findsNothing, reason: 'no cancel on step 0');
+
+    await tester.tap(_chip);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.text('正在進行「檢查藍牙與後端連線」，完成後才能切換。'), findsOneWidget);
+    expect(find.textContaining('取消操作'), findsNothing);
+    Navigator.of(tester.element(find.byKey(const Key('env-sheet-busy')))).pop();
+    await tester.pump(const Duration(milliseconds: 500));
+
+    fake.prepareGate!.complete();
+    await tester.pumpAndSettle();
+    expect(container.read(commissionProvider).step, 1);
+  });
+
+  testWidgets('step 7: 切回正式站 then log in and re-verify right there', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(800, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final fake = SimGateway.commissioned();
+    final container = await _pumpApp(tester, fake, prefs: _localPrefs);
+    await _connectGateway(tester);
+    expect(fake.targetRequests.single['host'], '192.168.1.50');
+    await _tap(tester, find.text('沿用目前站點'));
+    expect(find.text('驗證後端：本地測試（這台電腦上的測試主機）'), findsOneWidget);
+    expect(find.textContaining('http://192.168.1.50'), findsNothing);
+    await _tap(tester, find.text('開始資料驗證'));
+    var state = container.read(commissionProvider);
+    expect(state.error, isNull);
+    expect(state.step, 7);
+    expect(find.text('開通驗證通過，已恢復自動監控'), findsOneWidget);
+    expect(find.text(localTargetShipWarning), findsOneWidget);
+
+    await _tap(tester, find.text('手機和 Gateway 都切回正式站'));
+    expect(fake.targetRequests.last, {'target': 'production'});
+    state = container.read(commissionProvider);
+    expect(state.error, isNull);
+    expect(state.loggedIn, isFalse);
+    expect(find.text(localTargetShipWarning), findsNothing);
+    // Before the fix the old 「開通驗證通過」 stayed and there was no way to
+    // log in on this page.
+    expect(find.text('開通驗證通過，已恢復自動監控'), findsNothing);
+    expect(find.text(backendSwitchedDoneText), findsOneWidget);
+    final password = find.widgetWithText(TextField, '正式站的登入密碼');
+    expect(password, findsOneWidget);
+    expect(find.text('更新健康狀態'), findsNothing);
+
+    // No password yet: say so instead of 「登入失敗」.
+    await _tap(tester, find.text('重新連線並驗證'));
+    expect(find.text('請先輸入正式站的登入密碼。'), findsOneWidget);
+    expect(container.read(commissionProvider).error, isNull);
+    expect(container.read(commissionProvider).step, 7);
+
+    await tester.enterText(password, 'vps-secret');
+    await _tap(tester, find.text('登入並確認資料'));
+    state = container.read(commissionProvider);
+    expect(fake.logins.last, (productionApiBase, 'vps-secret'));
+    expect(state.loggedIn, isTrue);
+    expect(state.error, isNull);
+    expect(state.message, '資料持續更新');
+    expect(find.widgetWithText(TextField, '正式站的登入密碼'), findsNothing);
+    expect(find.text('更新健康狀態'), findsOneWidget);
+
+    await _tap(tester, find.text('重新連線並驗證'));
+    state = container.read(commissionProvider);
+    expect(state.error, isNull);
+    expect(state.step, 3);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('step 7: the password can go straight to 重新連線並驗證', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(800, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final fake = SimGateway.commissioned();
+    final container = await _pumpApp(tester, fake, prefs: _localPrefs);
+    await _connectGateway(tester);
+    await _tap(tester, find.text('沿用目前站點'));
+    await _tap(tester, find.text('開始資料驗證'));
+    await _tap(tester, find.text('手機和 Gateway 都切回正式站'));
+    await tester.enterText(
+      find.widgetWithText(TextField, '正式站的登入密碼'),
+      'vps-secret',
+    );
+    await _tap(tester, find.text('重新連線並驗證'));
+    final state = container.read(commissionProvider);
+    expect(fake.logins.last, (productionApiBase, 'vps-secret'));
+    expect(state.error, isNull);
+    expect(state.loggedIn, isTrue);
+    expect(state.step, 3);
+  });
+
+  testWidgets('其他網址 on step 6 is applied after typing pauses', (tester) async {
+    tester.view.physicalSize = const Size(800, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final fake = SimGateway.commissioned();
+    final prober = _Prober();
+    final container = await _pumpApp(
+      tester,
+      fake,
+      prefs: {
+        'backend_environment': 'custom',
+        'backend_custom_url': 'https://example.invalid',
+      },
+      prober: prober,
+    );
+    await _connectGateway(tester);
+    await _tap(tester, find.text('沿用目前站點'));
+    expect(container.read(commissionProvider).step, 6);
+    expect(container.read(commissionProvider).loggedIn, isTrue);
+    final url = find.widgetWithText(TextField, '後端網址');
+    prober.probed.clear();
+
+    for (final text in ['https://a.example', 'https://ab.example']) {
+      await tester.enterText(url, text);
+      await tester.pump(const Duration(milliseconds: 200));
+    }
+    await tester.enterText(url, 'https://abc.example');
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(
+      container.read(commissionProvider).loggedIn,
+      isTrue,
+      reason: 'login kept while still typing',
+    );
+    expect(prober.probed, isEmpty, reason: 'no backend check per keystroke');
+
+    await tester.pump(const Duration(milliseconds: 700));
+    await tester.pumpAndSettle();
+    expect(container.read(backendEnvProvider).base, 'https://abc.example');
+    expect(container.read(commissionProvider).loggedIn, isFalse);
+    expect(prober.probed, ['https://abc.example']);
+    expect(
+      tester.widget<TextField>(url).controller!.selection.baseOffset,
+      'https://abc.example'.length,
+      reason: 'the field is not rewritten under the cursor',
+    );
+
+    // Typed and started at once: the new URL is used, not the old one.
+    await tester.enterText(url, 'https://final.example');
+    await tester.pump();
+    await tester.enterText(
+      find.widgetWithText(TextField, '若尚未登入，請輸入登入密碼'),
+      'pw',
+    );
+    await tester.tap(find.text('開始資料驗證'));
+    await tester.pumpAndSettle();
+    expect(fake.logins.last, ('https://final.example', 'pw'));
+    expect(prober.probed, isNot(contains('https://a.example')));
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('narrow 360dp: chip, sheet and status panel fit', (tester) async {

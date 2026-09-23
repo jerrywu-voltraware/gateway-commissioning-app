@@ -174,13 +174,24 @@ ConnectionStatus connectionStatus({
     gateway = polling
         ? const StatusRow('確認中', '⏳ 確認中…', StatusTone.pending)
         : StatusRow(unconfirmed ? '未確認' : '無法辨識', '？ 未確認', StatusTone.neutral);
-    if (!polling) hint = '還不確定 Gateway 把資料送到哪裡，請按右上角的重新讀取。';
+    // One action: 「同步」 settles it when the APP knows the target (no
+    // reboot if it already matches); otherwise read it again.
+    if (!polling) {
+      hint = need == SyncNeed.sync
+          ? '還不確定 Gateway 把資料送到哪裡。按「同步」讓 Gateway 改送到'
+                '${_placeOf(syncTarget!)}。'
+          : '還不確定 Gateway 把資料送到哪裡，請按「連線狀態」這一列最右邊的'
+                '重新讀取圖示（↻）。';
+    }
   } else if (need == SyncNeed.sync) {
     gateway = StatusRow(_placeOf(current), '⚠ 送到別處', StatusTone.warn);
-    hint =
-        'Gateway 把資料送到${current.plainLabel}，但手機連的是'
-        '${syncTarget!.plainLabel}。按「同步」讓 Gateway 改送到'
-        '${_placeOf(syncTarget)}。';
+    hint = current.plainLabel == syncTarget!.plainLabel
+        // Same place, other port: the difference is in 技術細節.
+        ? 'Gateway 的上傳設定和手機不一致（見技術細節）。按「同步」讓 Gateway 改送到'
+              '${_placeOf(syncTarget)}。'
+        : 'Gateway 把資料送到${current.plainLabel}，但手機連的是'
+              '${syncTarget.plainLabel}。按「同步」讓 Gateway 改送到'
+              '${_placeOf(syncTarget)}。';
   } else if (uploading) {
     gateway = StatusRow(_placeOf(current), '✓ 資料上傳中', StatusTone.ok);
   } else if (polling) {
@@ -202,11 +213,17 @@ ConnectionStatus connectionStatus({
   if (!legacy && current != null && need != SyncNeed.sync && !uploading) {
     final gatewayNet = ipv4Prefix24(gatewayIp);
     final hostNet = current.isLocal ? ipv4Prefix24(current.host) : null;
-    if (gatewayNet != null && hostNet != null && gatewayNet != hostNet) {
-      // Decisive even while still polling: this can never connect.
+    // Only a guess (a /16 network also works), so it waits until the
+    // upload has had time to come up: polling gave up or ran >= 30 s.
+    final waited =
+        gateway.tone == StatusTone.bad || (polling && state.uploadSlow);
+    if (waited &&
+        gatewayNet != null &&
+        hostNet != null &&
+        gatewayNet != hostNet) {
       hint =
-          'Gateway 目前在 $gatewayNet.x 網段，連不到測試主機 ${current.host}。'
-          '請讓 Gateway 和這台電腦連同一個 Wi-Fi（可用「保留站點，重設 Wi-Fi」）。';
+          'Gateway 目前在 $gatewayNet.x 網段，可能連不到測試主機 ${current.host}。'
+          '請確認 Gateway 和這台電腦連同一個 Wi-Fi（可用「保留站點，重設 Wi-Fi」）。';
     } else if (gateway.tone == StatusTone.bad) {
       if (state.uploadWatch == UploadWatch.linkLost) {
         hint = '手機和 Gateway 的藍牙斷了，請靠近 Gateway 後按「結束並重新選擇閘道器」重新連線。';
@@ -224,6 +241,14 @@ ConnectionStatus connectionStatus({
     hint = env.environment == BackendEnv.local
         ? '手機連不到測試主機：請確認電腦上的測試主機是否開著，且手機和電腦連同一個 Wi-Fi。'
         : '手機連不到${env.label}，請確認手機可以上網。';
+  }
+  // 其他網址 the APP cannot map: show the gateway as is, never claim a match.
+  if (hint == null &&
+      !legacy &&
+      current != null &&
+      app.target == null &&
+      app.error == null) {
+    hint = 'APP 無法從這個網址判斷 Gateway 該送到哪裡，這裡只顯示 Gateway 目前的設定，不會自動切換。';
   }
 
   final shipWarning = state.step >= 7 && current?.isLocal == true;

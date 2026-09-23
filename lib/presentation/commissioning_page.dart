@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -41,10 +42,42 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   BackendEnvController get _envController =>
       ref.read(backendEnvProvider.notifier);
 
+  /// Typing in 其他網址 is applied after a pause, so the login and the
+  /// backend check are not redone on every keystroke.
+  Timer? _baseTyping;
+  static const _typingPause = Duration(milliseconds: 600);
+
+  void _onBaseEdited() {
+    if (ref.read(backendEnvProvider).environment != BackendEnv.custom) return;
+    if (_base.text == ref.read(backendEnvProvider).customUrl) return;
+    _baseTyping?.cancel();
+    _baseTyping = Timer(_typingPause, _flushBase);
+  }
+
+  /// Applies a typed 其他網址 now (before it is used, or on a switch).
+  void _flushBase() {
+    final pending = _baseTyping;
+    _baseTyping = null;
+    pending?.cancel();
+    if (!mounted) return;
+    if (ref.read(backendEnvProvider).environment == BackendEnv.custom) {
+      _envController.setCustomUrl(_base.text);
+    }
+  }
+
   /// Keeps the text fields in step with the shared environment state.
   void _onEnvironment(BackendEnvState? previous, BackendEnvState next) {
     if (_host.text != next.localHost) _host.text = next.localHost;
-    if (_base.text != next.base) _base.text = next.base;
+    // Rewrite the URL field only when the URL itself changed, and never just
+    // to trim it (that would move the cursor while typing).
+    if ((previous == null ||
+            previous.base != next.base ||
+            previous.environment != next.environment) &&
+        _base.text.trim() != next.base) {
+      _baseTyping?.cancel();
+      _baseTyping = null;
+      _base.text = next.base;
+    }
     if (previous == null ||
         previous.environment != next.environment ||
         previous.loaded != next.loaded) {
@@ -77,10 +110,12 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     BackendEnv choice, {
     bool fromSheet = false,
   }) async {
-    if (ref.read(commissionProvider).busy) {
-      _snack('正在進行其他操作，完成或按「取消操作」後才能切換環境。');
+    final current = ref.read(commissionProvider);
+    if (current.busy) {
+      _snack(switchBlockedText(current));
       return;
     }
+    _flushBase();
     await _envController.select(choice);
     if (!mounted) return;
     // Mid-flow the old login no longer applies; the local test host has a
@@ -237,11 +272,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     super.initState();
     ref.listenManual(backendEnvProvider, _onEnvironment, fireImmediately: true);
     _host.addListener(() => _envController.setLocalHost(_host.text));
-    _base.addListener(() {
-      if (ref.read(backendEnvProvider).environment == BackendEnv.custom) {
-        _envController.setCustomUrl(_base.text);
-      }
-    });
+    _base.addListener(_onBaseEdited);
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => ref.read(commissionProvider.notifier).restore(),
@@ -254,6 +285,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       .setForeground(state == AppLifecycleState.resumed);
   @override
   void dispose() {
+    _baseTyping?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     for (final c in [_base, _host, _login, _ssid, _wifi, _site, _gateway]) {
       c.dispose();
@@ -504,6 +536,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                 : null,
           ),
           button('檢查並開始', () async {
+            _flushBase();
             final current = ref.read(backendEnvProvider);
             if (current.environment == BackendEnv.local) {
               final error = localHostError(current.localHost);
@@ -687,7 +720,11 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           else
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
-              child: Text('驗證後端：${env.label}（${env.base}）'),
+              // The URL is in 「連線狀態」 → 技術細節.
+              child: Text(
+                '驗證後端：${env.label}'
+                '${environment == BackendEnv.local ? '（這台電腦上的測試主機）' : ''}',
+              ),
             ),
           if (!s.loggedIn) field(_login, '若尚未登入，請輸入登入密碼', secret: true),
           ...s.ptus.map(
@@ -699,6 +736,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             ),
           ),
           button('開始資料驗證', () async {
+            _flushBase();
             final current = ref.read(backendEnvProvider);
             await c.verify(
               current.base,
@@ -720,6 +758,19 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             demo ? '模擬開通完成' : '開通完成',
             style: Theme.of(context).textTheme.headlineSmall,
           ),
+          // After a switch of environment: log in there to check the data.
+          if (!s.loggedIn) ...[
+            const SizedBox(height: 16),
+            field(_login, '${env.label}的登入密碼', secret: true),
+            button('登入並確認資料', () async {
+              if (!_passwordReady(demo)) return;
+              await c.login(ref.read(backendEnvProvider).base, _login.text);
+              if (mounted && ref.read(commissionProvider).loggedIn) {
+                _login.clear();
+                await c.refreshHealth();
+              }
+            }, enabled),
+          ],
           const SizedBox(height: 16),
           SelectableText(s.report),
           button('分享安裝報告', () async {
@@ -743,15 +794,37 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               ).showSnackBar(const SnackBar(content: Text('已複製，可貼上分享')));
             }
           }, enabled),
+          if (s.loggedIn)
+            TextButton(
+              onPressed: enabled ? () => c.refreshHealth() : null,
+              child: const Text('更新健康狀態'),
+            ),
           TextButton(
-            onPressed: enabled ? () => c.refreshHealth() : null,
-            child: const Text('更新健康狀態'),
-          ),
-          TextButton(
-            onPressed: enabled ? () => c.repair() : null,
+            onPressed: enabled
+                ? () async {
+                    if (s.loggedIn) {
+                      await c.repair();
+                    } else if (_passwordReady(demo)) {
+                      await c.repair(
+                        base: ref.read(backendEnvProvider).base,
+                        password: _login.text,
+                      );
+                      if (mounted && ref.read(commissionProvider).loggedIn) {
+                        _login.clear();
+                      }
+                    }
+                  }
+                : null,
             child: const Text('重新連線並驗證'),
           ),
         ];
     }
+  }
+
+  /// Step 7 without a login: the password field must be filled in first.
+  bool _passwordReady(bool demo) {
+    if (demo || _login.text.isNotEmpty) return true;
+    _snack('請先輸入${ref.read(backendEnvProvider).label}的登入密碼。');
+    return false;
   }
 }
