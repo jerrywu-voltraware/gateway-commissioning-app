@@ -9,6 +9,7 @@ import 'package:gateway_commissioning/application/local_backend_finder.dart';
 import 'package:gateway_commissioning/application/network_check.dart';
 import 'package:gateway_commissioning/core/gateway_net.dart';
 import 'package:gateway_commissioning/core/mqtt_target.dart';
+import 'package:gateway_commissioning/core/protocol.dart';
 import 'package:gateway_commissioning/data/contracts.dart';
 import 'package:gateway_commissioning/data/demo_system.dart';
 import 'package:gateway_commissioning/data/local_backend_probe.dart';
@@ -57,6 +58,9 @@ class WifiGateway extends DemoSystem {
 
   final commands = <String>[];
   final logins = <(String, String)>[];
+  bool loseWifiOnSet = false;
+  bool rejectTarget = false;
+  bool netNotReadyAfterReboot = false;
 
   @override
   Future<void> login(String base, String password) async =>
@@ -68,6 +72,16 @@ class WifiGateway extends DemoSystem {
     Map<String, dynamic> params = const {},
   ]) {
     commands.add(op);
+    if (op == 'get_net_status' && netNotReadyAfterReboot && connects > 1) {
+      throw const GatewayFailure.gateway('not_ready');
+    }
+    if (op == 'set_mqtt_target' && rejectTarget) {
+      throw const GatewayFailure.gateway('invalid_target');
+    }
+    if (op == 'set_wifi' && loseWifiOnSet) {
+      simulateWifi('disconnected');
+      unreachableSsids.add(params['ssid'] as String);
+    }
     return super.command(op, params);
   }
 
@@ -113,6 +127,57 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('network check gate', () {
+    test(
+      'reboot discards old uptime when network readback is not ready',
+      () async {
+        final fake = WifiGateway.station()
+          ..simulateWifi('disconnected')
+          ..netNotReadyAfterReboot = true;
+        final (container, c) = await _connected(fake);
+        addTearDown(container.dispose);
+        expect(_check(container).wifiVerdict, WifiVerdict.failed);
+        await c.switchUploadTarget(_lan, waitUpload: false);
+        final state = container.read(commissionProvider);
+        expect(state.error, isNull);
+        expect(state.net, isEmpty);
+        expect(state.wifi, WifiVerdict.unknown);
+        expect(state.networkReady, isFalse);
+        expect(state.uploadWatch, UploadWatch.polling);
+      },
+    );
+
+    test('1.7.2 polls Wi-Fi without switchable MQTT target fields', () async {
+      final fake = WifiGateway.station()..simulateWifi('connecting');
+      fake.config
+        ..['fw_version'] = '1.7.2'
+        ..remove('mqtt_target')
+        ..remove('mqtt_host')
+        ..remove('mqtt_port');
+      final (container, _) = await _connected(fake);
+      addTearDown(container.dispose);
+      expect(_check(container).wifiVerdict, WifiVerdict.connecting);
+      await _sleep(80);
+      expect(_check(container).ready, isTrue);
+      expect(fake.count('get_net_status'), greaterThan(1));
+    });
+
+    test('failed Wi-Fi change replaces previous successful status', () async {
+      final fake = WifiGateway.station()..loseWifiOnSet = true;
+      final (container, c) = await _connected(fake);
+      addTearDown(container.dispose);
+      expect(_check(container).ready, isTrue);
+      await c.startWifiFix();
+      await c.configureWifi(80, 1, 'Missing-2G', 'password123');
+      expect(container.read(commissionProvider).error, isNotNull);
+      expect(container.read(commissionProvider).networkReady, isFalse);
+      c.backToNetworkCheck();
+      expect(_check(container).wifiProblem, isTrue);
+      c.passNetworkCheck(skip: true);
+      c.chooseStation(newStation: false);
+      expect(container.read(commissionProvider).step, 2);
+      expect(container.read(commissionProvider).error, reuseBlockedText);
+    });
+
     test('incident: missing home Wi-Fi blocks 沿用目前站點', () async {
       final fake = WifiGateway.station()..simulateWifi('disconnected');
       final (container, c) = await _connected(fake);
@@ -544,6 +609,7 @@ void main() {
       WidgetTester tester,
       DemoSystem fake, {
       Map<String, Object> prefs = const {'backend_environment': 'production'},
+      bool autoSync = false,
     }) async {
       SharedPreferences.setMockInitialValues(prefs);
       await tester.pumpWidget(
@@ -552,8 +618,8 @@ void main() {
             linkProvider.overrideWithValue(fake),
             apiProvider.overrideWithValue(fake),
             envSwitchPolicyProvider.overrideWithValue(
-              const EnvSwitchPolicy(
-                autoSyncDefault: false,
+              EnvSwitchPolicy(
+                autoSyncDefault: autoSync,
                 confirmGatewaySwitch: false,
               ),
             ),
@@ -582,6 +648,61 @@ void main() {
 
     String title(WidgetTester tester) =>
         tester.widget<Text>(find.byKey(const Key('step-title'))).data!;
+
+    testWidgets('auto sync waits for Wi-Fi before changing target', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final fake = WifiGateway.station()..simulateWifi('disconnected');
+      await pumpApp(
+        tester,
+        fake,
+        autoSync: true,
+        prefs: const {
+          'backend_environment': 'local',
+          'backend_local_url': 'http://192.168.1.50:18000',
+        },
+      );
+      await connect(tester);
+      expect(fake.targetRequests, isEmpty);
+      expect(title(tester), '3 / 10   Gateway 網路體檢');
+      await tap(tester, find.text('重設 Wi-Fi'));
+      expect(fake.targetRequests, hasLength(1));
+      expect(find.text('保留站點 80／閘道器 1，只更新 Wi-Fi。'), findsOneWidget);
+    });
+
+    testWidgets('offline new gateway can bypass failed target setup', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final fake = WifiGateway()
+        ..simulateWifi('disconnected')
+        ..rejectTarget = true;
+      fake.config['wifi_ssid'] = '';
+      final container = await pumpApp(
+        tester,
+        fake,
+        prefs: const {
+          'backend_environment': 'local',
+          'backend_local_url': 'http://192.168.1.50:18000',
+        },
+      );
+      await tap(tester, find.text('先離線配置，稍後驗證資料'));
+      await connect(tester);
+      expect(container.read(commissionProvider).offline, isTrue);
+      await tap(tester, find.text('設定 Wi-Fi'));
+      expect(container.read(commissionProvider).error, isNotNull);
+      await tap(tester, find.byKey(const Key('check-skip')));
+      expect(find.widgetWithText(TextField, '站點 ID（1–65535）'), findsOneWidget);
+      expect(container.read(commissionProvider).checkPassed, isTrue);
+      expect(tester.takeException(), isNull);
+    });
 
     testWidgets('stepper shows the new order', (tester) async {
       tester.view.physicalSize = const Size(800, 2400);

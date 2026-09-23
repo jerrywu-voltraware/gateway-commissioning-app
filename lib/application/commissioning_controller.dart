@@ -844,6 +844,14 @@ class CommissioningController extends Notifier<CommissionState> {
       }
     }
     final wifiDeadline = Stopwatch()..start();
+    // Once sent, even a lost ACK may mean the network has changed. Do not
+    // retain a successful check from the previous Wi-Fi while reading back.
+    state = state.copy(
+      config: {...state.config}..remove('mqtt_connected'),
+      net: const {},
+      uploadLate: false,
+    );
+    _startWifiGrace();
     await _command(generation, 'set_wifi', {
       'ssid': ssid,
       'password': password,
@@ -876,6 +884,8 @@ class CommissioningController extends Notifier<CommissionState> {
       } on TimeoutException {
         break;
       }
+      _absorbTarget(net);
+      if (current) _absorbNet(net);
       if ((net['last_wifi_error']?.toString() ?? '').isNotEmpty) {
         throw const GatewayFailure('wifi_failed');
       }
@@ -1351,12 +1361,12 @@ class CommissioningController extends Notifier<CommissionState> {
       ref.mounted &&
       state.peer != null &&
       state.step >= 2 &&
-      reportsMqttTarget(state.config);
+      state.netCheckSupported;
 
   /// Starts (or restarts) polling when the gateway's upload is not yet
   /// confirmed; called after a connect, Wi-Fi change, switch or refresh.
   void _watchUploadIfPending() {
-    if (!_canWatch || state.config['mqtt_connected'] == true) {
+    if (!_canWatch || state.networkReady) {
       if (ref.mounted && state.uploadWatch == UploadWatch.polling) {
         _stopWatch(UploadWatch.idle);
       }
@@ -1393,7 +1403,7 @@ class CommissioningController extends Notifier<CommissionState> {
   Future<void> _pollTick({bool count = true}) async {
     if (!ref.mounted || _poll == null) return;
     if (!_canWatch) return _stopWatch(UploadWatch.idle);
-    if (state.config['mqtt_connected'] == true) {
+    if (state.networkReady) {
       return _stopWatch(UploadWatch.idle);
     }
     // Time spent under a running step (or in the background) does not count.
@@ -1414,7 +1424,7 @@ class CommissioningController extends Notifier<CommissionState> {
       if (_poll == null) return;
       _absorbTarget(net);
       _absorbNet(net);
-      if (state.config['mqtt_connected'] == true) {
+      if (state.networkReady) {
         _stopWatch(UploadWatch.idle);
       }
     } on GatewayFailure catch (error) {
@@ -1563,7 +1573,7 @@ class CommissioningController extends Notifier<CommissionState> {
         ..remove('mqtt_host')
         ..remove('mqtt_port');
     }
-    state = state.copy(config: config, uploadNotice: '');
+    state = state.copy(config: config, net: const {}, uploadNotice: '');
     await _reconnectAfterReboot(generation, peer, ack?.rebootInMs ?? 1500);
     // Rebooted: the Wi-Fi is joined again from scratch.
     _startWifiGrace();

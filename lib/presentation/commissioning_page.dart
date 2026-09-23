@@ -147,6 +147,10 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     final env = ref.read(backendEnvProvider);
     final state = ref.read(commissionProvider);
     if (state.busy) return;
+    // Let the installer resolve Wi-Fi before an automatic target reboot.
+    if (!explicit && state.netCheckSupported && state.wifi != WifiVerdict.ok) {
+      return;
+    }
     final (need, target) = uploadSyncNeed(state, env.uploadTarget);
     switch (need) {
       case SyncNeed.none:
@@ -1078,7 +1082,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         ),
       // A new gateway with no Wi-Fi gets the identity/Wi-Fi form from the
       // button above; skipping would lead to the same form.
-      if (!recheck && check.canSkip && (station || !check.wifiProblem)) ...[
+      if (!recheck &&
+          check.canSkip &&
+          (s.offline || station || !check.wifiProblem)) ...[
         TextButton(
           key: const Key('check-skip'),
           onPressed: enabled ? () => c.passNetworkCheck(skip: true) : null,
