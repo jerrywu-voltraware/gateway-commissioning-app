@@ -16,6 +16,13 @@ abstract class GatewayLink {
   Future<void> disconnect();
 }
 
+/// Signal measured by the phone, independent of Gateway-to-PTU telemetry.
+abstract class GatewaySignalSource {
+  bool get signalConnected;
+  Stream<bool> get signalConnections;
+  Future<int> readSignal();
+}
+
 abstract class GatewayApi {
   Future<void> login(String base, String password);
   Future<Map<String, dynamic>> request(

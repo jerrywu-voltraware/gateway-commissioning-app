@@ -8,7 +8,45 @@ import 'package:permission_handler/permission_handler.dart';
 import '../core/protocol.dart';
 import 'contracts.dart';
 
-class BleGatewayLink implements GatewayLink {
+Object normalizeBleError(Object error) {
+  if (error is UniversalBleException &&
+      error.code == UniversalBleErrorCode.deviceDisconnected) {
+    return const GatewayFailure('disconnected');
+  }
+  return error;
+}
+
+class BleGatewayLink implements GatewayLink, GatewaySignalSource {
+  final _signalConnections = StreamController<bool>.broadcast();
+  @override
+  Stream<bool> get signalConnections => _signalConnections.stream;
+  @override
+  bool get signalConnected => _rx != null && _device != null;
+
+  @override
+  Future<int> readSignal() {
+    final result = Completer<int>();
+    final epoch = _epoch;
+    _tail = _tail.then((_) async {
+      try {
+        if (epoch != _epoch || !signalConnected) {
+          throw const GatewayFailure('not_connected');
+        }
+        final value = await UniversalBle.readRssi(
+          _device!,
+          timeout: const Duration(seconds: 3),
+        );
+        if (epoch != _epoch || !signalConnected) {
+          throw const GatewayFailure('disconnected');
+        }
+        result.complete(value);
+      } catch (error, stack) {
+        result.completeError(normalizeBleError(error), stack);
+      }
+    });
+    return result.future;
+  }
+
   @override
   bool get demo => false;
   String? _device;
@@ -75,6 +113,15 @@ class BleGatewayLink implements GatewayLink {
   Future<void> connect(GatewayPeer peer) async {
     await disconnect();
     final epoch = _epoch;
+    try {
+      await _connectPeer(peer, epoch);
+    } catch (error) {
+      if (epoch == _epoch) await disconnect();
+      throw normalizeBleError(error);
+    }
+  }
+
+  Future<void> _connectPeer(GatewayPeer peer, int epoch) async {
     final device = peer.id;
     _device = device;
     for (int attempt = 0; ; attempt++) {
@@ -133,6 +180,7 @@ class BleGatewayLink implements GatewayLink {
     _connection = UniversalBle.connectionStream(device).listen((state) {
       if (!state && epoch == _epoch) {
         _rx = null;
+        _signalConnections.add(false);
         _frames.clear();
         for (final p in _pending.values) {
           if (!p.isCompleted) {
@@ -154,6 +202,7 @@ class BleGatewayLink implements GatewayLink {
     if (epoch != _epoch || _rx == null) {
       throw const GatewayFailure('disconnected');
     }
+    _signalConnections.add(true);
   }
 
   @override
@@ -171,7 +220,7 @@ class BleGatewayLink implements GatewayLink {
         }
         result.complete(await _send(op, params));
       } catch (error, stack) {
-        result.completeError(error, stack);
+        result.completeError(normalizeBleError(error), stack);
       }
     });
     return result.future;
@@ -249,6 +298,7 @@ class BleGatewayLink implements GatewayLink {
     _epoch++;
     _mtu = 23;
     _rx = null;
+    _signalConnections.add(false);
     _frames.clear();
     for (final p in _pending.values) {
       if (!p.isCompleted) p.completeError(const GatewayFailure('disconnected'));

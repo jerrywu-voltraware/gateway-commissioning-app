@@ -14,6 +14,7 @@ import 'connection_status_panel.dart';
 import 'environment_switch.dart';
 import 'local_backend_field.dart';
 import 'ptu_selection_tile.dart';
+import 'gateway_signal.dart';
 
 class CommissioningPage extends ConsumerStatefulWidget {
   const CommissioningPage({
@@ -463,6 +464,12 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                   if (state.peer != null)
                     Text(
                       '${state.peer!.name} · ${state.config['fw_version'] ?? ''}',
+                    ),
+                  if (state.peer != null)
+                    GatewaySignal(
+                      link: ref.watch(linkProvider),
+                      peer: state.peer!,
+                      busy: state.busy,
                     ),
                   if (state.message.isNotEmpty &&
                       (!selectingPtus ||
