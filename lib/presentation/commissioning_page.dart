@@ -357,8 +357,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                         ],
                       ),
                     ),
-                  // Earliest page with the gateway connected and its config read.
-                  if (state.peer != null && state.step >= 2 && state.step <= 6)
+                  // Earliest page with the gateway connected and its config
+                  // read; kept on step 7 so a local target is not shipped.
+                  if (state.peer != null && state.step >= 2)
                     ValueListenableBuilder<TextEditingValue>(
                       valueListenable: _base,
                       builder: (context, base, _) => UploadTargetCard(
@@ -368,6 +369,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                         notice: state.uploadNotice,
                         onSwitch: _switchUploadTarget,
                         onRefresh: controller.refreshUploadTarget,
+                        shipCheck: state.step >= 7,
                       ),
                     ),
                   Card(
@@ -600,7 +602,11 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           const Icon(Icons.cloud_outlined, size: 48),
           const SizedBox(height: 12),
           const Text('確認閘道器不只連上 WiFi，後端也持續收到心跳。'),
-          button('確認上線', () => c.online(), enabled),
+          button(
+            '確認上線',
+            () => c.online(base: _base.text, environment: _environment),
+            enabled,
+          ),
           TextButton(
             onPressed: enabled ? () => c.online(skip: true) : null,
             child: const Text('暫未確認，先配置 PTU'),

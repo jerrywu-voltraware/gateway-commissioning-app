@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:gateway_commissioning/application/commissioning_controller.dart';
 import 'package:gateway_commissioning/application/verify_diagnosis.dart';
+import 'package:gateway_commissioning/core/mqtt_target.dart';
 import 'package:gateway_commissioning/core/protocol.dart';
 import 'package:gateway_commissioning/data/dashboard_api.dart';
 import 'package:gateway_commissioning/data/demo_system.dart';
@@ -13,12 +14,23 @@ import 'package:gateway_commissioning/data/demo_system.dart';
 /// Demo backend whose step-7 data never becomes healthy.
 class StaleBackend extends DemoSystem {
   bool noGatewayData = false;
+
+  /// No gateways row: bot-monitor answers 404 gateway_not_found.
+  bool noGatewayRow = false;
   @override
   Future<Map<String, dynamic>> request(
     String method,
     String path, [
     Map<String, dynamic>? body,
   ]) async {
+    if (noGatewayRow && path.endsWith('/bot-monitor')) {
+      throw GatewayFailure.http(
+        status: 404,
+        endpoint: '$method $path',
+        detail: 'gateway_not_found',
+        backend: '區域網路／本機後端 http://192.168.1.20:8000',
+      );
+    }
     if (path.contains('verify-installation')) {
       return {
         'all_ok': false,
@@ -69,6 +81,43 @@ class StaleBackend extends DemoSystem {
       };
     }
     return super.request(method, path, body);
+  }
+}
+
+/// Round 1 fails and leaves a diagnosis; round 2 then sees upload paused and
+/// its set_data_upload command times out on the BLE link.
+class PausedTimeout extends StaleBackend {
+  int fleetCalls = 0;
+  bool verifying = false;
+  @override
+  Future<Map<String, dynamic>> request(
+    String method,
+    String path, [
+    Map<String, dynamic>? body,
+  ]) async {
+    if (path.endsWith('/bot-monitor')) verifying = true;
+    if (verifying && path.contains('fleet-status')) {
+      fleetCalls++;
+      final result = await super.request(method, path, body);
+      if (fleetCalls >= 2) {
+        for (final g in (result['gateways'] as List)) {
+          (g as Map)['upload_paused'] = true;
+        }
+      }
+      return result;
+    }
+    return super.request(method, path, body);
+  }
+
+  @override
+  Future<Map<String, dynamic>> command(
+    String op, [
+    Map<String, dynamic> params = const {},
+  ]) async {
+    if (verifying && op == 'set_data_upload') {
+      throw const GatewayFailure('timeout');
+    }
+    return super.command(op, params);
   }
 }
 
@@ -236,7 +285,7 @@ void main() {
       expect(error, isNot(contains('環境')));
     });
     test(
-      'no fleet row and no latest data points at backend mismatch',
+      'no data with a confirmed matching target points at MQTT, not env',
       () async {
         final fake = StaleBackend()..noGatewayData = true;
         final (container, c) = await _atVerify(fake);
@@ -247,9 +296,73 @@ void main() {
           error,
           contains('Gateway 的資料沒有進入目前連線的區域網路／本機後端 http://192.168.1.20:8000'),
         );
-        expect(error, contains('其他後端環境（例如正式站）'));
+        expect(error, contains('Gateway 已確認上傳到本地 192.168.1.20:8883'));
+        expect(error, contains('防火牆已開放 TCP 8883'));
+        expect(error, contains('憑證包含電腦目前的 IP 192.168.1.20'));
+        expect(error, isNot(contains('其他後端環境')));
       },
     );
+    test(
+      '404 gateway_not_found with a matching target explains MQTT',
+      () async {
+        final fake = StaleBackend();
+        final (container, c) = await _atVerify(fake);
+        addTearDown(container.dispose);
+        fake.noGatewayRow = true;
+        await c.verify('http://192.168.1.20:8000', '', environment: 'local');
+        final error = container.read(commissionProvider).error!;
+        expect(error, startsWith('後端找不到此 Gateway（站 1 / Gateway 1）'));
+        expect(error, contains('還沒連上該 MQTT broker'));
+        expect(error, contains('本地 MQTT broker 已啟動'));
+        expect(
+          error,
+          contains('[HTTP 404 · PATCH /api/gateways/1/1/bot-monitor'),
+        );
+        expect(error, isNot(contains('其他後端環境')));
+      },
+    );
+    test('404 with an unknown target keeps the other-backend hint', () async {
+      final fake = StaleBackend();
+      final (container, c) = await _atVerify(fake);
+      addTearDown(container.dispose);
+      fake.noGatewayRow = true;
+      // A custom public URL cannot be mapped to a gateway target.
+      await c.verify('https://example.invalid', '');
+      expect(
+        container.read(commissionProvider).error,
+        contains('其他後端環境（例如正式站）'),
+      );
+    });
+    test('cause wording depends on the known targets', () {
+      const lan = MqttTarget.local('192.168.1.20');
+      expect(
+        missingGatewayCause(running: lan, wanted: lan, mqttConnected: false),
+        contains('Gateway 最近回報 MQTT 未連線'),
+      );
+      const prod = MqttTarget.production(host: '46.250.255.172');
+      final onProduction = missingGatewayCause(
+        running: prod,
+        wanted: const MqttTarget.production(),
+      );
+      expect(onProduction, contains('現場網路可連到正式站'));
+      expect(onProduction, isNot(contains('例如正式站')));
+      final unknownOnProduction = missingGatewayCause(
+        wanted: const MqttTarget.production(),
+      );
+      expect(unknownOnProduction, contains('例如本地測試站'));
+      expect(unknownOnProduction, isNot(contains('例如正式站')));
+      expect(missingGatewayCause(), contains('其他後端環境（例如正式站）'));
+    });
+    test('BLE command timeout is not replaced by the data diagnosis', () async {
+      final fake = PausedTimeout();
+      final (container, c) = await _atVerify(fake);
+      addTearDown(container.dispose);
+      await c.verify('http://192.168.1.20:8000', '');
+      expect(
+        container.read(commissionProvider).error,
+        const GatewayFailure('timeout').message,
+      );
+    });
     test('PTU without device number is flagged', () async {
       final fake = DemoSystem();
       final (container, c) = await _atVerify(fake);

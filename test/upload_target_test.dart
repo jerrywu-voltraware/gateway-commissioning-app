@@ -17,6 +17,9 @@ class TargetGateway extends DemoSystem {
   int notReadyReplies = 0;
   bool loseAck = false;
   bool ignoreChange = false;
+
+  /// First set_mqtt_target finds the BLE link already down (nothing sent).
+  bool dropOnce = false;
   String? failCode;
   Completer<void>? connectGate;
   final commands = <String>[];
@@ -44,6 +47,10 @@ class TargetGateway extends DemoSystem {
       throw const GatewayFailure.gateway('not_ready');
     }
     if (op == 'set_mqtt_target') {
+      if (dropOnce) {
+        dropOnce = false;
+        throw const GatewayFailure('not_connected');
+      }
       if (failCode != null) throw GatewayFailure.gateway(failCode!);
       if (ignoreChange) {
         final saved = Map.of(config);
@@ -415,10 +422,12 @@ void main() {
         final fake = TargetGateway()..failCode = code;
         final (container, c) = await _connected(fake);
         addTearDown(container.dispose);
+        final before = container.read(commissionProvider).message;
         await c.switchUploadTarget(_lan);
         final s = container.read(commissionProvider);
         expect(s.error, uploadTargetFailureText(code));
         expect(s.step, 2);
+        expect(s.message, before, reason: 'step guidance is restored');
         expect(fake.connects, 1, reason: 'no reboot on failure');
       });
     }
@@ -468,6 +477,48 @@ void main() {
         );
       }
     });
+    test('reconnect failure after changed:true keeps the ACK target', () async {
+      final fake = TargetGateway();
+      final (container, c) = await _connected(fake);
+      addTearDown(container.dispose);
+      final before = container.read(commissionProvider).message;
+      fake.failConnects = 1000;
+      await c.switchUploadTarget(_lan);
+      final s = container.read(commissionProvider);
+      expect(s.error, contains('45 秒內未能重新連上藍牙'));
+      expect(parseMqttTarget(s.config)!.sameAs(_lan), isTrue);
+      expect(s.config.containsKey('mqtt_connected'), isFalse);
+      expect(s.message, before);
+    });
+    test(
+      'lost ACK plus failed reconnect leaves the target unconfirmed',
+      () async {
+        final fake = TargetGateway()..loseAck = true;
+        final (container, c) = await _connected(fake);
+        addTearDown(container.dispose);
+        fake.failConnects = 1000;
+        await c.switchUploadTarget(_lan);
+        final s = container.read(commissionProvider);
+        expect(s.error, contains('45 秒內未能重新連上藍牙'));
+        expect(s.config['mqtt_target'], unconfirmedMqttTarget);
+        expect(parseMqttTarget(s.config), isNull);
+        expect(reportsMqttTarget(s.config), isTrue);
+      },
+    );
+    test(
+      'command not sent on a dropped link reconnects and sends once',
+      () async {
+        final fake = TargetGateway()..dropOnce = true;
+        final (container, c) = await _connected(fake);
+        addTearDown(container.dispose);
+        await c.switchUploadTarget(_lan);
+        final s = container.read(commissionProvider);
+        expect(s.error, isNull);
+        expect(fake.targetRequests, hasLength(1));
+        expect(fake.connects, 3, reason: 'relink, then reconnect after reboot');
+        expect(parseMqttTarget(s.config)!.sameAs(_lan), isTrue);
+      },
+    );
     test('cancel during reconnect leaves no half-written state', () async {
       final fake = TargetGateway();
       final (container, c) = await _connected(fake);
@@ -522,6 +573,64 @@ void main() {
         container.read(commissionProvider).error,
         startsWith('Gateway 目前上傳到本地 192.168.1.50:8883，但 APP 連線的是正式站'),
       );
+    });
+    test('switch whose reconnect failed does not block step 7', () async {
+      final fake = TargetGateway();
+      final (container, c) = await _atVerify(fake);
+      addTearDown(container.dispose);
+      fake.failConnects = 1000;
+      await c.switchUploadTarget(_lan);
+      expect(container.read(commissionProvider).error, contains('45 秒內'));
+      await c.verify('http://192.168.1.50:18000', '', environment: 'local');
+      expect(container.read(commissionProvider).error, isNull);
+      expect(container.read(commissionProvider).step, 7);
+    });
+    test('step 3 fails fast on a known mismatch', () async {
+      SharedPreferences.setMockInitialValues({});
+      final fake = TargetGateway();
+      final container = ProviderContainer(
+        overrides: [
+          linkProvider.overrideWithValue(fake),
+          apiProvider.overrideWithValue(fake),
+        ],
+      );
+      addTearDown(container.dispose);
+      final c = container.read(commissionProvider.notifier);
+      await c.prepare('http://192.168.1.50:18000', '');
+      await c.scan();
+      await c.connect(container.read(commissionProvider).peers.single);
+      await c.configureWifi(1, 1, 'test', 'test-password');
+      expect(container.read(commissionProvider).step, 3);
+      final clock = Stopwatch()..start();
+      await c.online(base: 'http://192.168.1.50:18000', environment: 'local');
+      final s = container.read(commissionProvider);
+      expect(clock.elapsed, lessThan(const Duration(seconds: 5)));
+      expect(s.error, startsWith('Gateway 目前上傳到正式站'));
+      expect(s.step, 3);
+      expect(fake.commands, isNot(contains('heartbeat_boost')));
+      // Matching target: step 3 proceeds as before.
+      await c.switchUploadTarget(_lan);
+      await c.online(base: 'http://192.168.1.50:18000', environment: 'local');
+      expect(container.read(commissionProvider).error, isNull);
+      expect(container.read(commissionProvider).step, 4);
+    });
+    test('step 7 report records the target and warns on local', () async {
+      final fake = TargetGateway();
+      final (container, c) = await _atVerify(fake);
+      addTearDown(container.dispose);
+      await c.switchUploadTarget(_lan);
+      await c.verify('http://192.168.1.50:18000', '', environment: 'local');
+      var s = container.read(commissionProvider);
+      expect(s.step, 7);
+      expect(s.report, contains('資料上傳目標：本地 192.168.1.50:8883'));
+      expect(s.report, contains(localTargetShipWarning));
+      expect(s.report, contains('驗證後端：區域網路／本機後端 http://192.168.1.50:18000'));
+      await c.switchUploadTarget(const MqttTarget.production());
+      s = container.read(commissionProvider);
+      expect(s.error, isNull);
+      expect(s.step, 7);
+      expect(s.report, contains('資料上傳目標：正式站 $demoProductionMqttHost:8883'));
+      expect(s.report, isNot(contains(localTargetShipWarning)));
     });
     test('unknown target (legacy firmware) proceeds as before', () async {
       final fake = TargetGateway();

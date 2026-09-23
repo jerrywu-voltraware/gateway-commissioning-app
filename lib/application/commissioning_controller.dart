@@ -224,11 +224,15 @@ class CommissioningController extends Notifier<CommissionState> {
         state = state.copy(seconds: state.seconds - 1);
       }
     });
+    // Only the verify loop's own end or this overall timeout may be explained
+    // by the data diagnosis; a BLE/HTTP command timeout keeps its own text.
+    bool timedOut = false;
     try {
       await action(generation).timeout(
         Duration(seconds: timeout),
         onTimeout: () {
           if (generation == _generation) _generation++;
+          timedOut = true;
           throw const GatewayFailure('timeout');
         },
       );
@@ -246,7 +250,8 @@ class CommissioningController extends Notifier<CommissionState> {
       final detailed =
           diagnosis != null &&
           diagnosis.$1 == generation &&
-          (failure.code == 'timeout' || failure.code == 'incomplete');
+          ((failure.code == 'timeout' && timedOut) ||
+              failure.code == 'incomplete');
       if (ref.mounted) {
         state = state.copy(
           error: !safe
@@ -572,37 +577,43 @@ class CommissioningController extends Notifier<CommissionState> {
     return null;
   }
 
-  Future<void> online({bool skip = false}) => _run('確認閘道器持續上線', 90, (
-    generation,
-  ) async {
-    if (skip || !_loggedIn) {
-      state = state.copy(step: 4, message: '後端尚未確認；完成配置後仍需驗證');
-      return;
-    }
-    await _command(generation, 'heartbeat_boost', {'duration': 300});
-    String? previous;
-    for (int elapsed = 0; elapsed < 90; elapsed += 5) {
-      final row = await _fleet(generation);
-      _check(generation);
-      final heartbeat = row?['last_heartbeat']?.toString();
-      if (row?['online'] == true &&
-          row?['mqtt_connected'] == true &&
-          previous != null &&
-          heartbeat != null &&
-          heartbeat != previous) {
-        await _request(generation, 'PATCH', '$_path/bot-monitor', {
-          'enabled': false,
-          'ttl_minutes': 30,
-        });
-        _lease = true;
-        state = state.copy(step: 4, online: true, message: '閘道器持續上線，可搜尋 PTU');
-        return;
-      }
-      previous = heartbeat;
-      await _wait(5, generation);
-    }
-    throw const GatewayFailure('timeout');
-  });
+  /// [base] / [environment] are the APP backend URL and selector value; when
+  /// given, a known upload-target mismatch fails fast instead of waiting 90 s.
+  Future<void> online({bool skip = false, String? base, String? environment}) =>
+      _run('確認閘道器持續上線', 90, (generation) async {
+        if (skip || !_loggedIn) {
+          state = state.copy(step: 4, message: '後端尚未確認；完成配置後仍需驗證');
+          return;
+        }
+        if (base != null) _checkUploadTarget(base, environment);
+        await _command(generation, 'heartbeat_boost', {'duration': 300});
+        String? previous;
+        for (int elapsed = 0; elapsed < 90; elapsed += 5) {
+          final row = await _fleet(generation);
+          _check(generation);
+          final heartbeat = row?['last_heartbeat']?.toString();
+          if (row?['online'] == true &&
+              row?['mqtt_connected'] == true &&
+              previous != null &&
+              heartbeat != null &&
+              heartbeat != previous) {
+            await _request(generation, 'PATCH', '$_path/bot-monitor', {
+              'enabled': false,
+              'ttl_minutes': 30,
+            });
+            _lease = true;
+            state = state.copy(
+              step: 4,
+              online: true,
+              message: '閘道器持續上線，可搜尋 PTU',
+            );
+            return;
+          }
+          previous = heartbeat;
+          await _wait(5, generation);
+        }
+        throw const GatewayFailure('timeout');
+      });
   Future<void> discover() => _run('搜尋周邊與已連線 PTU', 35, (generation) async {
     final response = await _command(generation, 'scan_ble_discover', {
       'duration': 10,
@@ -762,28 +773,29 @@ class CommissioningController extends Notifier<CommissionState> {
     String? environment,
   }) => _run('確認每台 PTU 的資料持續進入後端', 180, (generation) async {
     _backend = describeBackend(Uri.tryParse(base.trim()));
-    // Fail fast when the gateway is known to upload elsewhere: the data can
-    // never reach this backend, so waiting the full window only hides why.
-    final wanted = desiredUploadTarget(environment ?? 'custom', base).target;
+    final wanted = _checkUploadTarget(base, environment);
     final running = parseMqttTarget(state.config);
-    if (wanted != null && running != null && !running.sameAs(wanted)) {
-      throw GatewayFailure.targetMismatch(
-        gatewayTarget: running.label,
-        appTarget: wanted.label,
-      );
-    }
+    // Why a gateway can be missing from this backend, from what the APP knows.
+    final cause = missingGatewayCause(
+      running: running,
+      wanted: wanted,
+      mqttConnected: state.config['mqtt_connected'],
+    );
     if (!_loggedIn) {
       await _api.login(base, password);
       _check(generation);
       _loggedIn = true;
     }
-    {
+    try {
       // Renew the lease for every verification attempt; a cached flag may have expired.
       await _request(generation, 'PATCH', '$_path/bot-monitor', {
         'enabled': false,
         'ttl_minutes': 30,
       });
       _lease = true;
+    } on GatewayFailure catch (error) {
+      if (error.gatewayNotFound) throw error.withCause(cause);
+      rethrow;
     }
     int consecutive = 0;
     final previous = <int, DateTime>{};
@@ -854,6 +866,7 @@ class CommissioningController extends Notifier<CommissionState> {
           gateway: gateway,
           consecutive: consecutive,
           backend: _backend,
+          cause: cause,
         ),
       );
       state = state.copy(message: '連續資料驗證 $consecutive / 3');
@@ -862,13 +875,13 @@ class CommissioningController extends Notifier<CommissionState> {
           'enabled': true,
         });
         _lease = false;
-        final report =
-            '${_link.demo ? "模擬安裝報告（非實機驗證）" : "安裝報告"}\n站點 $site / 閘道器 $gateway\n${state.ptus.map((p) => "#${p['device_number']}  ${p['mac']}").join('\n')}\n驗證時間：${DateTime.now().toIso8601String()}\n每台連續三次資料更新通過';
+        _reportBody =
+            '${_link.demo ? "模擬安裝報告（非實機驗證）" : "安裝報告"}\n站點 $site / 閘道器 $gateway\n${state.ptus.map((p) => "#${p['device_number']}  ${p['mac']}").join('\n')}\n驗證時間：${DateTime.now().toIso8601String()}\n驗證後端：$_backend\n每台連續三次資料更新通過';
         state = state.copy(
           step: 7,
           verified: true,
           online: true,
-          report: report,
+          report: _report(),
           message: '開通驗證通過，已恢復自動監控',
         );
         _health?.cancel();
@@ -897,17 +910,46 @@ class CommissioningController extends Notifier<CommissionState> {
     state = state.copy(config: {...state.config, ...update});
   }
 
-  /// Runs a gateway-side task that must not replace the step's guidance text.
+  /// Fails fast when the gateway is known to upload elsewhere than the APP
+  /// backend ([base] / [environment]): the data can never arrive, so waiting
+  /// the full window only hides why. Returns the wanted target (null = unknown).
+  MqttTarget? _checkUploadTarget(String base, String? environment) {
+    final wanted = desiredUploadTarget(environment ?? 'custom', base).target;
+    final running = parseMqttTarget(state.config);
+    if (wanted != null && running != null && !running.sameAs(wanted)) {
+      throw GatewayFailure.targetMismatch(
+        gatewayTarget: running.label,
+        appTarget: wanted.label,
+      );
+    }
+    return wanted;
+  }
+
+  /// Install report text (set on step 7); empty before the first pass.
+  String _reportBody = '';
+  String _report() => '$_reportBody\n${reportTargetText(state.config)}';
+
+  /// Keeps the step-7 report's upload-target lines in sync after a switch.
+  void _refreshReport() {
+    if (state.step == 7 && _reportBody.isNotEmpty) {
+      state = state.copy(report: _report(), error: state.error);
+    }
+  }
+
+  /// Runs a gateway-side task that must not replace the step's guidance
+  /// text, whether it succeeds or fails (a cancel sets its own message).
   Future<void> _sideTask(
     String label,
     int timeout,
     Future<void> Function(int) action,
-  ) {
+  ) async {
     final resume = state.message;
-    return _run(label, timeout, (generation) async {
-      await action(generation);
-      state = state.copy(message: resume);
-    });
+    await _run(label, timeout, action);
+    if (!ref.mounted) return;
+    if (state.message == label) {
+      state = state.copy(message: resume, error: state.error);
+    }
+    _refreshReport();
   }
 
   String _mqttText(MqttTarget target) =>
@@ -945,15 +987,24 @@ class CommissioningController extends Notifier<CommissionState> {
       );
     }
     SetTargetAck? ack;
-    try {
-      ack = parseSetTargetAck(
-        await _command(generation, 'set_mqtt_target', wanted.params),
-      );
-    } on GatewayFailure catch (error) {
-      if (error.fromGateway) throw GatewayFailure.uploadTarget(error.code);
-      // ACK lost: the gateway may already be rebooting. Reconnect and
-      // read back instead of guessing.
-      if (error.code != 'disconnected' && error.code != 'timeout') rethrow;
+    for (int attempt = 0; ; attempt++) {
+      try {
+        ack = parseSetTargetAck(
+          await _command(generation, 'set_mqtt_target', wanted.params),
+        );
+      } on GatewayFailure catch (error) {
+        if (error.fromGateway) throw GatewayFailure.uploadTarget(error.code);
+        if (error.code == 'not_connected' && attempt == 0) {
+          // The link had already dropped, so nothing reached the gateway:
+          // reconnect, then send the command once more.
+          await _relink(generation, peer);
+          continue;
+        }
+        // ACK lost: the gateway may already be rebooting. Reconnect and
+        // read back instead of guessing.
+        if (error.code != 'disconnected' && error.code != 'timeout') rethrow;
+      }
+      break;
     }
     if (ack != null && !ack.changed) {
       _absorbTarget(await _command(generation, 'get_net_status'));
@@ -970,10 +1021,19 @@ class CommissioningController extends Notifier<CommissionState> {
       return;
     }
     // Changed (or outcome unknown): the old MQTT state no longer applies.
-    state = state.copy(
-      config: {...state.config}..remove('mqtt_connected'),
-      uploadNotice: '',
-    );
+    // The firmware commits the target to NVS before a changed:true ACK, so
+    // the gateway boots with it even if the reconnect below fails; with no
+    // ACK the running target is unknown until it is read back.
+    final config = {...state.config}..remove('mqtt_connected');
+    if (ack != null) {
+      config.addAll(ack.target.fields);
+    } else {
+      config
+        ..['mqtt_target'] = unconfirmedMqttTarget
+        ..remove('mqtt_host')
+        ..remove('mqtt_port');
+    }
+    state = state.copy(config: config, uploadNotice: '');
     await _reconnectAfterReboot(generation, peer, ack?.rebootInMs ?? 1500);
     final confirmed = await _readBackTarget(generation, wanted);
     state = state.copy(
@@ -981,6 +1041,23 @@ class CommissioningController extends Notifier<CommissionState> {
           '已切換到${confirmed.label}，Gateway 已重新開機並重新連線。${_mqttText(confirmed)}',
     );
   });
+
+  /// Reconnects a link that dropped while idle (no reboot involved).
+  Future<void> _relink(int generation, GatewayPeer peer) async {
+    await _link.disconnect();
+    _check(generation);
+    try {
+      await _link.connect(peer).timeout(const Duration(seconds: 20));
+    } on GatewayFailure {
+      rethrow;
+    } catch (_) {
+      await _link.disconnect();
+      _check(generation);
+      throw const GatewayFailure('disconnected');
+    }
+    _check(generation);
+    await _command(generation, 'ping');
+  }
 
   Future<void> _reconnectAfterReboot(
     int generation,

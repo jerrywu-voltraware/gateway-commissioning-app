@@ -165,8 +165,9 @@ class BleGatewayLink implements GatewayLink {
     final epoch = _epoch;
     _tail = _tail.then((_) async {
       try {
+        // Link already down: nothing is written, so report "not sent".
         if (epoch != _epoch || _rx == null) {
-          throw const GatewayFailure('disconnected');
+          throw const GatewayFailure('not_connected');
         }
         result.complete(await _send(op, params));
       } catch (error, stack) {
@@ -201,7 +202,11 @@ class BleGatewayLink implements GatewayLink {
       final size = max(1, _mtu - 3);
       for (int offset = 0; offset < bytes.length; offset += size) {
         final rx = _rx;
-        if (rx == null) throw const GatewayFailure('disconnected');
+        if (rx == null) {
+          throw offset == 0
+              ? const GatewayFailure('not_connected')
+              : const GatewayFailure('disconnected');
+        }
         await UniversalBle.write(
           _device!,
           nusService,

@@ -24,6 +24,10 @@ const mqttStatusKeys = [
   'mqtt_connected',
 ];
 
+/// APP-only `mqtt_target` value: a switch was sent but its result could not
+/// be read back, so the running target is unknown until the next read.
+const unconfirmedMqttTarget = 'unconfirmed';
+
 enum MqttTargetKind { production, local }
 
 class MqttTarget {
@@ -50,6 +54,13 @@ class MqttTarget {
   Map<String, dynamic> get params => isLocal
       ? {'target': 'local', 'host': host, 'port': port}
       : {'target': 'production'};
+
+  /// The `mqtt_target` / `mqtt_host` / `mqtt_port` fields for the config.
+  Map<String, dynamic> get fields => {
+    'mqtt_target': kind.name,
+    'mqtt_host': host,
+    'mqtt_port': port,
+  };
 
   /// Production is one target whatever host the firmware reports; local
   /// targets must agree on host and port.
@@ -193,6 +204,25 @@ AppUploadTarget desiredUploadTarget(String environment, String baseUrl) {
     return const AppUploadTarget.known(MqttTarget.production());
   }
   return const AppUploadTarget.unknown();
+}
+
+/// Step 7 warning when the gateway still uploads to a local test backend.
+const localTargetShipWarning = '此 Gateway 目前上傳到本地測試站，出貨前請切回正式站。';
+
+/// Upload-target lines of the install report.
+String reportTargetText(Map<String, dynamic> config) {
+  final target = parseMqttTarget(config);
+  if (target == null) {
+    return reportsMqttTarget(config)
+        ? '資料上傳目標：未確認'
+        : '資料上傳目標：正式站（韌體 ${config['fw_version'] ?? '未知'} 固定）';
+  }
+  final where = target.isLocal || target.host.isEmpty
+      ? target.label
+      : '正式站 ${target.host}:${target.port}';
+  return target.isLocal
+      ? '資料上傳目標：$where\n注意：$localTargetShipWarning'
+      : '資料上傳目標：$where';
 }
 
 String legacyTargetText(Object? version) {

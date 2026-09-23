@@ -3,6 +3,39 @@
 /// Pure functions so the wording can be unit-tested without a controller.
 library;
 
+import '../core/mqtt_target.dart';
+
+/// Why the backend has no data (or no row) for this gateway, given what the
+/// APP knows about the gateway's upload target.
+///
+/// [running] is the target the gateway last reported, [wanted] the target
+/// matching the APP backend, [mqttConnected] the last `mqtt_connected` value.
+/// "Another backend" is only suggested when the target is unknown or differs.
+String missingGatewayCause({
+  MqttTarget? running,
+  MqttTarget? wanted,
+  Object? mqttConnected,
+}) {
+  if (running != null && wanted != null && running.sameAs(wanted)) {
+    final state = switch (mqttConnected) {
+      false => 'Gateway 最近回報 MQTT 未連線。',
+      true => 'Gateway 最近回報 MQTT 已連線，可能剛連上、心跳尚未送達，可稍候再驗證。',
+      _ => '',
+    };
+    final hint = running.isLocal
+        ? '請確認：Gateway 的 MQTT 已連線（按「重新讀取」查看）、電腦防火牆已開放 TCP '
+              '${running.port}、本地 MQTT broker 已啟動，且 broker 憑證包含電腦目前的 IP '
+              '${running.host}（電腦 IP 若因 DHCP 變更，需重新產生憑證並把 Gateway 切到新 IP）。'
+        : '請確認現場網路可連到正式站（TCP ${running.port}），並按「重新讀取」查看 MQTT 是否已連線。';
+    return 'Gateway 已確認上傳到${running.label}（與 APP 所連後端一致），'
+        '但後端尚未收到它的心跳，表示 Gateway 還沒連上該 MQTT broker。$state\n$hint';
+  }
+  if (wanted != null && !wanted.isLocal && running == null) {
+    return 'Gateway 可能尚未連上正式站的 MQTT，或上傳到其他後端環境（例如本地測試站）。';
+  }
+  return 'Gateway 可能上傳到其他後端環境（例如正式站）。';
+}
+
 /// Reasons one PTU has not passed the current verification round.
 ///
 /// [install] is the device row from `verify-installation`, [latest] the row
@@ -43,7 +76,8 @@ List<String> ptuVerifyReasons({
   return reasons;
 }
 
-/// Multi-line summary of why verification has not passed yet.
+/// Multi-line summary of why verification has not passed yet. [cause]
+/// explains a gateway with no data at all (see [missingGatewayCause]).
 String verifyDiagnosis({
   required Iterable<int> ids,
   required Map<String, dynamic> install,
@@ -54,13 +88,14 @@ String verifyDiagnosis({
   required int gateway,
   required int consecutive,
   required String backend,
+  String? cause,
 }) {
   final lines = <String>[];
   if (fleet == null && rows.isEmpty) {
     lines.add(
       'Gateway 的資料沒有進入目前連線的$backend：fleet-status 沒有站 $site / '
       'Gateway $gateway 的心跳，/api/latest 也沒有任何資料。'
-      'Gateway 可能上傳到其他後端環境（例如正式站）。',
+      '${cause ?? missingGatewayCause()}',
     );
   } else if (fleet == null) {
     lines.add('fleet-status 沒有站 $site / Gateway $gateway 的心跳紀錄。');

@@ -44,6 +44,7 @@ class GatewayFailure implements Exception {
     this.backend,
     this.fromGateway = false,
     this.expected,
+    this.cause,
   });
 
   /// HTTP error from the dashboard API (non-2xx other than 401/409).
@@ -52,6 +53,7 @@ class GatewayFailure implements Exception {
     required String this.endpoint,
     this.detail,
     this.backend,
+    this.cause,
   }) : code = 'api',
        fromGateway = false,
        expected = null;
@@ -64,7 +66,8 @@ class GatewayFailure implements Exception {
   }) : code = 'network',
        status = null,
        fromGateway = false,
-       expected = null;
+       expected = null,
+       cause = null;
 
   /// Fail ack sent by the gateway firmware over BLE.
   const GatewayFailure.gateway(String text)
@@ -74,7 +77,8 @@ class GatewayFailure implements Exception {
       detail = null,
       backend = null,
       fromGateway = true,
-      expected = null;
+      expected = null,
+      cause = null;
 
   /// Fail ack of `set_mqtt_target`; [reason] is the firmware code.
   const GatewayFailure.uploadTarget(String reason)
@@ -84,7 +88,8 @@ class GatewayFailure implements Exception {
       endpoint = null,
       backend = null,
       fromGateway = true,
-      expected = null;
+      expected = null,
+      cause = null;
 
   /// Step 7 preflight: the gateway uploads to [gatewayTarget] while the APP
   /// verifies against [appTarget], so the data can never arrive.
@@ -97,7 +102,8 @@ class GatewayFailure implements Exception {
        status = null,
        endpoint = null,
        backend = null,
-       fromGateway = false;
+       fromGateway = false,
+       cause = null;
 
   /// After switching, the gateway reports [actual] instead of [wanted].
   const GatewayFailure.targetReadback({
@@ -109,7 +115,8 @@ class GatewayFailure implements Exception {
        status = null,
        endpoint = null,
        backend = null,
-       fromGateway = false;
+       fromGateway = false,
+       cause = null;
 
   /// Any non-GatewayFailure exception; keeps its type and a short text.
   factory GatewayFailure.unexpected(Object error) {
@@ -130,6 +137,23 @@ class GatewayFailure implements Exception {
   /// Upload target the APP expected (target_mismatch / target_readback).
   final String? expected;
 
+  /// Known reason that replaces the generic "other backend" guess of the
+  /// 404 gateway_not_found text (see [withCause]).
+  final String? cause;
+
+  /// Same HTTP failure with a [cause] the caller knows better.
+  GatewayFailure withCause(String cause) => GatewayFailure.http(
+    status: status ?? 0,
+    endpoint: endpoint ?? '',
+    detail: detail,
+    backend: backend,
+    cause: cause,
+  );
+
+  /// Backend 404 because it has no row for the gateway.
+  bool get gatewayNotFound =>
+      code == 'api' && status == 404 && detail == 'gateway_not_found';
+
   static final _gatewayPath = RegExp(r'^/api/gateways/(\d+)/(\d+)(/|$)');
 
   String get _backendText => backend ?? '目前設定的後端';
@@ -141,6 +165,10 @@ class GatewayFailure implements Exception {
       final where = match == null
           ? ''
           : '（站 ${match.group(1)} / Gateway ${match.group(2)}）';
+      if (cause != null) {
+        return '後端找不到此 Gateway$where（APP 目前連的是 $_backendText）。$cause\n'
+            '[HTTP 404 · $path · gateway_not_found]';
+      }
       return '後端找不到此 Gateway$where。Gateway 的資料可能上傳到其他後端環境'
           '（例如正式站），而 APP 目前連的是 $_backendText。\n'
           '[HTTP 404 · $path · gateway_not_found]';
@@ -200,7 +228,7 @@ class GatewayFailure implements Exception {
     'not_ready' || 'busy' => '閘道器正在準備或處理其他操作，請稍後重試。',
     'permission' => '需要藍牙權限，請至系統設定允許後重試。',
     'bluetooth_off' => '請開啟手機藍牙後重試。',
-    'disconnected' => '與閘道器的連線已中斷，請靠近後重新連線。',
+    'disconnected' || 'not_connected' => '與閘道器的連線已中斷，請靠近後重新連線。',
     'timeout' => '等待超時，請確認裝置與網路後重試。',
     'cancelled' => '操作已取消，可從最近完成的步驟重試。',
     'conflict' => '此站點或編號已被使用，請選擇其他編號。',

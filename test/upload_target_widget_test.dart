@@ -18,8 +18,9 @@ const _production = {
 Future<List<MqttTarget>> _pumpCard(
   WidgetTester tester,
   Map<String, dynamic> config,
-  AppUploadTarget app,
-) async {
+  AppUploadTarget app, {
+  bool shipCheck = false,
+}) async {
   final switched = <MqttTarget>[];
   await tester.pumpWidget(
     MaterialApp(
@@ -32,6 +33,7 @@ Future<List<MqttTarget>> _pumpCard(
               enabled: true,
               onSwitch: switched.add,
               onRefresh: () {},
+              shipCheck: shipCheck,
             ),
           ],
         ),
@@ -73,6 +75,47 @@ void main() {
       expect(find.text('目前：本地 192.168.1.187:8883 · MQTT 已連線'), findsOneWidget);
       await tester.tap(find.text('將 Gateway 切換到正式站'));
       expect(switched.single.isLocal, isFalse);
+    });
+    testWidgets('step 7 with a local target asks to switch back', (
+      tester,
+    ) async {
+      final switched = await _pumpCard(
+        tester,
+        {
+          'mqtt_target': 'local',
+          'mqtt_host': '192.168.1.187',
+          'mqtt_port': 8883,
+          'mqtt_connected': true,
+        },
+        desiredUploadTarget('local', 'http://192.168.1.187:18000'),
+        shipCheck: true,
+      );
+      expect(find.text(localTargetShipWarning), findsOneWidget);
+      expect(find.textContaining('與 APP 連線環境一致'), findsNothing);
+      await tester.tap(find.text('將 Gateway 切回正式站'));
+      expect(switched.single.isLocal, isFalse);
+    });
+    testWidgets('step 7 on production is ready to ship', (tester) async {
+      await _pumpCard(
+        tester,
+        _production,
+        desiredUploadTarget('local', 'http://192.168.1.187:18000'),
+        shipCheck: true,
+      );
+      expect(find.textContaining('已上傳到正式站，可出貨'), findsOneWidget);
+      expect(find.textContaining('第 7 步資料驗證將無法通過'), findsNothing);
+      expect(find.byType(FilledButton), findsNothing);
+      expect(find.byType(FilledButton, skipOffstage: false), findsNothing);
+    });
+    testWidgets('unconfirmed switch shows the target as unknown', (
+      tester,
+    ) async {
+      await _pumpCard(tester, {
+        'fw_version': '1.7.3',
+        'mqtt_target': unconfirmedMqttTarget,
+      }, desiredUploadTarget('local', 'http://192.168.1.50:18000'));
+      expect(find.textContaining('目前：未確認'), findsOneWidget);
+      expect(find.textContaining('不支援切換'), findsNothing);
     });
     testWidgets('matching target shows no button', (tester) async {
       await _pumpCard(
@@ -160,7 +203,9 @@ void main() {
       find.textContaining('正式站將收不到這台 Gateway 的資料，直到切回正式站為止'),
       findsOneWidget,
     );
-    expect(find.textContaining('重新開機（約 1.5 秒）'), findsOneWidget);
+    expect(find.textContaining('收到指令約 1.5 秒後重新開機'), findsOneWidget);
+    expect(find.textContaining('約 1 分鐘（最多 2 分鐘）'), findsOneWidget);
+    expect(find.textContaining('請留在 Gateway 旁邊'), findsOneWidget);
     expect(find.textContaining('藍牙連線會中斷'), findsOneWidget);
     await tester.tap(find.text('取消'));
     await tester.pumpAndSettle();

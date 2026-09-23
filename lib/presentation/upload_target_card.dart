@@ -12,7 +12,12 @@ class UploadTargetCard extends StatelessWidget {
     required this.onSwitch,
     this.onRefresh,
     this.notice = '',
+    this.shipCheck = false,
   });
+
+  /// Step 7 (commissioning passed): judge the target for shipping instead of
+  /// against the APP backend; a local target must be switched back.
+  final bool shipCheck;
 
   /// Gateway config / status holding mqtt_target, mqtt_host, mqtt_port.
   final Map<String, dynamic> config;
@@ -70,10 +75,42 @@ class UploadTargetCard extends StatelessWidget {
         false => ' · MQTT 未連線',
         _ => '',
       };
+      final unconfirmed = config['mqtt_target'] == unconfirmedMqttTarget;
       children.add(
-        Text('目前：${current?.label ?? '無法辨識（${config['mqtt_target']}）'}$mqtt'),
+        Text(
+          '目前：${current?.label ?? (unconfirmed ? '未確認（切換結果尚未讀回，請重新連線後按「重新讀取」）' : '無法辨識（${config['mqtt_target']}）')}$mqtt',
+        ),
       );
-      if (app.error != null) {
+      if (shipCheck) {
+        if (current?.isLocal == true) {
+          children.add(warning(localTargetShipWarning));
+          children.add(
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: enabled
+                      ? () => onSwitch(const MqttTarget.production())
+                      : null,
+                  child: const Text('將 Gateway 切回正式站'),
+                ),
+              ),
+            ),
+          );
+        } else if (current != null) {
+          children.add(
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                wanted?.isLocal == true
+                    ? '已上傳到正式站，可出貨；APP 目前連的本地測試站不會再收到此 Gateway 的資料。'
+                    : '已上傳到正式站，可出貨。',
+              ),
+            ),
+          );
+        }
+      } else if (app.error != null) {
         children.add(warning(app.error!));
       } else if (wanted == null) {
         children.add(
@@ -169,7 +206,11 @@ Future<bool> confirmUploadTargetSwitch(
                   : '切回正式站後，本地後端將不再收到這台 Gateway 的資料。',
             ),
             const SizedBox(height: 12),
-            const Text('Gateway 會重新開機（約 1.5 秒），藍牙連線會中斷；APP 會自動重新連線並讀回設定確認。'),
+            const Text(
+              'Gateway 會在收到指令約 1.5 秒後重新開機，藍牙連線會中斷；'
+              'APP 會自動重新連線並讀回設定確認，整個過程可能需要約 1 分鐘（最多 2 分鐘）。'
+              '期間請留在 Gateway 旁邊，不要關閉 APP。',
+            ),
           ],
         ),
       ),
