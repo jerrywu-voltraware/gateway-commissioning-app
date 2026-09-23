@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../core/ptu_rssi.dart';
 
 /// Compact selection row; technical detail is available without making every
 /// device row taller. RSSI zero is an unavailable reading, not a strong signal.
@@ -43,6 +44,8 @@ class PtuSelectionTile extends StatelessWidget {
               if (ptu['name'] != null) Text('名稱：${ptu['name']}'),
               Text(ptu['connected'] == true ? '已連線至此 Gateway' : '周邊未連線'),
               Text('訊號：${rssi is num && rssi < 0 ? '$rssi dBm' : '尚無讀值'}'),
+              Text('讀值狀態：${ptuRssiText(ptu)}'),
+              const Text('此處為開啟時的讀值；動態數值請看清單。'),
               if (result?.isNotEmpty == true) Text(result!),
               const SizedBox(height: 16),
               TextButton(
@@ -87,6 +90,10 @@ class PtuSelectionTile extends StatelessWidget {
                         Text(title, style: theme.textTheme.titleSmall),
                         Text(
                           ptu['connected'] == true ? '已連線' : '未連線',
+                          style: theme.textTheme.bodySmall,
+                        ),
+                        Text(
+                          ptuRssiText(ptu),
                           style: theme.textTheme.bodySmall,
                         ),
                       ],

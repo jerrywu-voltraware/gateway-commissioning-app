@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/gateway_net.dart';
+import '../core/ptu_rssi.dart';
 import '../core/mqtt_target.dart';
 import '../core/protocol.dart';
 import '../data/ble_gateway_link.dart';
@@ -75,6 +76,9 @@ class UploadWatchTiming {
 final uploadWatchTimingProvider = Provider<UploadWatchTiming>(
   (ref) => const UploadWatchTiming(),
 );
+final ptuSignalIntervalProvider = Provider<Duration>(
+  (ref) => const Duration(seconds: 5),
+);
 
 /// Gateway network fields copied from get_net_status (firmware cmd_handler.c).
 const gatewayNetKeys = ['wifi_state', 'ip', 'ssid', 'rssi', 'uptime_sec'];
@@ -121,6 +125,7 @@ class CommissionState {
     this.checkPassed = false,
     this.wifiGraceOver = false,
     this.offline = false,
+    this.autoRssi = true,
   });
   final int step, seconds;
   final bool busy, verified, online;
@@ -151,6 +156,7 @@ class CommissionState {
 
   /// Started with 「先離線配置，稍後驗證資料」 (no backend login).
   final bool offline;
+  final bool autoRssi;
 
   /// Gateway Wi-Fi as the network check judges it.
   WifiVerdict get wifi => wifiVerdictOf(
@@ -210,6 +216,7 @@ class CommissionState {
     bool? checkPassed,
     bool? wifiGraceOver,
     bool? offline,
+    bool? autoRssi,
   }) => CommissionState(
     loggedIn: loggedIn ?? this.loggedIn,
     net: net ?? this.net,
@@ -219,6 +226,7 @@ class CommissionState {
     checkPassed: checkPassed ?? this.checkPassed,
     wifiGraceOver: wifiGraceOver ?? this.wifiGraceOver,
     offline: offline ?? this.offline,
+    autoRssi: autoRssi ?? this.autoRssi,
     step: step ?? this.step,
     busy: busy ?? this.busy,
     message: message ?? this.message,
@@ -265,6 +273,8 @@ class CommissioningController extends Notifier<CommissionState> {
   Timer? _poll, _grace;
   int _pollTicks = 0;
   bool _pollInFlight = false;
+  Timer? _rssiTimer;
+  bool _rssiInFlight = false;
 
   /// Base URL of the backend the login (if any) belongs to.
   String? _loginBase;
@@ -280,6 +290,7 @@ class CommissioningController extends Notifier<CommissionState> {
       _health?.cancel();
       _poll?.cancel();
       _grace?.cancel();
+      _rssiTimer?.cancel();
       unawaited(_link.disconnect());
     });
     return const CommissionState();
@@ -1031,6 +1042,9 @@ class CommissioningController extends Notifier<CommissionState> {
   }
 
   Future<void> discover() async {
+    _rssiTimer ??= Timer.periodic(ref.read(ptuSignalIntervalProvider), (_) {
+      unawaited(refreshPtuRssi());
+    });
     await _discover();
     if (ref.mounted && state.step == 4 && state.error != null) {
       state = state.copy(
@@ -1460,7 +1474,7 @@ class CommissioningController extends Notifier<CommissionState> {
       return _stopWatch(UploadWatch.idle);
     }
     // Time spent under a running step (or in the background) does not count.
-    if (state.busy || _pollInFlight || !_foreground) return;
+    if (state.busy || _pollInFlight || _rssiInFlight || !_foreground) return;
     if (count) _pollTicks++;
     if (_pollTicks > _timing.maxTicks) return _stopWatch(UploadWatch.gaveUp);
     if (!state.uploadSlow && _pollTicks >= _timing.slowTicks) {
@@ -1743,7 +1757,73 @@ class CommissioningController extends Notifier<CommissionState> {
     return seen;
   }
 
-  void setForeground(bool value) => _foreground = value;
+  void _markRssiStale() {
+    if (!ref.mounted || state.ptus.isEmpty) return;
+    state = state.copy(
+      ptus: [
+        for (final ptu in state.ptus) {...ptu, 'rssi_stale': true},
+      ],
+      error: state.error,
+    );
+  }
+
+  void setAutoRssi(bool value) {
+    state = state.copy(autoRssi: value, error: state.error);
+    if (!value) _markRssiStale();
+  }
+
+  Future<void> refreshPtuRssi() async {
+    if (!ref.mounted ||
+        !state.autoRssi ||
+        !_foreground ||
+        state.step != 4 ||
+        state.peer == null ||
+        state.ptus.isEmpty ||
+        state.busy ||
+        _pollInFlight ||
+        _rssiInFlight ||
+        state.uploadWatch == UploadWatch.linkLost) {
+      return;
+    }
+    _rssiInFlight = true;
+    final generation = _generation;
+    try {
+      final result = await _link.command('get_ble_devices');
+      if (!ref.mounted ||
+          generation != _generation ||
+          state.busy ||
+          !_foreground ||
+          !state.autoRssi ||
+          state.step != 4) {
+        return;
+      }
+      final rows = result['devices'];
+      if (rows is! List) {
+        _markRssiStale();
+        return;
+      }
+      state = state.copy(
+        ptus: refreshPtuSignals(state.ptus, rows),
+        error: state.error,
+      );
+    } catch (error) {
+      if (!ref.mounted || generation != _generation) return;
+      _markRssiStale();
+      if (error is GatewayFailure &&
+          (error.code == 'disconnected' || error.code == 'not_connected')) {
+        _stopWatch(UploadWatch.linkLost);
+        state = state.copy(error: error.message);
+      }
+    } finally {
+      _rssiInFlight = false;
+    }
+  }
+
+  void setForeground(bool value) {
+    _foreground = value;
+    if (!value) _markRssiStale();
+  }
+
   Future<void> refreshHealth() async {
     if (!_foreground || _healthBusy || state.busy || !_loggedIn) return;
     _healthBusy = true;

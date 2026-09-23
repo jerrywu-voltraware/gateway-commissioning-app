@@ -882,6 +882,13 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                   : null,
             ),
           ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            title: const Text('動態 RSSI · 每 5 秒更新'),
+            value: s.autoRssi,
+            onChanged: enabled ? c.setAutoRssi : null,
+          ),
           if (s.missing.isNotEmpty) Text('尚未連線：${s.missing.join('、')}'),
           ExpansionTile(
             tilePadding: EdgeInsets.zero,
@@ -891,7 +898,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             ),
             children: [
               const Text(
-                '由 Gateway 掃描附近的 PTU，再透過藍牙把清單傳回手機。清單也包含已連線、不再廣播的 PTU。最多可選五台，點裝置右側資訊可查看詳細資料。',
+                '由 Gateway 掃描附近的 PTU，再透過藍牙把清單傳回手機。最多可選五台。RSSI 是 Gateway 與 PTU 之間的訊號；未連線裝置顯示掃描值。「上次」表示暫停或過期，「快取」表示韌體未提供讀值時間。韌體 1.7.5 起可在配置期間量測；RSSI — 表示尚無有效讀值。',
               ),
               StepList(current: displayStep(s, env)),
             ],
