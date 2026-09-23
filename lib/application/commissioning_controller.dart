@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../core/gateway_net.dart';
 import '../core/mqtt_target.dart';
 import '../core/protocol.dart';
 import '../data/ble_gateway_link.dart';
@@ -50,14 +51,25 @@ class UploadWatchTiming {
     this.interval = const Duration(seconds: 5),
     this.cap = const Duration(minutes: 2),
     this.slowAfter = const Duration(seconds: 30),
+    this.confirmAfter = const Duration(seconds: 60),
+    this.wifiGrace = const Duration(seconds: 20),
   });
 
   /// [slowAfter]: polling time without upload after which a guess about the
   /// cause (e.g. another subnet) may be shown.
-  final Duration interval, cap, slowAfter;
+  ///
+  /// [confirmAfter]: the network check stops waiting for the upload and
+  /// shows what to check instead.
+  ///
+  /// [wifiGrace]: after a connect or reboot, a gateway that has not joined
+  /// its Wi-Fi yet is shown as 「正在連 Wi-Fi」 this long before it counts as
+  /// a failure (unless it has been up for [wifiSettleSeconds]).
+  final Duration interval, cap, slowAfter, confirmAfter, wifiGrace;
   int get maxTicks => (cap.inMilliseconds / interval.inMilliseconds).ceil();
   int get slowTicks =>
       (slowAfter.inMilliseconds / interval.inMilliseconds).ceil();
+  int get lateTicks =>
+      (confirmAfter.inMilliseconds / interval.inMilliseconds).ceil();
 }
 
 final uploadWatchTimingProvider = Provider<UploadWatchTiming>(
@@ -65,7 +77,17 @@ final uploadWatchTimingProvider = Provider<UploadWatchTiming>(
 );
 
 /// Gateway network fields copied from get_net_status (firmware cmd_handler.c).
-const gatewayNetKeys = ['wifi_state', 'ip', 'ssid', 'rssi'];
+const gatewayNetKeys = ['wifi_state', 'ip', 'ssid', 'rssi', 'uptime_sec'];
+
+/// 「沿用目前站點」 refused because the gateway cannot upload yet.
+const reuseBlockedText =
+    '「沿用目前站點」會直接驗證資料，但 Gateway 還沒連上 Wi-Fi 或還沒開始上傳資料。'
+    '請先用「保留站點，重設 Wi-Fi」，或回到網路體檢確認。';
+
+/// Station kept after a Wi-Fi change: the upload must work before step 6.
+const uploadNotReadyText =
+    '要等 Gateway 連上 Wi-Fi 並開始上傳資料，才能驗證資料。'
+    '請等「確認資料上傳」出現 ✓，或再重設一次 Wi-Fi。';
 
 /// Step 7 after a backend switch: the earlier result belongs to the old one.
 const backendSwitchedDoneText = '已切換連線環境，資料要在新的環境重新確認。';
@@ -95,6 +117,10 @@ class CommissionState {
     this.net = const {},
     this.uploadWatch = UploadWatch.idle,
     this.uploadSlow = false,
+    this.uploadLate = false,
+    this.checkPassed = false,
+    this.wifiGraceOver = false,
+    this.offline = false,
   });
   final int step, seconds;
   final bool busy, verified, online;
@@ -103,12 +129,50 @@ class CommissionState {
   /// Logged in to the backend currently selected (reset on a switch).
   final bool loggedIn;
 
-  /// Gateway network status (wifi_state / ip / ssid / rssi) last read.
+  /// Gateway network status (wifi_state / ip / ssid / rssi / uptime_sec)
+  /// last read.
   final Map<String, dynamic> net;
   final UploadWatch uploadWatch;
 
   /// Still polling after [UploadWatchTiming.slowAfter] without upload.
   final bool uploadSlow;
+
+  /// Polled for [UploadWatchTiming.confirmAfter] without upload.
+  final bool uploadLate;
+
+  /// Step 2: the network check (網路體檢 → 對準上傳目標 → 確認資料上傳)
+  /// shown right after connecting has been passed or skipped, so the station
+  /// choice or the identity/Wi-Fi form is shown. False again after a Wi-Fi
+  /// change that keeps the station, whose upload is confirmed before step 6.
+  final bool checkPassed;
+
+  /// The Wi-Fi grace period after a connect or reboot is over.
+  final bool wifiGraceOver;
+
+  /// Started with 「先離線配置，稍後驗證資料」 (no backend login).
+  final bool offline;
+
+  /// Gateway Wi-Fi as the network check judges it.
+  WifiVerdict get wifi => wifiVerdictOf(
+    net,
+    configSsid: config['wifi_ssid'],
+    settled:
+        wifiGraceOver ||
+        uploadWatch == UploadWatch.gaveUp ||
+        uploadWatch == UploadWatch.linkLost,
+  );
+
+  /// The firmware answers get_net_status (1.7+); older ones cannot be checked.
+  bool get netCheckSupported =>
+      profileFor(config['fw_version']?.toString() ?? '') ==
+      ProtocolProfile.current;
+
+  /// The gateway has Wi-Fi and uploads, so its data can be verified now
+  /// (「沿用目前站點」, or the station kept after a Wi-Fi change). Always true
+  /// for firmware that cannot report it: the data verification decides.
+  bool get networkReady =>
+      !netCheckSupported ||
+      (wifi == WifiVerdict.ok && config['mqtt_connected'] == true);
 
   /// Outcome of the last upload-target switch or refresh (shown in its card).
   final String uploadNotice;
@@ -141,11 +205,19 @@ class CommissionState {
     Map<String, dynamic>? net,
     UploadWatch? uploadWatch,
     bool? uploadSlow,
+    bool? uploadLate,
+    bool? checkPassed,
+    bool? wifiGraceOver,
+    bool? offline,
   }) => CommissionState(
     loggedIn: loggedIn ?? this.loggedIn,
     net: net ?? this.net,
     uploadWatch: uploadWatch ?? this.uploadWatch,
     uploadSlow: uploadSlow ?? this.uploadSlow,
+    uploadLate: uploadLate ?? this.uploadLate,
+    checkPassed: checkPassed ?? this.checkPassed,
+    wifiGraceOver: wifiGraceOver ?? this.wifiGraceOver,
+    offline: offline ?? this.offline,
     step: step ?? this.step,
     busy: busy ?? this.busy,
     message: message ?? this.message,
@@ -189,7 +261,7 @@ class CommissioningController extends Notifier<CommissionState> {
   int get gateway => (state.config['gateway_id'] as num?)?.toInt() ?? 1;
   String get _path => '/api/gateways/$site/$gateway';
   late UploadWatchTiming _timing;
-  Timer? _poll;
+  Timer? _poll, _grace;
   int _pollTicks = 0;
   bool _pollInFlight = false;
 
@@ -206,9 +278,25 @@ class CommissioningController extends Notifier<CommissionState> {
       _clock?.cancel();
       _health?.cancel();
       _poll?.cancel();
+      _grace?.cancel();
       unawaited(_link.disconnect());
     });
     return const CommissionState();
+  }
+
+  /// Starts the Wi-Fi grace period: right after a connect or a reboot the
+  /// gateway may still be joining its Wi-Fi.
+  void _startWifiGrace() {
+    _grace?.cancel();
+    if (!ref.mounted) return;
+    if (state.wifiGraceOver) {
+      state = state.copy(wifiGraceOver: false, error: state.error);
+    }
+    _grace = Timer(_timing.wifiGrace, () {
+      if (ref.mounted) {
+        state = state.copy(wifiGraceOver: true, error: state.error);
+      }
+    });
   }
 
   void _setLoggedIn(bool value, [String? base]) {
@@ -403,6 +491,7 @@ class CommissioningController extends Notifier<CommissionState> {
         }
         state = state.copy(
           step: 1,
+          offline: offline,
           message: offline ? '離線模式：最後仍需登入驗證資料' : '準備完成',
         );
       });
@@ -417,10 +506,56 @@ class CommissioningController extends Notifier<CommissionState> {
   Future<void> connect(GatewayPeer peer) async {
     if (state.busy) return;
     _stopWatch(UploadWatch.idle);
-    state = state.copy(net: const {}, error: state.error);
+    state = state.copy(
+      net: const {},
+      checkPassed: false,
+      uploadLate: false,
+      error: state.error,
+    );
     await _connect(peer);
+    if (ref.mounted &&
+        state.step == 2 &&
+        state.error == null &&
+        identical(state.peer, peer)) {
+      _startWifiGrace();
+    }
     _watchUploadIfPending();
   }
+
+  /// get_net_status for the network check; null when the firmware cannot
+  /// answer it (before 1.7) or is not ready yet (polling reads it later).
+  Future<Map<String, dynamic>?> _readNet(
+    int generation,
+    Map<String, dynamic> config,
+  ) async {
+    if (profileFor(config['fw_version']?.toString() ?? '') !=
+        ProtocolProfile.current) {
+      return null;
+    }
+    try {
+      return await _command(generation, 'get_net_status');
+    } catch (_) {
+      _check(generation);
+      return null;
+    }
+  }
+
+  /// get_config plus what get_net_status says about the upload (MQTT).
+  static Map<String, dynamic> _withUpload(
+    Map<String, dynamic> config,
+    Map<String, dynamic>? net,
+  ) => {
+    ...config,
+    if (net != null)
+      for (final key in mqttStatusKeys)
+        if (net.containsKey(key)) key: net[key],
+  };
+
+  static Map<String, dynamic> _netFields(Map<String, dynamic>? net) => {
+    if (net != null)
+      for (final key in gatewayNetKeys)
+        if (net.containsKey(key)) key: net[key],
+  };
 
   Future<void> _connect(GatewayPeer peer) =>
       _run('連線並讀取閘道器設定', 120, (generation) async {
@@ -437,6 +572,8 @@ class CommissioningController extends Notifier<CommissionState> {
         }
         final config = await _command(generation, 'get_config');
         _check(generation);
+        // 網路體檢: the gateway's own Wi-Fi and upload state.
+        final net = await _readNet(generation, config);
         if (config['fleet_joined'] == true) {
           final existing = await _command(generation, 'get_ble_devices');
           final devices = (existing['devices'] as List? ?? [])
@@ -445,10 +582,12 @@ class CommissioningController extends Notifier<CommissionState> {
           state = state.copy(
             step: 2,
             peer: peer,
-            config: {...config, 'choose_station': true},
+            config: {..._withUpload(config, net), 'choose_station': true},
+            net: _netFields(net),
+            checkPassed: false,
             ptus: devices,
             selected: devices.map((d) => d['mac'].toString()).toSet(),
-            message: '此閘道器已有站點設定，請選擇沿用或設定新站。',
+            message: '已連線，此閘道器已有站點設定。先做網路體檢，再選擇沿用或設定新站。',
             uploadNotice: '',
           );
           return;
@@ -497,15 +636,132 @@ class CommissioningController extends Notifier<CommissionState> {
         state = state.copy(
           step: 2,
           peer: peer,
-          config: config,
-          message: '已連線，請設定身份與 WiFi',
+          config: _withUpload(config, net),
+          net: _netFields(net),
+          checkPassed: false,
+          message: '已連線。先做網路體檢，再設定身份與 Wi-Fi。',
           uploadNotice: '',
         );
       });
+
+  // ---- 網路體檢 (step 2 before the station choice) ----
+
+  bool get _atCheck => !state.busy && state.step == 2 && !state.checkPassed;
+
+  /// Leaves the network check: to the station choice, the identity/Wi-Fi
+  /// form (new gateway), or, after a Wi-Fi change that keeps the station, to
+  /// the data verification. [skip] continues although the check has not
+  /// passed; that is never allowed when the next page verifies data.
+  void passNetworkCheck({bool skip = false}) {
+    if (!_atCheck) return;
+    if (state.config['wifi_only'] == true) {
+      if (!state.networkReady) {
+        state = state.copy(error: uploadNotReadyText);
+        return;
+      }
+      state = state.copy(
+        step: 6,
+        checkPassed: true,
+        results: {},
+        verified: false,
+        report: '',
+        message: 'Wi-Fi 已更新，資料也開始上傳了，站點與 PTU 設定保留。可接著驗證資料。',
+      );
+      return;
+    }
+    final station = state.config['choose_station'] == true;
+    final String message;
+    if (station) {
+      message = skip ? '網路體檢未通過：可重設 Wi-Fi 或設定新站點；沿用要等網路正常。' : '網路體檢通過，請選擇站點。';
+    } else {
+      message = skip ? '網路體檢未通過，仍可設定新站點；之後會再確認資料上傳。' : '網路體檢通過，請設定身份與 Wi-Fi。';
+    }
+    state = state.copy(checkPassed: true, message: message);
+  }
+
+  /// 「重設 Wi-Fi」 from the network check. A station that is set up keeps
+  /// its site / gateway numbers and PTUs (Wi-Fi only); a new gateway gets the
+  /// identity + Wi-Fi form.
+  ///
+  /// [target]: the upload target must change too. It is sent FIRST, without
+  /// waiting for the upload: set_mqtt_target always reboots, and the boot
+  /// reads the Wi-Fi from NVS, while set_wifi reconnects in place without a
+  /// reboot. So target-then-Wi-Fi costs one reboot and the gateway starts
+  /// uploading to the right place as soon as the new Wi-Fi works; the other
+  /// order would also reboot once but first upload to the old place.
+  Future<void> startWifiFix({MqttTarget? target}) async {
+    if (!_atCheck) return;
+    if (target != null) {
+      await switchUploadTarget(target, waitUpload: false);
+      // Reconnect or read-back failed: stay on the check with its message.
+      if (!ref.mounted || state.error != null || state.step != 2) return;
+    }
+    if (!_atCheck) return;
+    final station = state.config['fleet_joined'] == true;
+    state = state.copy(
+      checkPassed: true,
+      config: {
+        ...state.config,
+        'choose_station': false,
+        'new_station': false,
+        'wifi_only': station,
+      },
+      results: {},
+      verified: false,
+      report: '',
+      message: station
+          ? '保留目前站點與 PTU，只重設 Wi-Fi。請選 2.4 GHz 的 Wi-Fi。'
+          : '請設定身份與 Wi-Fi（Gateway 只能用 2.4 GHz）。',
+    );
+  }
+
+  /// Back to the network check from the station choice or a Wi-Fi form.
+  /// A station gets its PTU selection back (only a new station clears it).
+  void backToNetworkCheck() {
+    if (state.busy || state.step != 2 || !state.checkPassed) return;
+    final station = state.config['fleet_joined'] == true;
+    state = state.copy(
+      checkPassed: false,
+      config: {
+        ...state.config,
+        'choose_station': station,
+        'new_station': false,
+        'wifi_only': false,
+      },
+      selected: station
+          ? state.ptus.map((d) => d['mac'].toString()).toSet()
+          : null,
+      message: '網路體檢：確認 Gateway 的 Wi-Fi 與資料上傳。',
+    );
+    _watchUploadIfPending();
+  }
+
+  /// From the upload re-check after a Wi-Fi change back to the station choice.
+  void backToStationChoice() {
+    if (!_atCheck || state.config['fleet_joined'] != true) return;
+    state = state.copy(
+      checkPassed: true,
+      config: {
+        ...state.config,
+        'choose_station': true,
+        'new_station': false,
+        'wifi_only': false,
+      },
+      message: '請選擇站點。沿用要等 Gateway 開始上傳資料。',
+    );
+  }
+
   void chooseStation({required bool newStation, bool wifiOnly = false}) {
     if (state.busy || state.config['choose_station'] != true) return;
+    // 沿用 goes straight to the data verification, which cannot pass while
+    // the gateway has no Wi-Fi or no upload.
+    if (!newStation && !wifiOnly && !state.networkReady) {
+      state = state.copy(error: reuseBlockedText);
+      return;
+    }
     state = state.copy(
       step: newStation || wifiOnly ? 2 : 6,
+      checkPassed: true,
       config: {
         ...state.config,
         'choose_station': false,
@@ -648,9 +904,19 @@ class CommissioningController extends Notifier<CommissionState> {
       }
     }
     if (!connected) throw const GatewayFailure('wifi_failed');
-    state = state.copy(config: {...state.config, 'wifi_ssid': ssid});
+    // The MQTT client reconnects over the new Wi-Fi: an earlier
+    // mqtt_connected no longer applies until it is read again.
+    state = state.copy(
+      config: {...state.config, 'wifi_ssid': ssid}..remove('mqtt_connected'),
+      uploadLate: false,
+    );
     if (wifiOnly) {
-      state = state.copy(step: 6, message: 'Wi-Fi 已更新，站點與 PTU 設定保留。可接著驗證資料。');
+      // The station is kept and the next page verifies data, so the upload
+      // is confirmed first (網路體檢 → 確認資料上傳).
+      state = state.copy(
+        checkPassed: false,
+        message: 'Wi-Fi 已更新，站點與 PTU 設定保留。接著確認資料有上傳。',
+      );
       return;
     }
     if (_loggedIn) {
@@ -1101,6 +1367,7 @@ class CommissioningController extends Notifier<CommissionState> {
     state = state.copy(
       uploadWatch: UploadWatch.polling,
       uploadSlow: false,
+      uploadLate: false,
       error: state.error,
     );
     _poll = Timer.periodic(_timing.interval, (_) => unawaited(_pollTick()));
@@ -1110,10 +1377,13 @@ class CommissioningController extends Notifier<CommissionState> {
   void _stopWatch(UploadWatch reason) {
     _poll?.cancel();
     _poll = null;
-    if (ref.mounted && (state.uploadWatch != reason || state.uploadSlow)) {
+    final clearLate = reason == UploadWatch.idle && state.uploadLate;
+    if (ref.mounted &&
+        (state.uploadWatch != reason || state.uploadSlow || clearLate)) {
       state = state.copy(
         uploadWatch: reason,
         uploadSlow: false,
+        uploadLate: clearLate ? false : null,
         error: state.error,
       );
     }
@@ -1132,6 +1402,9 @@ class CommissioningController extends Notifier<CommissionState> {
     if (_pollTicks > _timing.maxTicks) return _stopWatch(UploadWatch.gaveUp);
     if (!state.uploadSlow && _pollTicks >= _timing.slowTicks) {
       state = state.copy(uploadSlow: true, error: state.error);
+    }
+    if (!state.uploadLate && _pollTicks >= _timing.lateTicks) {
+      state = state.copy(uploadLate: true, error: state.error);
     }
     _pollInFlight = true;
     final generation = _generation;
@@ -1214,13 +1487,21 @@ class CommissioningController extends Notifier<CommissionState> {
 
   /// Sends `set_mqtt_target`; on a change the gateway reboots, so reconnect to
   /// the same gateway and confirm the running target by reading it back.
-  Future<void> switchUploadTarget(MqttTarget wanted) async {
-    await _switchUploadTarget(wanted);
+  ///
+  /// [waitUpload]: after reading the target back, briefly wait for the
+  /// upload to start. False when the Wi-Fi is changed next anyway (the
+  /// upload cannot start before), so no time is spent waiting for it.
+  Future<void> switchUploadTarget(
+    MqttTarget wanted, {
+    bool waitUpload = true,
+  }) async {
+    await _switchUploadTarget(wanted, waitUpload);
     _watchUploadIfPending();
   }
 
   Future<void> _switchUploadTarget(
     MqttTarget wanted,
+    bool waitUpload,
   ) => _sideTask('正在把 Gateway 切到${wanted.plainLabel}（會重新開機，約 1 分鐘）', 120, (
     generation,
   ) async {
@@ -1253,7 +1534,9 @@ class CommissioningController extends Notifier<CommissionState> {
       break;
     }
     if (ack != null && !ack.changed) {
-      _absorbTarget(await _command(generation, 'get_net_status'));
+      final status = await _command(generation, 'get_net_status');
+      _absorbTarget(status);
+      _absorbNet(status);
       final now = parseMqttTarget(state.config) ?? ack.target;
       if (!now.sameAs(wanted)) {
         throw GatewayFailure.targetReadback(
@@ -1282,10 +1565,13 @@ class CommissioningController extends Notifier<CommissionState> {
     }
     state = state.copy(config: config, uploadNotice: '');
     await _reconnectAfterReboot(generation, peer, ack?.rebootInMs ?? 1500);
-    final confirmed = await _readBackTarget(generation, wanted);
+    // Rebooted: the Wi-Fi is joined again from scratch.
+    _startWifiGrace();
+    final confirmed = await _readBackTarget(generation, wanted, waitUpload);
     state = state.copy(
       uploadNotice:
-          '已把 Gateway 切到${confirmed.plainLabel}，Gateway 已重新開機並重新連上。$_uploadText',
+          '已把 Gateway 切到${confirmed.plainLabel}，Gateway 已重新開機並重新連上。'
+          '${waitUpload ? _uploadText : '接著設定 Wi-Fi。'}',
     );
   });
 
@@ -1345,25 +1631,33 @@ class CommissioningController extends Notifier<CommissionState> {
 
   /// Reads the running target after a reboot. get_net_status is refused with
   /// not_ready until boot finishes; get_config already reports the target, so
-  /// it is used meanwhile. Polls briefly for mqtt_connected.
-  Future<MqttTarget> _readBackTarget(int generation, MqttTarget wanted) async {
+  /// it is used meanwhile. Polls briefly for mqtt_connected unless
+  /// [waitUpload] is false.
+  Future<MqttTarget> _readBackTarget(
+    int generation,
+    MqttTarget wanted,
+    bool waitUpload,
+  ) async {
     const transient = ['not_ready', 'busy', 'timeout'];
     MqttTarget? seen;
     for (int attempt = 0; attempt < 10; attempt++) {
       if (attempt > 0) await _wait(3, generation);
       Map<String, dynamic> status;
+      bool fromNet = true;
       try {
         status = await _command(generation, 'get_net_status');
       } on GatewayFailure catch (error) {
         if (!transient.contains(error.code)) rethrow;
         try {
           status = await _command(generation, 'get_config');
+          fromNet = false;
         } on GatewayFailure catch (error) {
           if (!transient.contains(error.code)) rethrow;
           continue;
         }
       }
       _absorbTarget(status);
+      if (fromNet) _absorbNet(status);
       final target = parseMqttTarget(status);
       if (target == null || !target.sameAs(wanted)) {
         throw GatewayFailure.targetReadback(
@@ -1372,7 +1666,7 @@ class CommissioningController extends Notifier<CommissionState> {
         );
       }
       seen = target;
-      if (status['mqtt_connected'] == true) break;
+      if (!waitUpload || status['mqtt_connected'] == true) break;
     }
     if (seen == null) {
       throw GatewayFailure.targetReadback(
@@ -1455,6 +1749,7 @@ class CommissioningController extends Notifier<CommissionState> {
   Future<void> cancel() async {
     _generation++;
     _health?.cancel();
+    _grace?.cancel();
     _stopWatch(UploadWatch.idle);
     final safe = await _safeStop();
     await _link.disconnect();
@@ -1468,6 +1763,8 @@ class CommissioningController extends Notifier<CommissionState> {
       state = state.copy(
         step: 1,
         net: const {},
+        checkPassed: false,
+        wifiGraceOver: false,
         error: safe ? null : '尚未確認安全停止，請重新連線核對。',
         message: '已取消。請重新連線核對進度；未成功恢復的監控會話最晚於到期時恢復。',
       );

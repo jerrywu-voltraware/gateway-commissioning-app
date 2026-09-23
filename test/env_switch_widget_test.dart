@@ -128,6 +128,11 @@ Future<void> _connectGateway(WidgetTester tester) async {
   await _tap(tester, find.text('GIOS-S1-GW01'));
 }
 
+/// The network check shown right after connecting has passed: go on to the
+/// station choice.
+Future<void> _passCheck(WidgetTester tester) =>
+    _tap(tester, find.text('下一步：選擇站點'));
+
 Future<void> _chooseInSheet(WidgetTester tester, BackendEnv env) async {
   await tester.tap(_chip);
   await tester.pumpAndSettle();
@@ -223,7 +228,9 @@ void main() {
     final fake = SimGateway();
     final container = await _pumpApp(tester, fake);
     await _connectGateway(tester);
-    expect(find.text('3 / 8   身份與 WiFi'), findsOneWidget);
+    // Right after connecting: the network check, all passed.
+    expect(find.text('5 / 10   確認資料上傳'), findsOneWidget);
+    expect(find.text('下一步：設定身份與 Wi-Fi'), findsOneWidget);
     expect(fake.targetRequests, isEmpty, reason: 'already on 正式站');
     expect(find.text('✓ 正式站：手機與 Gateway 都已連上'), findsOneWidget);
     expect(container.read(commissionProvider).loggedIn, isTrue);
@@ -244,7 +251,7 @@ void main() {
     final state = container.read(commissionProvider);
     expect(parseMqttTarget(state.config)!.host, '192.168.1.50');
     expect(state.step, 2);
-    expect(state.message, '已連線，請設定身份與 WiFi');
+    expect(state.message, '已連線。先做網路體檢，再設定身份與 Wi-Fi。');
     expect(state.error, isNull);
     expect(state.busy, isFalse);
     expect(
@@ -265,7 +272,7 @@ void main() {
     expect(parseMqttTarget(back.config)!.isLocal, isFalse);
     expect(back.loggedIn, isFalse);
     expect(back.step, 2);
-    expect(find.text('尚未登入正式站：站號衝突檢查會先略過，第 3 步會請你輸入密碼。'), findsOneWidget);
+    expect(find.text('尚未登入正式站：站號衝突檢查會先略過，之後需要時會請你輸入密碼。'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -363,6 +370,8 @@ void main() {
   ) async {
     final fake = SimGateway()..prepareGate = Completer<void>();
     final container = await _pumpApp(tester, fake);
+    await tester.ensureVisible(find.text('檢查並開始'));
+    await tester.pump();
     await tester.tap(find.text('檢查並開始'));
     await tester.pump();
     final state = container.read(commissionProvider);
@@ -394,6 +403,7 @@ void main() {
     final container = await _pumpApp(tester, fake, prefs: _localPrefs);
     await _connectGateway(tester);
     expect(fake.targetRequests.single['host'], '192.168.1.50');
+    await _passCheck(tester);
     await _tap(tester, find.text('沿用目前站點'));
     expect(find.text('驗證後端：本地測試（這台電腦上的測試主機）'), findsOneWidget);
     expect(find.textContaining('http://192.168.1.50'), findsNothing);
@@ -451,6 +461,7 @@ void main() {
     final fake = SimGateway.commissioned();
     final container = await _pumpApp(tester, fake, prefs: _localPrefs);
     await _connectGateway(tester);
+    await _passCheck(tester);
     await _tap(tester, find.text('沿用目前站點'));
     await _tap(tester, find.text('開始資料驗證'));
     await _tap(tester, find.text('手機和 Gateway 都切回正式站'));
@@ -483,6 +494,7 @@ void main() {
       prober: prober,
     );
     await _connectGateway(tester);
+    await _passCheck(tester);
     await _tap(tester, find.text('沿用目前站點'));
     expect(container.read(commissionProvider).step, 6);
     expect(container.read(commissionProvider).loggedIn, isTrue);

@@ -30,8 +30,16 @@ void main() {
     expect(container.read(commissionProvider).error, isNotNull);
     expect(demo.config['wifi_ssid'], 'old-network');
     await c.configureWifi(80, 1, 'new-network', 'password123');
-    final state = container.read(commissionProvider);
+    // The station is kept, so the upload is confirmed before step 6.
+    var state = container.read(commissionProvider);
     expect(state.error, isNull);
+    expect(state.step, 2);
+    expect(state.checkPassed, isFalse);
+    expect(state.config['wifi_only'], isTrue);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    expect(container.read(commissionProvider).config['mqtt_connected'], isTrue);
+    c.passNetworkCheck();
+    state = container.read(commissionProvider);
     expect(state.step, 6);
     expect(state.config['wifi_ssid'], 'new-network');
     expect(state.selected, selected);

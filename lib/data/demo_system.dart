@@ -19,6 +19,7 @@ class DemoSystem implements GatewayLink, GatewayApi {
     'mqtt_target': 'production',
     'mqtt_host': demoProductionMqttHost,
     'mqtt_port': defaultMqttPort,
+    'wifi_ssid': 'Demo-2.4G',
   };
   final devices = List.generate(
     3,
@@ -35,8 +36,34 @@ class DemoSystem implements GatewayLink, GatewayApi {
   bool monitored = true;
   int tick = 0;
 
-  /// MQTT state reported by get_net_status.
+  /// MQTT state reported by get_net_status (only while the Wi-Fi works).
   bool mqttConnected = true;
+
+  /// Wi-Fi state reported by get_net_status, as in firmware cmd_handler.c:
+  /// `got_ip`, `connecting` or `disconnected`.
+  String wifiState = 'got_ip';
+
+  /// While [wifiState] is `connecting`: reads of get_net_status left before
+  /// the simulated gateway joins its Wi-Fi (a gateway that just booted).
+  int connectingReads = 3;
+
+  /// get_net_status `uptime_sec`; reset by a simulated reboot.
+  int uptimeSec = 3600;
+
+  /// get_net_status `ip` while the Wi-Fi works.
+  String ip = 'demo';
+
+  /// Networks set_wifi cannot join (out of range, wrong password or
+  /// 5 GHz): the firmware keeps the old Wi-Fi and reports last_wifi_error.
+  final unreachableSsids = <String>{};
+  String lastWifiError = '';
+
+  /// Simulates the Wi-Fi the gateway finds after a (re)boot.
+  void simulateWifi(String state) {
+    wifiState = state;
+    connectingReads = 3;
+    uptimeSec = state == 'connecting' ? 5 : 3600;
+  }
 
   /// Set after a set_mqtt_target change: the simulated gateway reboots and
   /// answers nothing until the APP reconnects.
@@ -56,7 +83,32 @@ class DemoSystem implements GatewayLink, GatewayApi {
   @override
   Future<void> connect(GatewayPeer peer) async {
     connects++;
+    if (rebooting) {
+      // Booted again: the Wi-Fi is joined from scratch.
+      uptimeSec = 5;
+      lastWifiError = '';
+    }
     rebooting = false;
+  }
+
+  Map<String, dynamic> _netStatus(String op) {
+    if (wifiState == 'connecting' && --connectingReads <= 0) {
+      wifiState = 'got_ip';
+    }
+    final online = wifiState == 'got_ip';
+    return {
+      'wifi_state': wifiState,
+      'ip': online ? ip : '',
+      'rssi': online ? -55 : 0,
+      'mqtt_connected': online && mqttConnected,
+      'ntp_synced': true,
+      'ssid': config['wifi_ssid'],
+      'uptime_sec': uptimeSec,
+      'last_wifi_error': lastWifiError,
+      if (op == 'get_net_status')
+        for (final key in ['mqtt_target', 'mqtt_host', 'mqtt_port'])
+          if (config.containsKey(key)) key: config[key],
+    };
   }
 
   @override
@@ -74,21 +126,18 @@ class DemoSystem implements GatewayLink, GatewayApi {
         config.addAll(params);
         return {'message': 'rebooting'};
       case 'set_wifi':
-        config['wifi_ssid'] = params['ssid'];
-        return {'message': 'wifi switching'};
+        // Reconnects in place (no reboot); a failure keeps the old Wi-Fi.
+        if (unreachableSsids.contains(params['ssid'])) {
+          lastWifiError = 'ESP_ERR_TIMEOUT';
+        } else {
+          lastWifiError = '';
+          config['wifi_ssid'] = params['ssid'];
+          wifiState = 'got_ip';
+        }
+        return {'message': 'wifi switching to ${params['ssid']}'};
       case 'get_status':
       case 'get_net_status':
-        return {
-          'wifi_state': 'got_ip',
-          'ip': 'demo',
-          'mqtt_connected': mqttConnected,
-          'ntp_synced': true,
-          'ssid': config['wifi_ssid'],
-          'last_wifi_error': '',
-          if (op == 'get_net_status')
-            for (final key in ['mqtt_target', 'mqtt_host', 'mqtt_port'])
-              if (config.containsKey(key)) key: config[key],
-        };
+        return _netStatus(op);
       case 'set_mqtt_target':
         return _setMqttTarget(params);
       case 'scan_ble_discover':

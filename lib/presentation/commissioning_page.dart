@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../application/backend_environment.dart';
 import '../application/commissioning_controller.dart';
 import '../application/connection_status.dart';
+import '../application/network_check.dart';
+import '../core/gateway_net.dart';
 import '../core/local_backend_address.dart';
 import '../core/mqtt_target.dart';
 import '../data/wifi_scan.dart';
@@ -171,7 +173,49 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         } else {
           _snack('正在把 Gateway 切到${target!.plainLabel}，約 1 分鐘，請留在 Gateway 旁。');
         }
-        await ref.read(commissionProvider.notifier).switchUploadTarget(target);
+        // Without Wi-Fi the upload cannot start: do not wait for it.
+        final wifi = ref.read(commissionProvider).wifi;
+        await ref
+            .read(commissionProvider.notifier)
+            .switchUploadTarget(
+              target,
+              waitUpload:
+                  wifi != WifiVerdict.failed &&
+                  wifi != WifiVerdict.notConfigured,
+            );
+    }
+  }
+
+  /// 「重設 Wi-Fi」 / 「設定 Wi-Fi」 in the network check. When the upload
+  /// target must change too it is switched first (one reboot, see
+  /// [CommissioningController.startWifiFix]), then the Wi-Fi form opens.
+  Future<void> _fixWifi() async {
+    final s = ref.read(commissionProvider);
+    if (s.busy) return;
+    final env = ref.read(backendEnvProvider);
+    MqttTarget? target;
+    final (need, wanted) = uploadSyncNeed(s, env.uploadTarget);
+    if (need == SyncNeed.sync) {
+      final policy = ref.read(envSwitchPolicyProvider);
+      final ok =
+          !policy.confirmGatewaySwitch ||
+          await confirmUploadTargetSwitch(context, wanted: wanted!);
+      if (!mounted) return;
+      if (ok) target = wanted;
+    }
+    await ref.read(commissionProvider.notifier).startWifiFix(target: target);
+    if (!mounted) return;
+    final next = ref.read(commissionProvider);
+    if (next.step == 2 && next.checkPassed) {
+      setState(() {
+        _site.text =
+            '${next.config['suggested_site_id'] ?? next.config['site_id'] ?? 1}';
+        _gateway.text =
+            '${next.config['suggested_gateway_id'] ?? next.config['gateway_id'] ?? 1}';
+        _ssid.text = next.config['wifi_ssid']?.toString() ?? '';
+        _wifi.clear();
+        _customWifi = false;
+      });
     }
   }
 
@@ -257,16 +301,6 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     }
   }
 
-  static const labels = [
-    '準備',
-    '找到閘道器',
-    '身份與 WiFi',
-    '確認上線',
-    '選擇 PTU',
-    '開始監控',
-    '驗證資料',
-    '完成',
-  ];
   @override
   void initState() {
     super.initState();
@@ -327,6 +361,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     final demo = ref.watch(demoProvider),
         colors = Theme.of(context).colorScheme;
     final env = ref.watch(backendEnvProvider);
+    final shown = displayStep(state, env);
     return PopScope(
       canPop: !state.busy,
       child: Scaffold(
@@ -370,12 +405,17 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                     style: TextStyle(color: colors.onSurfaceVariant),
                   ),
                   const SizedBox(height: 24),
-                  LinearProgressIndicator(value: state.step / 7),
+                  LinearProgressIndicator(
+                    value: shown / (stepLabels.length - 1),
+                  ),
                   const SizedBox(height: 12),
                   Text(
-                    '${state.step + 1} / 8   ${labels[state.step]}',
+                    '${shown + 1} / ${stepLabels.length}   ${stepLabels[shown]}',
+                    key: const Key('step-title'),
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
+                  const SizedBox(height: 8),
+                  StepList(current: shown),
                   const SizedBox(height: 16),
                   if (state.peer != null)
                     Text(
@@ -431,7 +471,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                     Padding(
                       padding: const EdgeInsets.only(bottom: 12),
                       child: Text(
-                        '尚未登入${env.label}：站號衝突檢查會先略過，第 3 步會請你輸入密碼。',
+                        '尚未登入${env.label}：站號衝突檢查會先略過，之後需要時會請你輸入密碼。',
                         style: TextStyle(color: colors.onSurfaceVariant),
                       ),
                     ),
@@ -459,6 +499,39 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                           ? null
                           : (value) =>
                                 ref.read(demoProvider.notifier).set(value),
+                    ),
+                  // Practice the network check: the simulated gateway's
+                  // Wi-Fi after it boots.
+                  if (state.step == 0 && demo)
+                    DropdownButtonFormField<String>(
+                      key: const Key('demo-wifi'),
+                      initialValue: ref.read(demoSystemProvider).wifiState,
+                      isExpanded: true,
+                      decoration: const InputDecoration(
+                        labelText: '模擬 Gateway 的 Wi-Fi',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 'got_ip', child: Text('已連上')),
+                        DropdownMenuItem(
+                          value: 'connecting',
+                          child: Text('剛開機，正在連'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'disconnected',
+                          child: Text('連不上（Wi-Fi 不在附近）'),
+                        ),
+                      ],
+                      onChanged: state.busy
+                          ? null
+                          : (value) {
+                              if (value == null) return;
+                              setState(
+                                () => ref
+                                    .read(demoSystemProvider)
+                                    .simulateWifi(value),
+                              );
+                            },
                     ),
                 ],
               ),
@@ -581,7 +654,10 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           ),
         ];
       case 2:
+        final check = networkCheck(state: s, env: env);
+        if (!s.checkPassed) return _networkCheck(s, c, check, enabled);
         if (s.config['choose_station'] == true) {
+          final reason = check.reuseBlockedReason;
           return [
             Text(
               '目前站點：${s.config['site_id']}\n閘道器編號：${s.config['gateway_id']}',
@@ -591,10 +667,35 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               '目前設定的 Wi-Fi：${(s.config['wifi_ssid']?.toString() ?? '').isEmpty ? '尚未設定' : s.config['wifi_ssid']}',
             ),
             const SizedBox(height: 12),
+            _markedText(
+              reason == null
+                  ? const CheckLine(
+                      '✓',
+                      '網路體檢通過：Gateway 能上網，資料上傳中。',
+                      StatusTone.ok,
+                    )
+                  : CheckLine('⚠', '網路體檢未通過：$reason。', StatusTone.warn),
+              key: const Key('station-check'),
+            ),
+            const SizedBox(height: 12),
             const Text(
               '沿用會保留目前設定；設定新站點與 Wi-Fi 可一起修改站號及無線網路，儲存後重新開通。原站歷史資料不會刪除。',
             ),
-            button('沿用目前站點', () => c.chooseStation(newStation: false), enabled),
+            button(
+              '沿用目前站點',
+              () => c.chooseStation(newStation: false),
+              enabled && reason == null,
+            ),
+            if (reason != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  '要沿用目前站點，Gateway 必須先連上 Wi-Fi 並開始上傳資料（目前：$reason）。'
+                  '請用「保留站點，重設 Wi-Fi」，或按「回到網路體檢」。',
+                  key: const Key('reuse-blocked'),
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ),
             button('保留站點，重設 Wi-Fi', () {
               c.chooseStation(newStation: false, wifiOnly: true);
               _site.text = '${s.config['site_id']}';
@@ -609,9 +710,17 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               _gateway.text = '1';
               _wifi.clear();
             }, enabled),
+            TextButton(
+              onPressed: enabled ? c.backToNetworkCheck : null,
+              child: const Text('回到網路體檢'),
+            ),
           ];
         }
         return [
+          const Padding(
+            padding: EdgeInsets.only(bottom: 12),
+            child: Text('Gateway 只能用 2.4 GHz 的 Wi-Fi，5 GHz 的網路連不上。'),
+          ),
           if (s.config['wifi_only'] == true)
             Text(
               '保留站點 ${s.config['site_id']}／閘道器 ${s.config['gateway_id']}，只更新 Wi-Fi。',
@@ -659,12 +768,19 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             );
             _wifi.clear();
           }, enabled),
+          TextButton(
+            onPressed: enabled ? c.backToNetworkCheck : null,
+            child: const Text('返回網路體檢'),
+          ),
         ];
       case 3:
+        final check = networkCheck(state: s, env: env);
         return [
           const Icon(Icons.cloud_outlined, size: 48),
           const SizedBox(height: 12),
           const Text('確認閘道器不只連上 WiFi，後端也持續收到心跳。'),
+          const SizedBox(height: 8),
+          Text('Gateway 自己回報：${check.upload.line}'),
           if (!s.loggedIn) ...[
             const SizedBox(height: 12),
             field(_login, '若要確認後端，請輸入${env.label}的登入密碼', secret: true),
@@ -681,6 +797,12 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           TextButton(
             onPressed: enabled ? () => c.online(skip: true) : null,
             child: const Text('暫未確認，先配置 PTU'),
+          ),
+          Text(
+            '略過的話，最後「驗證資料」仍會確認資料有沒有上傳。',
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
         ];
       case 4:
@@ -826,5 +948,187 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     if (demo || _login.text.isNotEmpty) return true;
     _snack('請先輸入${ref.read(backendEnvProvider).label}的登入密碼。');
     return false;
+  }
+
+  /// A check line: the mark in its tone colour, the words in the normal one.
+  Widget _markedText(CheckLine line, {Key? key}) => Text.rich(
+    key: key,
+    TextSpan(
+      children: [
+        TextSpan(
+          text: '${line.mark} ',
+          style: TextStyle(
+            color: toneColor(context, line.tone),
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        TextSpan(text: line.text),
+      ],
+    ),
+  );
+
+  /// 「Gateway 網路體檢」 → 「對準上傳目標」 → 「確認資料上傳」 (step 2
+  /// before the station choice; again after a Wi-Fi change that keeps the
+  /// station, before the data verification).
+  List<Widget> _networkCheck(
+    CommissionState s,
+    CommissioningController c,
+    NetworkCheck check,
+    bool enabled,
+  ) {
+    final theme = Theme.of(context);
+    final muted = TextStyle(color: theme.colorScheme.onSurfaceVariant);
+    final station = s.config['fleet_joined'] == true;
+    // Wi-Fi changed with the station kept: the data verification is next.
+    final recheck = s.config['wifi_only'] == true;
+    final wifiAction = check.wifiVerdict == WifiVerdict.notConfigured
+        ? '設定 Wi-Fi'
+        : '重設 Wi-Fi';
+
+    Widget item(String title, CheckLine line, String key) => Padding(
+      padding: const EdgeInsets.only(top: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: theme.textTheme.bodySmall?.merge(muted)),
+          const SizedBox(height: 2),
+          _markedText(line, key: Key(key)),
+        ],
+      ),
+    );
+
+    final nextLabel = recheck
+        ? '下一步：驗證資料'
+        : station
+        ? '下一步：選擇站點'
+        : '下一步：設定身份與 Wi-Fi';
+    final skipLabel = station
+        ? '先選擇站點（沿用要等網路正常）'
+        : s.offline
+        ? '先離線配置新站點（稍後再確認上傳）'
+        : '仍要繼續設定新站點（稍後再確認上傳）';
+
+    return [
+      Text(
+        recheck ? '確認資料上傳' : 'Gateway 網路體檢',
+        style: theme.textTheme.titleMedium,
+      ),
+      const SizedBox(height: 4),
+      Text(
+        recheck
+            ? 'Wi-Fi 已更新。等 Gateway 開始上傳資料，就可以驗證資料。'
+            : '先確認 Gateway 能上網、資料送對地方，再選擇站點。',
+        style: muted,
+      ),
+      item('Gateway 的 Wi-Fi', check.wifi, 'check-wifi'),
+      if (check.wifiProblem) ...[
+        button(wifiAction, _fixWifi, enabled),
+        if (check.need == SyncNeed.sync)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              '按下後會先讓 Gateway 改送到${placeOf(check.syncTarget!)}'
+              '（重新開機一次），再設定 Wi-Fi。',
+              style: muted,
+            ),
+          ),
+      ],
+      item('資料送到哪裡', check.target, 'check-target'),
+      if (!check.wifiProblem && check.need == SyncNeed.sync)
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: SizedBox(
+            width: double.infinity,
+            child: FilledButton.tonal(
+              key: const Key('check-sync'),
+              onPressed: enabled ? () => _syncGateway(explicit: true) : null,
+              child: Text(
+                '讓 Gateway 改送到${placeOf(check.syncTarget!)}（重新開機約 1 分鐘）',
+              ),
+            ),
+          ),
+        ),
+      item('資料上傳', check.upload, 'check-upload'),
+      if (check.uploadHint != null)
+        Container(
+          key: const Key('check-hint'),
+          margin: const EdgeInsets.only(top: 10),
+          padding: const EdgeInsets.all(12),
+          color: theme.colorScheme.secondaryContainer,
+          child: Text(
+            check.uploadHint!,
+            style: TextStyle(color: theme.colorScheme.onSecondaryContainer),
+          ),
+        ),
+      if (check.wifiOk &&
+          check.targetOk &&
+          !check.uploadOk &&
+          check.upload.tone == StatusTone.bad)
+        TextButton(
+          onPressed: enabled ? _fixWifi : null,
+          child: const Text('重設 Wi-Fi'),
+        ),
+      if (check.ready)
+        button(nextLabel, () => c.passNetworkCheck(), enabled)
+      else
+        TextButton(
+          key: const Key('check-refresh'),
+          onPressed: enabled ? c.refreshUploadTarget : null,
+          child: const Text('重新檢查'),
+        ),
+      // A new gateway with no Wi-Fi gets the identity/Wi-Fi form from the
+      // button above; skipping would lead to the same form.
+      if (!recheck && check.canSkip && (station || !check.wifiProblem)) ...[
+        TextButton(
+          key: const Key('check-skip'),
+          onPressed: enabled ? () => c.passNetworkCheck(skip: true) : null,
+          child: Text(skipLabel),
+        ),
+        Text(
+          station
+              ? '沒有通過網路體檢時不能沿用目前站點；可以重設 Wi-Fi 或設定新站點。'
+              : '⚠ Gateway 的網路還沒確認好。設定完新站點後會再確認資料上傳，'
+                    '最後的「驗證資料」也會檢查。',
+          style: muted,
+        ),
+      ],
+      if (recheck && station && !check.ready)
+        TextButton(
+          onPressed: enabled ? c.backToStationChoice : null,
+          child: const Text('回到站點選擇'),
+        ),
+    ];
+  }
+}
+
+/// The steps in order, the current one highlighted.
+class StepList extends StatelessWidget {
+  const StepList({super.key, required this.current});
+  final int current;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final small = theme.textTheme.bodySmall;
+    return Wrap(
+      key: const Key('step-list'),
+      spacing: 10,
+      runSpacing: 4,
+      children: [
+        for (final (i, label) in stepLabels.indexed)
+          Text(
+            '${i + 1} $label',
+            style: small?.copyWith(
+              color: i == current
+                  ? colors.primary
+                  : i < current
+                  ? colors.onSurfaceVariant
+                  : colors.outline,
+              fontWeight: i == current ? FontWeight.w700 : null,
+            ),
+          ),
+      ],
+    );
   }
 }

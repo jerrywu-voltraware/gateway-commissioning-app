@@ -250,12 +250,14 @@ void main() {
         env: _production,
         state: _state(
           _target('production', connected: false),
-          net: {'wifi_state': 'connecting', 'ip': ''},
+          net: {'wifi_state': 'connecting', 'ip': '', 'ssid': 'Xiaomi_WU'},
           watch: UploadWatch.gaveUp,
         ),
         probe: _healthy,
       );
-      expect(wifi.hint, startsWith('Gateway 還沒連上 Wi-Fi'));
+      // Polling gave up: the last Wi-Fi state is the cause, in plain words.
+      expect(wifi.hint, startsWith('Gateway 連不上 Wi-Fi「Xiaomi_WU」'));
+      expect(wifi.gateway.status, '✗ Wi-Fi 沒連上');
       final lost = connectionStatus(
         env: _production,
         state: _state(_target('production'), watch: UploadWatch.linkLost),
@@ -583,7 +585,9 @@ void main() {
       final (container, _) = await _connected(fake);
       addTearDown(container.dispose);
       await _sleep(60);
-      expect(fake.polls, 0);
+      // One read for the network check at connect (1.7.x answers
+      // get_net_status), but no upload polling.
+      expect(fake.polls, 1);
       expect(container.read(commissionProvider).uploadWatch, UploadWatch.idle);
     });
   });
