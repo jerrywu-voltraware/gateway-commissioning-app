@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'mqtt_target.dart';
 
 const nusService = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
 const nusRx = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
@@ -11,6 +12,7 @@ const sensitiveOps = {
   'ota_update',
   'join_fleet',
   'leave_fleet',
+  'set_mqtt_target',
 };
 
 enum ProtocolProfile { legacy, current }
@@ -41,6 +43,7 @@ class GatewayFailure implements Exception {
     this.detail,
     this.backend,
     this.fromGateway = false,
+    this.expected,
   });
 
   /// HTTP error from the dashboard API (non-2xx other than 401/409).
@@ -50,7 +53,8 @@ class GatewayFailure implements Exception {
     this.detail,
     this.backend,
   }) : code = 'api',
-       fromGateway = false;
+       fromGateway = false,
+       expected = null;
 
   /// Backend could not be reached (socket error, refused, TLS, timeout).
   const GatewayFailure.network({
@@ -59,7 +63,8 @@ class GatewayFailure implements Exception {
     this.backend,
   }) : code = 'network',
        status = null,
-       fromGateway = false;
+       fromGateway = false,
+       expected = null;
 
   /// Fail ack sent by the gateway firmware over BLE.
   const GatewayFailure.gateway(String text)
@@ -68,7 +73,43 @@ class GatewayFailure implements Exception {
       endpoint = null,
       detail = null,
       backend = null,
-      fromGateway = true;
+      fromGateway = true,
+      expected = null;
+
+  /// Fail ack of `set_mqtt_target`; [reason] is the firmware code.
+  const GatewayFailure.uploadTarget(String reason)
+    : code = 'upload_target',
+      detail = reason,
+      status = null,
+      endpoint = null,
+      backend = null,
+      fromGateway = true,
+      expected = null;
+
+  /// Step 7 preflight: the gateway uploads to [gatewayTarget] while the APP
+  /// verifies against [appTarget], so the data can never arrive.
+  const GatewayFailure.targetMismatch({
+    required String gatewayTarget,
+    required String appTarget,
+  }) : code = 'target_mismatch',
+       detail = gatewayTarget,
+       expected = appTarget,
+       status = null,
+       endpoint = null,
+       backend = null,
+       fromGateway = false;
+
+  /// After switching, the gateway reports [actual] instead of [wanted].
+  const GatewayFailure.targetReadback({
+    required String actual,
+    required String wanted,
+  }) : code = 'target_readback',
+       detail = actual,
+       expected = wanted,
+       status = null,
+       endpoint = null,
+       backend = null,
+       fromGateway = false;
 
   /// Any non-GatewayFailure exception; keeps its type and a short text.
   factory GatewayFailure.unexpected(Object error) {
@@ -85,6 +126,9 @@ class GatewayFailure implements Exception {
   final int? status;
   final String? endpoint, detail, backend;
   final bool fromGateway;
+
+  /// Upload target the APP expected (target_mismatch / target_readback).
+  final String? expected;
 
   static final _gatewayPath = RegExp(r'^/api/gateways/(\d+)/(\d+)(/|$)');
 
@@ -110,6 +154,7 @@ class GatewayFailure implements Exception {
   }
 
   String get message {
+    if (code == 'upload_target') return uploadTargetFailureText(detail ?? '');
     if (fromGateway && !_knownCodes.contains(code)) {
       return code.isEmpty ? 'Gateway 回報失敗（未提供原因）。' : 'Gateway 回報失敗：$code';
     }
@@ -123,6 +168,18 @@ class GatewayFailure implements Exception {
         '後端回應格式無法解析（$_backendText）。\n'
             '[${endpoint ?? ''}${detail == null ? '' : ' · $detail'}]',
       'unexpected' => 'APP 發生未預期錯誤：${detail ?? '未知'}',
+      'target_mismatch' =>
+        'Gateway 目前上傳到$detail，但 APP 連線的是$expected，'
+            '資料不會進入這個後端，因此不等待、直接停止驗證。\n'
+            '請先在「Gateway 上傳目標」將 Gateway 切換到$expected，'
+            '或把 APP 的連線環境改成與 Gateway 一致後再驗證。',
+      'target_readback' =>
+        'Gateway 重新連線後回報的上傳目標是$detail，不是要求的$expected。'
+            '設定可能未生效，請按「重新讀取」確認或再切換一次。',
+      'target_reconnect' =>
+        'Gateway 已收到切換指令並重新開機，但 45 秒內未能重新連上藍牙。'
+            '請靠近 Gateway，按「結束並重新選擇閘道器」重新連線後確認上傳目標。',
+      'target_unsupported' => legacyTargetText(detail),
       _ => _baseMessage,
     };
   }

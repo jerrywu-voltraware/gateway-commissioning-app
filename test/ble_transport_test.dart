@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:universal_ble/universal_ble.dart';
+import 'package:gateway_commissioning/core/mqtt_target.dart';
 import 'package:gateway_commissioning/core/protocol.dart';
 import 'package:gateway_commissioning/data/ble_gateway_link.dart';
 import 'package:gateway_commissioning/data/contracts.dart';
@@ -10,6 +11,10 @@ class FakePlatform extends UniversalBlePlatform {
   bool connected = false, subscribed = false, failMtu = false, drop = false;
   final chunks = <int>[];
   final frames = JsonFrames();
+  final requests = <Map<String, dynamic>>[];
+
+  /// Firmware-style ACK body ({status, result}) for a request frame.
+  Map<String, dynamic> Function(Map<String, dynamic> frame)? respond;
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
   @override
@@ -76,11 +81,15 @@ class FakePlatform extends UniversalBlePlatform {
       return;
     }
     for (final frame in frames.add(bytes)) {
+      requests.add(frame);
       final ack = utf8.encode(
         jsonEncode({
           'req_id': frame['req_id'],
-          'status': 'ok',
-          'result': {'message': '測試成功'},
+          ...respond?.call(frame) ??
+              {
+                'status': 'ok',
+                'result': {'message': '測試成功'},
+              },
         }),
       );
       // Split UTF-8 notifications across arbitrary byte boundaries.
@@ -117,6 +126,44 @@ void main() {
       await link.disconnect();
     });
   }
+  test('set_mqtt_target envelope and JSON-string ACK result', () async {
+    const result =
+        '{"mqtt_target":"local","mqtt_host":"192.168.1.50",'
+        '"mqtt_port":8883,"changed":true,"reboot_in_ms":1500}';
+    final platform = FakePlatform()
+      ..respond = (_) => {'status': 'ok', 'result': result, 'ts': 1790000000};
+    UniversalBle.setInstance(platform);
+    final link = BleGatewayLink();
+    await link.connect(const GatewayPeer('AA:BB:CC:DD:EE:FF', 'GIOS-S1', -40));
+    final payload = await link.command(
+      'set_mqtt_target',
+      const MqttTarget.local('192.168.1.50').params,
+    );
+    final sent = platform.requests.single;
+    expect(sent['op'], 'set_mqtt_target');
+    expect(sent['params'], {
+      'target': 'local',
+      'host': '192.168.1.50',
+      'port': 8883,
+    });
+    expect((sent['req_id'] as String).length, lessThanOrEqualTo(32));
+    expect(sent['ts'], isA<int>(), reason: 'sent as a sensitive op');
+    final ack = parseSetTargetAck(payload)!;
+    expect(ack.changed, isTrue);
+    expect(ack.rebootInMs, 1500);
+    expect(ack.target.label, '本地 192.168.1.50:8883');
+
+    platform.respond = (_) => {'status': 'fail', 'result': 'invalid_host'};
+    await expectLater(
+      link.command('set_mqtt_target', {'target': 'local', 'host': 'x'}),
+      throwsA(
+        isA<GatewayFailure>()
+            .having((e) => e.code, 'code', 'invalid_host')
+            .having((e) => e.fromGateway, 'fromGateway', isTrue),
+      ),
+    );
+    await link.disconnect();
+  });
   test('Universal BLE disconnect fails pending command', () async {
     final platform = FakePlatform()..drop = true;
     UniversalBle.setInstance(platform);

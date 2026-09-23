@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../core/mqtt_target.dart';
 import '../core/protocol.dart';
 import '../data/ble_gateway_link.dart';
 import '../data/contracts.dart';
@@ -45,10 +46,14 @@ class CommissionState {
     this.report = '',
     this.online = false,
     this.missing = const [],
+    this.uploadNotice = '',
   });
   final int step, seconds;
   final bool busy, verified, online;
   final String message, report;
+
+  /// Outcome of the last upload-target switch or refresh (shown in its card).
+  final String uploadNotice;
   final String? error;
   final List<GatewayPeer> peers;
   final GatewayPeer? peer;
@@ -73,6 +78,7 @@ class CommissionState {
     String? report,
     bool? online,
     List<String>? missing,
+    String? uploadNotice,
   }) => CommissionState(
     step: step ?? this.step,
     busy: busy ?? this.busy,
@@ -89,6 +95,7 @@ class CommissionState {
     report: report ?? this.report,
     online: online ?? this.online,
     missing: missing ?? this.missing,
+    uploadNotice: uploadNotice ?? this.uploadNotice,
   );
 }
 
@@ -345,6 +352,7 @@ class CommissioningController extends Notifier<CommissionState> {
             ptus: devices,
             selected: devices.map((d) => d['mac'].toString()).toSet(),
             message: '此閘道器已有站點設定，請選擇沿用或設定新站。',
+            uploadNotice: '',
           );
           return;
         }
@@ -394,6 +402,7 @@ class CommissioningController extends Notifier<CommissionState> {
           peer: peer,
           config: config,
           message: '已連線，請設定身份與 WiFi',
+          uploadNotice: '',
         );
       });
   void chooseStation({required bool newStation, bool wifiOnly = false}) {
@@ -524,6 +533,8 @@ class CommissioningController extends Notifier<CommissionState> {
             throw const GatewayFailure('wifi_failed');
           }
         }
+        // Keep the reported upload target; MQTT is still coming up here.
+        _absorbTarget({...net}..remove('mqtt_connected'));
         connected = true;
         break;
       }
@@ -742,11 +753,25 @@ class CommissioningController extends Notifier<CommissionState> {
       }
     }
   });
+
+  /// [environment] is the selector value (`production` / `local` / `custom`);
+  /// when omitted the target is derived from [base] alone.
   Future<void> verify(
     String base,
-    String password,
-  ) => _run('確認每台 PTU 的資料持續進入後端', 180, (generation) async {
+    String password, {
+    String? environment,
+  }) => _run('確認每台 PTU 的資料持續進入後端', 180, (generation) async {
     _backend = describeBackend(Uri.tryParse(base.trim()));
+    // Fail fast when the gateway is known to upload elsewhere: the data can
+    // never reach this backend, so waiting the full window only hides why.
+    final wanted = desiredUploadTarget(environment ?? 'custom', base).target;
+    final running = parseMqttTarget(state.config);
+    if (wanted != null && running != null && !running.sameAs(wanted)) {
+      throw GatewayFailure.targetMismatch(
+        gatewayTarget: running.label,
+        appTarget: wanted.label,
+      );
+    }
     if (!_loggedIn) {
       await _api.login(base, password);
       _check(generation);
@@ -857,6 +882,183 @@ class CommissioningController extends Notifier<CommissionState> {
     }
     throw const GatewayFailure('incomplete');
   });
+  // ---- Gateway upload target (firmware 1.7.3, docs/mqtt_target.md) ----
+
+  static const _reconnectBudget = Duration(seconds: 45);
+
+  /// Copies mqtt_target / mqtt_host / mqtt_port (and mqtt_connected) from a
+  /// get_net_status or get_config result into the gateway config.
+  void _absorbTarget(Map<String, dynamic> source) {
+    final update = {
+      for (final key in mqttStatusKeys)
+        if (source.containsKey(key)) key: source[key],
+    };
+    if (update.isEmpty) return;
+    state = state.copy(config: {...state.config, ...update});
+  }
+
+  /// Runs a gateway-side task that must not replace the step's guidance text.
+  Future<void> _sideTask(
+    String label,
+    int timeout,
+    Future<void> Function(int) action,
+  ) {
+    final resume = state.message;
+    return _run(label, timeout, (generation) async {
+      await action(generation);
+      state = state.copy(message: resume);
+    });
+  }
+
+  String _mqttText(MqttTarget target) =>
+      switch (state.config['mqtt_connected']) {
+        true => 'MQTT 已連線。',
+        false when target.isLocal =>
+          'MQTT 尚未連線：請確認電腦防火牆已開放 TCP 8883、本地 MQTT broker 已啟動，'
+              '且 broker 憑證包含 ${target.host}。可稍後按「重新讀取」確認。',
+        false => 'MQTT 尚未連線：請確認現場網路可連到正式站。可稍後按「重新讀取」確認。',
+        _ => 'MQTT 連線狀態尚未確認，可稍後按「重新讀取」。',
+      };
+
+  /// Re-reads the running upload target and MQTT state.
+  Future<void> refreshUploadTarget() =>
+      _sideTask('讀取 Gateway 上傳目標', 20, (generation) async {
+        final net = await _command(generation, 'get_net_status');
+        _absorbTarget(net);
+        final target = parseMqttTarget(state.config);
+        state = state.copy(
+          uploadNotice: target == null ? '' : '已重新讀取。${_mqttText(target)}',
+        );
+      });
+
+  /// Sends `set_mqtt_target`; on a change the gateway reboots, so reconnect to
+  /// the same gateway and confirm the running target by reading it back.
+  Future<void> switchUploadTarget(
+    MqttTarget wanted,
+  ) => _sideTask('切換 Gateway 上傳目標', 120, (generation) async {
+    final peer = state.peer;
+    if (peer == null) throw const GatewayFailure('disconnected');
+    if (!reportsMqttTarget(state.config)) {
+      throw GatewayFailure(
+        'target_unsupported',
+        detail: state.config['fw_version']?.toString(),
+      );
+    }
+    SetTargetAck? ack;
+    try {
+      ack = parseSetTargetAck(
+        await _command(generation, 'set_mqtt_target', wanted.params),
+      );
+    } on GatewayFailure catch (error) {
+      if (error.fromGateway) throw GatewayFailure.uploadTarget(error.code);
+      // ACK lost: the gateway may already be rebooting. Reconnect and
+      // read back instead of guessing.
+      if (error.code != 'disconnected' && error.code != 'timeout') rethrow;
+    }
+    if (ack != null && !ack.changed) {
+      _absorbTarget(await _command(generation, 'get_net_status'));
+      final now = parseMqttTarget(state.config) ?? ack.target;
+      if (!now.sameAs(wanted)) {
+        throw GatewayFailure.targetReadback(
+          actual: now.label,
+          wanted: wanted.label,
+        );
+      }
+      state = state.copy(
+        uploadNotice: '上傳目標未變更：Gateway 已是${now.label}，未重新開機。${_mqttText(now)}',
+      );
+      return;
+    }
+    // Changed (or outcome unknown): the old MQTT state no longer applies.
+    state = state.copy(
+      config: {...state.config}..remove('mqtt_connected'),
+      uploadNotice: '',
+    );
+    await _reconnectAfterReboot(generation, peer, ack?.rebootInMs ?? 1500);
+    final confirmed = await _readBackTarget(generation, wanted);
+    state = state.copy(
+      uploadNotice:
+          '已切換到${confirmed.label}，Gateway 已重新開機並重新連線。${_mqttText(confirmed)}',
+    );
+  });
+
+  Future<void> _reconnectAfterReboot(
+    int generation,
+    GatewayPeer peer,
+    int rebootMs,
+  ) async {
+    await _link.disconnect();
+    _check(generation);
+    // The firmware restarts rebootMs after the ACK; advertising resumes a
+    // couple of seconds later.
+    await _wait(((rebootMs + 2500) / 1000).ceil(), generation);
+    final deadline = Stopwatch()..start();
+    for (int attempt = 0; ; attempt++) {
+      try {
+        final remaining = _reconnectBudget - deadline.elapsed;
+        await _link
+            .connect(peer)
+            .timeout(
+              remaining > const Duration(seconds: 5)
+                  ? remaining
+                  : const Duration(seconds: 5),
+            );
+        _check(generation);
+        await _command(generation, 'ping');
+        return;
+      } on TimeoutException {
+        await _link.disconnect();
+      } catch (_) {
+        // Retried below; cancellation is detected by _check.
+      }
+      _check(generation);
+      if (attempt >= 14 || deadline.elapsed >= _reconnectBudget) {
+        throw const GatewayFailure('target_reconnect');
+      }
+      await _wait(3, generation);
+    }
+  }
+
+  /// Reads the running target after a reboot. get_net_status is refused with
+  /// not_ready until boot finishes; get_config already reports the target, so
+  /// it is used meanwhile. Polls briefly for mqtt_connected.
+  Future<MqttTarget> _readBackTarget(int generation, MqttTarget wanted) async {
+    const transient = ['not_ready', 'busy', 'timeout'];
+    MqttTarget? seen;
+    for (int attempt = 0; attempt < 10; attempt++) {
+      if (attempt > 0) await _wait(3, generation);
+      Map<String, dynamic> status;
+      try {
+        status = await _command(generation, 'get_net_status');
+      } on GatewayFailure catch (error) {
+        if (!transient.contains(error.code)) rethrow;
+        try {
+          status = await _command(generation, 'get_config');
+        } on GatewayFailure catch (error) {
+          if (!transient.contains(error.code)) rethrow;
+          continue;
+        }
+      }
+      _absorbTarget(status);
+      final target = parseMqttTarget(status);
+      if (target == null || !target.sameAs(wanted)) {
+        throw GatewayFailure.targetReadback(
+          actual: target?.label ?? '（未回報）',
+          wanted: wanted.label,
+        );
+      }
+      seen = target;
+      if (status['mqtt_connected'] == true) break;
+    }
+    if (seen == null) {
+      throw GatewayFailure.targetReadback(
+        actual: '（無法讀取）',
+        wanted: wanted.label,
+      );
+    }
+    return seen;
+  }
+
   void setForeground(bool value) => _foreground = value;
   Future<void> refreshHealth() async {
     if (!_foreground || _healthBusy || state.busy || !_loggedIn) return;

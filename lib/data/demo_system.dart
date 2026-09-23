@@ -1,8 +1,13 @@
+import '../core/mqtt_target.dart';
+import '../core/protocol.dart';
 import 'contracts.dart';
+
+/// Compile-time production broker host reported by firmware 1.7.3.
+const demoProductionMqttHost = '46.250.255.172';
 
 class DemoSystem implements GatewayLink, GatewayApi {
   final config = <String, dynamic>{
-    'fw_version': '1.7.0',
+    'fw_version': '1.7.3',
     'site_id': 1,
     'gateway_id': 1,
     'gateway_uid': 'AABBCCDDEEFF',
@@ -11,6 +16,9 @@ class DemoSystem implements GatewayLink, GatewayApi {
     'fleet_joined': false,
     'ble_enabled': true,
     'upload_paused': true,
+    'mqtt_target': 'production',
+    'mqtt_host': demoProductionMqttHost,
+    'mqtt_port': defaultMqttPort,
   };
   final devices = List.generate(
     3,
@@ -26,6 +34,15 @@ class DemoSystem implements GatewayLink, GatewayApi {
   );
   bool monitored = true;
   int tick = 0;
+
+  /// MQTT state reported by get_net_status.
+  bool mqttConnected = true;
+
+  /// Set after a set_mqtt_target change: the simulated gateway reboots and
+  /// answers nothing until the APP reconnects.
+  bool rebooting = false;
+  int connects = 0;
+  final targetRequests = <Map<String, dynamic>>[];
   @override
   bool get demo => true;
   @override
@@ -37,7 +54,11 @@ class DemoSystem implements GatewayLink, GatewayApi {
     const GatewayPeer('demo-gateway', 'GIOS-S1-GW01', -42),
   ];
   @override
-  Future<void> connect(GatewayPeer peer) async {}
+  Future<void> connect(GatewayPeer peer) async {
+    connects++;
+    rebooting = false;
+  }
+
   @override
   Future<void> login(String base, String password) async {}
   @override
@@ -45,6 +66,7 @@ class DemoSystem implements GatewayLink, GatewayApi {
     String op, [
     Map<String, dynamic> params = const {},
   ]) async {
+    if (rebooting) throw const GatewayFailure('disconnected');
     switch (op) {
       case 'get_config':
         return Map.of(config);
@@ -59,11 +81,16 @@ class DemoSystem implements GatewayLink, GatewayApi {
         return {
           'wifi_state': 'got_ip',
           'ip': 'demo',
-          'mqtt_connected': true,
+          'mqtt_connected': mqttConnected,
           'ntp_synced': true,
           'ssid': config['wifi_ssid'],
           'last_wifi_error': '',
+          if (op == 'get_net_status')
+            for (final key in ['mqtt_target', 'mqtt_host', 'mqtt_port'])
+              if (config.containsKey(key)) key: config[key],
         };
+      case 'set_mqtt_target':
+        return _setMqttTarget(params);
       case 'scan_ble_discover':
       case 'get_ble_devices':
         return {'devices': devices.map(Map<String, dynamic>.of).toList()};
@@ -95,6 +122,53 @@ class DemoSystem implements GatewayLink, GatewayApi {
       default:
         return {};
     }
+  }
+
+  /// Mirrors cmd_exec_set_mqtt_target in firmware 1.7.3.
+  Map<String, dynamic> _setMqttTarget(Map<String, dynamic> params) {
+    if (!config.containsKey('mqtt_target')) {
+      throw const GatewayFailure.gateway('unknown op');
+    }
+    targetRequests.add(Map.of(params));
+    final target = params['target'];
+    if (target != 'production' && target != 'local') {
+      throw const GatewayFailure.gateway('invalid_target');
+    }
+    var host = demoProductionMqttHost;
+    var port = defaultMqttPort;
+    if (target == 'local') {
+      final h = params['host'];
+      if (h is! String || !isPrivateIpv4Literal(h)) {
+        throw const GatewayFailure.gateway('invalid_host');
+      }
+      host = h;
+      if (params.containsKey('port')) {
+        final p = params['port'];
+        if (p is! int || p < 1 || p > 65535) {
+          throw const GatewayFailure.gateway('invalid_port');
+        }
+        port = p;
+      }
+    }
+    final changed =
+        target != config['mqtt_target'] ||
+        (target == 'local' &&
+            (host != config['mqtt_host'] || port != config['mqtt_port']));
+    if (changed) {
+      config.addAll({
+        'mqtt_target': target,
+        'mqtt_host': host,
+        'mqtt_port': port,
+      });
+      rebooting = true;
+    }
+    return {
+      'mqtt_target': target,
+      'mqtt_host': host,
+      'mqtt_port': port,
+      'changed': changed,
+      'reboot_in_ms': changed ? 1500 : 0,
+    };
   }
 
   @override

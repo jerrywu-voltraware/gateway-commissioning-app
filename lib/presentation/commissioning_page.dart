@@ -3,7 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../application/commissioning_controller.dart';
+import '../core/mqtt_target.dart';
 import '../data/wifi_scan.dart';
+import 'upload_target_card.dart';
 
 class CommissioningPage extends ConsumerStatefulWidget {
   const CommissioningPage({
@@ -19,12 +21,7 @@ class CommissioningPage extends ConsumerStatefulWidget {
 
 class _CommissioningPageState extends ConsumerState<CommissioningPage>
     with WidgetsBindingObserver {
-  final _base = TextEditingController(
-    text: const String.fromEnvironment(
-      'API_BASE',
-      defaultValue: 'https://dashboard.voltraware.com',
-    ),
-  );
+  final _base = TextEditingController(text: productionApiBase);
   final _login = TextEditingController(),
       _ssid = TextEditingController(),
       _wifi = TextEditingController();
@@ -32,10 +29,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       _gateway = TextEditingController(text: '1');
   bool _offline = false;
   String _environment = 'production';
-  static const _productionUrl = String.fromEnvironment(
-    'API_BASE',
-    defaultValue: 'https://dashboard.voltraware.com',
-  );
+  static const _productionUrl = productionApiBase;
   static const _localUrl = String.fromEnvironment(
     'LOCAL_API_BASE',
     defaultValue: 'http://192.168.0.12:18000',
@@ -83,6 +77,17 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       _login.text = value == 'local' ? '54974211' : '';
     });
     await prefs.setString('backend_environment', value);
+  }
+
+  Future<void> _switchUploadTarget(MqttTarget wanted) async {
+    final current = parseMqttTarget(ref.read(commissionProvider).config);
+    final confirmed = await confirmUploadTargetSwitch(
+      context,
+      wanted: wanted,
+      current: current,
+    );
+    if (!confirmed || !mounted) return;
+    await ref.read(commissionProvider.notifier).switchUploadTarget(wanted);
   }
 
   bool _scanningWifi = false;
@@ -315,6 +320,19 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                             child: Text('處理中 · 最多等待 ${state.seconds} 秒'),
                           ),
                         ],
+                      ),
+                    ),
+                  // Earliest page with the gateway connected and its config read.
+                  if (state.peer != null && state.step >= 2 && state.step <= 6)
+                    ValueListenableBuilder<TextEditingValue>(
+                      valueListenable: _base,
+                      builder: (context, base, _) => UploadTargetCard(
+                        config: state.config,
+                        app: desiredUploadTarget(_environment, base.text),
+                        enabled: !state.busy,
+                        notice: state.uploadNotice,
+                        onSwitch: _switchUploadTarget,
+                        onRefresh: controller.refreshUploadTarget,
                       ),
                     ),
                   Card(
@@ -574,7 +592,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             ),
           ),
           button('開始資料驗證', () async {
-            await c.verify(_base.text, _login.text);
+            await c.verify(_base.text, _login.text, environment: _environment);
             _login.clear();
           }, enabled),
         ];

@@ -76,6 +76,8 @@ Future<(ProviderContainer, CommissioningController)> _atVerify(
   DemoSystem fake,
 ) async {
   SharedPreferences.setMockInitialValues({});
+  // The gateway uploads to the same LAN backend, so step 7 runs its checks.
+  fake.config.addAll({'mqtt_target': 'local', 'mqtt_host': '192.168.1.20'});
   final container = ProviderContainer(
     overrides: [
       linkProvider.overrideWithValue(fake),
