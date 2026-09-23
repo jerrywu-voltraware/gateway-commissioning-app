@@ -129,7 +129,8 @@ Future<(ProviderContainer, CommissioningController)> _verified(
   await c.prepare(productionApiBase, 'secret');
   await c.scan();
   await c.connect(container.read(commissionProvider).peers.single);
-  c.chooseStation(newStation: false);
+  await c.chooseStation(newStation: false);
+  await c.configurePtus();
   await c.verify(productionApiBase, '', environment: 'production');
   return (container, c);
 }
@@ -675,7 +676,8 @@ void main() {
       await c.prepare(productionApiBase, 'secret');
       await c.scan();
       await c.connect(container.read(commissionProvider).peers.single);
-      c.chooseStation(newStation: false);
+      await c.chooseStation(newStation: false);
+      await c.configurePtus();
       c.backendChanged(_otherBackend);
       expect(
         container.read(commissionProvider).message,

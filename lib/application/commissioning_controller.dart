@@ -81,12 +81,12 @@ const gatewayNetKeys = ['wifi_state', 'ip', 'ssid', 'rssi', 'uptime_sec'];
 
 /// 「沿用目前站點」 refused because the gateway cannot upload yet.
 const reuseBlockedText =
-    '「沿用目前站點」會直接驗證資料，但 Gateway 還沒連上 Wi-Fi 或還沒開始上傳資料。'
+    'Gateway 還沒連上 Wi-Fi 或還沒開始上傳資料，暫時不能沿用目前站點。'
     '請先用「保留站點，重設 Wi-Fi」，或回到網路體檢確認。';
 
-/// Station kept after a Wi-Fi change: the upload must work before step 6.
+/// Station kept after a Wi-Fi change: confirm upload before reviewing PTUs.
 const uploadNotReadyText =
-    '要等 Gateway 連上 Wi-Fi 並開始上傳資料，才能驗證資料。'
+    '要等 Gateway 連上 Wi-Fi 並開始上傳資料，才能繼續選擇 PTU。'
     '請等「確認資料上傳」出現 ✓，或再重設一次 Wi-Fi。';
 
 /// Step 7 after a backend switch: the earlier result belongs to the old one.
@@ -143,7 +143,7 @@ class CommissionState {
   /// Step 2: the network check (網路體檢 → 對準上傳目標 → 確認資料上傳)
   /// shown right after connecting has been passed or skipped, so the station
   /// choice or the identity/Wi-Fi form is shown. False again after a Wi-Fi
-  /// change that keeps the station, whose upload is confirmed before step 6.
+  /// change that keeps the station, whose upload is confirmed before PTU review.
   final bool checkPassed;
 
   /// The Wi-Fi grace period after a connect or reboot is over.
@@ -650,9 +650,9 @@ class CommissioningController extends Notifier<CommissionState> {
 
   /// Leaves the network check: to the station choice, the identity/Wi-Fi
   /// form (new gateway), or, after a Wi-Fi change that keeps the station, to
-  /// the data verification. [skip] continues although the check has not
-  /// passed; that is never allowed when the next page verifies data.
-  void passNetworkCheck({bool skip = false}) {
+  /// a fresh gateway PTU scan. [skip] continues although the check has not
+  /// passed; the Wi-Fi-only path still requires a successful network check.
+  Future<void> passNetworkCheck({bool skip = false}) async {
     if (!_atCheck) return;
     if (state.config['wifi_only'] == true) {
       if (!state.networkReady) {
@@ -660,13 +660,14 @@ class CommissioningController extends Notifier<CommissionState> {
         return;
       }
       state = state.copy(
-        step: 6,
+        step: 4,
         checkPassed: true,
         results: {},
         verified: false,
         report: '',
-        message: 'Wi-Fi 已更新，資料也開始上傳了，站點與 PTU 設定保留。可接著驗證資料。',
+        message: 'Wi-Fi 已更新，站點設定保留。接著由 Gateway 搜尋 PTU，請確認要監控的裝置。',
       );
+      await discover();
       return;
     }
     final station = state.config['choose_station'] == true;
@@ -751,16 +752,18 @@ class CommissioningController extends Notifier<CommissionState> {
     );
   }
 
-  void chooseStation({required bool newStation, bool wifiOnly = false}) {
+  Future<void> chooseStation({
+    required bool newStation,
+    bool wifiOnly = false,
+  }) async {
     if (state.busy || state.config['choose_station'] != true) return;
-    // 沿用 goes straight to the data verification, which cannot pass while
-    // the gateway has no Wi-Fi or no upload.
+    // Keep the network gate before proceeding with an existing station.
     if (!newStation && !wifiOnly && !state.networkReady) {
       state = state.copy(error: reuseBlockedText);
       return;
     }
     state = state.copy(
-      step: newStation || wifiOnly ? 2 : 6,
+      step: newStation || wifiOnly ? 2 : 4,
       checkPassed: true,
       config: {
         ...state.config,
@@ -776,8 +779,9 @@ class CommissioningController extends Notifier<CommissionState> {
           ? '請輸入新的站點 ID 與 Wi-Fi；儲存後才會變更閘道器。'
           : wifiOnly
           ? '保留目前站點與 PTU，僅更新 Wi-Fi。'
-          : '沿用目前站點，檢查資料是否正常上傳。',
+          : '沿用目前站點，由 Gateway 搜尋 PTU，請確認要監控的裝置。',
     );
+    if (!newStation && !wifiOnly) await discover();
   }
 
   Future<void> configureWifi(
@@ -1011,7 +1015,20 @@ class CommissioningController extends Notifier<CommissionState> {
     }
     throw const GatewayFailure('timeout');
   });
-  Future<void> discover() => _run('搜尋周邊與已連線 PTU', 35, (generation) async {
+
+  /// Return from verification to a fresh gateway-side inventory, without
+  /// changing the site, Wi-Fi or PTU assignments until the user confirms.
+  Future<void> rescanPtus() async {
+    if (state.busy || state.step < 4) return;
+    _health?.cancel();
+    state = state.copy(step: 4, verified: false, report: '', results: {});
+    await discover();
+  }
+
+  Future<void> discover() => _run('Gateway 正在掃描周邊 PTU，請稍候', 45, (
+    generation,
+  ) async {
+    state = state.copy(ptus: [], selected: {}, results: {}, missing: []);
     final response = await _command(generation, 'scan_ble_discover', {
       'duration': 10,
     });
@@ -1040,7 +1057,7 @@ class CommissioningController extends Notifier<CommissionState> {
       selected: selected,
       message: ptus.isEmpty
           ? const GatewayFailure('no_devices').message
-          : '選擇要監控的 PTU，最多五台',
+          : 'Gateway 已回傳 ${ptus.length} 台 PTU，請選擇要監控的裝置，最多五台',
     );
   });
   void select(String mac, bool selected) {
@@ -1169,6 +1186,10 @@ class CommissioningController extends Notifier<CommissionState> {
     String password, {
     String? environment,
   }) => _run('確認每台 PTU 的資料持續進入後端', 180, (generation) async {
+    if (!state.ptus.any((p) => state.selected.contains(p['mac']))) {
+      state = state.copy(step: 4, verified: false, report: '');
+      throw const GatewayFailure('no_devices');
+    }
     _backend = describeBackend(Uri.tryParse(base.trim()));
     final wanted = _checkUploadTarget(base, environment);
     final running = parseMqttTarget(state.config);

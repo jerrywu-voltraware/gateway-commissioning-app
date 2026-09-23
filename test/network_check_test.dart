@@ -172,8 +172,8 @@ void main() {
       expect(container.read(commissionProvider).networkReady, isFalse);
       c.backToNetworkCheck();
       expect(_check(container).wifiProblem, isTrue);
-      c.passNetworkCheck(skip: true);
-      c.chooseStation(newStation: false);
+      await c.passNetworkCheck(skip: true);
+      await c.chooseStation(newStation: false);
       expect(container.read(commissionProvider).step, 2);
       expect(container.read(commissionProvider).error, reuseBlockedText);
     });
@@ -200,16 +200,16 @@ void main() {
       expect(check.reuseBlockedReason, 'Gateway 還沒連上 Wi-Fi');
 
       // The controller refuses 沿用 however it is reached.
-      c.chooseStation(newStation: false);
+      await c.chooseStation(newStation: false);
       s = container.read(commissionProvider);
       expect(s.step, 2);
       expect(s.error, reuseBlockedText);
       expect(check.canSkip, isTrue);
-      c.passNetworkCheck(skip: true);
+      await c.passNetworkCheck(skip: true);
       s = container.read(commissionProvider);
       expect(s.checkPassed, isTrue);
       expect(s.config['choose_station'], isTrue);
-      c.chooseStation(newStation: false);
+      await c.chooseStation(newStation: false);
       s = container.read(commissionProvider);
       expect(s.step, 2, reason: 'no jump to data verification');
       expect(s.error, reuseBlockedText);
@@ -227,15 +227,16 @@ void main() {
       expect(check.ready, isTrue);
       expect(check.canSkip, isFalse);
       expect(displayStep(container.read(commissionProvider), _production), 4);
-      c.passNetworkCheck();
+      await c.passNetworkCheck();
       var s = container.read(commissionProvider);
       expect(s.checkPassed, isTrue);
       expect(displayStep(s, _production), 5);
-      c.chooseStation(newStation: false);
+      await c.chooseStation(newStation: false);
       s = container.read(commissionProvider);
       expect(s.error, isNull);
-      expect(s.step, 6);
-      expect(displayStep(s, _production), 8);
+      expect(s.step, 4);
+      expect(displayStep(s, _production), 6);
+      expect(fake.commands, contains('scan_ble_discover'));
     });
 
     test(
@@ -272,7 +273,7 @@ void main() {
         expect(displayStep(s, _production), 4);
         await _sleep(60);
         expect(_check(container).upload.tone, StatusTone.pending);
-        c.passNetworkCheck(skip: true);
+        await c.passNetworkCheck(skip: true);
         s = container.read(commissionProvider);
         expect(s.step, 2, reason: 'no verification before the upload works');
         expect(s.error, uploadNotReadyText);
@@ -280,10 +281,10 @@ void main() {
         fake.mqttConnected = true;
         await _sleep(60);
         expect(_check(container).ready, isTrue);
-        c.passNetworkCheck();
+        await c.passNetworkCheck();
         s = container.read(commissionProvider);
         expect(s.error, isNull);
-        expect(s.step, 6);
+        expect(s.step, 4);
         expect(s.selected, selected);
         expect(s.config['site_id'], 80);
       },
@@ -458,7 +459,7 @@ void main() {
         '請確認 Gateway 和這台電腦連同一個 Wi-Fi（可用「重設 Wi-Fi」）。',
       );
       expect(check.canSkip, isTrue);
-      c.passNetworkCheck(skip: true);
+      await c.passNetworkCheck(skip: true);
       expect(container.read(commissionProvider).checkPassed, isTrue);
       expect(container.read(commissionProvider).step, 2);
     });
@@ -553,7 +554,7 @@ void main() {
         final check = _check(container);
         expect(check.upload.tone, StatusTone.pending);
         expect(check.canSkip, isTrue, reason: 'offline: no waiting required');
-        c.passNetworkCheck(skip: true);
+        await c.passNetworkCheck(skip: true);
         await c.configureWifi(3, 1, 'Office-2G', 'password123');
         expect(container.read(commissionProvider).step, 3);
         await c.online(skip: true);
@@ -748,7 +749,8 @@ void main() {
       await tap(tester, find.text('下一步：選擇站點'));
       expect(title(tester), '6 / 10   站點選擇');
       await tap(tester, find.text('沿用目前站點'));
-      expect(title(tester), '9 / 10   驗證資料');
+      expect(title(tester), '7 / 10   選擇 PTU');
+      expect(fake.commands, contains('scan_ble_discover'));
       expect(tester.takeException(), isNull);
     });
 

@@ -683,7 +683,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             ),
             const SizedBox(height: 12),
             const Text(
-              '沿用會保留目前設定；設定新站點與 Wi-Fi 可一起修改站號及無線網路，儲存後重新開通。原站歷史資料不會刪除。',
+              '沿用會保留站點與 Wi-Fi，再由 Gateway 搜尋 PTU 供你確認；設定新站點與 Wi-Fi 可一起修改站號及無線網路。原站歷史資料不會刪除。',
             ),
             button(
               '沿用目前站點',
@@ -812,8 +812,10 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       case 4:
       case 5:
         return [
-          const Text('勾選要由這台閘道器監控的 PTU，最多五台。'),
-          button('搜尋周邊與已連線 PTU', () => c.discover(), enabled),
+          const Text(
+            '由 Gateway 掃描附近的 PTU，再透過藍牙把清單傳回手機。清單也包含已連線、不再廣播的 PTU。勾選要監控的裝置，最多五台。',
+          ),
+          button('由 Gateway 重新掃描 PTU', () => c.discover(), enabled),
           Text(
             '已連線 ${s.ptus.where((p) => p['connected'] == true).length} 台／周邊未連線 ${s.ptus.where((p) => p['connected'] != true).length} 台',
           ),
@@ -861,6 +863,10 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               subtitle: Text(ptu['mac'].toString()),
             ),
           ),
+          TextButton(
+            onPressed: enabled ? c.rescanPtus : null,
+            child: const Text('返回選擇 PTU，由 Gateway 重新掃描'),
+          ),
           button('開始資料驗證', () async {
             _flushBase();
             final current = ref.read(backendEnvProvider);
@@ -870,7 +876,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               environment: current.environment.name,
             );
             _login.clear();
-          }, enabled),
+          }, enabled && s.ptus.any((p) => s.selected.contains(p['mac']))),
         ];
       default:
         return [
@@ -983,7 +989,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     final theme = Theme.of(context);
     final muted = TextStyle(color: theme.colorScheme.onSurfaceVariant);
     final station = s.config['fleet_joined'] == true;
-    // Wi-Fi changed with the station kept: the data verification is next.
+    // Wi-Fi changed with the station kept: review a fresh PTU scan next.
     final recheck = s.config['wifi_only'] == true;
     final wifiAction = check.wifiVerdict == WifiVerdict.notConfigured
         ? '設定 Wi-Fi'
@@ -1002,7 +1008,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     );
 
     final nextLabel = recheck
-        ? '下一步：驗證資料'
+        ? '下一步：由 Gateway 搜尋 PTU'
         : station
         ? '下一步：選擇站點'
         : '下一步：設定身份與 Wi-Fi';
@@ -1020,7 +1026,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       const SizedBox(height: 4),
       Text(
         recheck
-            ? 'Wi-Fi 已更新。等 Gateway 開始上傳資料，就可以驗證資料。'
+            ? 'Wi-Fi 已更新。等 Gateway 開始上傳資料，再由 Gateway 搜尋 PTU 供你確認。'
             : '先確認 Gateway 能上網、資料送對地方，再選擇站點。',
         style: muted,
       ),

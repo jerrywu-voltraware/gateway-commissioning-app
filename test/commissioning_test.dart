@@ -25,7 +25,7 @@ void main() {
       'old-network',
     );
     final selected = container.read(commissionProvider).selected;
-    c.chooseStation(newStation: false, wifiOnly: true);
+    await c.chooseStation(newStation: false, wifiOnly: true);
     await c.configureWifi(81, 1, 'new-network', 'password123');
     expect(container.read(commissionProvider).error, isNotNull);
     expect(demo.config['wifi_ssid'], 'old-network');
@@ -38,9 +38,9 @@ void main() {
     expect(state.config['wifi_only'], isTrue);
     await Future<void>.delayed(const Duration(milliseconds: 20));
     expect(container.read(commissionProvider).config['mqtt_connected'], isTrue);
-    c.passNetworkCheck();
+    await c.passNetworkCheck();
     state = container.read(commissionProvider);
-    expect(state.step, 6);
+    expect(state.step, 4);
     expect(state.config['wifi_ssid'], 'new-network');
     expect(state.selected, selected);
     expect(demo.config['site_id'], 80);
@@ -64,9 +64,9 @@ void main() {
         isTrue,
       );
       expect(container.read(commissionProvider).step, 2);
-      c.chooseStation(newStation: newStation);
+      await c.chooseStation(newStation: newStation);
       expect(demo.config['site_id'], 80);
-      expect(container.read(commissionProvider).step, newStation ? 2 : 6);
+      expect(container.read(commissionProvider).step, newStation ? 2 : 4);
       if (newStation) {
         await c.configureWifi(80, 1, 'test', 'password123');
         expect(container.read(commissionProvider).error, isNotNull);

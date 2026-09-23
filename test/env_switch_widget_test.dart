@@ -405,6 +405,7 @@ void main() {
     expect(fake.targetRequests.single['host'], '192.168.1.50');
     await _passCheck(tester);
     await _tap(tester, find.text('沿用目前站點'));
+    await _tap(tester, find.text('配置 3 台並開始監控'));
     expect(find.text('驗證後端：本地測試（這台電腦上的測試主機）'), findsOneWidget);
     expect(find.textContaining('http://192.168.1.50'), findsNothing);
     await _tap(tester, find.text('開始資料驗證'));
@@ -463,6 +464,7 @@ void main() {
     await _connectGateway(tester);
     await _passCheck(tester);
     await _tap(tester, find.text('沿用目前站點'));
+    await _tap(tester, find.text('配置 3 台並開始監控'));
     await _tap(tester, find.text('開始資料驗證'));
     await _tap(tester, find.text('手機和 Gateway 都切回正式站'));
     await tester.enterText(
@@ -496,6 +498,7 @@ void main() {
     await _connectGateway(tester);
     await _passCheck(tester);
     await _tap(tester, find.text('沿用目前站點'));
+    await _tap(tester, find.text('配置 3 台並開始監控'));
     expect(container.read(commissionProvider).step, 6);
     expect(container.read(commissionProvider).loggedIn, isTrue);
     final url = find.widgetWithText(TextField, '後端網址');
