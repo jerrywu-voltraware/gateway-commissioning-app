@@ -278,6 +278,15 @@ ConnectionStatus connectionStatus({
     }
   }
   if (need == SyncNeed.invalid) hint = app.error;
+  if (state.uploadWatch == UploadWatch.linkLost) {
+    if (!noWifi) {
+      gateway = StatusRow(gateway.where, '？ 藍牙已中斷，上傳狀態待確認', StatusTone.warn);
+    }
+    hint = wifi == WifiVerdict.failed || wifi == WifiVerdict.notConfigured
+        ? wifiProblemHint(state)
+        : '手機和 Gateway 的藍牙已中斷，無法讀取目前狀態。'
+              '${state.step == 4 ? '請按「重新連線並掃描 PTU」。' : '請重新連線 Gateway 後再確認。'}';
+  }
   if (hint == null && phone.tone == StatusTone.bad) {
     hint = env.environment == BackendEnv.local
         ? '手機連不到測試主機：請確認電腦上的測試主機是否開著，且手機和電腦連同一個 Wi-Fi。'
@@ -311,7 +320,7 @@ ConnectionStatus connectionStatus({
           '${current.host.isEmpty ? '' : current.host}:${current.port}（TLS）'
     else
       'Gateway 上傳目標：${unconfirmed ? '未確認（切換結果尚未讀回）' : '無法辨識（${config['mqtt_target']}）'}',
-    'MQTT 連線：${switch (config['mqtt_connected']) {
+    '${state.uploadWatch == UploadWatch.linkLost ? '中斷前最後讀到的 MQTT 連線' : 'MQTT 連線'}：${switch (config['mqtt_connected']) {
       true => '已連線',
       false => '未連線',
       _ => '未知',

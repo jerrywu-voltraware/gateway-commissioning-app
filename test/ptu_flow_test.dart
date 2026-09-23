@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:gateway_commissioning/application/commissioning_controller.dart';
+import 'package:gateway_commissioning/application/backend_environment.dart';
+import 'package:gateway_commissioning/application/connection_status.dart';
+import 'package:gateway_commissioning/application/network_check.dart';
 import 'package:gateway_commissioning/core/protocol.dart';
 import 'package:gateway_commissioning/data/contracts.dart';
 import 'package:gateway_commissioning/data/demo_system.dart';
@@ -140,11 +143,28 @@ void main() {
       expect(state.error, isNotNull);
       expect(state.ptus, isEmpty);
       expect(state.selected, isEmpty);
+      expect(state.uploadWatch, UploadWatch.linkLost);
+      expect(state.networkReady, isFalse);
+      expect(state.message, contains('Gateway 掃描未完成'));
+      final status = connectionStatus(
+        env: const BackendEnvState(),
+        state: state,
+      );
+      expect(status.allOk, isFalse);
+      expect(status.gateway.status, contains('藍牙已中斷'));
+      expect(status.details.join('\n'), contains('中斷前最後讀到的 MQTT 連線'));
+      expect(
+        networkCheck(state: state, env: const BackendEnvState()).ready,
+        isFalse,
+      );
+      final before = fake.connects;
       fake.failScan = false;
       await controller.discover();
       state = container.read(commissionProvider);
       expect(state.error, isNull);
       expect(state.ptus, hasLength(1));
+      expect(fake.connects, before + 1);
+      expect(state.uploadWatch, isNot(UploadWatch.linkLost));
     },
   );
 
@@ -159,6 +179,51 @@ void main() {
       expect(container.read(commissionProvider).step, 4);
       expect(container.read(commissionProvider).error, isNotNull);
       expect(fake.requests, isEmpty);
+    },
+  );
+
+  testWidgets(
+    'scan disconnect shows stale status and offers reconnect instead of green success',
+    (tester) async {
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      SharedPreferences.setMockInitialValues({});
+      final fake = InventoryGateway()..failScan = true;
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            linkProvider.overrideWithValue(fake),
+            apiProvider.overrideWithValue(fake),
+          ],
+          child: const GatewayApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(GatewayApp)),
+      );
+      container.read(demoProvider.notifier).set(true);
+      await tester.pumpAndSettle();
+      final controller = container.read(commissionProvider.notifier);
+      await controller.prepare('https://example.invalid', '', offline: true);
+      await controller.scan();
+      await controller.connect(container.read(commissionProvider).peers.single);
+      await controller.chooseStation(newStation: false);
+      await tester.pumpAndSettle();
+      expect(find.text('Gateway 正在掃描周邊 PTU，請稍候'), findsNothing);
+      expect(find.textContaining('手機與 Gateway 都已連上'), findsNothing);
+      expect(find.textContaining('藍牙已中斷，上傳狀態待確認'), findsOneWidget);
+      final retry = find.text('重新連線並掃描 PTU');
+      await tester.ensureVisible(retry);
+      fake.failScan = false;
+      await tester.tap(retry);
+      await tester.pumpAndSettle();
+      expect(container.read(commissionProvider).error, isNull);
+      expect(fake.connects, 2);
+      expect(find.text('AA:BB:CC:00:00:01'), findsOneWidget);
+      expect(tester.takeException(), isNull);
     },
   );
 

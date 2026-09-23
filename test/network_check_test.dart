@@ -533,7 +533,7 @@ void main() {
           config: state.config,
         ),
       );
-      expect(lost.hint, startsWith('手機和 Gateway 的藍牙斷了'));
+      expect(lost.hint, startsWith('手機和 Gateway 的藍牙已中斷'));
     });
 
     test('technical details translate the Wi-Fi state', () {

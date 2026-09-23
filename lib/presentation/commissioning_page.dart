@@ -815,7 +815,13 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           const Text(
             '由 Gateway 掃描附近的 PTU，再透過藍牙把清單傳回手機。清單也包含已連線、不再廣播的 PTU。勾選要監控的裝置，最多五台。',
           ),
-          button('由 Gateway 重新掃描 PTU', () => c.discover(), enabled),
+          button(
+            s.uploadWatch == UploadWatch.linkLost
+                ? '重新連線並掃描 PTU'
+                : '由 Gateway 重新掃描 PTU',
+            () => c.discover(),
+            enabled,
+          ),
           Text(
             '已連線 ${s.ptus.where((p) => p['connected'] == true).length} 台／周邊未連線 ${s.ptus.where((p) => p['connected'] != true).length} 台',
           ),

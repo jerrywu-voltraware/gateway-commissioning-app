@@ -207,10 +207,13 @@ NetworkCheck networkCheck({
   String? hint;
   final CheckLine upload;
   bool uploadOk = false;
-  if (!supported) {
+  if (state.uploadWatch == UploadWatch.linkLost) {
+    upload = const CheckLine('✗', '手機和 Gateway 的藍牙斷了，無法確認。', StatusTone.bad);
+    hint = '請靠近 Gateway，按「結束並重新選擇閘道器」重新連線。';
+  } else if (!supported) {
     upload = const CheckLine('？', '無法確認，最後的資料驗證會再確認。', StatusTone.neutral);
     uploadOk = true;
-  } else if (uploading) {
+  } else if (uploading && state.uploadWatch != UploadWatch.linkLost) {
     upload = const CheckLine('✓', '資料上傳中', StatusTone.ok);
     uploadOk = true;
   } else if (!wifiOk) {
@@ -221,9 +224,6 @@ NetworkCheck networkCheck({
     );
   } else if (!targetOk) {
     upload = const CheckLine('—', '對準上傳目標後再確認', StatusTone.neutral);
-  } else if (state.uploadWatch == UploadWatch.linkLost) {
-    upload = const CheckLine('✗', '手機和 Gateway 的藍牙斷了，無法確認。', StatusTone.bad);
-    hint = '請靠近 Gateway，按「結束並重新選擇閘道器」重新連線。';
   } else if (late) {
     upload = const CheckLine('✗', 'Gateway 還沒開始上傳資料。', StatusTone.bad);
     final place = current ?? const MqttTarget.production();

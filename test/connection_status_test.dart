@@ -264,8 +264,8 @@ void main() {
         state: _state(_target('production'), watch: UploadWatch.linkLost),
         probe: _healthy,
       );
-      expect(lost.gateway.status, '✗ 連不上');
-      expect(lost.hint, startsWith('手機和 Gateway 的藍牙斷了'));
+      expect(lost.gateway.status, '？ 藍牙已中斷，上傳狀態待確認');
+      expect(lost.hint, startsWith('手機和 Gateway 的藍牙已中斷'));
     });
     test('all connected collapses to one line', () {
       final status = connectionStatus(

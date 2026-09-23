@@ -171,8 +171,9 @@ class CommissionState {
   /// (「沿用目前站點」, or the station kept after a Wi-Fi change). Always true
   /// for firmware that cannot report it: the data verification decides.
   bool get networkReady =>
-      !netCheckSupported ||
-      (wifi == WifiVerdict.ok && config['mqtt_connected'] == true);
+      uploadWatch != UploadWatch.linkLost &&
+      (!netCheckSupported ||
+          (wifi == WifiVerdict.ok && config['mqtt_connected'] == true));
 
   /// Outcome of the last upload-target switch or refresh (shown in its card).
   final String uploadNotice;
@@ -413,6 +414,10 @@ class CommissioningController extends Notifier<CommissionState> {
     } catch (error) {
       if (error is GatewayFailure && error.code == 'authentication') {
         _setLoggedIn(false);
+      }
+      if (error is GatewayFailure &&
+          (error.code == 'disconnected' || error.code == 'not_connected')) {
+        _stopWatch(UploadWatch.linkLost);
       }
       final safe = await _safeStop();
       final failure = error is GatewayFailure
@@ -1025,10 +1030,36 @@ class CommissioningController extends Notifier<CommissionState> {
     await discover();
   }
 
-  Future<void> discover() => _run('Gateway 正在掃描周邊 PTU，請稍候', 45, (
+  Future<void> discover() async {
+    await _discover();
+    if (ref.mounted && state.step == 4 && state.error != null) {
+      state = state.copy(
+        message: state.uploadWatch == UploadWatch.linkLost
+            ? 'Gateway 掃描未完成：藍牙連線已中斷。請靠近 Gateway，再按「重新連線並掃描 PTU」。'
+            : 'Gateway 掃描未完成，請查看錯誤後重新掃描。',
+        error: state.error,
+      );
+    }
+  }
+
+  Future<void> _discover() => _run('Gateway 正在掃描周邊 PTU，請稍候', 75, (
     generation,
   ) async {
     state = state.copy(ptus: [], selected: {}, results: {}, missing: []);
+    if (state.uploadWatch == UploadWatch.linkLost) {
+      final peer = state.peer;
+      if (peer == null) throw const GatewayFailure('not_connected');
+      await _relink(generation, peer);
+      // Re-establish the same gateway link and read fresh network status;
+      // never turn the last MQTT snapshot green just because ping succeeds.
+      final net = await _command(
+        generation,
+        state.netCheckSupported ? 'get_net_status' : 'get_status',
+      );
+      _absorbTarget(net);
+      _absorbNet(net);
+      _stopWatch(UploadWatch.idle);
+    }
     final response = await _command(generation, 'scan_ble_discover', {
       'duration': 10,
     });
@@ -1387,6 +1418,7 @@ class CommissioningController extends Notifier<CommissionState> {
   /// Starts (or restarts) polling when the gateway's upload is not yet
   /// confirmed; called after a connect, Wi-Fi change, switch or refresh.
   void _watchUploadIfPending() {
+    if (ref.mounted && state.uploadWatch == UploadWatch.linkLost) return;
     if (!_canWatch || state.networkReady) {
       if (ref.mounted && state.uploadWatch == UploadWatch.polling) {
         _stopWatch(UploadWatch.idle);
@@ -1508,6 +1540,7 @@ class CommissioningController extends Notifier<CommissionState> {
       final net = await _command(generation, 'get_net_status');
       _absorbTarget(net);
       _absorbNet(net);
+      _stopWatch(UploadWatch.idle);
       final target = parseMqttTarget(state.config);
       state = state.copy(
         uploadNotice: target == null ? '' : '已重新讀取。$_uploadText',
@@ -1575,6 +1608,7 @@ class CommissioningController extends Notifier<CommissionState> {
           wanted: wanted.plainLabel,
         );
       }
+      _stopWatch(UploadWatch.idle);
       state = state.copy(
         uploadNotice:
             '不用切換：Gateway 本來就送到${now.plainLabel}（沒有重新開機）。$_uploadText',
@@ -1697,6 +1731,7 @@ class CommissioningController extends Notifier<CommissionState> {
         );
       }
       seen = target;
+      _stopWatch(UploadWatch.idle);
       if (!waitUpload || status['mqtt_connected'] == true) break;
     }
     if (seen == null) {
