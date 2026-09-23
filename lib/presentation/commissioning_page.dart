@@ -3,8 +3,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../application/commissioning_controller.dart';
+import '../core/local_backend_address.dart';
 import '../core/mqtt_target.dart';
 import '../data/wifi_scan.dart';
+import 'local_backend_field.dart';
 import 'upload_target_card.dart';
 
 class CommissioningPage extends ConsumerStatefulWidget {
@@ -34,6 +36,34 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     'LOCAL_API_BASE',
     defaultValue: 'http://192.168.0.12:18000',
   );
+
+  /// Local mode: the user edits only the PC's IPv4 (+ optional port);
+  /// `_base` always holds the composed full URL for the rest of the app.
+  final _host = TextEditingController();
+  int _localPort = defaultLocalPort;
+  void _syncLocalBase() {
+    if (_environment == 'local') {
+      _base.text = composeLocalUrl(_host.text, _localPort);
+    }
+  }
+
+  /// Splits a saved full local URL into the host field and port.
+  void _applyLocalUrl(String? saved) {
+    final endpoint = parseLocalUrl(saved) ?? parseLocalUrl(_localUrl);
+    _localPort = endpoint?.port ?? defaultLocalPort;
+    _host.text = endpoint?.host ?? '';
+    _base.text = composeLocalUrl(_host.text, _localPort);
+  }
+
+  /// Persists the local backend as a full URL (only when the IP is valid).
+  Future<void> _saveLocal(SharedPreferences prefs) async {
+    if (localHostError(_host.text) != null) return;
+    await prefs.setString(
+      'backend_local_url',
+      composeLocalUrl(_host.text, _localPort),
+    );
+  }
+
   Future<void> _restoreEnvironment() async {
     final prefs = await SharedPreferences.getInstance();
     final oldLocal = Uri.tryParse(prefs.getString('backend_local_url') ?? '');
@@ -47,11 +77,13 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       _environment = ['production', 'local', 'custom'].contains(saved)
           ? saved!
           : 'production';
-      _base.text = _environment == 'local'
-          ? (prefs.getString('backend_local_url') ?? _localUrl)
-          : _environment == 'custom'
-          ? (prefs.getString('backend_custom_url') ?? '')
-          : _productionUrl;
+      if (_environment == 'local') {
+        _applyLocalUrl(prefs.getString('backend_local_url'));
+      } else {
+        _base.text = _environment == 'custom'
+            ? (prefs.getString('backend_custom_url') ?? '')
+            : _productionUrl;
+      }
       _login.text = _environment == 'local' ? '54974211' : '';
     });
   }
@@ -61,7 +93,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
     if (_environment == 'local') {
-      await prefs.setString('backend_local_url', _base.text.trim());
+      await _saveLocal(prefs);
     }
     if (_environment == 'custom') {
       await prefs.setString('backend_custom_url', _base.text.trim());
@@ -69,11 +101,13 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     if (!mounted) return;
     setState(() {
       _environment = value;
-      _base.text = value == 'local'
-          ? (prefs.getString('backend_local_url') ?? _localUrl)
-          : value == 'custom'
-          ? (prefs.getString('backend_custom_url') ?? '')
-          : _productionUrl;
+      if (value == 'local') {
+        _applyLocalUrl(prefs.getString('backend_local_url'));
+      } else {
+        _base.text = value == 'custom'
+            ? (prefs.getString('backend_custom_url') ?? '')
+            : _productionUrl;
+      }
       _login.text = value == 'local' ? '54974211' : '';
     });
     await prefs.setString('backend_environment', value);
@@ -185,6 +219,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   @override
   void initState() {
     super.initState();
+    _host.addListener(_syncLocalBase);
     _restoreEnvironment();
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback(
@@ -199,7 +234,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    for (final c in [_base, _login, _ssid, _wifi, _site, _gateway]) {
+    for (final c in [_base, _host, _login, _ssid, _wifi, _site, _gateway]) {
       c.dispose();
     }
     super.dispose();
@@ -396,15 +431,30 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             onChanged: enabled ? _selectEnvironment : null,
           ),
           const SizedBox(height: 12),
-          if (_environment == 'custom' || _environment == 'local')
-            field(_base, '後端網址')
+          if (_environment == 'local')
+            LocalBackendField(
+              hostController: _host,
+              port: _localPort,
+              enabled: enabled,
+              onPortChanged: (port) {
+                setState(() => _localPort = port);
+                _syncLocalBase();
+                SharedPreferences.getInstance().then(_saveLocal);
+              },
+              onHostPicked: () =>
+                  SharedPreferences.getInstance().then(_saveLocal),
+            )
+          else if (_environment == 'custom')
+            BackendUrlField(controller: _base, label: '後端網址')
           else
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: Text(_base.text),
             ),
           if (_environment == 'local')
-            const Text('本地測試密碼：54974211。手機與電腦需連同一個區域網路；電腦網址若變更，可在上方修改。')
+            const Text(
+              '本地測試密碼：54974211。手機與電腦需連同一個 Wi-Fi；電腦 IP 若變更，可在上方修改或按「自動尋找」。',
+            )
           else if (_environment == 'production')
             const Text('請輸入 VPS 網頁的登入密碼。正式網址目前仍待部署確認。'),
           field(_login, '後端登入密碼', secret: true),
@@ -418,8 +468,15 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           ),
           button('檢查並開始', () async {
             if (_environment == 'local') {
+              final error = localHostError(_host.text);
+              if (error != null) {
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(SnackBar(content: Text(error)));
+                return;
+              }
               final prefs = await SharedPreferences.getInstance();
-              await prefs.setString('backend_local_url', _base.text.trim());
+              await _saveLocal(prefs);
               if (!mounted) return;
             }
             if (_environment == 'custom') {
@@ -581,7 +638,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         return [
           const Text('逐台檢查資料時間、落後秒數與錯誤碼。連續三次通過後才判定完成。'),
           const SizedBox(height: 16),
-          field(_base, '後端網址'),
+          BackendUrlField(controller: _base, label: '後端網址'),
           field(_login, '若尚未登入，請輸入登入密碼', secret: true),
           ...s.ptus.map(
             (ptu) => ListTile(
