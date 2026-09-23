@@ -218,7 +218,7 @@ class BleGatewayLink implements GatewayLink {
       }
       final frame = await response;
       if (frame['status'] != 'ok') {
-        throw GatewayFailure(frame['result']?.toString() ?? 'failed');
+        throw GatewayFailure.gateway(frame['result']?.toString() ?? '');
       }
       dynamic payload = frame['result'];
       if (payload is String) {

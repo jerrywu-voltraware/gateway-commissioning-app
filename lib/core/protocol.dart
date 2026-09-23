@@ -34,9 +34,110 @@ Duration commandTimeout(String op, Map<String, dynamic> params) => Duration(
 );
 
 class GatewayFailure implements Exception {
-  const GatewayFailure(this.code);
+  const GatewayFailure(
+    this.code, {
+    this.status,
+    this.endpoint,
+    this.detail,
+    this.backend,
+    this.fromGateway = false,
+  });
+
+  /// HTTP error from the dashboard API (non-2xx other than 401/409).
+  const GatewayFailure.http({
+    required int this.status,
+    required String this.endpoint,
+    this.detail,
+    this.backend,
+  }) : code = 'api',
+       fromGateway = false;
+
+  /// Backend could not be reached (socket error, refused, TLS, timeout).
+  const GatewayFailure.network({
+    required String this.endpoint,
+    this.detail,
+    this.backend,
+  }) : code = 'network',
+       status = null,
+       fromGateway = false;
+
+  /// Fail ack sent by the gateway firmware over BLE.
+  const GatewayFailure.gateway(String text)
+    : code = text,
+      status = null,
+      endpoint = null,
+      detail = null,
+      backend = null,
+      fromGateway = true;
+
+  /// Any non-GatewayFailure exception; keeps its type and a short text.
+  factory GatewayFailure.unexpected(Object error) {
+    var text = error.toString().replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (text.length > 120) text = '${text.substring(0, 120)}…';
+    final type = error.runtimeType.toString();
+    return GatewayFailure(
+      'unexpected',
+      detail: text.startsWith(type) ? text : '$type: $text',
+    );
+  }
+
   final String code;
-  String get message => switch (code) {
+  final int? status;
+  final String? endpoint, detail, backend;
+  final bool fromGateway;
+
+  static final _gatewayPath = RegExp(r'^/api/gateways/(\d+)/(\d+)(/|$)');
+
+  String get _backendText => backend ?? '目前設定的後端';
+
+  String get _httpMessage {
+    final path = endpoint ?? '';
+    final match = _gatewayPath.firstMatch(path.split(' ').last);
+    if (status == 404 && detail == 'gateway_not_found') {
+      final where = match == null
+          ? ''
+          : '（站 ${match.group(1)} / Gateway ${match.group(2)}）';
+      return '後端找不到此 Gateway$where。Gateway 的資料可能上傳到其他後端環境'
+          '（例如正式站），而 APP 目前連的是 $_backendText。\n'
+          '[HTTP 404 · $path · gateway_not_found]';
+    }
+    final extra = detail == null || detail!.isEmpty ? '' : ' · $detail';
+    if (status != null && status! >= 500) {
+      return '後端內部錯誤（HTTP $status），請查看後端紀錄後重試。\n'
+          '[$path$extra · $_backendText]';
+    }
+    return '後端拒絕此請求（HTTP $status）。\n[$path$extra · $_backendText]';
+  }
+
+  String get message {
+    if (fromGateway && !_knownCodes.contains(code)) {
+      return code.isEmpty ? 'Gateway 回報失敗（未提供原因）。' : 'Gateway 回報失敗：$code';
+    }
+    return switch (code) {
+      'api' when status != null => _httpMessage,
+      'network' =>
+        '無法連到 $_backendText。請確認手機與後端電腦在同一個 Wi-Fi 網段、'
+            '電腦防火牆允許該連接埠，以及後端網址是否正確。\n'
+            '[$endpoint${detail == null ? '' : ' · $detail'}]',
+      'bad_response' =>
+        '後端回應格式無法解析（$_backendText）。\n'
+            '[${endpoint ?? ''}${detail == null ? '' : ' · $detail'}]',
+      'unexpected' => 'APP 發生未預期錯誤：${detail ?? '未知'}',
+      _ => _baseMessage,
+    };
+  }
+
+  static const _knownCodes = {
+    'time_not_synced',
+    'expired',
+    'otp_required',
+    'otp_enabled',
+    'not_ready',
+    'busy',
+    'timeout',
+  };
+
+  String get _baseMessage => switch (code) {
     'time_not_synced' || 'expired' => '閘道器時間尚未同步。若無可用網路，請先以 USB 更新韌體。',
     'otp_required' || 'otp_enabled' => '此閘道器已啟用一次性密碼，請聯絡管理員。',
     'not_ready' || 'busy' => '閘道器正在準備或處理其他操作，請稍後重試。',
@@ -54,6 +155,13 @@ class GatewayFailure implements Exception {
     'https_required' => '正式環境需要有效的 HTTPS 網址。',
     _ => '操作未完成，請確認裝置狀態後重試。',
   };
+
+  @override
+  String toString() =>
+      'GatewayFailure($code'
+      '${status == null ? '' : ', $status'}'
+      '${endpoint == null ? '' : ', $endpoint'}'
+      '${detail == null ? '' : ', $detail'})';
 }
 
 /// Byte framing keeps split UTF-8 characters intact and respects JSON strings.

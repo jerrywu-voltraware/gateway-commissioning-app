@@ -8,6 +8,7 @@ import '../data/contracts.dart';
 import '../data/dashboard_api.dart';
 import '../data/demo_system.dart';
 import '../data/ptu_inventory.dart';
+import 'verify_diagnosis.dart';
 
 class DemoMode extends Notifier<bool> {
   @override
@@ -104,6 +105,9 @@ class CommissioningController extends Notifier<CommissionState> {
   bool _provisioningMayBeActive = false;
   Future<bool>? _stopping;
   final Map<String, int> _restoredAssignments = {};
+  String _backend = describeBackend(null);
+  // Latest step-7 diagnosis, tagged with the generation that produced it.
+  (int, String)? _diagnosis;
   bool _loggedIn = false,
       _lease = false,
       _foreground = true,
@@ -206,6 +210,7 @@ class CommissioningController extends Notifier<CommissionState> {
   ) async {
     if (state.busy) return;
     final generation = ++_generation;
+    _diagnosis = null;
     state = state.copy(busy: true, message: label, seconds: timeout);
     _clock = Timer.periodic(const Duration(seconds: 1), (_) {
       if (ref.mounted && state.seconds > 0) {
@@ -227,13 +232,21 @@ class CommissioningController extends Notifier<CommissionState> {
         _loggedIn = false;
       }
       final safe = await _safeStop();
+      final failure = error is GatewayFailure
+          ? error
+          : GatewayFailure.unexpected(error);
+      final diagnosis = _diagnosis;
+      final detailed =
+          diagnosis != null &&
+          diagnosis.$1 == generation &&
+          (failure.code == 'timeout' || failure.code == 'incomplete');
       if (ref.mounted) {
         state = state.copy(
           error: !safe
               ? '尚未確認安全停止，請重新連線關閉監控並核對設定。'
-              : error is GatewayFailure
-              ? error.message
-              : const GatewayFailure('failed').message,
+              : detailed
+              ? '資料驗證未通過：\n${diagnosis.$2}'
+              : failure.message,
         );
       }
     } finally {
@@ -286,6 +299,7 @@ class CommissioningController extends Notifier<CommissionState> {
       _run('檢查藍牙與後端連線', 30, (generation) async {
         await _link.prepare();
         _check(generation);
+        _backend = describeBackend(Uri.tryParse(base.trim()));
         if (!offline) {
           await _api.login(base, password);
           _check(generation);
@@ -732,6 +746,7 @@ class CommissioningController extends Notifier<CommissionState> {
     String base,
     String password,
   ) => _run('確認每台 PTU 的資料持續進入後端', 180, (generation) async {
+    _backend = describeBackend(Uri.tryParse(base.trim()));
     if (!_loggedIn) {
       await _api.login(base, password);
       _check(generation);
@@ -747,11 +762,22 @@ class CommissioningController extends Notifier<CommissionState> {
     }
     int consecutive = 0;
     final previous = <int, DateTime>{};
-    final ids = state.ptus
+    final chosen = state.ptus
         .where((p) => state.selected.contains(p['mac']))
-        .map((p) => (p['device_number'] as num).toInt())
+        .toList();
+    final ids = chosen
+        .map((p) => (p['device_number'] as num?)?.toInt() ?? 0)
         .toSet();
     if (ids.isEmpty) throw const GatewayFailure('no_devices');
+    final unnumbered = chosen
+        .where((p) => ((p['device_number'] as num?)?.toInt() ?? 0) == 0)
+        .map((p) => 'PTU ${p['mac']}：PTU 未取得裝置編號（device_number=0）')
+        .toList();
+    if (unnumbered.isNotEmpty) {
+      // A PTU without a number can never pass; report it instead of waiting.
+      _diagnosis = (generation, unnumbered.join('\n'));
+      throw const GatewayFailure('incomplete');
+    }
     for (int elapsed = 0; elapsed < 180; elapsed += 10) {
       final fleet = await _fleet(generation);
       if (fleet?['upload_paused'] == true) {
@@ -771,6 +797,7 @@ class CommissioningController extends Notifier<CommissionState> {
       final rows = (latest['items'] as List? ?? [])
           .map((p) => Map<String, dynamic>.from(p as Map))
           .toList();
+      final before = Map<int, DateTime>.of(previous);
       bool good = install['all_ok'] == true;
       for (final id in ids) {
         final found = rows.where((p) => p['device_id'] == id).toList();
@@ -790,6 +817,20 @@ class CommissioningController extends Notifier<CommissionState> {
         if (stamp != null) previous[id] = stamp;
       }
       consecutive = good ? consecutive + 1 : 0;
+      _diagnosis = (
+        generation,
+        verifyDiagnosis(
+          ids: ids,
+          install: install,
+          rows: rows,
+          fleet: fleet,
+          previous: before,
+          site: site,
+          gateway: gateway,
+          consecutive: consecutive,
+          backend: _backend,
+        ),
+      );
       state = state.copy(message: '連續資料驗證 $consecutive / 3');
       if (consecutive >= 3) {
         await _request(generation, 'PATCH', '$_path/bot-monitor', {
