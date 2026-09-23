@@ -13,6 +13,7 @@ import '../data/wifi_scan.dart';
 import 'connection_status_panel.dart';
 import 'environment_switch.dart';
 import 'local_backend_field.dart';
+import 'ptu_selection_tile.dart';
 
 class CommissioningPage extends ConsumerStatefulWidget {
   const CommissioningPage({
@@ -366,6 +367,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         colors = Theme.of(context).colorScheme;
     final env = ref.watch(backendEnvProvider);
     final shown = displayStep(state, env);
+    final selectingPtus = state.step == 4 || state.step == 5;
     return PopScope(
       canPop: !state.busy,
       child: Scaffold(
@@ -385,12 +387,47 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             ),
           ],
         ),
+        bottomNavigationBar: selectingPtus
+            ? SafeArea(
+                top: false,
+                child: Material(
+                  elevation: 8,
+                  color: colors.surface,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          '已選 ${state.selected.length} / 5 台',
+                          key: const Key('ptu-selection-count'),
+                        ),
+                        const SizedBox(height: 6),
+                        FilledButton(
+                          key: const Key('ptu-configure'),
+                          onPressed: !state.busy && state.selected.isNotEmpty
+                              ? controller.configurePtus
+                              : null,
+                          child: Text('配置 ${state.selected.length} 台並開始監控'),
+                        ),
+                        if (state.busy)
+                          TextButton(
+                            onPressed: controller.cancel,
+                            child: const Text('取消操作'),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              )
+            : null,
         body: SafeArea(
           child: Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 720),
               child: ListView(
-                padding: const EdgeInsets.all(20),
+                padding: EdgeInsets.all(selectingPtus ? 12 : 20),
                 children: [
                   if (demo)
                     Container(
@@ -398,17 +435,19 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                       color: colors.secondaryContainer,
                       child: const Text('模擬模式 · 不會設定真實設備或驗證正式資料'),
                     ),
-                  const SizedBox(height: 20),
-                  Text(
-                    '讓每一台裝置，都確實上線。',
-                    style: Theme.of(context).textTheme.headlineSmall,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '依照步驟完成網路、裝置配置與資料驗證。',
-                    style: TextStyle(color: colors.onSurfaceVariant),
-                  ),
-                  const SizedBox(height: 24),
+                  if (!selectingPtus) ...[
+                    const SizedBox(height: 20),
+                    Text(
+                      '讓每一台裝置，都確實上線。',
+                      style: Theme.of(context).textTheme.headlineSmall,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '依照步驟完成網路、裝置配置與資料驗證。',
+                      style: TextStyle(color: colors.onSurfaceVariant),
+                    ),
+                    const SizedBox(height: 24),
+                  ],
                   LinearProgressIndicator(
                     value: shown / (stepLabels.length - 1),
                   ),
@@ -419,13 +458,17 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                   const SizedBox(height: 8),
-                  StepList(current: shown),
-                  const SizedBox(height: 16),
+                  if (!selectingPtus) StepList(current: shown),
+                  SizedBox(height: selectingPtus ? 4 : 16),
                   if (state.peer != null)
                     Text(
                       '${state.peer!.name} · ${state.config['fw_version'] ?? ''}',
                     ),
-                  if (state.message.isNotEmpty)
+                  if (state.message.isNotEmpty &&
+                      (!selectingPtus ||
+                          state.busy ||
+                          state.error != null ||
+                          state.ptus.isEmpty))
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       child: Text(state.message),
@@ -481,14 +524,14 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                     ),
                   Card(
                     child: Padding(
-                      padding: const EdgeInsets.all(20),
+                      padding: EdgeInsets.all(selectingPtus ? 8 : 20),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: content(state, controller, demo),
                       ),
                     ),
                   ),
-                  if (state.step > 0)
+                  if (state.step > 0 && !(selectingPtus && state.busy))
                     TextButton(
                       onPressed: () => controller.cancel(),
                       child: Text(state.busy ? '取消操作' : '結束並重新選擇閘道器'),
@@ -812,37 +855,46 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       case 4:
       case 5:
         return [
-          const Text(
-            '由 Gateway 掃描附近的 PTU，再透過藍牙把清單傳回手機。清單也包含已連線、不再廣播的 PTU。勾選要監控的裝置，最多五台。',
+          OutlinedButton.icon(
+            icon: const Icon(Icons.refresh, size: 20),
+            onPressed: enabled ? c.discover : null,
+            label: Text(
+              s.uploadWatch == UploadWatch.linkLost
+                  ? '重新連線並掃描 PTU'
+                  : '由 Gateway 重新掃描 PTU',
+            ),
           ),
-          button(
-            s.uploadWatch == UploadWatch.linkLost
-                ? '重新連線並掃描 PTU'
-                : '由 Gateway 重新掃描 PTU',
-            () => c.discover(),
-            enabled,
-          ),
-          Text(
-            '已連線 ${s.ptus.where((p) => p['connected'] == true).length} 台／周邊未連線 ${s.ptus.where((p) => p['connected'] != true).length} 台',
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Text(
+              '已連線 ${s.ptus.where((p) => p['connected'] == true).length} 台／周邊未連線 ${s.ptus.where((p) => p['connected'] != true).length} 台',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
           ),
           ...s.ptus.map(
-            (ptu) => CheckboxListTile(
-              contentPadding: EdgeInsets.zero,
-              value: s.selected.contains(ptu['mac']),
-              title: Text(ptu['mac'].toString()),
-              subtitle: Text(
-                '${ptu['connected'] == true ? '已連線至此 Gateway' : '周邊未連線'}\n目前編號 ${ptu['device_number'] ?? 0} · 訊號 ${ptu['rssi'] ?? '—'} dBm\n${s.results[ptu['mac']] ?? ''}',
-              ),
+            (ptu) => PtuSelectionTile(
+              key: ValueKey('ptu-${ptu['mac']}'),
+              ptu: ptu,
+              selected: s.selected.contains(ptu['mac']),
+              result: s.results[ptu['mac']],
               onChanged: enabled
-                  ? (value) => c.select(ptu['mac'].toString(), value ?? false)
+                  ? (value) => c.select(ptu['mac'].toString(), value)
                   : null,
             ),
           ),
           if (s.missing.isNotEmpty) Text('尚未連線：${s.missing.join('、')}'),
-          button(
-            '配置 ${s.selected.length} 台並開始監控',
-            () => c.configurePtus(),
-            enabled && s.selected.isNotEmpty,
+          ExpansionTile(
+            tilePadding: EdgeInsets.zero,
+            title: Text(
+              '掃描說明與完整流程',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            children: [
+              const Text(
+                '由 Gateway 掃描附近的 PTU，再透過藍牙把清單傳回手機。清單也包含已連線、不再廣播的 PTU。最多可選五台，點裝置右側資訊可查看詳細資料。',
+              ),
+              StepList(current: displayStep(s, env)),
+            ],
           ),
         ];
       case 6:
