@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import '../application/backend_environment.dart';
 import '../application/commissioning_controller.dart';
+import '../application/connection_status.dart';
 import '../core/local_backend_address.dart';
 import '../core/mqtt_target.dart';
 import '../data/wifi_scan.dart';
+import 'connection_status_panel.dart';
+import 'environment_switch.dart';
 import 'local_backend_field.dart';
-import 'upload_target_card.dart';
 
 class CommissioningPage extends ConsumerStatefulWidget {
   const CommissioningPage({
@@ -23,6 +25,8 @@ class CommissioningPage extends ConsumerStatefulWidget {
 
 class _CommissioningPageState extends ConsumerState<CommissioningPage>
     with WidgetsBindingObserver {
+  /// Mirrors the selected backend URL (editable only for 其他網址); the
+  /// source of truth is [backendEnvProvider].
   final _base = TextEditingController(text: productionApiBase);
   final _login = TextEditingController(),
       _ssid = TextEditingController(),
@@ -30,98 +34,110 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   final _site = TextEditingController(text: '1'),
       _gateway = TextEditingController(text: '1');
   bool _offline = false;
-  String _environment = 'production';
-  static const _productionUrl = productionApiBase;
-  static const _localUrl = String.fromEnvironment(
-    'LOCAL_API_BASE',
-    defaultValue: 'http://192.168.0.12:18000',
-  );
 
-  /// Local mode: the user edits only the PC's IPv4 (+ optional port);
-  /// `_base` always holds the composed full URL for the rest of the app.
+  /// Local mode: the user edits only the PC's IPv4; mirrors the provider.
   final _host = TextEditingController();
-  int _localPort = defaultLocalPort;
-  void _syncLocalBase() {
-    if (_environment == 'local') {
-      _base.text = composeLocalUrl(_host.text, _localPort);
+
+  BackendEnvController get _envController =>
+      ref.read(backendEnvProvider.notifier);
+
+  /// Keeps the text fields in step with the shared environment state.
+  void _onEnvironment(BackendEnvState? previous, BackendEnvState next) {
+    if (_host.text != next.localHost) _host.text = next.localHost;
+    if (_base.text != next.base) _base.text = next.base;
+    if (previous == null ||
+        previous.environment != next.environment ||
+        previous.loaded != next.loaded) {
+      _login.text = next.environment == BackendEnv.local
+          ? localTestPassword
+          : '';
     }
-  }
-
-  /// Splits a saved full local URL into the host field and port.
-  void _applyLocalUrl(String? saved) {
-    final endpoint = parseLocalUrl(saved) ?? parseLocalUrl(_localUrl);
-    _localPort = endpoint?.port ?? defaultLocalPort;
-    _host.text = endpoint?.host ?? '';
-    _base.text = composeLocalUrl(_host.text, _localPort);
-  }
-
-  /// Persists the local backend as a full URL (only when the IP is valid).
-  Future<void> _saveLocal(SharedPreferences prefs) async {
-    if (localHostError(_host.text) != null) return;
-    await prefs.setString(
-      'backend_local_url',
-      composeLocalUrl(_host.text, _localPort),
-    );
-  }
-
-  Future<void> _restoreEnvironment() async {
-    final prefs = await SharedPreferences.getInstance();
-    final oldLocal = Uri.tryParse(prefs.getString('backend_local_url') ?? '');
-    if (oldLocal != null &&
-        ['127.0.0.1', 'localhost', '10.0.2.2'].contains(oldLocal.host)) {
-      await prefs.setString('backend_local_url', _localUrl);
+    if (previous != null && previous.base != next.base) {
+      ref.read(commissionProvider.notifier).backendChanged(next.base);
     }
+    if (mounted) setState(() {});
+  }
+
+  void _snack(String text) {
     if (!mounted) return;
-    final saved = prefs.getString('backend_environment');
-    setState(() {
-      _environment = ['production', 'local', 'custom'].contains(saved)
-          ? saved!
-          : 'production';
-      if (_environment == 'local') {
-        _applyLocalUrl(prefs.getString('backend_local_url'));
-      } else {
-        _base.text = _environment == 'custom'
-            ? (prefs.getString('backend_custom_url') ?? '')
-            : _productionUrl;
-      }
-      _login.text = _environment == 'local' ? '54974211' : '';
-    });
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(text)));
   }
 
-  Future<void> _selectEnvironment(String? value) async {
-    if (value == null) return;
-    final prefs = await SharedPreferences.getInstance();
-    if (!mounted) return;
-    if (_environment == 'local') {
-      await _saveLocal(prefs);
-    }
-    if (_environment == 'custom') {
-      await prefs.setString('backend_custom_url', _base.text.trim());
-    }
-    if (!mounted) return;
-    setState(() {
-      _environment = value;
-      if (value == 'local') {
-        _applyLocalUrl(prefs.getString('backend_local_url'));
-      } else {
-        _base.text = value == 'custom'
-            ? (prefs.getString('backend_custom_url') ?? '')
-            : _productionUrl;
-      }
-      _login.text = value == 'local' ? '54974211' : '';
-    });
-    await prefs.setString('backend_environment', value);
+  Future<void> _openEnvironmentSheet() async {
+    final choice = await showEnvironmentSheet(context);
+    if (choice == null || !mounted) return;
+    await _applyEnvironment(choice, fromSheet: true);
   }
 
-  Future<void> _switchUploadTarget(MqttTarget wanted) async {
-    final current = parseMqttTarget(ref.read(commissionProvider).config);
-    final confirmed = await confirmUploadTargetSwitch(
-      context,
-      wanted: wanted,
-      current: current,
-    );
-    if (!confirmed || !mounted) return;
-    await ref.read(commissionProvider.notifier).switchUploadTarget(wanted);
+  /// One switch for everything: the APP backend and, when a gateway is
+  /// connected, its upload target. Refused while a step is running.
+  Future<void> _applyEnvironment(
+    BackendEnv choice, {
+    bool fromSheet = false,
+  }) async {
+    if (ref.read(commissionProvider).busy) {
+      _snack('正在進行其他操作，完成或按「取消操作」後才能切換環境。');
+      return;
+    }
+    await _envController.select(choice);
+    if (!mounted) return;
+    // Mid-flow the old login no longer applies; the local test host has a
+    // known password, so log in again right away (other sites ask later).
+    final env = ref.read(backendEnvProvider);
+    final state = ref.read(commissionProvider);
+    if (state.step >= 1 &&
+        !state.loggedIn &&
+        !_offline &&
+        env.environment == BackendEnv.local &&
+        env.localValid) {
+      await ref
+          .read(commissionProvider.notifier)
+          .login(env.base, localTestPassword);
+      if (!mounted) return;
+    }
+    await _syncGateway(explicit: true, announce: fromSheet);
+  }
+
+  /// Brings the connected gateway's upload target in line with the selected
+  /// environment. [explicit]: the user asked (switch / 「同步」); otherwise it
+  /// is the automatic sync after connecting, gated by the auto-sync setting.
+  Future<void> _syncGateway({
+    required bool explicit,
+    bool announce = false,
+  }) async {
+    final env = ref.read(backendEnvProvider);
+    final state = ref.read(commissionProvider);
+    if (state.busy) return;
+    final (need, target) = uploadSyncNeed(state, env.uploadTarget);
+    switch (need) {
+      case SyncNeed.none:
+        if (announce) {
+          final connected = state.peer != null && state.step >= 2;
+          _snack(
+            connected
+                ? '已切換到${env.label}。'
+                : '已切換到${env.label}。${env.autoSync ? '連上 Gateway 後會自動讓它一起切換。' : '連上 Gateway 後可在「連線狀態」按「同步」。'}',
+          );
+        }
+      case SyncNeed.legacy:
+        if (explicit || announce) {
+          _snack(legacyTargetText(state.config['fw_version']));
+        }
+      case SyncNeed.invalid:
+        if (explicit || announce) _snack(env.uploadTarget.error!);
+      case SyncNeed.sync:
+        if (!explicit && !env.autoSync) return;
+        final policy = ref.read(envSwitchPolicyProvider);
+        if (policy.confirmGatewaySwitch) {
+          final ok = await confirmUploadTargetSwitch(context, wanted: target!);
+          if (!ok || !mounted) return;
+        } else {
+          _snack('正在把 Gateway 切到${target!.plainLabel}，約 1 分鐘，請留在 Gateway 旁。');
+        }
+        await ref.read(commissionProvider.notifier).switchUploadTarget(target);
+    }
   }
 
   bool _scanningWifi = false;
@@ -219,8 +235,13 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   @override
   void initState() {
     super.initState();
-    _host.addListener(_syncLocalBase);
-    _restoreEnvironment();
+    ref.listenManual(backendEnvProvider, _onEnvironment, fireImmediately: true);
+    _host.addListener(() => _envController.setLocalHost(_host.text));
+    _base.addListener(() {
+      if (ref.read(backendEnvProvider).environment == BackendEnv.custom) {
+        _envController.setCustomUrl(_base.text);
+      }
+    });
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => ref.read(commissionProvider.notifier).restore(),
@@ -273,12 +294,14 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         controller = ref.read(commissionProvider.notifier);
     final demo = ref.watch(demoProvider),
         colors = Theme.of(context).colorScheme;
+    final env = ref.watch(backendEnvProvider);
     return PopScope(
       canPop: !state.busy,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('GIOS 現場開通'),
           actions: [
+            EnvironmentChip(onPressed: _openEnvironmentSheet),
             PopupMenuButton<ThemeMode>(
               tooltip: '主題',
               initialValue: widget.themeMode,
@@ -360,16 +383,24 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                   // Earliest page with the gateway connected and its config
                   // read; kept on step 7 so a local target is not shipped.
                   if (state.peer != null && state.step >= 2)
-                    ValueListenableBuilder<TextEditingValue>(
-                      valueListenable: _base,
-                      builder: (context, base, _) => UploadTargetCard(
-                        config: state.config,
-                        app: desiredUploadTarget(_environment, base.text),
-                        enabled: !state.busy,
-                        notice: state.uploadNotice,
-                        onSwitch: _switchUploadTarget,
-                        onRefresh: controller.refreshUploadTarget,
-                        shipCheck: state.step >= 7,
+                    ConnectionStatusPanel(
+                      state: state,
+                      env: env,
+                      demo: demo,
+                      onSync: () => _syncGateway(explicit: true),
+                      onRefresh: controller.refreshUploadTarget,
+                      // Shipping: phone and gateway both go to 正式站.
+                      onShipSwitch: () => _applyEnvironment(
+                        BackendEnv.production,
+                        fromSheet: true,
+                      ),
+                    ),
+                  if (state.step >= 1 && state.step <= 2 && !state.loggedIn)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Text(
+                        '尚未登入${env.label}：站號衝突檢查會先略過，第 3 步會請你輸入密碼。',
+                        style: TextStyle(color: colors.onSurfaceVariant),
                       ),
                     ),
                   Card(
@@ -412,52 +443,56 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     bool demo,
   ) {
     final enabled = !s.busy;
+    final env = ref.read(backendEnvProvider);
+    final environment = env.environment;
     switch (s.step) {
       case 0:
         return [
           const Text('先確認現場 WiFi 路由器與裝置電源已開啟。'),
           const SizedBox(height: 20),
-          DropdownButtonFormField<String>(
-            key: ValueKey(_environment),
-            initialValue: _environment,
+          DropdownButtonFormField<BackendEnv>(
+            key: ValueKey(environment),
+            initialValue: environment,
             isExpanded: true,
             decoration: const InputDecoration(
               labelText: '連線環境',
               border: OutlineInputBorder(),
             ),
-            items: const [
-              DropdownMenuItem(value: 'production', child: Text('VPS 正式站')),
-              DropdownMenuItem(value: 'local', child: Text('本地測試站')),
-              DropdownMenuItem(value: 'custom', child: Text('其他網址')),
+            items: [
+              for (final value in [
+                BackendEnv.production,
+                BackendEnv.local,
+                BackendEnv.custom,
+              ])
+                DropdownMenuItem(value: value, child: Text(envLabel(value))),
             ],
-            onChanged: enabled ? _selectEnvironment : null,
+            onChanged: enabled
+                ? (value) {
+                    if (value != null) _applyEnvironment(value);
+                  }
+                : null,
           ),
           const SizedBox(height: 12),
-          if (_environment == 'local')
+          if (environment == BackendEnv.local)
             LocalBackendField(
               hostController: _host,
-              port: _localPort,
+              port: env.localPort,
               enabled: enabled,
-              onPortChanged: (port) {
-                setState(() => _localPort = port);
-                _syncLocalBase();
-                SharedPreferences.getInstance().then(_saveLocal);
-              },
-              onHostPicked: () =>
-                  SharedPreferences.getInstance().then(_saveLocal),
+              onPortChanged: _envController.setLocalPort,
+              onHostPicked: () {},
             )
-          else if (_environment == 'custom')
-            BackendUrlField(controller: _base, label: '後端網址')
+          else if (environment == BackendEnv.custom)
+            BackendUrlField(controller: _base, label: '後端網址', enabled: enabled)
           else
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
-              child: Text(_base.text),
+              child: Text(env.base),
             ),
-          if (_environment == 'local')
+          if (environment == BackendEnv.local)
             const Text(
-              '本地測試密碼：54974211。手機與電腦需連同一個 Wi-Fi；電腦 IP 若變更，可在上方修改或按「自動尋找」。',
+              '本地測試密碼：$localTestPassword。手機與電腦需連同一個 Wi-Fi；電腦 IP 若變更，可在上方修改或按「自動尋找」。',
             )
-          else if (_environment == 'production')
+          else if (environment == BackendEnv.production)
             const Text('請輸入 VPS 網頁的登入密碼。正式網址目前仍待部署確認。'),
           field(_login, '後端登入密碼', secret: true),
           CheckboxListTile(
@@ -469,24 +504,15 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                 : null,
           ),
           button('檢查並開始', () async {
-            if (_environment == 'local') {
-              final error = localHostError(_host.text);
+            final current = ref.read(backendEnvProvider);
+            if (current.environment == BackendEnv.local) {
+              final error = localHostError(current.localHost);
               if (error != null) {
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(SnackBar(content: Text(error)));
+                _snack(error);
                 return;
               }
-              final prefs = await SharedPreferences.getInstance();
-              await _saveLocal(prefs);
-              if (!mounted) return;
             }
-            if (_environment == 'custom') {
-              final prefs = await SharedPreferences.getInstance();
-              await prefs.setString('backend_custom_url', _base.text.trim());
-              if (!mounted) return;
-            }
-            await c.prepare(_base.text.trim(), _login.text, offline: _offline);
+            await c.prepare(current.base, _login.text, offline: _offline);
             _login.clear();
           }, enabled),
         ];
@@ -511,6 +537,10 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                             '${next.config['suggested_gateway_id'] ?? next.config['gateway_id'] ?? 1}';
                         _ssid.text = next.config['wifi_ssid']?.toString() ?? '';
                         _customWifi = false;
+                        // Remembered environment: sync the gateway to it.
+                        if (next.error == null && next.step >= 2) {
+                          await _syncGateway(explicit: false);
+                        }
                       }
                     }
                   : null,
@@ -602,9 +632,17 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           const Icon(Icons.cloud_outlined, size: 48),
           const SizedBox(height: 12),
           const Text('確認閘道器不只連上 WiFi，後端也持續收到心跳。'),
+          if (!s.loggedIn) ...[
+            const SizedBox(height: 12),
+            field(_login, '若要確認後端，請輸入${env.label}的登入密碼', secret: true),
+          ],
           button(
             '確認上線',
-            () => c.online(base: _base.text, environment: _environment),
+            () => c.online(
+              base: env.base,
+              environment: environment.name,
+              password: _login.text,
+            ),
             enabled,
           ),
           TextButton(
@@ -644,8 +682,14 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         return [
           const Text('逐台檢查資料時間、落後秒數與錯誤碼。連續三次通過後才判定完成。'),
           const SizedBox(height: 16),
-          BackendUrlField(controller: _base, label: '後端網址'),
-          field(_login, '若尚未登入，請輸入登入密碼', secret: true),
+          if (environment == BackendEnv.custom)
+            BackendUrlField(controller: _base, label: '後端網址', enabled: enabled)
+          else
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text('驗證後端：${env.label}（${env.base}）'),
+            ),
+          if (!s.loggedIn) field(_login, '若尚未登入，請輸入登入密碼', secret: true),
           ...s.ptus.map(
             (ptu) => ListTile(
               contentPadding: EdgeInsets.zero,
@@ -655,7 +699,12 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             ),
           ),
           button('開始資料驗證', () async {
-            await c.verify(_base.text, _login.text, environment: _environment);
+            final current = ref.read(backendEnvProvider);
+            await c.verify(
+              current.base,
+              _login.text,
+              environment: current.environment.name,
+            );
             _login.clear();
           }, enabled),
         ];

@@ -35,14 +35,17 @@ class BackendUrlField extends StatelessWidget {
     super.key,
     required this.controller,
     required this.label,
+    this.enabled = true,
   });
   final TextEditingController controller;
   final String label;
+  final bool enabled;
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.only(bottom: 14),
     child: TextField(
       controller: controller,
+      enabled: enabled,
       keyboardType: TextInputType.url,
       minLines: 1,
       maxLines: 3,

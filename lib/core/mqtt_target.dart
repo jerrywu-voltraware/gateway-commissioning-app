@@ -50,6 +50,11 @@ class MqttTarget {
   /// 正式站 / 本地 host (button text).
   String get shortLabel => isLocal ? '本地 $host' : '正式站';
 
+  /// Plain wording for non-developers: 正式站 / 本地測試主機（host）.
+  String get plainLabel => isLocal
+      ? '本地測試主機（$host${port == defaultMqttPort ? '' : ':$port'}）'
+      : '正式站';
+
   /// `params` of the `set_mqtt_target` request.
   Map<String, dynamic> get params => isLocal
       ? {'target': 'local', 'host': host, 'port': port}
@@ -227,8 +232,17 @@ String reportTargetText(Map<String, dynamic> config) {
 
 String legacyTargetText(Object? version) {
   final v = version?.toString() ?? '';
-  return '此 Gateway 韌體（版本 ${v.isEmpty ? '未知' : v}）不支援切換上傳目標，'
-      '資料固定上傳正式站；需更新至 1.7.3 以上。';
+  return '這台 Gateway 韌體太舊（版本 ${v.isEmpty ? '未知' : v}），'
+      '只能送到正式站，請更新到 1.7.3 以上。';
+}
+
+/// First three octets of a dotted-quad IPv4 (`192.168.0`), null otherwise.
+String? ipv4Prefix24(String ip) {
+  final match = _ipv4.firstMatch(ip.trim());
+  if (match == null) return null;
+  final o = [for (var i = 1; i <= 4; i++) int.parse(match.group(i)!)];
+  if (o.any((v) => v > 255)) return null;
+  return '${o[0]}.${o[1]}.${o[2]}';
 }
 
 /// Fail codes of `set_mqtt_target` (docs/mqtt_target.md §2).

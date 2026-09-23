@@ -1,0 +1,199 @@
+import 'dart:async';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../core/local_backend_address.dart';
+import '../core/mqtt_target.dart';
+import '../data/local_backend_probe.dart';
+import 'local_backend_finder.dart';
+
+/// Which backend the APP talks to. The names are the persisted values
+/// (`backend_environment`) and the input of [desiredUploadTarget].
+enum BackendEnv { production, local, custom }
+
+/// Build-dependent behaviour of the environment switch; injectable in tests.
+class EnvSwitchPolicy {
+  const EnvSwitchPolicy({
+    this.autoSyncDefault = kDebugMode,
+    this.confirmGatewaySwitch = !kDebugMode,
+  });
+
+  /// Default of 「連線 Gateway 時自動同步上傳目標」 (debug ON, release OFF).
+  final bool autoSyncDefault;
+
+  /// Release builds ask once before a gateway switch; debug builds do not.
+  final bool confirmGatewaySwitch;
+}
+
+final envSwitchPolicyProvider = Provider<EnvSwitchPolicy>(
+  (ref) => const EnvSwitchPolicy(),
+);
+
+const _localDefaultUrl = String.fromEnvironment(
+  'LOCAL_API_BASE',
+  defaultValue: 'http://192.168.0.12:18000',
+);
+
+const localTestPassword = '54974211';
+
+class BackendEnvState {
+  const BackendEnvState({
+    this.environment = BackendEnv.production,
+    this.localHost = '',
+    this.localPort = defaultLocalPort,
+    this.customUrl = '',
+    this.autoSync = false,
+    this.loaded = false,
+  });
+  final BackendEnv environment;
+  final String localHost, customUrl;
+  final int localPort;
+
+  /// 「連線 Gateway 時自動同步上傳目標」.
+  final bool autoSync;
+
+  /// Saved values have been read from SharedPreferences.
+  final bool loaded;
+
+  String get localUrl => composeLocalUrl(localHost, localPort);
+  bool get localValid => localHostError(localHost) == null;
+
+  /// Full base URL the APP uses for the selected environment.
+  String get base => switch (environment) {
+    BackendEnv.production => productionApiBase,
+    BackendEnv.local => localUrl,
+    BackendEnv.custom => customUrl.trim(),
+  };
+
+  /// Upload target the gateway should use for this environment.
+  AppUploadTarget get uploadTarget =>
+      desiredUploadTarget(environment.name, base);
+
+  String get label => envLabel(environment);
+
+  BackendEnvState copy({
+    BackendEnv? environment,
+    String? localHost,
+    int? localPort,
+    String? customUrl,
+    bool? autoSync,
+    bool? loaded,
+  }) => BackendEnvState(
+    environment: environment ?? this.environment,
+    localHost: localHost ?? this.localHost,
+    localPort: localPort ?? this.localPort,
+    customUrl: customUrl ?? this.customUrl,
+    autoSync: autoSync ?? this.autoSync,
+    loaded: loaded ?? this.loaded,
+  );
+}
+
+String envLabel(BackendEnv env) => switch (env) {
+  BackendEnv.production => '正式站',
+  BackendEnv.local => '本地測試',
+  BackendEnv.custom => '其他網址',
+};
+
+final backendEnvProvider =
+    NotifierProvider<BackendEnvController, BackendEnvState>(
+      BackendEnvController.new,
+    );
+
+/// Single source of truth for the backend environment and its URLs, shared
+/// by the prep-page selector and the AppBar switch; persisted under the
+/// existing SharedPreferences keys.
+class BackendEnvController extends Notifier<BackendEnvState> {
+  static const _envKey = 'backend_environment';
+  static const _localKey = 'backend_local_url';
+  static const _customKey = 'backend_custom_url';
+  static const _autoSyncKey = 'auto_sync_upload_target';
+
+  /// Completes once the saved values are loaded.
+  Future<void> ready = Future.value();
+
+  @override
+  BackendEnvState build() {
+    final policy = ref.read(envSwitchPolicyProvider);
+    ready = _load();
+    return BackendEnvState(autoSync: policy.autoSyncDefault);
+  }
+
+  Future<void> _load() async {
+    final prefs = await SharedPreferences.getInstance();
+    final oldLocal = Uri.tryParse(prefs.getString(_localKey) ?? '');
+    if (oldLocal != null &&
+        ['127.0.0.1', 'localhost', '10.0.2.2'].contains(oldLocal.host)) {
+      await prefs.setString(_localKey, _localDefaultUrl);
+    }
+    if (!ref.mounted) return;
+    final saved = prefs.getString(_envKey);
+    final endpoint =
+        parseLocalUrl(prefs.getString(_localKey)) ??
+        parseLocalUrl(_localDefaultUrl);
+    state = state.copy(
+      environment: BackendEnv.values.where((e) => e.name == saved).firstOrNull,
+      localHost: endpoint?.host ?? '',
+      localPort: endpoint?.port ?? defaultLocalPort,
+      customUrl: prefs.getString(_customKey) ?? '',
+      autoSync: prefs.getBool(_autoSyncKey),
+      loaded: true,
+    );
+  }
+
+  Future<void> select(BackendEnv env) async {
+    state = state.copy(environment: env);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_envKey, env.name);
+  }
+
+  /// Stores the typed PC address; it is persisted only once it is valid.
+  void setLocalHost(String host) {
+    if (host == state.localHost) return;
+    state = state.copy(localHost: host);
+    unawaited(_saveLocal());
+  }
+
+  void setLocalPort(int port) {
+    if (port == state.localPort) return;
+    state = state.copy(localPort: port);
+    unawaited(_saveLocal());
+  }
+
+  void setCustomUrl(String url) {
+    if (url == state.customUrl) return;
+    state = state.copy(customUrl: url);
+    unawaited(
+      SharedPreferences.getInstance().then(
+        (prefs) => prefs.setString(_customKey, url.trim()),
+      ),
+    );
+  }
+
+  Future<void> setAutoSync(bool value) async {
+    state = state.copy(autoSync: value);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_autoSyncKey, value);
+  }
+
+  Future<void> _saveLocal() async {
+    final snapshot = state;
+    if (!snapshot.localValid) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_localKey, snapshot.localUrl);
+  }
+}
+
+/// `GET /healthz` of a backend base URL (the 「手機 → 後端」 row). Never
+/// sends credentials; an unparsable URL counts as unreachable.
+final backendProbeProvider = FutureProvider.autoDispose
+    .family<ProbeResult, String>((ref, base) async {
+      final uri = Uri.tryParse(base.trim());
+      if (uri == null || !uri.hasAuthority) {
+        return const ProbeResult(ProbeOutcome.unreachable, detail: '網址無效');
+      }
+      try {
+        return await ref.read(localBackendProberProvider).probe(uri);
+      } catch (error) {
+        return ProbeResult(ProbeOutcome.unreachable, detail: '$error');
+      }
+    });

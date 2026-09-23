@@ -29,6 +29,38 @@ final apiProvider = Provider<GatewayApi>(
       ref.watch(demoProvider) ? ref.watch(demoSystemProvider) : DashboardApi(),
 );
 
+/// Background polling of the gateway's upload (MQTT) state.
+enum UploadWatch {
+  /// Not polling (nothing pending, or no gateway connected).
+  idle,
+
+  /// Polling get_net_status until the gateway reports it is uploading.
+  polling,
+
+  /// Stopped after the time cap without the gateway connecting.
+  gaveUp,
+
+  /// Stopped because the BLE link to the gateway dropped.
+  linkLost,
+}
+
+/// How often and how long the upload state is polled; injectable in tests.
+class UploadWatchTiming {
+  const UploadWatchTiming({
+    this.interval = const Duration(seconds: 5),
+    this.cap = const Duration(minutes: 2),
+  });
+  final Duration interval, cap;
+  int get maxTicks => (cap.inMilliseconds / interval.inMilliseconds).ceil();
+}
+
+final uploadWatchTimingProvider = Provider<UploadWatchTiming>(
+  (ref) => const UploadWatchTiming(),
+);
+
+/// Gateway network fields copied from get_net_status (firmware cmd_handler.c).
+const gatewayNetKeys = ['wifi_state', 'ip', 'ssid', 'rssi'];
+
 class CommissionState {
   const CommissionState({
     this.step = 0,
@@ -47,10 +79,20 @@ class CommissionState {
     this.online = false,
     this.missing = const [],
     this.uploadNotice = '',
+    this.loggedIn = false,
+    this.net = const {},
+    this.uploadWatch = UploadWatch.idle,
   });
   final int step, seconds;
   final bool busy, verified, online;
   final String message, report;
+
+  /// Logged in to the backend currently selected (reset on a switch).
+  final bool loggedIn;
+
+  /// Gateway network status (wifi_state / ip / ssid / rssi) last read.
+  final Map<String, dynamic> net;
+  final UploadWatch uploadWatch;
 
   /// Outcome of the last upload-target switch or refresh (shown in its card).
   final String uploadNotice;
@@ -79,7 +121,13 @@ class CommissionState {
     bool? online,
     List<String>? missing,
     String? uploadNotice,
+    bool? loggedIn,
+    Map<String, dynamic>? net,
+    UploadWatch? uploadWatch,
   }) => CommissionState(
+    loggedIn: loggedIn ?? this.loggedIn,
+    net: net ?? this.net,
+    uploadWatch: uploadWatch ?? this.uploadWatch,
     step: step ?? this.step,
     busy: busy ?? this.busy,
     message: message ?? this.message,
@@ -122,17 +170,35 @@ class CommissioningController extends Notifier<CommissionState> {
   int get site => (state.config['site_id'] as num?)?.toInt() ?? 1;
   int get gateway => (state.config['gateway_id'] as num?)?.toInt() ?? 1;
   String get _path => '/api/gateways/$site/$gateway';
+  late UploadWatchTiming _timing;
+  Timer? _poll;
+  int _pollTicks = 0;
+  bool _pollInFlight = false;
+
+  /// Base URL of the backend the login (if any) belongs to.
+  String? _loginBase;
+
   @override
   CommissionState build() {
     _link = ref.watch(linkProvider);
     _api = ref.watch(apiProvider);
+    _timing = ref.read(uploadWatchTimingProvider);
     ref.onDispose(() {
       _generation++;
       _clock?.cancel();
       _health?.cancel();
+      _poll?.cancel();
       unawaited(_link.disconnect());
     });
     return const CommissionState();
+  }
+
+  void _setLoggedIn(bool value, [String? base]) {
+    _loggedIn = value;
+    if (value) _loginBase = base?.trim();
+    if (ref.mounted && state.loggedIn != value) {
+      state = state.copy(loggedIn: value, error: state.error);
+    }
   }
 
   Future<void> _wait(int seconds, int generation) async {
@@ -240,7 +306,7 @@ class CommissioningController extends Notifier<CommissionState> {
       await _save();
     } catch (error) {
       if (error is GatewayFailure && error.code == 'authentication') {
-        _loggedIn = false;
+        _setLoggedIn(false);
       }
       final safe = await _safeStop();
       final failure = error is GatewayFailure
@@ -315,7 +381,7 @@ class CommissioningController extends Notifier<CommissionState> {
         if (!offline) {
           await _api.login(base, password);
           _check(generation);
-          _loggedIn = true;
+          _setLoggedIn(true, base);
         }
         state = state.copy(
           step: 1,
@@ -330,7 +396,15 @@ class CommissioningController extends Notifier<CommissionState> {
       message: peers.isEmpty ? '未找到閘道器，請靠近並確認電源後重掃。' : '請選擇要開通的閘道器',
     );
   });
-  Future<void> connect(GatewayPeer peer) =>
+  Future<void> connect(GatewayPeer peer) async {
+    if (state.busy) return;
+    _stopWatch(UploadWatch.idle);
+    state = state.copy(net: const {}, error: state.error);
+    await _connect(peer);
+    _watchUploadIfPending();
+  }
+
+  Future<void> _connect(GatewayPeer peer) =>
       _run('連線並讀取閘道器設定', 120, (generation) async {
         await _link.connect(peer);
         _check(generation);
@@ -433,6 +507,16 @@ class CommissioningController extends Notifier<CommissionState> {
   }
 
   Future<void> configureWifi(
+    int newSite,
+    int newGateway,
+    String ssid,
+    String password,
+  ) async {
+    await _configureWifi(newSite, newGateway, ssid, password);
+    _watchUploadIfPending();
+  }
+
+  Future<void> _configureWifi(
     int newSite,
     int newGateway,
     String ssid,
@@ -540,6 +624,7 @@ class CommissioningController extends Notifier<CommissionState> {
         }
         // Keep the reported upload target; MQTT is still coming up here.
         _absorbTarget({...net}..remove('mqtt_connected'));
+        if (current) _absorbNet(net);
         connected = true;
         break;
       }
@@ -579,41 +664,59 @@ class CommissioningController extends Notifier<CommissionState> {
 
   /// [base] / [environment] are the APP backend URL and selector value; when
   /// given, a known upload-target mismatch fails fast instead of waiting 90 s.
-  Future<void> online({bool skip = false, String? base, String? environment}) =>
-      _run('確認閘道器持續上線', 90, (generation) async {
-        if (skip || !_loggedIn) {
-          state = state.copy(step: 4, message: '後端尚未確認；完成配置後仍需驗證');
-          return;
-        }
-        if (base != null) _checkUploadTarget(base, environment);
-        await _command(generation, 'heartbeat_boost', {'duration': 300});
-        String? previous;
-        for (int elapsed = 0; elapsed < 90; elapsed += 5) {
-          final row = await _fleet(generation);
-          _check(generation);
-          final heartbeat = row?['last_heartbeat']?.toString();
-          if (row?['online'] == true &&
-              row?['mqtt_connected'] == true &&
-              previous != null &&
-              heartbeat != null &&
-              heartbeat != previous) {
-            await _request(generation, 'PATCH', '$_path/bot-monitor', {
-              'enabled': false,
-              'ttl_minutes': 30,
-            });
-            _lease = true;
-            state = state.copy(
-              step: 4,
-              online: true,
-              message: '閘道器持續上線，可搜尋 PTU',
-            );
-            return;
-          }
-          previous = heartbeat;
-          await _wait(5, generation);
-        }
-        throw const GatewayFailure('timeout');
-      });
+  ///
+  /// [password] logs in again when the backend was switched since the last
+  /// login (or the flow started offline); empty keeps the old skip behaviour.
+  Future<void> online({
+    bool skip = false,
+    String? base,
+    String? environment,
+    String? password,
+  }) => _run('確認閘道器持續上線', 90, (generation) async {
+    if (!skip && !_loggedIn && base != null && (password ?? '').isNotEmpty) {
+      _backend = describeBackend(Uri.tryParse(base.trim()));
+      await _api.login(base.trim(), password!);
+      _check(generation);
+      _setLoggedIn(true, base);
+    }
+    if (skip || !_loggedIn) {
+      state = state.copy(step: 4, message: '後端尚未確認；完成配置後仍需驗證');
+      return;
+    }
+    if (base != null) _checkUploadTarget(base, environment);
+    await _command(generation, 'heartbeat_boost', {'duration': 300});
+    String? previous;
+    for (int elapsed = 0; elapsed < 90; elapsed += 5) {
+      final row = await _fleet(generation);
+      _check(generation);
+      final heartbeat = row?['last_heartbeat']?.toString();
+      if (row?['online'] == true &&
+          row?['mqtt_connected'] == true &&
+          previous != null &&
+          heartbeat != null &&
+          heartbeat != previous) {
+        await _request(generation, 'PATCH', '$_path/bot-monitor', {
+          'enabled': false,
+          'ttl_minutes': 30,
+        });
+        _lease = true;
+        state = state.copy(
+          step: 4,
+          online: true,
+          message: '閘道器持續上線，可搜尋 PTU',
+          // Heartbeats reached this backend, so the gateway is uploading.
+          config: reportsMqttTarget(state.config)
+              ? {...state.config, 'mqtt_connected': true}
+              : null,
+        );
+        _stopWatch(UploadWatch.idle);
+        return;
+      }
+      previous = heartbeat;
+      await _wait(5, generation);
+    }
+    throw const GatewayFailure('timeout');
+  });
   Future<void> discover() => _run('搜尋周邊與已連線 PTU', 35, (generation) async {
     final response = await _command(generation, 'scan_ble_discover', {
       'duration': 10,
@@ -784,7 +887,7 @@ class CommissioningController extends Notifier<CommissionState> {
     if (!_loggedIn) {
       await _api.login(base, password);
       _check(generation);
-      _loggedIn = true;
+      _setLoggedIn(true, base);
     }
     try {
       // Renew the lease for every verification attempt; a cached flag may have expired.
@@ -907,7 +1010,10 @@ class CommissioningController extends Notifier<CommissionState> {
         if (source.containsKey(key)) key: source[key],
     };
     if (update.isEmpty) return;
-    state = state.copy(config: {...state.config, ...update});
+    state = state.copy(
+      config: {...state.config, ...update},
+      error: state.error,
+    );
   }
 
   /// Fails fast when the gateway is known to upload elsewhere than the APP
@@ -918,11 +1024,109 @@ class CommissioningController extends Notifier<CommissionState> {
     final running = parseMqttTarget(state.config);
     if (wanted != null && running != null && !running.sameAs(wanted)) {
       throw GatewayFailure.targetMismatch(
-        gatewayTarget: running.label,
-        appTarget: wanted.label,
+        gatewayTarget: running.plainLabel,
+        appTarget: wanted.plainLabel,
       );
     }
     return wanted;
+  }
+
+  /// The APP backend was switched to [base]. A login belongs to the old
+  /// backend, so every later backend call logs in again first. A monitoring
+  /// lease on the old backend is not handed back here (a fire-and-forget
+  /// request could race a new login's key); it expires by its TTL or is
+  /// returned by 「結束並重新選擇閘道器」. The running step is not touched.
+  void backendChanged(String base) {
+    final next = base.trim();
+    if (_loginBase == next && _loggedIn) return;
+    if (!state.busy) _backend = describeBackend(Uri.tryParse(next));
+    _setLoggedIn(false);
+  }
+
+  /// Logs in to [base] outside a step (after switching environments).
+  Future<void> login(String base, String password) =>
+      _sideTask('登入後端', 30, (generation) async {
+        await _api.login(base.trim(), password);
+        _check(generation);
+        _backend = describeBackend(Uri.tryParse(base.trim()));
+        _setLoggedIn(true, base);
+      });
+
+  // ---- Background upload-state polling ----
+
+  bool get _canWatch =>
+      ref.mounted &&
+      state.peer != null &&
+      state.step >= 2 &&
+      reportsMqttTarget(state.config);
+
+  /// Starts (or restarts) polling when the gateway's upload is not yet
+  /// confirmed; called after a connect, Wi-Fi change, switch or refresh.
+  void _watchUploadIfPending() {
+    if (!_canWatch || state.config['mqtt_connected'] == true) {
+      if (ref.mounted && state.uploadWatch == UploadWatch.polling) {
+        _stopWatch(UploadWatch.idle);
+      }
+      return;
+    }
+    _poll?.cancel();
+    _pollTicks = 0;
+    state = state.copy(uploadWatch: UploadWatch.polling, error: state.error);
+    _poll = Timer.periodic(_timing.interval, (_) => unawaited(_pollTick()));
+    Timer.run(() => unawaited(_pollTick(count: false)));
+  }
+
+  void _stopWatch(UploadWatch reason) {
+    _poll?.cancel();
+    _poll = null;
+    if (ref.mounted && state.uploadWatch != reason) {
+      state = state.copy(uploadWatch: reason, error: state.error);
+    }
+  }
+
+  /// One poll: only while no step or command runs on the BLE link.
+  Future<void> _pollTick({bool count = true}) async {
+    if (!ref.mounted || _poll == null) return;
+    if (!_canWatch) return _stopWatch(UploadWatch.idle);
+    if (state.config['mqtt_connected'] == true) {
+      return _stopWatch(UploadWatch.idle);
+    }
+    // Time spent under a running step (or in the background) does not count.
+    if (state.busy || _pollInFlight || !_foreground) return;
+    if (count) _pollTicks++;
+    if (_pollTicks > _timing.maxTicks) return _stopWatch(UploadWatch.gaveUp);
+    _pollInFlight = true;
+    final generation = _generation;
+    try {
+      final net = await _link.command('get_net_status');
+      if (generation != _generation || !ref.mounted || state.busy) return;
+      if (_poll == null) return;
+      _absorbTarget(net);
+      _absorbNet(net);
+      if (state.config['mqtt_connected'] == true) {
+        _stopWatch(UploadWatch.idle);
+      }
+    } on GatewayFailure catch (error) {
+      if (generation != _generation || !ref.mounted || _poll == null) return;
+      if (error.code == 'disconnected' || error.code == 'not_connected') {
+        _stopWatch(UploadWatch.linkLost);
+      }
+      // busy / not_ready / timeout: skip this round.
+    } catch (_) {
+      // Unexpected; try again next round.
+    } finally {
+      _pollInFlight = false;
+    }
+  }
+
+  /// Copies the gateway's own network fields (get_net_status only).
+  void _absorbNet(Map<String, dynamic> source) {
+    final update = {
+      for (final key in gatewayNetKeys)
+        if (source.containsKey(key)) key: source[key],
+    };
+    if (update.isEmpty) return;
+    state = state.copy(net: {...state.net, ...update}, error: state.error);
   }
 
   /// Install report text (set on step 7); empty before the first pass.
@@ -952,32 +1156,36 @@ class CommissioningController extends Notifier<CommissionState> {
     _refreshReport();
   }
 
-  String _mqttText(MqttTarget target) =>
-      switch (state.config['mqtt_connected']) {
-        true => 'MQTT 已連線。',
-        false when target.isLocal =>
-          'MQTT 尚未連線：請確認電腦防火牆已開放 TCP 8883、本地 MQTT broker 已啟動，'
-              '且 broker 憑證包含 ${target.host}。可稍後按「重新讀取」確認。',
-        false => 'MQTT 尚未連線：請確認現場網路可連到正式站。可稍後按「重新讀取」確認。',
-        _ => 'MQTT 連線狀態尚未確認，可稍後按「重新讀取」。',
-      };
+  String get _uploadText => state.config['mqtt_connected'] == true
+      ? 'Gateway 已開始上傳資料。'
+      : 'Gateway 正在連線，APP 會自動確認（最多約 2 分鐘）。';
 
-  /// Re-reads the running upload target and MQTT state.
-  Future<void> refreshUploadTarget() =>
-      _sideTask('讀取 Gateway 上傳目標', 20, (generation) async {
-        final net = await _command(generation, 'get_net_status');
-        _absorbTarget(net);
-        final target = parseMqttTarget(state.config);
-        state = state.copy(
-          uploadNotice: target == null ? '' : '已重新讀取。${_mqttText(target)}',
-        );
-      });
+  /// Re-reads the running upload target and upload state.
+  Future<void> refreshUploadTarget() async {
+    await _sideTask('重新讀取 Gateway 狀態', 20, (generation) async {
+      final net = await _command(generation, 'get_net_status');
+      _absorbTarget(net);
+      _absorbNet(net);
+      final target = parseMqttTarget(state.config);
+      state = state.copy(
+        uploadNotice: target == null ? '' : '已重新讀取。$_uploadText',
+      );
+    });
+    _watchUploadIfPending();
+  }
 
   /// Sends `set_mqtt_target`; on a change the gateway reboots, so reconnect to
   /// the same gateway and confirm the running target by reading it back.
-  Future<void> switchUploadTarget(
+  Future<void> switchUploadTarget(MqttTarget wanted) async {
+    await _switchUploadTarget(wanted);
+    _watchUploadIfPending();
+  }
+
+  Future<void> _switchUploadTarget(
     MqttTarget wanted,
-  ) => _sideTask('切換 Gateway 上傳目標', 120, (generation) async {
+  ) => _sideTask('正在把 Gateway 切到${wanted.plainLabel}（會重新開機，約 1 分鐘）', 120, (
+    generation,
+  ) async {
     final peer = state.peer;
     if (peer == null) throw const GatewayFailure('disconnected');
     if (!reportsMqttTarget(state.config)) {
@@ -1011,12 +1219,13 @@ class CommissioningController extends Notifier<CommissionState> {
       final now = parseMqttTarget(state.config) ?? ack.target;
       if (!now.sameAs(wanted)) {
         throw GatewayFailure.targetReadback(
-          actual: now.label,
-          wanted: wanted.label,
+          actual: now.plainLabel,
+          wanted: wanted.plainLabel,
         );
       }
       state = state.copy(
-        uploadNotice: '上傳目標未變更：Gateway 已是${now.label}，未重新開機。${_mqttText(now)}',
+        uploadNotice:
+            '不用切換：Gateway 本來就送到${now.plainLabel}（沒有重新開機）。$_uploadText',
       );
       return;
     }
@@ -1038,7 +1247,7 @@ class CommissioningController extends Notifier<CommissionState> {
     final confirmed = await _readBackTarget(generation, wanted);
     state = state.copy(
       uploadNotice:
-          '已切換到${confirmed.label}，Gateway 已重新開機並重新連線。${_mqttText(confirmed)}',
+          '已把 Gateway 切到${confirmed.plainLabel}，Gateway 已重新開機並重新連上。$_uploadText',
     );
   });
 
@@ -1120,8 +1329,8 @@ class CommissioningController extends Notifier<CommissionState> {
       final target = parseMqttTarget(status);
       if (target == null || !target.sameAs(wanted)) {
         throw GatewayFailure.targetReadback(
-          actual: target?.label ?? '（未回報）',
-          wanted: wanted.label,
+          actual: target?.plainLabel ?? '（未回報）',
+          wanted: wanted.plainLabel,
         );
       }
       seen = target;
@@ -1130,7 +1339,7 @@ class CommissioningController extends Notifier<CommissionState> {
     if (seen == null) {
       throw GatewayFailure.targetReadback(
         actual: '（無法讀取）',
-        wanted: wanted.label,
+        wanted: wanted.plainLabel,
       );
     }
     return seen;
@@ -1181,6 +1390,8 @@ class CommissioningController extends Notifier<CommissionState> {
   }
 
   Future<void> repair() => _run('重新連接閘道器', 60, (generation) async {
+    // After an environment switch the old login must not reach the new site.
+    if (!_loggedIn) throw const GatewayFailure('authentication');
     await _request(generation, 'POST', '$_path/commands', {
       'op': 'reconnect_ble',
       'params': {'target_mac': state.config['gateway_uid']},
@@ -1191,6 +1402,7 @@ class CommissioningController extends Notifier<CommissionState> {
   Future<void> cancel() async {
     _generation++;
     _health?.cancel();
+    _stopWatch(UploadWatch.idle);
     final safe = await _safeStop();
     await _link.disconnect();
     if (_lease) {
@@ -1202,6 +1414,7 @@ class CommissioningController extends Notifier<CommissionState> {
     if (ref.mounted) {
       state = state.copy(
         step: 1,
+        net: const {},
         error: safe ? null : '尚未確認安全停止，請重新連線核對。',
         message: '已取消。請重新連線核對進度；未成功恢復的監控會話最晚於到期時恢復。',
       );

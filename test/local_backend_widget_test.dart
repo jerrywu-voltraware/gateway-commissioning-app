@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:gateway_commissioning/application/local_backend_finder.dart';
 import 'package:gateway_commissioning/data/local_backend_probe.dart';
+import 'package:gateway_commissioning/application/backend_environment.dart';
 import 'package:gateway_commissioning/gateway_app.dart';
 
 const healthy = ProbeResult(
@@ -96,10 +97,12 @@ void main() {
     expect(find.text('將連線：http://10.0.0.5:18000'), findsOneWidget);
 
     // Leaving local mode persists the full URL for the rest of the app.
-    await tester.ensureVisible(find.byType(DropdownButtonFormField<String>));
-    await tester.tap(find.byType(DropdownButtonFormField<String>));
+    await tester.ensureVisible(
+      find.byType(DropdownButtonFormField<BackendEnv>),
+    );
+    await tester.tap(find.byType(DropdownButtonFormField<BackendEnv>));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('VPS 正式站').last);
+    await tester.tap(find.text('正式站').last);
     await tester.pumpAndSettle();
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getString('backend_local_url'), 'http://10.0.0.5:18000');

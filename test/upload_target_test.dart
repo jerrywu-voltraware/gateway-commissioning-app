@@ -159,7 +159,7 @@ void main() {
       expect(parseMqttTarget(odd), isNull);
       expect(
         legacyTargetText('1.7.2'),
-        '此 Gateway 韌體（版本 1.7.2）不支援切換上傳目標，資料固定上傳正式站；需更新至 1.7.3 以上。',
+        '這台 Gateway 韌體太舊（版本 1.7.2），只能送到正式站，請更新到 1.7.3 以上。',
       );
       expect(legacyTargetText(null), contains('版本 未知'));
     });
@@ -350,8 +350,8 @@ void main() {
         );
         expect(parseMqttTarget(s.config)!.sameAs(_lan), isTrue);
         expect(s.config['mqtt_connected'], isTrue);
-        expect(s.uploadNotice, contains('已切換到本地 192.168.1.50:8883'));
-        expect(s.uploadNotice, contains('MQTT 已連線'));
+        expect(s.uploadNotice, contains('已把 Gateway 切到本地測試主機（192.168.1.50）'));
+        expect(s.uploadNotice, contains('Gateway 已開始上傳資料'));
         // Commissioning state is untouched.
         expect(s.step, before.step);
         expect(s.peer, before.peer);
@@ -368,7 +368,7 @@ void main() {
       expect(s.error, isNull);
       expect(fake.connects, 1);
       expect(fake.commands.last, 'get_net_status');
-      expect(s.uploadNotice, startsWith('上傳目標未變更：Gateway 已是正式站，未重新開機。'));
+      expect(s.uploadNotice, startsWith('不用切換：Gateway 本來就送到正式站（沒有重新開機）。'));
     });
     test('reconnect retries until the rebooted gateway answers', () async {
       final fake = TargetGateway();
@@ -414,7 +414,7 @@ void main() {
       await c.switchUploadTarget(_lan);
       expect(
         container.read(commissionProvider).error,
-        contains('回報的上傳目標是正式站，不是要求的本地 192.168.1.50:8883'),
+        contains('回報的資料上傳目的地是正式站，不是要求的本地測試主機（192.168.1.50）'),
       );
     });
     for (final code in ['ota_in_progress', 'otp_invalid', 'invalid_host']) {
@@ -549,9 +549,9 @@ void main() {
       expect(clock.elapsed, lessThan(const Duration(seconds: 5)));
       expect(
         s.error,
-        startsWith('Gateway 目前上傳到正式站，但 APP 連線的是本地 192.168.1.50:8883'),
+        startsWith('Gateway 目前把資料送到正式站，但手機連的是本地測試主機（192.168.1.50）'),
       );
-      expect(s.error, contains('切換到本地 192.168.1.50:8883'));
+      expect(s.error, contains('按「同步」'));
       expect(fake.paths, isEmpty, reason: 'no bot-monitor PATCH');
       expect(s.step, 6);
       expect(s.verified, isFalse);
@@ -571,7 +571,7 @@ void main() {
       await c.verify(productionApiBase, '', environment: 'production');
       expect(
         container.read(commissionProvider).error,
-        startsWith('Gateway 目前上傳到本地 192.168.1.50:8883，但 APP 連線的是正式站'),
+        startsWith('Gateway 目前把資料送到本地測試主機（192.168.1.50），但手機連的是正式站'),
       );
     });
     test('switch whose reconnect failed does not block step 7', () async {
@@ -605,7 +605,7 @@ void main() {
       await c.online(base: 'http://192.168.1.50:18000', environment: 'local');
       final s = container.read(commissionProvider);
       expect(clock.elapsed, lessThan(const Duration(seconds: 5)));
-      expect(s.error, startsWith('Gateway 目前上傳到正式站'));
+      expect(s.error, startsWith('Gateway 目前把資料送到正式站'));
       expect(s.step, 3);
       expect(fake.commands, isNot(contains('heartbeat_boost')));
       // Matching target: step 3 proceeds as before.

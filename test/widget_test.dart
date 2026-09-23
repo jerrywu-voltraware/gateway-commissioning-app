@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:gateway_commissioning/application/backend_environment.dart';
 import 'package:gateway_commissioning/gateway_app.dart';
 
 void main() {
@@ -27,7 +28,7 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     await tester.pumpWidget(const ProviderScope(child: GatewayApp()));
     await tester.pumpAndSettle();
-    expect(find.byType(DropdownButtonFormField<String>), findsOneWidget);
+    expect(find.byType(DropdownButtonFormField<BackendEnv>), findsOneWidget);
     await tester.scrollUntilVisible(
       find.byType(SwitchListTile),
       250,

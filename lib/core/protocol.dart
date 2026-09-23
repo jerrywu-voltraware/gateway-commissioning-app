@@ -197,16 +197,16 @@ class GatewayFailure implements Exception {
             '[${endpoint ?? ''}${detail == null ? '' : ' · $detail'}]',
       'unexpected' => 'APP 發生未預期錯誤：${detail ?? '未知'}',
       'target_mismatch' =>
-        'Gateway 目前上傳到$detail，但 APP 連線的是$expected，'
-            '資料不會進入這個後端，因此不等待、直接停止驗證。\n'
-            '請先在「Gateway 上傳目標」將 Gateway 切換到$expected，'
-            '或把 APP 的連線環境改成與 Gateway 一致後再驗證。',
+        'Gateway 目前把資料送到$detail，但手機連的是$expected，'
+            '資料到不了手機連的這個後端，所以直接停止驗證（不必空等）。\n'
+            '請在「連線狀態」按「同步」，或點右上角的環境按鈕重新選一次，'
+            '讓 Gateway 和手機連同一個地方後再驗證。',
       'target_readback' =>
-        'Gateway 重新連線後回報的上傳目標是$detail，不是要求的$expected。'
-            '設定可能未生效，請按「重新讀取」確認或再切換一次。',
+        'Gateway 重新連上後回報的資料上傳目的地是$detail，不是要求的$expected。'
+            '設定可能沒有生效，請在「連線狀態」按重新讀取確認，或再同步一次。',
       'target_reconnect' =>
         'Gateway 已收到切換指令並重新開機，但 45 秒內未能重新連上藍牙。'
-            '請靠近 Gateway，按「結束並重新選擇閘道器」重新連線後確認上傳目標。',
+            '請靠近 Gateway，按「結束並重新選擇閘道器」重新連線後看「連線狀態」。',
       'target_unsupported' => legacyTargetText(detail),
       _ => _baseMessage,
     };
