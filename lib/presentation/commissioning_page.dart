@@ -6,7 +6,9 @@ import '../application/backend_environment.dart';
 import '../application/commissioning_controller.dart';
 import '../application/connection_status.dart';
 import '../application/network_check.dart';
+import '../application/topology_settings.dart';
 import '../core/gateway_net.dart';
+import '../core/gateway_topology.dart';
 import '../core/local_backend_address.dart';
 import '../core/mqtt_target.dart';
 import '../data/wifi_scan.dart';
@@ -367,6 +369,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     final demo = ref.watch(demoProvider),
         colors = Theme.of(context).colorScheme;
     final env = ref.watch(backendEnvProvider);
+    final topologySettings = ref.watch(topologyProvider);
+    final topology = topologySettings.topology;
+    final targetPtuCount = topologySettings.targetCount;
     final shown = displayStep(state, env);
     final selectingPtus = state.step == 4 || state.step == 5;
     return PopScope(
@@ -376,6 +381,42 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           title: const Text('GIOS 現場開通'),
           actions: [
             EnvironmentChip(onPressed: _openEnvironmentSheet),
+            // 拓撲模式（進階）：直連／星狀切換與星狀「每台 PTU 數」收在同一個選單，
+            // 避免 360dp 窄螢幕被多個 AppBar action 擠壓（narrow 360dp widget test）。
+            PopupMenuButton<String>(
+              key: const Key('topology-menu'),
+              tooltip: '拓撲模式（進階）',
+              icon: const Icon(Icons.hub_outlined),
+              onSelected: (value) {
+                if (value.startsWith('topology:')) {
+                  final t = GatewayTopology.values.firstWhere(
+                    (t) => t.name == value.substring('topology:'.length),
+                  );
+                  ref.read(topologyProvider.notifier).setTopology(t);
+                } else if (value.startsWith('starcount:')) {
+                  final n = int.parse(value.substring('starcount:'.length));
+                  ref.read(topologyProvider.notifier).setStarCount(n);
+                }
+              },
+              itemBuilder: (_) => [
+                for (final t in GatewayTopology.values)
+                  CheckedPopupMenuItem(
+                    value: 'topology:${t.name}',
+                    checked: t == topology,
+                    child: Text(t.label),
+                  ),
+                if (topology.isStar) ...[
+                  const PopupMenuDivider(),
+                  for (var n = minStarPtuCount; n <= maxStarPtuCount; n++)
+                    CheckedPopupMenuItem(
+                      key: ValueKey('star-count-$n'),
+                      value: 'starcount:$n',
+                      checked: n == topologySettings.starCount,
+                      child: Text('每台 PTU 數：$n'),
+                    ),
+                ],
+              ],
+            ),
             PopupMenuButton<ThemeMode>(
               tooltip: '主題',
               initialValue: widget.themeMode,
@@ -436,6 +477,16 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                       color: colors.secondaryContainer,
                       child: const Text('模擬模式 · 不會設定真實設備或驗證正式資料'),
                     ),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      '目前模式：${topology.label}',
+                      key: const Key('topology-banner'),
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: colors.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
                   if (!selectingPtus) ...[
                     const SizedBox(height: 20),
                     Text(
@@ -604,6 +655,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     final enabled = !s.busy;
     final env = ref.read(backendEnvProvider);
     final environment = env.environment;
+    final topology = ref.read(topologyProvider).topology;
     switch (s.step) {
       case 0:
         return [

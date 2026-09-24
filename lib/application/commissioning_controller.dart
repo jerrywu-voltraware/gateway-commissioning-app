@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/gateway_net.dart';
+import '../core/gateway_topology.dart';
 import '../core/ptu_rssi.dart';
 import '../core/mqtt_target.dart';
 import '../core/protocol.dart';
@@ -11,6 +12,7 @@ import '../data/contracts.dart';
 import '../data/dashboard_api.dart';
 import '../data/demo_system.dart';
 import '../data/ptu_inventory.dart';
+import 'topology_settings.dart';
 import 'verify_diagnosis.dart';
 
 class DemoMode extends Notifier<bool> {
@@ -284,6 +286,16 @@ class CommissioningController extends Notifier<CommissionState> {
     _link = ref.watch(linkProvider);
     _api = ref.watch(apiProvider);
     _timing = ref.read(uploadWatchTimingProvider);
+    // 切換拓撲（直連／星狀）或改星狀台數：先依新拓撲重算 pendingNext 與 selected
+    // （沿用既有 ptus 清單，套用跟 _discover 相同的範圍過濾／預選邏輯，不重
+    // 掃），再把已勾選裁到新的目標台數，只保留 RSSI 最強的前 N 台；顯示的
+    // 「已選 x/y」跟著 topologyProvider 動態重繪。
+    ref.listen(topologyProvider, (previous, next) {
+      if (previous?.targetCount != next.targetCount ||
+          previous?.topology != next.topology) {
+        _onTopologyChanged(next);
+      }
+    });
     ref.onDispose(() {
       _generation++;
       _clock?.cancel();
@@ -294,6 +306,43 @@ class CommissioningController extends Notifier<CommissionState> {
       unawaited(_link.disconnect());
     });
     return const CommissionState();
+  }
+
+  /// 拓撲（直連／星狀）或目標台數變動時：先用既有 ptus 清單，套用跟
+  /// [_discover] 相同的範圍過濾（星狀模式下範圍外 PTU 不能選）重算
+  /// pendingNext，並把已勾選中變成範圍外的部分丟掉；再裁到新的目標台數。
+  void _onTopologyChanged(TopologySettingsState next) {
+    if (!ref.mounted) return;
+    final isStar = next.topology.isStar;
+    final pending = isStar ? state.ptus.where(_isOutOfRange).length : 0;
+    final selected = isStar
+        ? state.ptus
+              .where(
+                (p) => state.selected.contains(p['mac']) && !_isOutOfRange(p),
+              )
+              .map((p) => p['mac'].toString())
+              .toSet()
+        : state.selected;
+    if (selected.length != state.selected.length || pending != state.pendingNext) {
+      state = state.copy(selected: selected, pendingNext: pending);
+    }
+    _trimSelectionToTarget(next.targetCount);
+  }
+
+  /// Keeps the RSSI-strongest [target] selected PTUs, dropping the rest;
+  /// a no-op when already within the target (never auto-adds).
+  void _trimSelectionToTarget(int target) {
+    if (!ref.mounted || state.selected.length <= target) return;
+    final kept = state.ptus
+        .where((p) => state.selected.contains(p['mac']))
+        .toList()
+      ..sort(
+        (a, b) =>
+            ((b['rssi'] as num?) ?? -127).compareTo((a['rssi'] as num?) ?? -127),
+      );
+    state = state.copy(
+      selected: kept.take(target).map((p) => p['mac'].toString()).toSet(),
+    );
   }
 
   /// Starts the Wi-Fi grace period: right after a connect or a reboot the
