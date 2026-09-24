@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:gateway_commissioning/application/commissioning_controller.dart';
 import 'package:gateway_commissioning/application/topology_settings.dart';
 import 'package:gateway_commissioning/core/gateway_topology.dart';
+import 'package:gateway_commissioning/core/protocol.dart';
 import 'package:gateway_commissioning/data/demo_system.dart';
 
 /// (A) suggestGateway 上限放寬到 50：先用 fleet-status 挑最小未用編號，只對
@@ -96,6 +97,34 @@ class StarInventoryGateway extends DemoSystem {
       final target = nearby.firstWhere((d) => d['mac'] == params['mac']);
       target['device_number'] = params['new_id'];
       return {'success': true};
+    }
+    return super.command(op, params);
+  }
+}
+
+/// (B)2 星狀模式：三顆範圍外 PTU（6/7/8，都屬未登記的 gateway 2），其中一顆
+/// 重置時失敗（丟例外或 success:false），其餘兩顆仍要被重置並在重掃後可選。
+class PartialResetFailureGateway extends StarInventoryGateway {
+  PartialResetFailureGateway({required this.failingMac, this.throwOnReset = true}) {
+    nearby = [
+      {'mac': 'AA:BB:CC:00:00:04', 'device_number': 6, 'rssi': -40},
+      {'mac': failingMac, 'device_number': 7, 'rssi': -42},
+      {'mac': 'AA:BB:CC:00:00:06', 'device_number': 8, 'rssi': -44},
+    ];
+  }
+
+  final String failingMac;
+  final bool throwOnReset;
+
+  @override
+  Future<Map<String, dynamic>> command(
+    String op, [
+    Map<String, dynamic> params = const {},
+  ]) async {
+    if (op == 'assign_device_id' && params['mac'] == failingMac) {
+      resets.add(params['mac'].toString());
+      if (throwOnReset) throw const GatewayFailure('incomplete');
+      return {'success': false};
     }
     return super.command(op, params);
   }
@@ -278,4 +307,57 @@ void main() {
     expect(state.starNotice, isEmpty);
     expect(controller.ptuOutOfRange(fake.nearby[2]), isFalse);
   });
+
+  test(
+    'star mode: one stale PTU throwing during auto-reset does not fail the '
+    'whole discover; the others are still reset and rescanned',
+    () async {
+      const failingMac = 'AA:BB:CC:00:00:05';
+      final fake = PartialResetFailureGateway(failingMac: failingMac);
+      final (container, controller) = await _connectStar(fake, offline: false);
+      addTearDown(container.dispose);
+
+      expect(fake.resets, containsAll(['AA:BB:CC:00:00:04', failingMac, 'AA:BB:CC:00:00:06']));
+
+      final state = container.read(commissionProvider);
+      expect(state.error, isNull);
+
+      final reset1 = state.ptus.firstWhere(
+        (p) => p['mac'] == 'AA:BB:CC:00:00:04',
+      );
+      final failed = state.ptus.firstWhere((p) => p['mac'] == failingMac);
+      final reset2 = state.ptus.firstWhere(
+        (p) => p['mac'] == 'AA:BB:CC:00:00:06',
+      );
+      expect(controller.ptuOutOfRange(reset1), isFalse);
+      expect(controller.ptuOutOfRange(failed), isTrue);
+      expect(failed['device_number'], 7);
+      expect(controller.ptuOutOfRange(reset2), isFalse);
+      expect(state.pendingNext, 1);
+    },
+  );
+
+  test(
+    'star mode: one stale PTU reporting success:false during auto-reset '
+    'still counts toward pendingNext without failing discover',
+    () async {
+      const failingMac = 'AA:BB:CC:00:00:05';
+      final fake = PartialResetFailureGateway(
+        failingMac: failingMac,
+        throwOnReset: false,
+      );
+      final (container, controller) = await _connectStar(fake, offline: false);
+      addTearDown(container.dispose);
+
+      expect(fake.resets, containsAll(['AA:BB:CC:00:00:04', failingMac, 'AA:BB:CC:00:00:06']));
+
+      final state = container.read(commissionProvider);
+      expect(state.error, isNull);
+
+      final failed = state.ptus.firstWhere((p) => p['mac'] == failingMac);
+      expect(controller.ptuOutOfRange(failed), isTrue);
+      expect(failed['device_number'], 7);
+      expect(state.pendingNext, 1);
+    },
+  );
 }

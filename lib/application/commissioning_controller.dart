@@ -364,7 +364,7 @@ class CommissioningController extends Notifier<CommissionState> {
   void _onTopologyChanged(TopologySettingsState next) {
     if (!ref.mounted) return;
     final isStar = next.topology.isStar;
-    final pending = isStar ? _ownedByOthers(state.ptus) : 0;
+    final pending = isStar ? state.ptus.where(_isOutOfRange).length : 0;
     final selected = isStar
         ? state.ptus
               .where(
@@ -1387,11 +1387,19 @@ class CommissioningController extends Notifier<CommissionState> {
             message: '發現 ${stale.length} 台殘留編號的 PTU，自動重置中',
           );
           for (final p in stale) {
-            final result = await _command(generation, 'assign_device_id', {
-              'mac': p['mac'],
-              'new_id': 255,
-            });
-            if (result['success'] == true) _autoResetRescan = true;
+            try {
+              final result = await _command(generation, 'assign_device_id', {
+                'mac': p['mac'],
+                'new_id': 255,
+              });
+              if (result['success'] == true) _autoResetRescan = true;
+            } catch (e) {
+              // Cancellation (generation changed / widget disposed) must
+              // still abort the whole discover flow; any other failure
+              // (GatewayFailure or not) just leaves this one PTU blocked
+              // and we move on to the next stale PTU.
+              if (e is GatewayFailure && e.code == 'cancelled') rethrow;
+            }
           }
         }
       }
@@ -1401,7 +1409,7 @@ class CommissioningController extends Notifier<CommissionState> {
         .take(target)
         .map((p) => p['mac'].toString())
         .toSet();
-    final pending = isStar ? _ownedByOthers(ptus) : 0;
+    final pending = isStar ? ptus.where(_isOutOfRange).length : 0;
     state = state.copy(
       ptus: ptus,
       selected: selected,
@@ -1428,16 +1436,6 @@ class CommissioningController extends Notifier<CommissionState> {
   /// 範圍外 PTU 的編號所屬 gateway id：(device_number-1) ~/ 5 + 1。
   int _ownerGateway(Map<String, dynamic> ptu) =>
       (((ptu['device_number'] as num?)?.toInt() ?? 0) - 1) ~/ 5 + 1;
-
-  /// 範圍外且（依最近一次 fleet-status）屬於已登記閘道器的台數；查不到登記
-  /// 狀態時，範圍外的全部算進去。
-  int _ownedByOthers(List<Map<String, dynamic>> ptus) {
-    final registry = _ownerRegistry;
-    return ptus
-        .where(_isOutOfRange)
-        .where((p) => registry == null || registry.contains(_ownerGateway(p)))
-        .length;
-  }
 
   /// 此 site 在後台 fleet-status 已登記的 gateway id；未登入、離線、逾時或
   /// 非 2xx 時回 null（呼叫端不自動重置）。
