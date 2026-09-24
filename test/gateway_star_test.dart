@@ -2,6 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:gateway_commissioning/application/commissioning_controller.dart';
+import 'package:gateway_commissioning/application/topology_settings.dart';
+import 'package:gateway_commissioning/core/gateway_topology.dart';
 import 'package:gateway_commissioning/data/demo_system.dart';
 
 /// (A) suggestGateway 上限放寬到 50：先用 fleet-status 挑最小未用編號，只對
@@ -46,18 +48,51 @@ class StarInventoryGateway extends DemoSystem {
     {'mac': 'AA:BB:CC:00:00:03', 'device_number': 8, 'rssi': -44},
   ];
   List<Map<String, dynamic>> attached = [];
+
+  /// Gateway ids (besides this one) registered at site 80 in fleet-status.
+  Set<int> registered = {};
+
+  /// fleet-status fails once a PTU scan has started (backend unreachable).
+  bool fleetDownDuringScan = false;
+  bool _scanned = false;
+  final resets = <String>[];
+  int fleetCallsDuringScan = 0;
+
+  @override
+  Future<Map<String, dynamic>> request(
+    String method,
+    String path, [
+    Map<String, dynamic>? body,
+  ]) async {
+    if (path.contains('fleet-status') && _scanned) {
+      fleetCallsDuringScan++;
+      if (fleetDownDuringScan) throw Exception('offline');
+      final base = await super.request(method, path, body);
+      return {
+        ...base,
+        'gateways': [
+          ...(base['gateways'] as List? ?? []),
+          for (final g in registered) {'site_id': 80, 'gateway_id': g},
+        ],
+      };
+    }
+    return super.request(method, path, body);
+  }
+
   @override
   Future<Map<String, dynamic>> command(
     String op, [
     Map<String, dynamic> params = const {},
   ]) async {
     if (op == 'scan_ble_discover') {
+      _scanned = true;
       return {'devices': nearby.map(Map<String, dynamic>.from).toList()};
     }
     if (op == 'get_ble_devices') {
       return {'devices': attached.map(Map<String, dynamic>.from).toList()};
     }
     if (op == 'assign_device_id') {
+      if (params['new_id'] == 255) resets.add(params['mac'].toString());
       final target = nearby.firstWhere((d) => d['mac'] == params['mac']);
       target['device_number'] = params['new_id'];
       return {'success': true};
@@ -67,8 +102,10 @@ class StarInventoryGateway extends DemoSystem {
 }
 
 Future<(ProviderContainer, CommissioningController)> _connectStar(
-  StarInventoryGateway fake,
-) async {
+  StarInventoryGateway fake, {
+  bool offline = true,
+  GatewayTopology? topology,
+}) async {
   SharedPreferences.setMockInitialValues({});
   final container = ProviderContainer(
     overrides: [
@@ -76,8 +113,15 @@ Future<(ProviderContainer, CommissioningController)> _connectStar(
       apiProvider.overrideWithValue(fake),
     ],
   );
+  if (topology != null) {
+    await container.read(topologyProvider.notifier).setTopology(topology);
+  }
   final controller = container.read(commissionProvider.notifier);
-  await controller.prepare('https://example.invalid', '', offline: true);
+  await controller.prepare(
+    'https://example.invalid',
+    offline ? '' : 'secret',
+    offline: offline,
+  );
   await controller.scan();
   await controller.connect(container.read(commissionProvider).peers.single);
   await controller.chooseStation(newStation: false);
@@ -156,4 +200,82 @@ void main() {
       );
     },
   );
+
+  test(
+    'star mode: PTU whose owner gateway is unregistered is auto-reset to 255 '
+    'and becomes selectable after one rescan',
+    () async {
+      final fake = StarInventoryGateway(); // #8 belongs to gateway 2
+      final (container, controller) = await _connectStar(fake, offline: false);
+      addTearDown(container.dispose);
+      final stale = fake.nearby[2];
+      expect(fake.resets, [stale['mac']]);
+      expect(fake.fleetCallsDuringScan, 1);
+      expect(stale['device_number'], 255);
+      final state = container.read(commissionProvider);
+      expect(state.error, isNull);
+      expect(state.pendingNext, 0);
+      expect(state.starNotice, isEmpty);
+      expect(state.scannedTotal, 3);
+      expect(state.selected.contains(stale['mac']), isTrue);
+      expect(
+        controller.ptuOutOfRange(
+          state.ptus.firstWhere((p) => p['mac'] == stale['mac']),
+        ),
+        isFalse,
+      );
+    },
+  );
+
+  test(
+    'star mode: PTU owned by a registered gateway stays blocked and counts '
+    'as belonging to another gateway',
+    () async {
+      final fake = StarInventoryGateway()..registered = {2};
+      final (container, controller) = await _connectStar(fake, offline: false);
+      addTearDown(container.dispose);
+      final owned = fake.nearby[2];
+      expect(fake.resets, isEmpty);
+      expect(owned['device_number'], 8);
+      final state = container.read(commissionProvider);
+      expect(state.pendingNext, 1);
+      expect(state.starNotice, isEmpty);
+      expect(state.selected.contains(owned['mac']), isFalse);
+      expect(controller.ptuOutOfRange(owned), isTrue);
+    },
+  );
+
+  test(
+    'star mode: when fleet-status fails nothing is auto-reset and a manual '
+    'reset notice is shown',
+    () async {
+      final fake = StarInventoryGateway()..fleetDownDuringScan = true;
+      final (container, controller) = await _connectStar(fake, offline: false);
+      addTearDown(container.dispose);
+      expect(fake.resets, isEmpty);
+      final state = container.read(commissionProvider);
+      expect(state.error, isNull);
+      expect(state.starNotice, starOwnerUnknownText);
+      expect(state.pendingNext, 1);
+      expect(controller.ptuOutOfRange(fake.nearby[2]), isTrue);
+    },
+  );
+
+  test('direct mode never auto-resets PTU ids', () async {
+    final fake = StarInventoryGateway();
+    final (container, controller) = await _connectStar(
+      fake,
+      offline: false,
+      topology: GatewayTopology.direct,
+    );
+    addTearDown(container.dispose);
+    expect(fake.resets, isEmpty);
+    expect(fake.fleetCallsDuringScan, 0);
+    expect(fake.nearby[2]['device_number'], 8);
+    final state = container.read(commissionProvider);
+    expect(state.scannedTotal, 3);
+    expect(state.pendingNext, 0);
+    expect(state.starNotice, isEmpty);
+    expect(controller.ptuOutOfRange(fake.nearby[2]), isFalse);
+  });
 }

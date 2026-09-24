@@ -114,6 +114,10 @@ const backendSwitchedDoneText = '已切換連線環境，資料要在新的環�
 /// Step 6 after a backend switch.
 const backendSwitchedVerifyText = '已切換連線環境，請按「開始資料驗證」重新確認。';
 
+/// Star mode: fleet-status could not tell whether out-of-range PTUs' owner
+/// gateways are registered, so nothing was reset automatically.
+const starOwnerUnknownText = '無法確認閘道器登記狀態，請手動重置';
+
 class CommissionState {
   const CommissionState({
     this.step = 0,
@@ -143,6 +147,7 @@ class CommissionState {
     this.autoRssi = true,
     this.scannedTotal = 0,
     this.pendingNext = 0,
+    this.starNotice = '',
   });
   final int step, seconds;
   final bool busy, verified, online;
@@ -178,6 +183,10 @@ class CommissionState {
   /// 星狀強化：最近一次 discover() 掃到的 PTU 總數，以及可納入但目前不在本機
   /// 5 格範圍內、待下一台閘道器認領的台數（完成畫面的 X / Z 統計）。
   final int scannedTotal, pendingNext;
+
+  /// 星狀模式：掃描後無法向後台確認範圍外 PTU 的所屬閘道器是否登記時的提示
+  /// （此時不自動重置）；空字串代表不顯示。
+  final String starNotice;
 
   /// Gateway Wi-Fi as the network check judges it.
   WifiVerdict get wifi => wifiVerdictOf(
@@ -240,6 +249,7 @@ class CommissionState {
     bool? autoRssi,
     int? scannedTotal,
     int? pendingNext,
+    String? starNotice,
   }) => CommissionState(
     loggedIn: loggedIn ?? this.loggedIn,
     net: net ?? this.net,
@@ -252,6 +262,7 @@ class CommissionState {
     autoRssi: autoRssi ?? this.autoRssi,
     scannedTotal: scannedTotal ?? this.scannedTotal,
     pendingNext: pendingNext ?? this.pendingNext,
+    starNotice: starNotice ?? this.starNotice,
     step: step ?? this.step,
     busy: busy ?? this.busy,
     message: message ?? this.message,
@@ -310,6 +321,13 @@ class CommissioningController extends Notifier<CommissionState> {
   Timer? _rssiTimer;
   bool _rssiInFlight = false;
 
+  /// 星狀模式：最近一次 discover() 從 fleet-status 讀到、此 site 已登記的
+  /// gateway id；null＝沒查或查不到（範圍外 PTU 一律當成屬於其他閘道器）。
+  Set<int>? _ownerRegistry;
+
+  /// 本輪 discover() 已自動把殘留編號歸零，需要再重掃一次（只做一輪）。
+  bool _autoResetRescan = false;
+
   /// Base URL of the backend the login (if any) belongs to.
   String? _loginBase;
 
@@ -346,7 +364,7 @@ class CommissioningController extends Notifier<CommissionState> {
   void _onTopologyChanged(TopologySettingsState next) {
     if (!ref.mounted) return;
     final isStar = next.topology.isStar;
-    final pending = isStar ? state.ptus.where(_isOutOfRange).length : 0;
+    final pending = isStar ? _ownedByOthers(state.ptus) : 0;
     final selected = isStar
         ? state.ptus
               .where(
@@ -1298,7 +1316,13 @@ class CommissioningController extends Notifier<CommissionState> {
     _rssiTimer ??= Timer.periodic(ref.read(ptuSignalIntervalProvider), (_) {
       unawaited(refreshPtuRssi());
     });
+    _autoResetRescan = false;
     await _discover();
+    if (ref.mounted && _autoResetRescan && state.error == null) {
+      // 殘留編號已歸零：重掃一次讓它們變成可勾選；這次不再自動重置。
+      _autoResetRescan = false;
+      await _discover(autoReset: false);
+    }
     if (ref.mounted && state.step == 4 && state.error != null) {
       state = state.copy(
         message: state.uploadWatch == UploadWatch.linkLost
@@ -1309,10 +1333,15 @@ class CommissioningController extends Notifier<CommissionState> {
     }
   }
 
-  Future<void> _discover() => _run('Gateway 正在掃描周邊 PTU，請稍候', 75, (
-    generation,
-  ) async {
-    state = state.copy(ptus: [], selected: {}, results: {}, missing: []);
+  Future<void> _discover({bool autoReset = true}) =>
+      _run('Gateway 正在掃描周邊 PTU，請稍候', 75, (generation) async {
+    state = state.copy(
+      ptus: [],
+      selected: {},
+      results: {},
+      missing: [],
+      starNotice: '',
+    );
     if (state.uploadWatch == UploadWatch.linkLost) {
       final peer = state.peer;
       if (peer == null) throw const GatewayFailure('not_connected');
@@ -1344,17 +1373,43 @@ class CommissioningController extends Notifier<CommissionState> {
     }
     final target = targetPtuCount;
     final isStar = ref.read(topologyProvider).topology.isStar;
+    if (autoReset) _ownerRegistry = null;
+    final outOfRange = isStar ? ptus.where(_isOutOfRange).toList() : const [];
+    if (autoReset && outOfRange.isNotEmpty) {
+      _ownerRegistry = await _siteGatewayIds(generation);
+      final registry = _ownerRegistry;
+      if (registry != null) {
+        final stale = outOfRange
+            .where((p) => !registry.contains(_ownerGateway(p)))
+            .toList();
+        if (stale.isNotEmpty) {
+          state = state.copy(
+            message: '發現 ${stale.length} 台殘留編號的 PTU，自動重置中',
+          );
+          for (final p in stale) {
+            final result = await _command(generation, 'assign_device_id', {
+              'mac': p['mac'],
+              'new_id': 255,
+            });
+            if (result['success'] == true) _autoResetRescan = true;
+          }
+        }
+      }
+    }
     final selected = ptus
         .where((p) => !isStar || !_isOutOfRange(p))
         .take(target)
         .map((p) => p['mac'].toString())
         .toSet();
-    final pending = isStar ? ptus.where(_isOutOfRange).length : 0;
+    final pending = isStar ? _ownedByOthers(ptus) : 0;
     state = state.copy(
       ptus: ptus,
       selected: selected,
       scannedTotal: ptus.length,
       pendingNext: pending,
+      starNotice: outOfRange.isNotEmpty && _ownerRegistry == null
+          ? starOwnerUnknownText
+          : '',
       message: ptus.isEmpty
           ? const GatewayFailure('no_devices').message
           : 'Gateway 已回傳 ${ptus.length} 台 PTU，請選擇要監控的裝置，最多 $target 台',
@@ -1368,6 +1423,44 @@ class CommissioningController extends Notifier<CommissionState> {
     if (id == 0 || id == 255) return false;
     final first = (gateway - 1) * 5 + 1;
     return id < first || id >= first + 5;
+  }
+
+  /// 範圍外 PTU 的編號所屬 gateway id：(device_number-1) ~/ 5 + 1。
+  int _ownerGateway(Map<String, dynamic> ptu) =>
+      (((ptu['device_number'] as num?)?.toInt() ?? 0) - 1) ~/ 5 + 1;
+
+  /// 範圍外且（依最近一次 fleet-status）屬於已登記閘道器的台數；查不到登記
+  /// 狀態時，範圍外的全部算進去。
+  int _ownedByOthers(List<Map<String, dynamic>> ptus) {
+    final registry = _ownerRegistry;
+    return ptus
+        .where(_isOutOfRange)
+        .where((p) => registry == null || registry.contains(_ownerGateway(p)))
+        .length;
+  }
+
+  /// 此 site 在後台 fleet-status 已登記的 gateway id；未登入、離線、逾時或
+  /// 非 2xx 時回 null（呼叫端不自動重置）。
+  Future<Set<int>?> _siteGatewayIds(int generation) async {
+    if (!_loggedIn) return null;
+    try {
+      final fleet = await _request(
+        generation,
+        'GET',
+        '/api/gateways/fleet-status?site_id=$site',
+      ).timeout(const Duration(seconds: 10));
+      final ids = <int>{};
+      for (final item in (fleet['gateways'] as List? ?? [])) {
+        final row = Map<String, dynamic>.from(item as Map);
+        if (row['site_id'] != site) continue;
+        final g = (row['gateway_id'] as num?)?.toInt();
+        if (g != null) ids.add(g);
+      }
+      return ids;
+    } catch (_) {
+      _check(generation);
+      return null;
+    }
   }
 
   /// 星狀模式下，[ptu] 是否已屬於其他 gateway（範圍外，不可直接勾選）。
