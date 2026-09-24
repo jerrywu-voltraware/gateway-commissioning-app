@@ -141,6 +141,8 @@ class CommissionState {
     this.wifiGraceOver = false,
     this.offline = false,
     this.autoRssi = true,
+    this.scannedTotal = 0,
+    this.pendingNext = 0,
   });
   final int step, seconds;
   final bool busy, verified, online;
@@ -172,6 +174,10 @@ class CommissionState {
   /// Started with 「先離線配置，稍後驗證資料」 (no backend login).
   final bool offline;
   final bool autoRssi;
+
+  /// 星狀強化：最近一次 discover() 掃到的 PTU 總數，以及可納入但目前不在本機
+  /// 5 格範圍內、待下一台閘道器認領的台數（完成畫面的 X / Z 統計）。
+  final int scannedTotal, pendingNext;
 
   /// Gateway Wi-Fi as the network check judges it.
   WifiVerdict get wifi => wifiVerdictOf(
@@ -232,6 +238,8 @@ class CommissionState {
     bool? wifiGraceOver,
     bool? offline,
     bool? autoRssi,
+    int? scannedTotal,
+    int? pendingNext,
   }) => CommissionState(
     loggedIn: loggedIn ?? this.loggedIn,
     net: net ?? this.net,
@@ -242,6 +250,8 @@ class CommissionState {
     wifiGraceOver: wifiGraceOver ?? this.wifiGraceOver,
     offline: offline ?? this.offline,
     autoRssi: autoRssi ?? this.autoRssi,
+    scannedTotal: scannedTotal ?? this.scannedTotal,
+    pendingNext: pendingNext ?? this.pendingNext,
     step: step ?? this.step,
     busy: busy ?? this.busy,
     message: message ?? this.message,
@@ -288,6 +298,8 @@ class CommissioningController extends Notifier<CommissionState> {
   /// retry with replaceExisting so it does not re-reserve (already granted).
   bool _pendingReplace = false;
   bool get pendingReplace => _pendingReplace;
+  /// PTU 目標台數：直連固定 1，星狀依「每台 PTU 數」設定（預設 5）。
+  int get targetPtuCount => ref.read(topologyProvider).targetCount;
   int get site => (state.config['site_id'] as num?)?.toInt() ?? 1;
   int get gateway => (state.config['gateway_id'] as num?)?.toInt() ?? 1;
   String get _path => '/api/gateways/$site/$gateway';
@@ -1330,26 +1342,82 @@ class CommissioningController extends Notifier<CommissionState> {
         p['device_number'] = _restoredAssignments[p['mac']];
       }
     }
+    final target = targetPtuCount;
+    final isStar = ref.read(topologyProvider).topology.isStar;
     final selected = ptus
-        .where((p) {
-          final id = (p['device_number'] as num?)?.toInt() ?? 0;
-          return id == 0 || (id >= (gateway - 1) * 5 + 1 && id <= gateway * 5);
-        })
-        .take(5)
+        .where((p) => !isStar || !_isOutOfRange(p))
+        .take(target)
         .map((p) => p['mac'].toString())
         .toSet();
+    final pending = isStar ? ptus.where(_isOutOfRange).length : 0;
     state = state.copy(
       ptus: ptus,
       selected: selected,
+      scannedTotal: ptus.length,
+      pendingNext: pending,
       message: ptus.isEmpty
           ? const GatewayFailure('no_devices').message
-          : 'Gateway 已回傳 ${ptus.length} 台 PTU，請選擇要監控的裝置，最多五台',
+          : 'Gateway 已回傳 ${ptus.length} 台 PTU，請選擇要監控的裝置，最多 $target 台',
     );
   });
+
+  /// PTU 已被編號（0＝未編號、255＝「重置並納入」後的暫時狀態，兩者都算可納入）
+  /// 且編號不在本 gateway 的 5 格範圍內，代表它掛在別的 gateway 底下。
+  bool _isOutOfRange(Map<String, dynamic> ptu) {
+    final id = (ptu['device_number'] as num?)?.toInt() ?? 0;
+    if (id == 0 || id == 255) return false;
+    final first = (gateway - 1) * 5 + 1;
+    return id < first || id >= first + 5;
+  }
+
+  /// 星狀模式下，[ptu] 是否已屬於其他 gateway（範圍外，不可直接勾選）。
+  /// 直連模式恆為 false。
+  bool ptuOutOfRange(Map<String, dynamic> ptu) =>
+      ref.read(topologyProvider).topology.isStar && _isOutOfRange(ptu);
+
+  /// 星狀模式：本機 5 格是否已被「已配置且在範圍內」的 PTU 佔滿，此時若又
+  /// 勾了新裝置（未編號），送出前要提示改連別台 gateway。
+  String? get starFullWarning {
+    if (!ref.read(topologyProvider).topology.isStar) return null;
+    final first = (gateway - 1) * 5 + 1;
+    final occupied = state.ptus.where((p) {
+      final id = (p['device_number'] as num?)?.toInt() ?? 0;
+      return id >= first && id < first + 5;
+    }).length;
+    final addsNew = state.ptus.any((p) {
+      if (!state.selected.contains(p['mac'])) return false;
+      final id = (p['device_number'] as num?)?.toInt() ?? 0;
+      return id == 0 || id == 255;
+    });
+    if (occupied >= 5 && addsNew) return '本機已滿，請連另一台閘道器。';
+    return null;
+  }
+
+  /// 「重置並納入」：把範圍外 PTU 的編號清成 255，再重新掃描，讓它可被本機
+  /// 勾選。呼叫端（page）只在 [ptuOutOfRange] 為 true 時提供這個動作。
+  Future<void> resetAndInclude(String mac) async {
+    await _run('重置編號，準備重新掃描', 20, (generation) async {
+      final result = await _command(generation, 'assign_device_id', {
+        'mac': mac,
+        'new_id': 255,
+      });
+      if (result['success'] != true) throw const GatewayFailure('incomplete');
+    });
+    if (ref.mounted && state.error == null) {
+      await discover();
+    }
+  }
   void select(String mac, bool selected) {
     if (state.busy) return;
     final next = Set<String>.of(state.selected);
-    if (selected && next.length < 5) {
+    if (selected &&
+        next.length < targetPtuCount &&
+        !ptuOutOfRange(
+          state.ptus.firstWhere(
+            (p) => p['mac'] == mac,
+            orElse: () => const {},
+          ),
+        )) {
       next.add(mac);
     } else if (!selected) {
       next.remove(mac);
@@ -1361,7 +1429,7 @@ class CommissioningController extends Notifier<CommissionState> {
     final chosen = state.ptus
         .where((p) => state.selected.contains(p['mac']))
         .toList();
-    if (chosen.isEmpty || chosen.length > 5) {
+    if (chosen.isEmpty || chosen.length > targetPtuCount) {
       throw const GatewayFailure('no_devices');
     }
     _provisioningMayBeActive = true;
@@ -1378,10 +1446,10 @@ class CommissioningController extends Notifier<CommissionState> {
       final first = (gateway - 1) * 5 + 1;
       final id = old >= first && old < first + 5 && !used.contains(old)
           ? old
-          : List.generate(
-              5,
-              (i) => first + i,
-            ).firstWhere((id) => !used.contains(id));
+          : List.generate(5, (i) => first + i).firstWhere(
+              (id) => !used.contains(id),
+              orElse: () => throw const GatewayFailure('gateway_full'),
+            );
       used.add(id);
       results[p['mac'].toString()] = '正在指派 #$id';
       state = state.copy(results: Map.of(results));

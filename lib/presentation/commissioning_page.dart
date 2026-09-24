@@ -592,14 +592,21 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Text(
-                          '已選 ${state.selected.length} / 5 台',
+                          '已選 ${state.selected.length} / $targetPtuCount 台',
                           key: const Key('ptu-selection-count'),
                         ),
                         const SizedBox(height: 6),
                         FilledButton(
                           key: const Key('ptu-configure'),
                           onPressed: !state.busy && state.selected.isNotEmpty
-                              ? controller.configurePtus
+                              ? () {
+                                  final warning = controller.starFullWarning;
+                                  if (warning != null) {
+                                    _snack(warning);
+                                    return;
+                                  }
+                                  controller.configurePtus();
+                                }
                               : null,
                           child: Text('配置 ${state.selected.length} 台並開始監控'),
                         ),
@@ -1085,17 +1092,34 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ),
-          ...s.ptus.map(
-            (ptu) => PtuSelectionTile(
+          if (topology.isDirect && s.ptus.isEmpty && !s.busy)
+            Padding(
+              key: const Key('direct-no-ptu-hint'),
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                '未掃到 PTU，請確認 PTU 已上電後重新掃描',
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ),
+          ...s.ptus.map((ptu) {
+            final blocked = c.ptuOutOfRange(ptu);
+            return PtuSelectionTile(
               key: ValueKey('ptu-${ptu['mac']}'),
               ptu: ptu,
               selected: s.selected.contains(ptu['mac']),
               result: s.results[ptu['mac']],
-              onChanged: enabled
+              blocked: blocked,
+              // 直連模式：已自動勾選 RSSI 最強的一台，這裡只留「配置並開始監控」
+              // 當確認鈕，不再開放改選。星狀模式：範圍外（屬於其他閘道器）的
+              // PTU 不能直接勾，要先「重置並納入」。
+              onChanged: enabled && !topology.isDirect && !blocked
                   ? (value) => c.select(ptu['mac'].toString(), value)
                   : null,
-            ),
-          ),
+              onReset: enabled && blocked
+                  ? () => c.resetAndInclude(ptu['mac'].toString())
+                  : null,
+            );
+          }),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             dense: true,
@@ -1111,8 +1135,10 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               style: Theme.of(context).textTheme.bodySmall,
             ),
             children: [
-              const Text(
-                '由 Gateway 掃描附近的 PTU，再透過藍牙把清單傳回手機。最多可選五台。RSSI 是 Gateway 與 PTU 之間的訊號；未連線裝置顯示掃描值。「上次」表示暫停或過期，「快取」表示韌體未提供讀值時間。韌體 1.7.5 起可在配置期間量測；RSSI — 表示尚無有效讀值。',
+              Text(
+                '由 Gateway 掃描附近的 PTU，再透過藍牙把清單傳回手機。'
+                '${topology.isDirect ? "直連模式：已自動選定訊號最強的一台。" : "最多可選 ${ref.read(topologyProvider).starCount} 台。"}'
+                'RSSI 是 Gateway 與 PTU 之間的訊號；未連線裝置顯示掃描值。「上次」表示暫停或過期，「快取」表示韌體未提供讀值時間。韌體 1.7.5 起可在配置期間量測；RSSI — 表示尚無有效讀值。',
               ),
               StepList(current: displayStep(s, env)),
             ],
@@ -1168,6 +1194,13 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           Text(
             demo ? '模擬開通完成' : '開通完成',
             style: Theme.of(context).textTheme.headlineSmall,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '掃到 ${s.scannedTotal} 台，本機配置 ${s.ptus.length} 台，'
+            '剩 ${s.pendingNext} 台待下一台閘道器',
+            key: const Key('commission-summary'),
+            style: Theme.of(context).textTheme.bodyMedium,
           ),
           // After a switch of environment: log in there to check the data.
           if (!s.loggedIn) ...[

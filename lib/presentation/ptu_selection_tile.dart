@@ -10,12 +10,20 @@ class PtuSelectionTile extends StatelessWidget {
     required this.selected,
     required this.onChanged,
     this.result,
+    this.blocked = false,
+    this.onReset,
   });
 
   final Map<String, dynamic> ptu;
   final bool selected;
   final ValueChanged<bool>? onChanged;
   final String? result;
+
+  /// 星狀模式：此 PTU 編號已在其他閘道器的範圍內，不可直接勾選。
+  final bool blocked;
+
+  /// 「重置並納入」：把編號清掉並重新掃描，讓 [blocked] 的裝置可被勾選。
+  final VoidCallback? onReset;
 
   String get title => ((ptu['device_number'] as num?) ?? 0) > 0
       ? 'PTU #${ptu['device_number']}'
@@ -102,6 +110,30 @@ class PtuSelectionTile extends StatelessWidget {
                       ptu['mac'].toString(),
                       style: theme.textTheme.bodySmall,
                     ),
+                    if (blocked)
+                      Wrap(
+                        spacing: 8,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(
+                            '已屬於其他閘道器',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.error,
+                            ),
+                          ),
+                          if (onReset != null)
+                            TextButton(
+                              onPressed: onReset,
+                              style: TextButton.styleFrom(
+                                padding: EdgeInsets.zero,
+                                minimumSize: const Size(0, 0),
+                                tapTargetSize:
+                                    MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              child: const Text('重置並納入'),
+                            ),
+                        ],
+                      ),
                     if (result?.isNotEmpty == true)
                       Text(result!, style: theme.textTheme.bodySmall),
                   ],
