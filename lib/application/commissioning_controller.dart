@@ -33,6 +33,19 @@ final apiProvider = Provider<GatewayApi>(
       ref.watch(demoProvider) ? ref.watch(demoSystemProvider) : DashboardApi(),
 );
 
+/// How [CommissioningController.suggestGateway] found its answer.
+enum GatewaySuggestKind {
+  /// Confirmed free by the backend (check-identity), or this gateway's own
+  /// existing number on the same site.
+  online,
+
+  /// Backend unreachable: guessed from BLE peer names instead.
+  offline,
+
+  /// Backend reachable, but 1–kMaxGatewayId are all taken for that site.
+  full,
+}
+
 /// Background polling of the gateway's upload (MQTT) state.
 enum UploadWatch {
   /// Not polling (nothing pending, or no gateway connected).
@@ -268,6 +281,13 @@ class CommissioningController extends Notifier<CommissionState> {
       _lease = false,
       _foreground = true,
       _healthBusy = false;
+  /// Backend already reserved this (site, gateway) as a replacement, but
+  /// writing it to the device itself has not been confirmed yet — set right
+  /// after a successful force_replace reserve-identity, cleared once
+  /// set_site_identity + readback succeed. The next 「儲存並連接 WiFi」 should
+  /// retry with replaceExisting so it does not re-reserve (already granted).
+  bool _pendingReplace = false;
+  bool get pendingReplace => _pendingReplace;
   int get site => (state.config['site_id'] as num?)?.toInt() ?? 1;
   int get gateway => (state.config['gateway_id'] as num?)?.toInt() ?? 1;
   String get _path => '/api/gateways/$site/$gateway';
@@ -657,46 +677,69 @@ class CommissioningController extends Notifier<CommissionState> {
           );
           return;
         }
-        if (_loggedIn && config['fleet_joined'] != true) {
-          final discover = await _request(
-            generation,
-            'GET',
-            '/api/gateways/discover',
-          );
-          final fleet = await _request(
-            generation,
-            'GET',
-            '/api/gateways/fleet-status',
-          );
-          final occupied = <String>{};
-          for (final row in [
-            ...(discover['items'] as List? ?? []),
-            ...(fleet['gateways'] as List? ?? []),
-          ]) {
-            final uid = row['mac'] ?? row['last_seen_mac'];
-            if (uid == null || _mac(uid) != _mac(config['gateway_uid'])) {
-              occupied.add('${row['site_id']}/${row['gateway_id']}');
-            }
-          }
-          candidate:
-          for (int s = 1; s <= 65535; s++) {
-            for (int g = 1; g <= 6; g++) {
-              if (occupied.contains('$s/$g')) continue;
-              final identity = await _request(
+        if (config['fleet_joined'] != true) {
+          // Initial guess for a brand-new gateway: find some free site+gateway
+          // slot to prefill, through the same suggestGateway the site field
+          // uses later (one source of truth, see GatewaySuggestKind).
+          int? site;
+          int gw = 1;
+          var offline = !_loggedIn;
+          if (_loggedIn) {
+            try {
+              final discover = await _request(
                 generation,
                 'GET',
-                '/api/gateways/$s/$g/check-identity',
+                '/api/gateways/discover',
               );
-              if (identity['exists'] != true ||
-                  (identity['last_seen_mac'] != null &&
-                      _mac(identity['last_seen_mac']) ==
-                          _mac(config['gateway_uid']))) {
-                config['suggested_site_id'] = s;
-                config['suggested_gateway_id'] = g;
-                break candidate;
+              final fleet = await _request(
+                generation,
+                'GET',
+                '/api/gateways/fleet-status',
+              );
+              final occupied = <String>{};
+              for (final row in [
+                ...(discover['items'] as List? ?? []),
+                ...(fleet['gateways'] as List? ?? []),
+              ]) {
+                final uid = row['mac'] ?? row['last_seen_mac'];
+                if (uid == null || _mac(uid) != _mac(config['gateway_uid'])) {
+                  occupied.add('${row['site_id']}/${row['gateway_id']}');
+                }
               }
+              candidate:
+              for (int s = 1; s <= 65535; s++) {
+                if (List.generate(kMaxGatewayId, (i) => i + 1).every(
+                  (g) => occupied.contains('$s/$g'),
+                )) {
+                  continue; // known fully occupied: skip without a network call
+                }
+                final (g, kind) = await suggestGateway(s);
+                _check(generation);
+                if (kind == GatewaySuggestKind.online) {
+                  site = s;
+                  gw = g;
+                  break candidate;
+                }
+                if (kind == GatewaySuggestKind.offline) {
+                  site = s;
+                  gw = g;
+                  offline = true;
+                  break candidate;
+                }
+                // full: this site has no free 1–kMaxGatewayId slot, try the next one.
+              }
+            } catch (_) {
+              offline = true;
             }
           }
+          if (site == null) {
+            site = 1;
+            gw = _offlineGatewaySuggestion(1);
+            offline = true;
+          }
+          config['suggested_site_id'] = site;
+          config['suggested_gateway_id'] = gw;
+          config['suggested_offline'] = offline;
         }
         state = state.copy(
           step: 2,
@@ -853,10 +896,129 @@ class CommissioningController extends Notifier<CommissionState> {
     int newSite,
     int newGateway,
     String ssid,
-    String password,
-  ) async {
-    await _configureWifi(newSite, newGateway, ssid, password);
+    String password, {
+    bool replaceExisting = false,
+  }) async {
+    await _configureWifi(newSite, newGateway, ssid, password, replaceExisting);
     _watchUploadIfPending();
+  }
+
+  /// Auto-picks the gateway number for [forSite] so the user only enters the
+  /// site ID: keeps this gateway's own existing number when it is already
+  /// assigned to this site (avoids re-numbering and moving its data row),
+  /// otherwise asks the backend for the first free 1–kMaxGatewayId slot. When the
+  /// backend cannot be reached, falls back to parsing BLE peer names
+  /// (`GIOS-S{site}-GW{n}`, from the step-1 scan) for the smallest unused n.
+  /// This is the single source of truth for the auto-number: both the
+  /// initial post-connect guess and the user-typed-site lookup call it.
+  Future<(int, GatewaySuggestKind)> suggestGateway(int forSite) async {
+    final curSite = (state.config['site_id'] as num?)?.toInt() ?? 0;
+    if (curSite != 0 && curSite == forSite) {
+      return (gateway, GatewaySuggestKind.online);
+    }
+    if (_loggedIn) {
+      try {
+        // Prefer fleet-status (one call) to find the smallest unused id,
+        // confirmed by a single check-identity; only fall back to checking
+        // every 1–kMaxGatewayId slot one by one when fleet-status itself is
+        // unavailable, or its pick turns out stale.
+        final picked = await _pickFreeGatewayId(forSite);
+        if (picked != null) {
+          final identity = await _api.request(
+            'GET',
+            '/api/gateways/$forSite/$picked/check-identity',
+          );
+          if (identity['exists'] != true ||
+              (identity['last_seen_mac'] != null &&
+                  _mac(identity['last_seen_mac']) ==
+                      _mac(state.config['gateway_uid']))) {
+            return (picked, GatewaySuggestKind.online);
+          }
+        }
+        for (int g = 1; g <= kMaxGatewayId; g++) {
+          final identity = await _api.request(
+            'GET',
+            '/api/gateways/$forSite/$g/check-identity',
+          );
+          if (identity['exists'] != true ||
+              (identity['last_seen_mac'] != null &&
+                  _mac(identity['last_seen_mac']) ==
+                      _mac(state.config['gateway_uid']))) {
+            return (g, GatewaySuggestKind.online);
+          }
+        }
+        return (0, GatewaySuggestKind.full);
+      } catch (_) {
+        /* backend unreachable: fall through to the offline guess */
+      }
+    }
+    return (_offlineGatewaySuggestion(forSite), GatewaySuggestKind.offline);
+  }
+
+  /// Smallest 1–[kMaxGatewayId] gateway id not already used by another
+  /// gateway at [forSite], read from fleet-status; null when fleet-status
+  /// itself fails (caller falls back to the one-by-one scan).
+  Future<int?> _pickFreeGatewayId(int forSite) async {
+    try {
+      final fleet = await _api.request(
+        'GET',
+        '/api/gateways/fleet-status?site_id=$forSite',
+      );
+      final used = <int>{};
+      for (final item in (fleet['gateways'] as List? ?? [])) {
+        final row = Map<String, dynamic>.from(item as Map);
+        if (row['site_id'] != forSite) continue;
+        final uid = row['mac'] ?? row['last_seen_mac'];
+        if (uid != null && _mac(uid) == _mac(state.config['gateway_uid'])) {
+          continue;
+        }
+        final g = (row['gateway_id'] as num?)?.toInt();
+        if (g != null) used.add(g);
+      }
+      for (int g = 1; g <= kMaxGatewayId; g++) {
+        if (!used.contains(g)) return g;
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Offline fallback: the smallest 1–[kMaxGatewayId] gateway number not
+  /// already seen advertising for [forSite] in the last BLE scan (step 1's
+  /// peer list).
+  int _offlineGatewaySuggestion(int forSite) {
+    final used = <int>{};
+    final pattern = RegExp(r'^GIOS-S(\d+)-GW(\d+)$');
+    for (final p in state.peers) {
+      final m = pattern.firstMatch(p.name);
+      if (m != null && int.tryParse(m.group(1)!) == forSite) {
+        final gw = int.tryParse(m.group(2)!);
+        if (gw != null) used.add(gw);
+      }
+    }
+    for (int g = 1; g <= kMaxGatewayId; g++) {
+      if (!used.contains(g)) return g;
+    }
+    return 1;
+  }
+
+  /// Read-only pre-check (no BLE command) before committing a new station:
+  /// the MAC already on record at (site, gw), or null when it is free or
+  /// already this gateway's own record. Used to offer 「取代舊機」 /
+  /// 「下一個編號」 before [configureWifi] is called.
+  Future<String?> conflictingMac(int site, int gw) async {
+    if (!_loggedIn) return null;
+    final identity = await _api.request(
+      'GET',
+      '/api/gateways/$site/$gw/check-identity',
+    );
+    if (identity['exists'] == true &&
+        identity['last_seen_mac'] != null &&
+        _mac(identity['last_seen_mac']) != _mac(state.config['gateway_uid'])) {
+      return identity['last_seen_mac'].toString();
+    }
+    return null;
   }
 
   Future<void> _configureWifi(
@@ -864,6 +1026,7 @@ class CommissioningController extends Notifier<CommissionState> {
     int newGateway,
     String ssid,
     String password,
+    bool replaceExisting,
   ) => _run('設定身份與 WiFi', 150, (generation) async {
     final wifiOnly = state.config['wifi_only'] == true;
     if (wifiOnly && (newSite != site || newGateway != gateway)) {
@@ -875,7 +1038,7 @@ class CommissioningController extends Notifier<CommissionState> {
     if (newSite < 1 ||
         newSite > 65535 ||
         newGateway < 1 ||
-        newGateway > 6 ||
+        newGateway > kMaxGatewayId ||
         utf8.encode(ssid).isEmpty ||
         utf8.encode(ssid).length > 32 ||
         utf8.encode(password).length < 8 ||
@@ -885,7 +1048,7 @@ class CommissioningController extends Notifier<CommissionState> {
     if (state.config['otp_enabled'] == true) {
       throw const GatewayFailure('otp_enabled');
     }
-    if (_loggedIn && !wifiOnly) {
+    if (_loggedIn && !wifiOnly && !replaceExisting) {
       final check = await _request(
         generation,
         'GET',
@@ -898,18 +1061,46 @@ class CommissioningController extends Notifier<CommissionState> {
         throw const GatewayFailure('conflict');
       }
     }
+    // 「取代舊機」：先讓後端承認覆寫（force_replace），成功才動裝置；後端不支援
+    // （409 / 不認得參數）就中止，不呼叫 set_site_identity，裝置維持原樣。
+    if (_loggedIn && !wifiOnly && replaceExisting) {
+      try {
+        await _request(
+          generation,
+          'POST',
+          '/api/gateways/$newSite/$newGateway/reserve-identity'
+              '?mac=${Uri.encodeComponent(state.config['gateway_uid']?.toString() ?? '')}'
+              '&force_replace=true',
+        );
+      } on GatewayFailure catch (error) {
+        // 409 identity_conflict（force_replace 未生效或後端仍拒絕）或後端不認得
+        // force_replace 參數（同樣以一般 4xx 回應）都視為不支援取代。
+        if (error.code == 'api' && (error.status ?? 0) < 500) {
+          throw const GatewayFailure('replace_unsupported');
+        }
+        rethrow;
+      }
+      // Backend has granted the replacement; only writing it to the device
+      // is left. A failure past this point must not re-run the reserve.
+      _pendingReplace = true;
+    }
     if (newSite != site || newGateway != gateway) {
-      await _command(generation, 'set_site_identity', {
-        'site_id': newSite,
-        'gateway_id': newGateway,
-      });
-      await _wait(15, generation);
-      await _link.connect(state.peer!);
-      await _wait(3, generation);
-      await _command(generation, 'ping');
-      state = state.copy(config: await _command(generation, 'get_config'));
-      if (site != newSite || gateway != newGateway) {
-        throw const GatewayFailure('conflict');
+      try {
+        await _command(generation, 'set_site_identity', {
+          'site_id': newSite,
+          'gateway_id': newGateway,
+        });
+        await _wait(15, generation);
+        await _link.connect(state.peer!);
+        await _wait(3, generation);
+        await _command(generation, 'ping');
+        state = state.copy(config: await _command(generation, 'get_config'));
+        if (site != newSite || gateway != newGateway) {
+          throw const GatewayFailure('conflict');
+        }
+      } catch (error) {
+        if (replaceExisting) throw const GatewayFailure('replace_pending');
+        rethrow;
       }
     }
     final wifiDeadline = Stopwatch()..start();
@@ -998,13 +1189,14 @@ class CommissioningController extends Notifier<CommissionState> {
       );
       return;
     }
-    if (_loggedIn) {
+    if (_loggedIn && !replaceExisting) {
       await _request(
         generation,
         'POST',
         '$_path/reserve-identity?mac=${Uri.encodeComponent(state.config['gateway_uid']?.toString() ?? '')}',
       );
     }
+    _pendingReplace = false;
     state = state.copy(step: 3, message: 'WiFi 已連線，下一步確認後端看得到閘道器');
   });
   Future<Map<String, dynamic>?> _fleet(int generation) async {

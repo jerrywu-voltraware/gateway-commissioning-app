@@ -232,9 +232,13 @@ class GatewayFailure implements Exception {
     'timeout' => '等待超時，請確認裝置與網路後重試。',
     'cancelled' => '操作已取消，可從最近完成的步驟重試。',
     'conflict' => '此站點或編號已被使用，請選擇其他編號。',
+    'replace_unsupported' => '後端版本不支援取代舊機，請改用下一個編號。裝置設定未變更。',
+    'replace_pending' =>
+      '後台已登記為新機，但寫入裝置失敗。請重新執行配置，系統會沿用取代設定。',
     'new_site_required' => '請輸入與目前站點不同的新站點 ID。',
     'wifi_failed' => '新 WiFi 連線未成功，請檢查密碼與訊號後重試。',
     'no_devices' => '未找到 PTU。請確認已上電並靠近閘道器後重掃。',
+    'gateway_full' => '本機已滿，請連另一台閘道器。',
     'incomplete' => '仍有 PTU 未連線或資料未到達，請查看各台狀態後重試。',
     'authentication' => '登入失敗或已失效，請重新輸入登入資訊。',
     'https_required' => '正式環境需要有效的 HTTPS 網址。',

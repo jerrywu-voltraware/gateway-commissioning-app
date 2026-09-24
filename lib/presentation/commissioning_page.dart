@@ -42,6 +42,40 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       _gateway = TextEditingController(text: '1');
   bool _offline = false;
 
+  /// Read-only auto-numbering shown next to the site ID field: how the last
+  /// [_refreshGatewaySuggestion] answered (online / BLE-name fallback / the
+  /// site's 1–[kMaxGatewayId] are all taken), and whether a lookup is in flight.
+  GatewaySuggestKind _gatewayKind = GatewaySuggestKind.online;
+  bool _suggestingGateway = false;
+  Timer? _suggestTyping;
+  static const _suggestPause = Duration(milliseconds: 500);
+
+  /// Bumped on every call so a slower, older lookup cannot overwrite a
+  /// newer one's result when the user types quickly.
+  int _suggestGeneration = 0;
+
+  /// Debounced: recomputes the auto gateway number for the typed site ID.
+  void _scheduleGatewaySuggestion() {
+    _suggestTyping?.cancel();
+    _suggestTyping = Timer(_suggestPause, _refreshGatewaySuggestion);
+  }
+
+  Future<void> _refreshGatewaySuggestion() async {
+    final site = int.tryParse(_site.text);
+    if (site == null || site < 1 || site > 65535) return;
+    final generation = ++_suggestGeneration;
+    setState(() => _suggestingGateway = true);
+    final (gw, kind) = await ref
+        .read(commissionProvider.notifier)
+        .suggestGateway(site);
+    if (!mounted || generation != _suggestGeneration) return;
+    setState(() {
+      if (kind != GatewaySuggestKind.full) _gateway.text = '$gw';
+      _gatewayKind = kind;
+      _suggestingGateway = false;
+    });
+  }
+
   /// Local mode: the user edits only the PC's IPv4; mirrors the provider.
   final _host = TextEditingController();
 
@@ -220,11 +254,88 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             '${next.config['suggested_site_id'] ?? next.config['site_id'] ?? 1}';
         _gateway.text =
             '${next.config['suggested_gateway_id'] ?? next.config['gateway_id'] ?? 1}';
+        _gatewayKind = next.config['suggested_offline'] == true
+            ? GatewaySuggestKind.offline
+            : GatewaySuggestKind.online;
         _ssid.text = next.config['wifi_ssid']?.toString() ?? '';
         _wifi.clear();
         _customWifi = false;
       });
     }
+  }
+
+  /// 「儲存並連接 WiFi」 for a new station: pre-checks (site, gateway) for an
+  /// existing MAC before committing, so a conflict can offer 「取代舊機」 or
+  /// 「下一個編號」 instead of just failing with a generic error.
+  Future<void> _saveWifi(bool wifiOnly) async {
+    final c = ref.read(commissionProvider.notifier);
+    final site = int.tryParse(_site.text) ?? 0;
+    var gw = int.tryParse(_gateway.text) ?? 0;
+    // 上次「取代舊機」在後台已成功，只差寫入裝置失敗：直接以同樣的取代設定
+    // 重試，不必再跳一次確認對話框（也不必重打一次 reserve-identity）。
+    if (!wifiOnly && c.pendingReplace) {
+      await c.configureWifi(
+        site,
+        gw,
+        _ssid.text,
+        _wifi.text,
+        replaceExisting: true,
+      );
+      _wifi.clear();
+      return;
+    }
+    if (!wifiOnly) {
+      final conflictMac = await c.conflictingMac(site, gw);
+      if (conflictMac != null && mounted) {
+        final action = await showDialog<String>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('編號已被使用'),
+            content: Text(
+              '站點 $site / 閘道器 $gw 目前登記給另一台裝置（MAC $conflictMac）。\n'
+              '請先確認舊機已斷電，否則後台會再次標記衝突。',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, 'replace'),
+                child: const Text('取代舊機（沿用此編號）'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, 'next'),
+                child: const Text('改用下一個可用編號'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('取消'),
+              ),
+            ],
+          ),
+        );
+        if (action == null) return;
+        if (action == 'next') {
+          for (gw = gw + 1; gw <= kMaxGatewayId; gw++) {
+            if (await c.conflictingMac(site, gw) == null) break;
+          }
+          if (gw > kMaxGatewayId) {
+            _snack('站點 $site 的 1–$kMaxGatewayId 號閘道器都已被使用，請確認站點 ID 是否正確。');
+            return;
+          }
+          if (mounted) setState(() => _gateway.text = '$gw');
+        }
+        if (!mounted) return;
+        await c.configureWifi(
+          site,
+          gw,
+          _ssid.text,
+          _wifi.text,
+          replaceExisting: action == 'replace',
+        );
+        _wifi.clear();
+        return;
+      }
+    }
+    await c.configureWifi(site, gw, _ssid.text, _wifi.text);
+    _wifi.clear();
   }
 
   bool _scanningWifi = false;
@@ -328,6 +439,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   @override
   void dispose() {
     _baseTyping?.cancel();
+    _suggestTyping?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     for (final c in [_base, _host, _login, _ssid, _wifi, _site, _gateway]) {
       c.dispose();
@@ -350,6 +462,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     String label, {
     bool secret = false,
     bool number = false,
+    ValueChanged<String>? onChanged,
   }) => Padding(
     padding: const EdgeInsets.only(bottom: 14),
     child: TextField(
@@ -360,8 +473,45 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       keyboardType: number ? TextInputType.number : TextInputType.text,
       inputFormatters: number ? [FilteringTextInputFormatter.digitsOnly] : null,
       decoration: InputDecoration(labelText: label),
+      onChanged: onChanged,
     ),
   );
+
+  /// Read-only auto-numbering shown instead of an editable 閘道器編號 field.
+  Widget _gatewayAssignment() {
+    final colors = Theme.of(context).colorScheme;
+    if (_suggestingGateway) {
+      return const Padding(
+        padding: EdgeInsets.only(bottom: 14),
+        child: Text('正在計算閘道器編號…'),
+      );
+    }
+    if (_gatewayKind == GatewaySuggestKind.full) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 14),
+        child: Text(
+          '本站閘道器已滿（1–$kMaxGatewayId 皆已使用），請確認站點 ID 或改用「取代舊機」。',
+          style: TextStyle(color: colors.error),
+        ),
+      );
+    }
+    final offlineHint = _gatewayKind == GatewaySuggestKind.offline
+        ? ref.read(commissionProvider).peers.isEmpty
+              ? '（無法取得同站閘道器清單，暫配 1 號，請上線核對）'
+              : '（離線配號，上線後會再核對）'
+        : '';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Text(
+        '將配置為 站點 ${_site.text} / 閘道器 ${_gateway.text}$offlineHint',
+        style: TextStyle(color: colors.primary),
+      ),
+    );
+  }
+
+  /// Blocks 「儲存並連接 WiFi」 when the site's 1–[kMaxGatewayId] gateway slots
+  /// are full.
+  bool get _gatewaySubmitBlocked => _gatewayKind == GatewaySuggestKind.full;
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(commissionProvider),
@@ -747,6 +897,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                             '${next.config['suggested_site_id'] ?? next.config['site_id'] ?? 1}';
                         _gateway.text =
                             '${next.config['suggested_gateway_id'] ?? next.config['gateway_id'] ?? 1}';
+                        _gatewayKind = next.config['suggested_offline'] == true
+                            ? GatewaySuggestKind.offline
+                            : GatewaySuggestKind.online;
                         _ssid.text = next.config['wifi_ssid']?.toString() ?? '';
                         _customWifi = false;
                         // Remembered environment: sync the gateway to it.
@@ -832,8 +985,13 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               '保留站點 ${s.config['site_id']}／閘道器 ${s.config['gateway_id']}，只更新 Wi-Fi。',
             )
           else ...[
-            field(_site, '站點 ID（1–65535）', number: true),
-            field(_gateway, '閘道器編號（1–6）', number: true),
+            field(
+              _site,
+              '站點 ID（1–65535）',
+              number: true,
+              onChanged: (_) => _scheduleGatewaySuggestion(),
+            ),
+            _gatewayAssignment(),
           ],
           const SizedBox(height: 16),
           Text(
@@ -865,15 +1023,12 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           if (_customWifi) field(_ssid, '自訂 Wi-Fi 名稱'),
           const SizedBox(height: 16),
           field(_wifi, 'Wi-Fi 密碼', secret: true),
-          button('儲存並連接 WiFi', () async {
-            await c.configureWifi(
-              int.tryParse(_site.text) ?? 0,
-              int.tryParse(_gateway.text) ?? 0,
-              _ssid.text,
-              _wifi.text,
-            );
-            _wifi.clear();
-          }, enabled),
+          button(
+            '儲存並連接 WiFi',
+            () => _saveWifi(s.config['wifi_only'] == true),
+            enabled &&
+                (s.config['wifi_only'] == true || !_gatewaySubmitBlocked),
+          ),
           TextButton(
             onPressed: enabled ? c.backToNetworkCheck : null,
             child: const Text('返回網路體檢'),
