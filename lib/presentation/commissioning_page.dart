@@ -648,7 +648,15 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         !state.resumePending &&
         !step7LinkLost(state);
     return PopScope(
-      canPop: !state.busy,
+      // Round 15b: 返回 while a 「不是這台？」 binding is still temporary
+      // ends like 「結束並重新選擇閘道器」, which clears it on the gateway.
+      canPop: !state.busy && state.tempBoundMac == null,
+      onPopInvokedWithResult: (didPop, _) {
+        final now = ref.read(commissionProvider);
+        if (!didPop && !now.busy && now.tempBoundMac != null) {
+          controller.cancel();
+        }
+      },
       child: Scaffold(
         appBar: AppBar(
           title: const Text('GIOS 現場開通'),

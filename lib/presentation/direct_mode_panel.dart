@@ -104,6 +104,61 @@ class _DirectStatusPanelState extends ConsumerState<DirectStatusPanel> {
                   ],
                 ),
               ),
+            // Round 15b: the gateway switched away from the identified PTU
+            // (or 是這台 pressed before identifying).
+            if (state.directNotice.isNotEmpty)
+              _WarnBox(
+                key: const Key('direct-notice'),
+                fg: warnFg,
+                bg: warnBg,
+                child: Text(
+                  state.directNotice,
+                  style: TextStyle(color: warnFg),
+                ),
+              ),
+            // Round 15b: a binding this APP never confirmed — the installer
+            // decides (never cleared by itself).
+            if (state.strayBindMac != null)
+              _WarnBox(
+                key: const Key('direct-stray-bind'),
+                fg: warnFg,
+                bg: warnBg,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      directStrayBindText(state.strayBindMac),
+                      style: TextStyle(
+                        color: warnFg,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Text(
+                      directStrayBindHint,
+                      style: text.bodySmall?.copyWith(color: warnFg),
+                    ),
+                    Wrap(
+                      spacing: 8,
+                      children: [
+                        OutlinedButton(
+                          key: const Key('direct-stray-keep'),
+                          onPressed: state.busy
+                              ? null
+                              : controller.keepStrayBind,
+                          child: const Text('保留'),
+                        ),
+                        OutlinedButton(
+                          key: const Key('direct-stray-release'),
+                          onPressed: state.busy || state.relinking
+                              ? null
+                              : controller.releaseStrayBind,
+                          child: const Text('解除'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
             if (hint != null)
               Padding(
                 padding: const EdgeInsets.only(top: 4),
@@ -205,6 +260,37 @@ class _DirectStatusPanelState extends ConsumerState<DirectStatusPanel> {
   }
 }
 
+/// Yellow step 7 box (same look as the ambiguous hint).
+class _WarnBox extends StatelessWidget {
+  const _WarnBox({
+    super.key,
+    required this.fg,
+    required this.bg,
+    required this.child,
+  });
+
+  final Color fg, bg;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    margin: const EdgeInsets.only(top: 8),
+    padding: const EdgeInsets.all(8),
+    decoration: BoxDecoration(
+      color: bg,
+      borderRadius: BorderRadius.circular(6),
+    ),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(Icons.warning_amber_rounded, color: fg, size: 20),
+        const SizedBox(width: 6),
+        Expanded(child: child),
+      ],
+    ),
+  );
+}
+
 /// Round 15: direct flow bottom bar actions at step 7 — 「辨識此樁」 with its
 /// note right beside it, then 「是這台，開始監控」 for the PTU the gateway
 /// picked; 「重新搜尋」 while it has none.
@@ -219,6 +305,8 @@ class DirectPickActions extends ConsumerWidget {
     final shown = state.selected.firstOrNull;
     final ready = picked != null && shown != null && sameMac(picked, shown);
     final enabled = !state.busy && !state.relinking;
+    // Round 15b: 是這台 only for the PTU the installer identified.
+    final confirmable = directConfirmReady(state);
     if (!ready) {
       return FilledButton.icon(
         key: const Key('direct-rescan-bottom'),
@@ -259,8 +347,10 @@ class DirectPickActions extends ConsumerWidget {
         const SizedBox(height: 6),
         FilledButton(
           key: const Key('direct-confirm'),
-          onPressed: enabled ? controller.confirmDirectPick : null,
-          child: const Text('是這台，開始監控'),
+          onPressed: enabled && confirmable
+              ? controller.confirmDirectPick
+              : null,
+          child: Text(confirmable ? '是這台，開始監控' : directIdentifyFirstLabel),
         ),
       ],
     );

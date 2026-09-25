@@ -13,6 +13,10 @@
 // 5. A failed get_ble_devices ends 「掃描中…」 with 「重新掃描」.
 // 6. Step 9: the backend retry line sits above the per-PTU progress.
 // 7. A finished run is not overwritten by a later connect (「上次配置已完成」).
+// 8. Round 15b: 「是這台」 only numbers the PTU the installer identified
+//    (identify ack MAC, re-checked against get_status); a temporary
+//    「不是這台？」 binding is cleared on 取消 (「確認後綁定」 off) and a
+//    leftover binding found on entering step 7 asks 「保留」/「解除」.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -207,6 +211,8 @@ void main() {
       final fake = PickGateway();
       final (container, c) = await _toStep7(fake, bindOnConfirm: true);
       addTearDown(container.dispose);
+      // Round 15b: 是這台 needs 辨識此樁 first.
+      await c.identify();
       await c.confirmDirectPick();
       final s = container.read(commissionProvider);
       expect(s.step, 6);
@@ -222,11 +228,14 @@ void main() {
     });
 
     test(
-      'the gateway switched before 是這台: nothing assigned, new pick shown',
+      'identified A, the gateway switched to B before 是這台 (seen by the '
+      're-read): nothing assigned, identification dropped, yellow notice',
       () async {
         final fake = PickGateway();
         final (container, c) = await _toStep7(fake);
         addTearDown(container.dispose);
+        await c.identify();
+        expect(container.read(commissionProvider).identifiedMac, _pick);
         // The gateway lost _pick and connected _first meanwhile.
         fake.device(_pick)['connected'] = false;
         fake.device(_first)['connected'] = true;
@@ -237,7 +246,10 @@ void main() {
         expect(fake.sent('assign_device_id'), isEmpty);
         expect(fake.sent('join_fleet'), isEmpty);
         expect(s.selected, {_first});
-        expect(s.message, contains('閘道器目前連的是 PTU $_first'));
+        expect(s.identifiedMac, isNull);
+        expect(s.directNotice, directSwitchedText(_first));
+        expect(s.directNotice, contains('MAC 後 4 碼 0001'));
+        expect(directConfirmReady(s), isFalse);
       },
     );
 
@@ -592,6 +604,241 @@ void main() {
       expect(prefs.getString('demo_progress'), isNull);
     });
   });
+
+  group('8. confirm needs the identified PTU; temporary binding cleanup', () {
+    test('never identified: 是這台 is blocked, nothing sent', () async {
+      final fake = PickGateway();
+      final (container, c) = await _toStep7(fake);
+      addTearDown(container.dispose);
+      var s = container.read(commissionProvider);
+      expect(s.identifiedMac, isNull);
+      expect(directConfirmReady(s), isFalse);
+      final before = fake.ops.length;
+      await c.confirmDirectPick();
+      s = container.read(commissionProvider);
+      expect(s.step, 4);
+      expect(fake.ops, hasLength(before), reason: 'no command at all');
+      expect(fake.sent('assign_device_id'), isEmpty);
+      expect(fake.sent('join_fleet'), isEmpty);
+      expect(s.directNotice, directIdentifyFirstText);
+    });
+
+    test('identified A, still A: 是這台 numbers A', () async {
+      final fake = PickGateway();
+      final (container, c) = await _toStep7(fake);
+      addTearDown(container.dispose);
+      await c.identify();
+      var s = container.read(commissionProvider);
+      expect(s.identifiedMac, _pick);
+      expect(directConfirmReady(s), isTrue);
+      await c.confirmDirectPick();
+      s = container.read(commissionProvider);
+      expect(s.error, isNull);
+      expect(s.step, 6);
+      expect(fake.sent('assign_device_id'), [
+        {'mac': _pick, 'new_id': directPtuId},
+      ]);
+      expect(fake.sent('join_fleet'), hasLength(1));
+    });
+
+    test('identified A, the step 7 refresh sees B: cleared at once, yellow '
+        'notice, 是這台 blocked', () async {
+      final fake = PickGateway();
+      final (container, c) = await _toStep7(fake);
+      addTearDown(container.dispose);
+      await c.identify();
+      expect(container.read(commissionProvider).identifiedMac, _pick);
+      fake.device(_pick)['connected'] = false;
+      fake.device(_first)['connected'] = true;
+      await c.refreshPtuRssi();
+      var s = container.read(commissionProvider);
+      expect(s.selected, {_first});
+      expect(s.identifiedMac, isNull);
+      expect(s.directNotice, directSwitchedText(_first));
+      expect(directConfirmReady(s), isFalse);
+      await c.confirmDirectPick();
+      s = container.read(commissionProvider);
+      expect(s.step, 4);
+      expect(fake.sent('assign_device_id'), isEmpty);
+      expect(fake.sent('join_fleet'), isEmpty);
+      expect(s.directNotice, directSwitchedText(_first));
+      // Identifying B makes it confirmable.
+      await c.identify();
+      s = container.read(commissionProvider);
+      expect(s.identifiedMac, _first);
+      expect(s.directNotice, isEmpty);
+      expect(directConfirmReady(s), isTrue);
+    });
+
+    testWidgets('是這台 disabled until 辨識此樁; a switch shows the yellow '
+        'notice and disables it again', (tester) async {
+      final fake = PickGateway();
+      late ProviderContainer container;
+      late CommissioningController c;
+      await tester.runAsync(() async {
+        (container, c) = await _toStep7(fake);
+      });
+      addTearDown(container.dispose);
+      await tester.pumpWidget(_panel(container));
+      FilledButton confirm() =>
+          tester.widget<FilledButton>(find.byKey(const Key('direct-confirm')));
+      expect(confirm().onPressed, isNull);
+      expect(find.text(directIdentifyFirstLabel), findsOneWidget);
+      expect(find.text('是這台，開始監控'), findsNothing);
+
+      await tester.tap(find.byKey(const Key('direct-identify')));
+      await tester.pump();
+      await _idle(tester, container);
+      await tester.pump();
+      expect(confirm().onPressed, isNotNull);
+      expect(find.text('是這台，開始監控'), findsOneWidget);
+
+      fake.device(_pick)['connected'] = false;
+      fake.device(_first)['connected'] = true;
+      await tester.runAsync(c.refreshPtuRssi);
+      await tester.pump();
+      expect(find.byKey(const Key('direct-notice')), findsOneWidget);
+      expect(find.text(directSwitchedText(_first)), findsOneWidget);
+      expect(confirm().onPressed, isNull);
+      expect(find.text(directIdentifyFirstLabel), findsOneWidget);
+    });
+
+    test('switch → 取消: the temporary binding is cleared', () async {
+      final fake = PickGateway();
+      final (container, c) = await _toStep7(fake);
+      addTearDown(container.dispose);
+      await c.switchDirectPick(_first);
+      expect(container.read(commissionProvider).tempBoundMac, _first);
+      await c.cancel();
+      final s = container.read(commissionProvider);
+      expect(s.step, 1);
+      expect(s.error, isNull);
+      expect(
+        fake.sent('set_config').where((p) => p.containsKey('direct_bind_mac')),
+        [
+          {'direct_bind_mac': _first},
+          {'direct_bind_mac': ''},
+        ],
+      );
+      expect(fake.config['direct_bind_mac'], '');
+      expect(s.tempBoundMac, isNull);
+    });
+
+    test('switch → 取消 with 「確認後綁定」 on: the binding is left', () async {
+      final fake = PickGateway();
+      final (container, c) = await _toStep7(fake, bindOnConfirm: true);
+      addTearDown(container.dispose);
+      await c.switchDirectPick(_first);
+      await c.cancel();
+      expect(container.read(commissionProvider).step, 1);
+      expect(fake.config['direct_bind_mac'], _first);
+    });
+
+    test('switch → 取消, the unbind fails: not blocked, noted in 詳細資訊', () async {
+      final fake = _UnbindFailing();
+      final (container, c) = await _toStep7(fake);
+      addTearDown(container.dispose);
+      await c.switchDirectPick(_first);
+      await c.cancel();
+      final s = container.read(commissionProvider);
+      expect(s.step, 1);
+      expect(s.error, directUnbindFailedText(_first));
+      expect(s.errorDetail, contains('write_failed'));
+      expect(fake.config['direct_bind_mac'], _first);
+    });
+
+    test('switch → 是這台: the binding becomes permanent, never cleared nor '
+        'asked about again', () async {
+      final fake = PickGateway();
+      final (container, c) = await _toStep7(fake);
+      addTearDown(container.dispose);
+      await c.switchDirectPick(_first);
+      await c.identify();
+      await c.confirmDirectPick();
+      var s = container.read(commissionProvider);
+      expect(s.step, 6);
+      expect(s.tempBoundMac, isNull);
+      await c.cancel();
+      expect(
+        fake.sent('set_config').where((p) => p.containsKey('direct_bind_mac')),
+        [
+          {'direct_bind_mac': _first},
+        ],
+      );
+      expect(fake.config['direct_bind_mac'], _first);
+      // Confirmed here: entering step 7 again does not ask about it.
+      await c.connect(container.read(commissionProvider).peers.single);
+      await c.chooseStation(newStation: false);
+      s = container.read(commissionProvider);
+      expect(s.step, 4);
+      expect(s.strayBindMac, isNull);
+    });
+
+    testWidgets('leftover binding on entering step 7: 保留／解除 offered, not '
+        'cleared by itself; 解除 clears it', (tester) async {
+      final fake = PickGateway()..config['direct_bind_mac'] = _first;
+      late ProviderContainer container;
+      await tester.runAsync(() async {
+        (container, _) = await _toStep7(fake);
+      });
+      addTearDown(container.dispose);
+      var s = container.read(commissionProvider);
+      expect(s.strayBindMac, _first);
+      expect(s.selected, {_first});
+      expect(
+        fake.sent('set_config').where((p) => p.containsKey('direct_bind_mac')),
+        isEmpty,
+      );
+      await tester.pumpWidget(_panel(container));
+      expect(find.byKey(const Key('direct-stray-bind')), findsOneWidget);
+      expect(find.text(directStrayBindText(_first)), findsOneWidget);
+      expect(find.textContaining('MAC 後 4 碼 0001'), findsOneWidget);
+      expect(find.byKey(const Key('direct-stray-keep')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('direct-stray-release')));
+      await tester.pump();
+      await _idle(tester, container);
+      await tester.pump();
+      s = container.read(commissionProvider);
+      expect(fake.sent('set_config').last, {'direct_bind_mac': ''});
+      expect(fake.config['direct_bind_mac'], '');
+      expect(s.strayBindMac, isNull);
+      expect(s.selected, {_pick});
+      expect(find.byKey(const Key('direct-stray-bind')), findsNothing);
+    });
+
+    test('leftover binding → 保留: kept and not asked again', () async {
+      final fake = PickGateway()..config['direct_bind_mac'] = _first;
+      final (container, c) = await _toStep7(fake);
+      addTearDown(container.dispose);
+      expect(container.read(commissionProvider).strayBindMac, _first);
+      await c.keepStrayBind();
+      expect(container.read(commissionProvider).strayBindMac, isNull);
+      await c.discover();
+      final s = container.read(commissionProvider);
+      expect(s.step, 4);
+      expect(s.strayBindMac, isNull);
+      expect(fake.config['direct_bind_mac'], _first);
+      expect(
+        fake.sent('set_config').where((p) => p.containsKey('direct_bind_mac')),
+        isEmpty,
+      );
+    });
+  });
+}
+
+/// set_config clearing the binding fails (the gateway's fail ack).
+class _UnbindFailing extends PickGateway {
+  @override
+  Future<Map<String, dynamic>> command(
+    String op, [
+    Map<String, dynamic> params = const {},
+  ]) {
+    if (op == 'set_config' && params['direct_bind_mac'] == '') {
+      ops.add((op, Map.of(params)));
+      return Future.error(const GatewayFailure.gateway('write_failed'));
+    }
+    return super.command(op, params);
+  }
 }
 
 Future<void> _whileRelinking(ProviderContainer container) async {

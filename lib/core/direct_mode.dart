@@ -171,6 +171,43 @@ class DirectStatus {
   }
 }
 
+/// 「是這台，開始監控」 needs the PTU the installer identified (the MAC of
+/// the last identify ack) — whenever the gateway can blink the PTU at all.
+/// Firmware that cannot keeps the plain re-read check.
+bool directIdentifyRequired(Map<String, dynamic> config) =>
+    config['identify_supported'] == true && identifyPtuSupported(config);
+
+/// 「MAC 後 4 碼」: the last four hex digits, upper case.
+String macTail(Object? mac) {
+  final hex = (mac?.toString() ?? '').toUpperCase().replaceAll(
+    RegExp('[^0-9A-F]'),
+    '',
+  );
+  return hex.length <= 4 ? hex : hex.substring(hex.length - 4);
+}
+
+/// Step 7 direct flow: 「是這台」 button label until the shown PTU is
+/// identified.
+const directIdentifyFirstLabel = '請先按「辨識此樁」確認';
+
+/// 「是這台」 pressed without identifying the shown PTU.
+const directIdentifyFirstText = '請先按「辨識此樁」確認是眼前這台，再按「是這台，開始監控」。';
+
+/// The gateway now connects a PTU other than the one identified.
+String directSwitchedText(Object? mac) =>
+    '閘道器已切換到另一顆 PTU（MAC 後 4 碼 ${macTail(mac)}），請重新辨識';
+
+/// Entering step 7: the gateway is bound to a PTU this APP never confirmed.
+String directStrayBindText(Object? mac) =>
+    '閘道器目前綁定 PTU（MAC 後 4 碼 ${macTail(mac)}）';
+
+const directStrayBindHint = '這個綁定不是在本機確認過的：保留則閘道器只連這台；解除則恢復自動選最近的 PTU。';
+
+/// 取消 / 結束 could not clear the temporary binding of 「不是這台？」.
+String directUnbindFailedText(Object? mac) =>
+    '已取消，但閘道器的暫時綁定（PTU MAC 後 4 碼 ${macTail(mac)}）未能解除；'
+    '下次進入第 7 步會再詢問是否解除。';
+
 /// Step 7 direct flow: shown when the gateway's pick is ambiguous.
 const directAmbiguousText = '附近有訊號相近的 PTU，請按「辨識此樁」確認是否為眼前這台';
 

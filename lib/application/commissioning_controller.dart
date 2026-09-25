@@ -571,6 +571,20 @@ bool backendRowsFresh(Iterable<Map> rows) => rows.any(
 /// gateways are registered, so nothing was reset automatically.
 const starOwnerUnknownText = '無法確認閘道器登記狀態，請手動重置';
 
+/// [CommissionState.copy]: leave a nullable field as it is.
+const _keep = Object();
+
+/// Round 15b: 「是這台，開始監控」 is enabled — the gateway has a pick and,
+/// when the firmware can blink the PTU, it is the one the installer
+/// identified ([CommissionState.identifiedMac]).
+bool directConfirmReady(CommissionState s) {
+  final picked = s.direct?.pickedMac;
+  if (picked == null) return false;
+  if (!directIdentifyRequired(s.config)) return true;
+  final identified = s.identifiedMac;
+  return identified != null && sameMac(identified, picked);
+}
+
 class CommissionState {
   const CommissionState({
     this.step = 0,
@@ -623,7 +637,30 @@ class CommissionState {
     this.directRaw = const {},
     this.identifyNote = '',
     this.rescanNeeded = false,
+    this.identifiedMac,
+    this.tempBoundMac,
+    this.strayBindMac,
+    this.directNotice = '',
   });
+
+  /// Round 15b: MAC of the PTU the installer identified — the MAC the last
+  /// 「辨識此樁」 ack named. 「是這台，開始監控」 only numbers the gateway's
+  /// pick when it is this PTU; cleared as soon as the gateway connects
+  /// another one (or none).
+  final String? identifiedMac;
+
+  /// Round 15b: binding set by 「不是這台？」 ([CommissioningController.
+  /// switchDirectPick]) and not yet confirmed. 「是這台」 makes it permanent;
+  /// cancelling (「確認後綁定 PTU」 off) clears it on the gateway.
+  final String? tempBoundMac;
+
+  /// Round 15b: entering step 7, the gateway was bound to this PTU with no
+  /// confirmed record in this APP; the panel asks 「保留」/「解除」.
+  final String? strayBindMac;
+
+  /// Round 15b: yellow step 7 notice (the gateway switched away from the
+  /// identified PTU, or 「是這台」 pressed before identifying).
+  final String directNotice;
 
   /// Round 15: shown right beside 「辨識此樁」 — 「已送出，請看樁上燈號」 at
   /// once, then the acked PTU MAC / RSSI (or that only the gateway blinks).
@@ -833,7 +870,21 @@ class CommissionState {
     Map<String, dynamic>? directRaw,
     String? identifyNote,
     bool? rescanNeeded,
+    Object? identifiedMac = _keep,
+    Object? tempBoundMac = _keep,
+    Object? strayBindMac = _keep,
+    String? directNotice,
   }) => CommissionState(
+    identifiedMac: identical(identifiedMac, _keep)
+        ? this.identifiedMac
+        : identifiedMac as String?,
+    tempBoundMac: identical(tempBoundMac, _keep)
+        ? this.tempBoundMac
+        : tempBoundMac as String?,
+    strayBindMac: identical(strayBindMac, _keep)
+        ? this.strayBindMac
+        : strayBindMac as String?,
+    directNotice: directNotice ?? this.directNotice,
     directRaw: directRaw ?? this.directRaw,
     identifyNote: identifyNote ?? this.identifyNote,
     rescanNeeded: rescanNeeded ?? this.rescanNeeded,
@@ -1673,7 +1724,9 @@ class CommissioningController extends Notifier<CommissionState> {
         try {
           await _identify(generation, target);
         } catch (_) {
-          if (ref.mounted) state = state.copy(identifyNote: '');
+          if (ref.mounted) {
+            state = state.copy(identifyNote: '', identifiedMac: null);
+          }
           rethrow;
         }
       });
@@ -1702,6 +1755,7 @@ class CommissioningController extends Notifier<CommissionState> {
       state = state.copy(
         message: identifyNoPtuText,
         identifyNote: identifyNoteText(const {'ptu_write': 'not_connected'}),
+        identifiedMac: null,
       );
       return;
     }
@@ -1726,6 +1780,16 @@ class CommissioningController extends Notifier<CommissionState> {
       _syncDirectPick();
       state = state.copy(identifyNote: identifyNoteText(ack));
     }
+    // Round 15b: the PTU that blinked is the identified one, as long as it
+    // is still the gateway's pick (no ack MAC: the PTU did not blink).
+    if (directFlow && state.step == 4) {
+      final picked = state.direct?.pickedMac;
+      final ok = blinked != null && picked != null && sameMac(blinked, picked);
+      state = state.copy(
+        identifiedMac: ok ? blinked.toString() : null,
+        directNotice: ok ? '' : state.directNotice,
+      );
+    }
   }
 
   Future<void> connect(GatewayPeer peer) async {
@@ -1736,6 +1800,10 @@ class CommissioningController extends Notifier<CommissionState> {
       directRaw: const {},
       checkPassed: false,
       uploadLate: false,
+      identifiedMac: null,
+      tempBoundMac: null,
+      strayBindMac: null,
+      directNotice: '',
       error: state.error,
     );
     await _connect(peer);
@@ -2568,6 +2636,8 @@ class CommissioningController extends Notifier<CommissionState> {
           missing: [],
           starNotice: '',
           identifyNote: '',
+          identifiedMac: null,
+          directNotice: '',
         );
         final config = await _command(generation, 'get_config');
         state = state.copy(
@@ -2583,6 +2653,7 @@ class CommissioningController extends Notifier<CommissionState> {
               if (config.containsKey(key)) key: config[key],
           },
         );
+        await _checkStrayBind(generation, config);
         if (config['max_connections'] != 1) {
           await _command(generation, 'set_config', {'max_connections': 1});
           state = state.copy(config: {...state.config, 'max_connections': 1});
@@ -2651,11 +2722,21 @@ class CommissioningController extends Notifier<CommissionState> {
   }
 
   /// Direct flow: state.ptus / selected follow the gateway's own pick (one
-  /// row, or none); a new pick clears the identify note.
+  /// row, or none); a new pick clears the identify note. Round 15b: a pick
+  /// other than the identified PTU clears [CommissionState.identifiedMac]
+  /// at once (yellow 「閘道器已切換到另一顆 PTU…請重新辨識」).
   void _syncDirectPick() {
     if (!ref.mounted || !directFlow || state.step != 4) return;
     final direct = state.direct;
     final mac = direct?.pickedMac;
+    final identified = state.identifiedMac;
+    if (identified != null && (mac == null || !sameMac(mac, identified))) {
+      state = state.copy(
+        identifiedMac: null,
+        directNotice: mac == null ? '' : directSwitchedText(mac),
+        error: state.error,
+      );
+    }
     if (mac == null) {
       if (state.ptus.isEmpty && state.selected.isEmpty) return;
       state = state.copy(
@@ -3333,14 +3414,28 @@ class CommissioningController extends Notifier<CommissionState> {
 
   /// Direct mode: binds the gateway to the PTU it is connected to now
   /// ([bind] true) or clears the binding (`direct_bind_mac: ""`).
+  ///
+  /// Round 15b: an explicit bind is recorded as confirmed (entering step 7
+  /// later does not ask about it); either way the binding is no longer a
+  /// temporary one nor a leftover to ask about.
   Future<void> setDirectBind(bool bind) async {
-    if (!bind) return _directConfig({'direct_bind_mac': ''});
-    final mac = directConnectedMac;
-    if (mac == null) {
+    final mac = bind ? directConnectedMac : null;
+    if (bind && mac == null) {
       state = state.copy(error: const GatewayFailure('direct_no_ptu').message);
       return;
     }
-    return _directConfig({'direct_bind_mac': mac});
+    await _directConfig({'direct_bind_mac': mac ?? ''});
+    if (!ref.mounted) return;
+    final bound = directBoundMacOf(state.config);
+    if (bind ? bound != null && sameMac(bound, mac) : bound == null) {
+      await _rememberBind(bound);
+      if (!ref.mounted) return;
+      state = state.copy(
+        tempBoundMac: null,
+        strayBindMac: null,
+        error: state.error,
+      );
+    }
   }
 
   /// MAC of the PTU the gateway is connected to (direct mode), if any.
@@ -3368,7 +3463,26 @@ class CommissioningController extends Notifier<CommissionState> {
   /// join_fleet and wait for its data — no waiting for a PTU the APP chose.
   /// The pick is read again first: when the gateway switched meanwhile the
   /// new one is shown and nothing is assigned (confirm it with 「辨識此樁」).
+  ///
+  /// Round 15b: only the PTU the installer identified (the last 「辨識此樁」
+  /// ack's MAC) is confirmed — never identified: 「請先按「辨識此樁」確認」
+  /// and nothing is sent; the gateway switched meanwhile (read again here,
+  /// or seen by the step 7 refresh): the identification is dropped, a
+  /// yellow 「閘道器已切換到另一顆 PTU…請重新辨識」 shows and nothing is
+  /// assigned.
   Future<void> confirmDirectPick() async {
+    if (state.busy) return;
+    if (directFlow &&
+        directIdentifyRequired(state.config) &&
+        state.identifiedMac == null) {
+      state = state.copy(
+        directNotice: state.directNotice.isEmpty
+            ? directIdentifyFirstText
+            : state.directNotice,
+        error: state.error,
+      );
+      return;
+    }
     await _confirmDirectPick();
     // A link loss before step 8 began (re-reading the pick) is a step 7
     // loss: the same automatic reconnect as there.
@@ -3381,6 +3495,8 @@ class CommissioningController extends Notifier<CommissionState> {
       _step8Run('正在指派 #$directPtuId 並開始監控', 150, (generation) async {
         if (!directFlow) throw const GatewayFailure('direct_unsupported');
         final shown = state.selected.firstOrNull;
+        final identified = state.identifiedMac;
+        final required = directIdentifyRequired(state.config);
         final status = await _command(generation, 'get_status');
         _check(generation);
         _takeDirect(status['direct']);
@@ -3390,14 +3506,32 @@ class CommissioningController extends Notifier<CommissionState> {
           state = state.copy(message: directPickMessage(state.direct));
           throw const GatewayFailure('direct_pick_missing');
         }
-        if (shown == null || !sameMac(shown, picked)) {
+        if (required
+            ? identified == null || !sameMac(identified, picked)
+            : shown == null || !sameMac(shown, picked)) {
+          final notice = required
+              ? directSwitchedText(picked)
+              : '閘道器目前連的是 PTU $picked，請先按「辨識此樁」確認是眼前這台，再按「是這台，開始監控」。';
           state = state.copy(
-            message: '閘道器目前連的是 PTU $picked，請先按「辨識此樁」確認是眼前這台，再按「是這台，開始監控」。',
+            identifiedMac: null,
+            directNotice: notice,
+            message: notice,
           );
           return;
         }
         final row = state.ptus.single;
         final mac = row['mac'].toString();
+        // Round 15b: confirmed — a temporary 「不是這台？」 binding (or a
+        // leftover one the installer did not answer) becomes permanent.
+        final gatewayBound = directBoundMacOf(state.config);
+        if (gatewayBound != null && sameMac(gatewayBound, mac)) {
+          await _rememberBind(gatewayBound);
+        }
+        state = state.copy(
+          tempBoundMac: null,
+          strayBindMac: null,
+          directNotice: '',
+        );
         final done =
             state.assignedOk.any((m) => sameMac(m, mac)) &&
             (row['device_number'] as num?)?.toInt() == directPtuId;
@@ -3425,6 +3559,7 @@ class CommissioningController extends Notifier<CommissionState> {
             (bound == null || !sameMac(bound, mac))) {
           await _command(generation, 'set_config', {'direct_bind_mac': mac});
           state = state.copy(config: {...state.config, 'direct_bind_mac': mac});
+          await _rememberBind(mac);
         }
         await _startMonitoring(generation, [row], failed);
       });
@@ -3437,7 +3572,15 @@ class CommissioningController extends Notifier<CommissionState> {
   Future<void> switchDirectPick(String mac) async {
     await _run(relinkStep: 4, '正在讓閘道器改連 PTU $mac', 45, (generation) async {
       if (!directFlow) throw const GatewayFailure('direct_unsupported');
-      state = state.copy(identifyNote: '');
+      // Round 15b: temporary until 「是這台」 (set before sending, so a lost
+      // ack is still cleared by a cancel).
+      state = state.copy(
+        identifyNote: '',
+        identifiedMac: null,
+        directNotice: '',
+        tempBoundMac: mac,
+        strayBindMac: null,
+      );
       await _command(generation, 'set_config', {'direct_bind_mac': mac});
       state = state.copy(config: {...state.config, 'direct_bind_mac': mac});
       final ok = await _pollDirectPick(generation, want: mac);
@@ -3448,6 +3591,133 @@ class CommissioningController extends Notifier<CommissionState> {
     if (ref.mounted && !_autoRelinking && _linkLostAt(4)) {
       await _autoRelink(4);
     }
+  }
+
+  /// Round 15b, entering step 7 (direct flow): a gateway binding that is
+  /// neither this run's temporary one nor recorded as confirmed here is
+  /// shown as 「閘道器目前綁定 PTU…」 with 「保留」/「解除」 — never cleared
+  /// by itself.
+  Future<void> _checkStrayBind(
+    int generation,
+    Map<String, dynamic> config,
+  ) async {
+    final bound = directBoundMacOf(config);
+    final temp = state.tempBoundMac;
+    String? stray;
+    if (bound != null && (temp == null || !sameMac(temp, bound))) {
+      final remembered = await _rememberedBind();
+      _check(generation);
+      if (remembered == null || !sameMac(remembered, bound)) stray = bound;
+    }
+    // The temporary binding is gone (or replaced): nothing to clear later.
+    state = state.copy(
+      strayBindMac: stray,
+      tempBoundMac: temp != null && bound != null && sameMac(temp, bound)
+          ? temp
+          : null,
+    );
+  }
+
+  /// 「保留」 a leftover binding: recorded as confirmed, not asked again.
+  Future<void> keepStrayBind() async {
+    final mac = state.strayBindMac;
+    if (mac == null || state.busy) return;
+    await _rememberBind(mac);
+    if (ref.mounted) {
+      state = state.copy(strayBindMac: null, error: state.error);
+    }
+  }
+
+  /// 「解除」 a leftover binding: clear it on the gateway and wait for its
+  /// new pick (identify it again).
+  Future<void> releaseStrayBind() async {
+    if (state.strayBindMac == null) return;
+    await _run(relinkStep: 4, '正在解除閘道器的 PTU 綁定', 45, (generation) async {
+      await _command(generation, 'set_config', {'direct_bind_mac': ''});
+      state = state.copy(
+        config: {...state.config, 'direct_bind_mac': ''},
+        strayBindMac: null,
+        tempBoundMac: null,
+        identifiedMac: null,
+        identifyNote: '',
+        directNotice: '',
+      );
+      await _rememberBind(null);
+      await _pollDirectPick(generation);
+      _syncDirectPick();
+      state = state.copy(message: directPickMessage(state.direct));
+    });
+    if (ref.mounted && !_autoRelinking && _linkLostAt(4)) {
+      await _autoRelink(4);
+    }
+  }
+
+  /// Round 15b: 取消 / 結束 / 返回 before 「是這台」 — a temporary
+  /// 「不是這台？」 binding is cleared on the gateway (「確認後綁定 PTU」
+  /// off). Never blocks: returns the failure text (for 詳細資訊), null
+  /// when there was nothing to clear or it was cleared.
+  Future<String?> _releaseTempBind() async {
+    final mac = state.tempBoundMac;
+    if (mac == null || !ref.mounted) return null;
+    if (ref.read(topologyProvider).directBindOnConfirm) {
+      state = state.copy(tempBoundMac: null, error: state.error);
+      return null;
+    }
+    try {
+      await _link
+          .command('set_config', {'direct_bind_mac': ''})
+          .timeout(const Duration(seconds: 8));
+    } catch (error) {
+      return error.toString();
+    }
+    await _rememberBind(null);
+    if (ref.mounted) {
+      state = state.copy(
+        tempBoundMac: null,
+        config: {...state.config, 'direct_bind_mac': ''},
+        error: state.error,
+      );
+    }
+    return null;
+  }
+
+  String get _bindPrefsKey =>
+      _link.demo ? 'demo_direct_confirmed_bind' : 'direct_confirmed_bind';
+
+  String get _bindGatewayKey =>
+      state.config['gateway_uid']?.toString() ??
+      state.peer?.id ??
+      '$site/$gateway';
+
+  /// PTU MAC this APP confirmed as the gateway's binding (「是這台」 with a
+  /// binding, 「綁定目前 PTU」, 「保留」), or null.
+  Future<String?> _rememberedBind() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_bindPrefsKey);
+      if (raw == null) return null;
+      final value = (jsonDecode(raw) as Map)[_bindGatewayKey];
+      return value is String && value.isNotEmpty ? value : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Records (or with null forgets) the confirmed binding of this gateway.
+  Future<void> _rememberBind(String? mac) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_bindPrefsKey);
+      final map = <String, dynamic>{
+        if (raw != null) ...Map<String, dynamic>.from(jsonDecode(raw) as Map),
+      };
+      if (mac == null) {
+        map.remove(_bindGatewayKey);
+      } else {
+        map[_bindGatewayKey] = mac;
+      }
+      await prefs.setString(_bindPrefsKey, jsonEncode(map));
+    } catch (_) {}
   }
 
   /// [id] is a number this gateway assigns: #1 in direct mode, else its
@@ -5067,6 +5337,10 @@ class CommissioningController extends Notifier<CommissionState> {
     _grace?.cancel();
     _stopWatch(UploadWatch.idle);
     final safe = await _safeStop();
+    // Round 15b: before the link goes, clear a temporary 「不是這台？」
+    // binding; a failure only notes it (asked again at the next step 7).
+    final tempBound = state.tempBoundMac;
+    final unbindFailure = await _releaseTempBind();
     await _link.disconnect();
     if (_lease) {
       try {
@@ -5080,7 +5354,18 @@ class CommissioningController extends Notifier<CommissionState> {
         net: const {},
         checkPassed: false,
         wifiGraceOver: false,
-        error: safe ? null : '尚未確認 Gateway 已恢復監控，請重新連線核對。',
+        identifiedMac: null,
+        tempBoundMac: null,
+        strayBindMac: null,
+        directNotice: '',
+        error: !safe
+            ? '尚未確認 Gateway 已恢復監控，請重新連線核對。'
+            : unbindFailure != null
+            ? directUnbindFailedText(tempBound)
+            : null,
+        errorDetail: unbindFailure == null
+            ? null
+            : '暫時綁定 $tempBound 未能解除：$unbindFailure',
         message: '已取消。請重新連線核對進度；未成功恢復的監控會話最晚於到期時恢復。',
       );
     }
