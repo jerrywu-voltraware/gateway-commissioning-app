@@ -131,6 +131,14 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     if (previous != null && previous.base != next.base) {
       ref.read(commissionProvider.notifier).backendChanged(next.base);
     }
+    final hint = environmentChangeHint(
+      previous,
+      next,
+      buildDefault: ref.read(envSwitchPolicyProvider).defaultEnvironment,
+    );
+    if (hint != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _snack(hint));
+    }
     if (mounted) setState(() {});
   }
 

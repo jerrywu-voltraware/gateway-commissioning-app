@@ -16,7 +16,14 @@ class EnvSwitchPolicy {
   const EnvSwitchPolicy({
     this.autoSyncDefault = kDebugMode,
     this.confirmGatewaySwitch = !kDebugMode,
+    this.defaultEnvironment = localDevelopmentBuild
+        ? BackendEnv.local
+        : BackendEnv.production,
   });
+
+  /// Environment used when nothing was saved yet. A saved choice
+  /// (`backend_environment`) always wins over this.
+  final BackendEnv defaultEnvironment;
 
   /// Default of 「連線 Gateway 時自動同步上傳目標」 (debug ON, release OFF).
   final bool autoSyncDefault;
@@ -24,6 +31,9 @@ class EnvSwitchPolicy {
   /// Release builds ask once before a gateway switch; debug builds do not.
   final bool confirmGatewaySwitch;
 }
+
+/// Built with `--dart-define=LOCAL_DEVELOPMENT=true` (field test APKs).
+const localDevelopmentBuild = bool.fromEnvironment('LOCAL_DEVELOPMENT');
 
 final envSwitchPolicyProvider = Provider<EnvSwitchPolicy>(
   (ref) => const EnvSwitchPolicy(),
@@ -94,6 +104,23 @@ String envLabel(BackendEnv env) => switch (env) {
   BackendEnv.custom => '其他網址',
 };
 
+/// Snack text shown at start when the saved choice differs from the build
+/// default (e.g. a test APK that remembered 正式站 from step 7's 「切回正式站」);
+/// user switches already announce themselves via [_syncGateway]'s snack.
+String? environmentChangeHint(
+  BackendEnvState? previous,
+  BackendEnvState next, {
+  required BackendEnv buildDefault,
+}) {
+  if (previous == null) return null;
+  if (!previous.loaded && next.loaded) {
+    return next.environment == buildDefault
+        ? null
+        : '連線環境：${next.label}（沿用上次的設定，可在右上角切換）';
+  }
+  return null;
+}
+
 final backendEnvProvider =
     NotifierProvider<BackendEnvController, BackendEnvState>(
       BackendEnvController.new,
@@ -115,7 +142,10 @@ class BackendEnvController extends Notifier<BackendEnvState> {
   BackendEnvState build() {
     final policy = ref.read(envSwitchPolicyProvider);
     ready = _load();
-    return BackendEnvState(autoSync: policy.autoSyncDefault);
+    return BackendEnvState(
+      environment: policy.defaultEnvironment,
+      autoSync: policy.autoSyncDefault,
+    );
   }
 
   Future<void> _load() async {
@@ -127,11 +157,14 @@ class BackendEnvController extends Notifier<BackendEnvState> {
     }
     if (!ref.mounted) return;
     final saved = prefs.getString(_envKey);
+    final savedEnv = BackendEnv.values
+        .where((e) => e.name == saved)
+        .firstOrNull;
     final endpoint =
         parseLocalUrl(prefs.getString(_localKey)) ??
         parseLocalUrl(_localDefaultUrl);
     state = state.copy(
-      environment: BackendEnv.values.where((e) => e.name == saved).firstOrNull,
+      environment: savedEnv,
       localHost: endpoint?.host ?? '',
       localPort: endpoint?.port ?? defaultLocalPort,
       customUrl: prefs.getString(_customKey) ?? '',
