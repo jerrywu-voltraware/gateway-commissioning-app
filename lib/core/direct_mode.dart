@@ -186,6 +186,10 @@ String macTail(Object? mac) {
   return hex.length <= 4 ? hex : hex.substring(hex.length - 4);
 }
 
+/// Round 16: how the direct flow names a PTU first — 「MAC 後 4 碼 XXXX」
+/// (never the old star number the PTU may still carry).
+String macTailLabel(Object? mac) => 'MAC 後 4 碼 ${macTail(mac)}';
+
 /// Step 7 direct flow: 「是這台」 button label until the shown PTU is
 /// identified.
 const directIdentifyFirstLabel = '請先按「辨識此樁」確認';
@@ -213,6 +217,26 @@ const directAmbiguousText = '附近有訊號相近的 PTU，請按「辨識此�
 
 /// Beside 「辨識此樁」 right after the tap, before the ack.
 const identifySentText = '已送出，請看樁上燈號';
+
+/// Round 16: [identifySentText] as the one-line bottom bar form.
+const identifySentLine = '已送出 · 請看樁上燈號';
+
+/// Round 16: the identify ack in one line for the bottom bar — 「已送出 ·
+/// 請看樁上燈號 · …MAC 後 4 碼 · RSSI」; [identifyNoteText] is the detail.
+String identifyLineText(Map<String, dynamic> ack) {
+  final ptuWrite = ack['ptu_write'];
+  if (ptuWrite != null && ptuWrite != 'ok') {
+    return '已送出 · 只有閘道器閃燈，PTU 未收到';
+  }
+  final mac = ack['mac'];
+  if (mac == null) return '$identifySentLine · 閘道器雙閃 6 秒';
+  final rssi = ack['rssi'];
+  return [
+    identifySentLine,
+    '…${macTail(mac)}',
+    if (rssi is num) '$rssi dBm',
+  ].join(' · ');
+}
 
 /// Beside 「辨識此樁」 once the gateway acked. [ack] is the identify ack.
 String identifyNoteText(Map<String, dynamic> ack) {

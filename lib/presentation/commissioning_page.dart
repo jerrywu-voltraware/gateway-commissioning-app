@@ -623,6 +623,41 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     );
   }
 
+  /// Round 16: star mode 「每台 PTU 數」 — chosen in a dialog and confirmed
+  /// with a snackbar; the topology switch never writes it.
+  Future<void> _pickStarCount() async {
+    final current = ref.read(topologyProvider).starCount;
+    final picked = await showDialog<int>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        key: const Key('star-count-dialog'),
+        title: const Text('星狀模式：每台 PTU 數'),
+        children: [
+          for (var n = minStarPtuCount; n <= maxStarPtuCount; n++)
+            SimpleDialogOption(
+              key: ValueKey('star-count-$n'),
+              onPressed: () => Navigator.pop(context, n),
+              child: Row(
+                children: [
+                  Icon(
+                    n == current
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_unchecked,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 12),
+                  Text('$n 台'),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+    if (!mounted || picked == null || picked == current) return;
+    await ref.read(topologyProvider.notifier).setStarCount(picked);
+    if (mounted) _snack('星狀模式每台 PTU 數已改為 $picked 台');
+  }
+
   /// Blocks 「儲存並連接 WiFi」 when the site's 1–[kMaxGatewayId] gateway slots
   /// are full.
   bool get _gatewaySubmitBlocked => _gatewayKind == GatewaySuggestKind.full;
@@ -675,9 +710,8 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                     (t) => t.name == value.substring('topology:'.length),
                   );
                   ref.read(topologyProvider.notifier).setTopology(t);
-                } else if (value.startsWith('starcount:')) {
-                  final n = int.parse(value.substring('starcount:'.length));
-                  ref.read(topologyProvider.notifier).setStarCount(n);
+                } else if (value == 'starcount') {
+                  _pickStarCount();
                 } else if (value == 'direct:settings') {
                   showModalBottomSheet<void>(
                     context: context,
@@ -704,15 +738,16 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                     child: Text('直連進階設定…'),
                   ),
                 ],
+                // Round 16: the star count opens its own dialog — one mis-tap
+                // beside the topology items no longer changes it (round 15:
+                // it was 4 after a direct run, R14 had ended at 5).
                 if (topology.isStar) ...[
                   const PopupMenuDivider(),
-                  for (var n = minStarPtuCount; n <= maxStarPtuCount; n++)
-                    CheckedPopupMenuItem(
-                      key: ValueKey('star-count-$n'),
-                      value: 'starcount:$n',
-                      checked: n == topologySettings.starCount,
-                      child: Text('每台 PTU 數：$n'),
-                    ),
+                  PopupMenuItem(
+                    key: const Key('star-count'),
+                    value: 'starcount',
+                    child: Text('每台 PTU 數：${topologySettings.starCount}…'),
+                  ),
                 ],
               ],
             ),
@@ -1190,19 +1225,23 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   }
 
   /// 「重新連線並繼續」 for progress saved before the APP was closed.
+  /// Round 16: every saved-progress prompt (finished, resumable, or an
+  /// unfinished run without a gateway to resume — round 15's 「上次中斷於
+  /// 第 5 步」), in either topology, has 「重新開始」 to clear it.
   List<Widget> _savedResume(
     CommissionState s,
     CommissioningController c,
     bool enabled,
   ) => [
-    if (s.lastCompleted || s.savedResume)
+    if (s.lastCompleted || s.savedResume || s.savedProgress)
       OutlinedButton.icon(
         key: const Key('restart-after-done'),
         icon: const Icon(Icons.restart_alt, size: 20),
         onPressed: enabled ? c.clearCompleted : null,
         label: const Text('重新開始'),
       ),
-    if (s.lastCompleted || s.savedResume) const SizedBox(height: 16),
+    if (s.lastCompleted || s.savedResume || s.savedProgress)
+      const SizedBox(height: 16),
     if (s.savedResume) ...[
       FilledButton.icon(
         key: const Key('saved-resume'),

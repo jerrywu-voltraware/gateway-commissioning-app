@@ -402,6 +402,25 @@ String step7RetryText(int retry, int total, Duration gap) =>
 Duration directPollInterval = const Duration(milliseconds: 1500);
 int directPollLimit = 14;
 
+/// Round 16: 「不是這台？」 waits this long for the gateway to connect the
+/// chosen PTU — exactly what the countdown shows. Round 15 field: the
+/// switch took 24 s (five connect retries, status 133) while the APP gave
+/// up after 14 polls (~21 s) with 「最多等待 42 秒」 still on screen.
+Duration directSwitchWait = const Duration(seconds: 45);
+
+/// Whole seconds of [directSwitchWait] for the countdown (at least 1).
+int get directSwitchSeconds =>
+    max(1, (directSwitchWait.inMilliseconds / 1000).ceil());
+
+/// Header after [directSwitchWait] passed without the switch: the step 7
+/// refresh keeps reading the gateway and clears the error once it has.
+String directSwitchPendingText(String mac) =>
+    '閘道器仍在改連 PTU（MAC 後 4 碼 ${macTail(mac)}），連上後畫面會自動更新；也可改選其他 PTU。';
+
+/// The gateway connected the PTU chosen under 「不是這台？」.
+String directSwitchDoneText(String mac) =>
+    '閘道器已改連 PTU $mac（已綁定），請按「辨識此樁」確認是眼前這台。';
+
 /// Step 7 direct flow busy text while the gateway picks its PTU.
 const directPickingText = '閘道器正在選擇最近的 PTU，請稍候';
 
@@ -630,12 +649,14 @@ class CommissionState {
     this.verifyBackendDown = false,
     this.reconnectFailed = false,
     this.savedResume = false,
+    this.savedProgress = false,
     this.lastCompleted = false,
     this.verifyCounts = const {},
     this.verifyWaiting = const {},
     this.verifySkipped = const {},
     this.directRaw = const {},
     this.identifyNote = '',
+    this.identifyLine = '',
     this.rescanNeeded = false,
     this.identifiedMac,
     this.tempBoundMac,
@@ -667,6 +688,11 @@ class CommissionState {
   /// Step 7 hides [message], so this is the only place the ack shows there.
   final String identifyNote;
 
+  /// Round 16: [identifyNote] in one line for the bottom bar (「已送出 ·
+  /// 請看樁上燈號 · …MAC 後 4 碼 · RSSI」); the full note opens below it.
+  /// Round 15: the four-line note grew the bar and hid 「不是這台？」.
+  final String identifyLine;
+
   /// Round 15: the last step 7 scan failed, timed out or found nothing; the
   /// bottom button reads [rescanLabel] instead of a stuck 「掃描中…」.
   final bool rescanNeeded;
@@ -696,6 +722,11 @@ class CommissionState {
   /// Saved progress belongs to a run that finished (step 10 verified):
   /// offer 「重新開始」 instead of 「重新連線並繼續」.
   final bool lastCompleted;
+
+  /// Round 16: progress of an unfinished run was restored (「上次中斷於…」),
+  /// whether or not it can be resumed ([savedResume]): 「重新開始」 clears
+  /// it (round 15: a record without a gateway had no way to clear it).
+  final bool savedProgress;
 
   /// Logged in to the backend currently selected (reset on a switch).
   final bool loggedIn;
@@ -863,12 +894,14 @@ class CommissionState {
     bool? verifyBackendDown,
     bool? reconnectFailed,
     bool? savedResume,
+    bool? savedProgress,
     bool? lastCompleted,
     Map<int, int>? verifyCounts,
     Set<int>? verifyWaiting,
     Set<int>? verifySkipped,
     Map<String, dynamic>? directRaw,
     String? identifyNote,
+    String? identifyLine,
     bool? rescanNeeded,
     Object? identifiedMac = _keep,
     Object? tempBoundMac = _keep,
@@ -887,6 +920,7 @@ class CommissionState {
     directNotice: directNotice ?? this.directNotice,
     directRaw: directRaw ?? this.directRaw,
     identifyNote: identifyNote ?? this.identifyNote,
+    identifyLine: identifyLine ?? this.identifyLine,
     rescanNeeded: rescanNeeded ?? this.rescanNeeded,
     lastCompleted: lastCompleted ?? this.lastCompleted,
     verifyCounts: verifyCounts ?? this.verifyCounts,
@@ -902,6 +936,7 @@ class CommissionState {
     verifyBackendDown: verifyBackendDown ?? this.verifyBackendDown,
     reconnectFailed: reconnectFailed ?? this.reconnectFailed,
     savedResume: savedResume ?? this.savedResume,
+    savedProgress: savedProgress ?? this.savedProgress,
     assignFailed: assignFailed ?? this.assignFailed,
     errorDetail: error == null ? null : (errorDetail ?? this.errorDetail),
     absentNotice: absentNotice ?? this.absentNotice,
@@ -1293,11 +1328,16 @@ class CommissioningController extends Notifier<CommissionState> {
 
   /// [relinkStep] (4 = step 7 scan, 5 = step 8): a link loss ending this run
   /// hands over to the automatic reconnect ([_autoRelink]) of that step.
+  ///
+  /// [countdown] (default [timeout]): the 「最多等待 N 秒」 shown when the
+  /// action keeps its own, shorter deadline (the overall [timeout] then
+  /// only guards against a hung command).
   Future<void> _run(
     String label,
     int timeout,
     Future<void> Function(int) action, {
     int? relinkStep,
+    int? countdown,
   }) async {
     if (state.busy) return;
     final generation = ++_generation;
@@ -1305,7 +1345,7 @@ class CommissioningController extends Notifier<CommissionState> {
     state = state.copy(
       busy: true,
       message: label,
-      seconds: timeout,
+      seconds: countdown ?? timeout,
       reconnectFailed: false,
     );
     _clock = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -1539,6 +1579,7 @@ class CommissioningController extends Notifier<CommissionState> {
       state = state.copy(
         config: {'site_id': data['site'], 'gateway_id': data['gateway']},
         savedResume: data['peer'] is String && step >= 4 && step <= 5,
+        savedProgress: true,
         message: resumeText(
           step,
           done.values.toList(),
@@ -1557,7 +1598,12 @@ class CommissioningController extends Notifier<CommissionState> {
     _saved = null;
     _completedSticky = false;
     if (ref.mounted) {
-      state = state.copy(lastCompleted: false, savedResume: false, message: '');
+      state = state.copy(
+        lastCompleted: false,
+        savedResume: false,
+        savedProgress: false,
+        message: '',
+      );
     }
   }
 
@@ -1621,6 +1667,7 @@ class CommissioningController extends Notifier<CommissionState> {
       step: 4,
       checkPassed: true,
       savedResume: false,
+      savedProgress: false,
       config: {...state.config, 'choose_station': false},
       results: {},
       message: '已重新連線，由 Gateway 重新掃描 PTU。',
@@ -1720,7 +1767,10 @@ class CommissioningController extends Notifier<CommissionState> {
         if (state.config['identify_supported'] != true) {
           throw const GatewayFailure('identify_unsupported');
         }
-        state = state.copy(identifyNote: identifySentText);
+        state = state.copy(
+          identifyNote: identifySentText,
+          identifyLine: identifySentLine,
+        );
         try {
           await _identify(generation, target);
         } catch (_) {
@@ -1737,6 +1787,7 @@ class CommissioningController extends Notifier<CommissionState> {
       state = state.copy(
         message: '請找出雙閃藍燈的閘道器，6 秒後會恢復原本燈號。',
         identifyNote: identifyNoteText(const {}),
+        identifyLine: identifyLineText(const {}),
       );
       return;
     }
@@ -1755,6 +1806,7 @@ class CommissioningController extends Notifier<CommissionState> {
       state = state.copy(
         message: identifyNoPtuText,
         identifyNote: identifyNoteText(const {'ptu_write': 'not_connected'}),
+        identifyLine: identifyLineText(const {'ptu_write': 'not_connected'}),
         identifiedMac: null,
       );
       return;
@@ -1765,6 +1817,7 @@ class CommissioningController extends Notifier<CommissionState> {
           ? identifyAckText(ack)
           : identifyPtuFailedText(ptuWrite.toString()),
       identifyNote: identifyNoteText(ack),
+      identifyLine: identifyLineText(ack),
     );
     // Direct flow: the ack names the PTU that actually blinks. If the
     // gateway has switched since the pick was shown, show its new pick.
@@ -1778,7 +1831,10 @@ class CommissioningController extends Notifier<CommissionState> {
       final status = await _command(generation, 'get_status');
       _takeDirect(status['direct']);
       _syncDirectPick();
-      state = state.copy(identifyNote: identifyNoteText(ack));
+      state = state.copy(
+        identifyNote: identifyNoteText(ack),
+        identifyLine: identifyLineText(ack),
+      );
     }
     // Round 15b: the PTU that blinked is the identified one, as long as it
     // is still the gateway's pick (no ack MAC: the PTU did not blink).
@@ -2689,11 +2745,24 @@ class CommissioningController extends Notifier<CommissionState> {
   /// ([want]: that MAC); false when [directPollLimit] polls pass without,
   /// or once two polls in a row say no_candidate / bound_missing (the
   /// gateway keeps scanning; the step 7 refresh shows a later pick).
-  Future<bool> _pollDirectPick(int generation, {String? want}) async {
+  ///
+  /// Round 16: with [until] the polls run up to that moment instead (the
+  /// last one right at it) and never end early — a switch to a bound PTU
+  /// can pass through several failed connects (round 15: 24 s).
+  Future<bool> _pollDirectPick(
+    int generation, {
+    String? want,
+    DateTime? until,
+  }) async {
     var negative = 0;
-    for (var i = 0; i < directPollLimit; i++) {
+    for (var i = 0; ; i++) {
       if (i > 0) {
-        await Future<void>.delayed(directPollInterval);
+        var gap = directPollInterval;
+        if (until != null) {
+          final left = until.difference(DateTime.now());
+          if (left < gap) gap = left.isNegative ? Duration.zero : left;
+        }
+        await Future<void>.delayed(gap);
         _check(generation);
       }
       final status = await _command(generation, 'get_status');
@@ -2704,13 +2773,16 @@ class CommissioningController extends Notifier<CommissionState> {
       if (picked != null && (want == null || sameMac(picked, want))) {
         return true;
       }
+      if (until != null) {
+        if (!DateTime.now().isBefore(until)) return false;
+        continue;
+      }
       final settled =
           direct?.state == DirectState.noCandidate ||
           direct?.state == DirectState.boundMissing;
       negative = settled ? negative + 1 : 0;
-      if (negative >= 2) return false;
+      if (negative >= 2 || i + 1 >= directPollLimit) return false;
     }
-    return false;
   }
 
   void _takeDirect(Object? direct) {
@@ -2729,6 +2801,16 @@ class CommissioningController extends Notifier<CommissionState> {
     if (!ref.mounted || !directFlow || state.step != 4) return;
     final direct = state.direct;
     final mac = direct?.pickedMac;
+    // Round 16: 「不是這台？」 gave up before the gateway switched; the
+    // first later read with the chosen PTU connected clears the red error
+    // (round 15: it stayed 20 s+ beside a card already showing that PTU).
+    final want = state.tempBoundMac;
+    if (mac != null &&
+        want != null &&
+        sameMac(mac, want) &&
+        state.error == const GatewayFailure('direct_switch_failed').message) {
+      state = state.copy(error: null, message: directSwitchDoneText(mac));
+    }
     final identified = state.identifiedMac;
     if (identified != null && (mac == null || !sameMac(mac, identified))) {
       state = state.copy(
@@ -3569,25 +3651,40 @@ class CommissioningController extends Notifier<CommissionState> {
   /// PTU connected; the installer then identifies it again. The binding is
   /// kept afterwards — the installer chose this PTU explicitly — and the
   /// done page names it.
+  ///
+  /// Round 16: waits [directSwitchWait] (the countdown shows the same); if
+  /// the gateway is still switching then, the step 7 refresh clears the
+  /// error as soon as it reports the chosen PTU ([_syncDirectPick]).
   Future<void> switchDirectPick(String mac) async {
-    await _run(relinkStep: 4, '正在讓閘道器改連 PTU $mac', 45, (generation) async {
-      if (!directFlow) throw const GatewayFailure('direct_unsupported');
-      // Round 15b: temporary until 「是這台」 (set before sending, so a lost
-      // ack is still cleared by a cancel).
-      state = state.copy(
-        identifyNote: '',
-        identifiedMac: null,
-        directNotice: '',
-        tempBoundMac: mac,
-        strayBindMac: null,
-      );
-      await _command(generation, 'set_config', {'direct_bind_mac': mac});
-      state = state.copy(config: {...state.config, 'direct_bind_mac': mac});
-      final ok = await _pollDirectPick(generation, want: mac);
-      _syncDirectPick();
-      if (!ok) throw const GatewayFailure('direct_switch_failed');
-      state = state.copy(message: '閘道器已改連 PTU $mac（已綁定），請按「辨識此樁」確認是眼前這台。');
-    });
+    final wait = directSwitchWait;
+    await _run(
+      relinkStep: 4,
+      countdown: directSwitchSeconds,
+      '正在讓閘道器改連 PTU $mac',
+      directSwitchSeconds + 10,
+      (generation) async {
+        final until = DateTime.now().add(wait);
+        if (!directFlow) throw const GatewayFailure('direct_unsupported');
+        // Round 15b: temporary until 「是這台」 (set before sending, so a lost
+        // ack is still cleared by a cancel).
+        state = state.copy(
+          identifyNote: '',
+          identifiedMac: null,
+          directNotice: '',
+          tempBoundMac: mac,
+          strayBindMac: null,
+        );
+        await _command(generation, 'set_config', {'direct_bind_mac': mac});
+        state = state.copy(config: {...state.config, 'direct_bind_mac': mac});
+        final ok = await _pollDirectPick(generation, want: mac, until: until);
+        _syncDirectPick();
+        if (!ok) {
+          state = state.copy(message: directSwitchPendingText(mac));
+          throw const GatewayFailure('direct_switch_failed');
+        }
+        state = state.copy(message: directSwitchDoneText(mac));
+      },
+    );
     if (ref.mounted && !_autoRelinking && _linkLostAt(4)) {
       await _autoRelink(4);
     }

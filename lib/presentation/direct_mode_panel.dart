@@ -10,6 +10,12 @@ import '../core/ptu_rssi.dart';
 /// the nearby candidates (≤ 5) only appear under 「不是這台？」, where a tap
 /// makes the gateway switch (a binding) so the installer can identify it.
 /// Hidden for firmware without `direct` (the page keeps the old list).
+///
+/// Round 16: PTUs are named by 「MAC 後 4 碼」 + RSSI, never by the old
+/// star number they may still carry (round 15 showed #1–#5 here). With a
+/// pick, 「不是這台？」 sits in the bottom bar ([DirectPickActions]) so it
+/// is always on screen; this card keeps 「改選其他 PTU」 only while there
+/// is no pick.
 class DirectStatusPanel extends ConsumerStatefulWidget {
   const DirectStatusPanel({super.key});
 
@@ -56,18 +62,32 @@ class _DirectStatusPanelState extends ConsumerState<DirectStatusPanel> {
                 key: const Key('direct-state'),
               )
             else if (picked != null) ...[
+              Wrap(
+                spacing: 12,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Text(
+                    macTailLabel(picked),
+                    key: const Key('direct-linked-tail'),
+                    style: text.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  Text(
+                    row != null
+                        ? ptuRssiText(row)
+                        : direct.ptuRssi != null && direct.ptuRssi! < 0
+                        ? '${direct.ptuRssi} dBm'
+                        : 'RSSI —',
+                    key: const Key('direct-rssi'),
+                    style: text.titleMedium,
+                  ),
+                ],
+              ),
               Text(
                 picked,
                 key: const Key('direct-linked'),
-                style: text.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-              ),
-              Text(
-                row != null
-                    ? ptuRssiText(row)
-                    : direct.ptuRssi != null && direct.ptuRssi! < 0
-                    ? '${direct.ptuRssi} dBm'
-                    : 'RSSI —',
-                key: const Key('direct-rssi'),
+                style: text.bodySmall?.copyWith(color: colors.onSurfaceVariant),
               ),
               if (direct.reasonText != null)
                 Text(
@@ -202,7 +222,10 @@ class _DirectStatusPanelState extends ConsumerState<DirectStatusPanel> {
                   label: const Text('重新搜尋'),
                 ),
               ),
-            if (direct != null && direct.candidates.isNotEmpty) ...[
+            // With a pick, 「不是這台？」 is in the bottom bar (round 16).
+            if (picked == null &&
+                direct != null &&
+                direct.candidates.isNotEmpty) ...[
               Align(
                 alignment: Alignment.centerLeft,
                 child: TextButton.icon(
@@ -212,47 +235,121 @@ class _DirectStatusPanelState extends ConsumerState<DirectStatusPanel> {
                     size: 20,
                   ),
                   onPressed: () => setState(() => _others = !_others),
-                  label: Text(picked != null ? '不是這台？' : '改選其他 PTU'),
+                  label: const Text('改選其他 PTU'),
                 ),
               ),
               if (_others) ...[
                 Text(
-                  '附近候選（${direct.candidates.length}）：點選後閘道器會綁定並改連那一台，'
-                  '再按「辨識此樁」確認。',
+                  directCandidatesHint(direct.candidates.length),
                   style: text.bodySmall,
                 ),
                 for (final c in direct.candidates)
-                  ListTile(
-                    key: ValueKey('direct-candidate-${c.mac}'),
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(c.mac),
-                    subtitle: Text(
-                      '${c.rssiText}'
-                      '${c.deviceNumber != null && c.deviceNumber! > 0 ? ' · #${c.deviceNumber}' : ''}',
-                    ),
-                    trailing: Text(
-                      picked != null && sameMac(picked, c.mac)
-                          ? '目前選中'
-                          : '改連這台',
-                      style: TextStyle(
-                        color: picked != null && sameMac(picked, c.mac)
-                            ? colors.onSurfaceVariant
-                            : colors.primary,
-                      ),
-                    ),
-                    onTap:
-                        state.busy ||
-                            state.relinking ||
-                            (picked != null && sameMac(picked, c.mac))
-                        ? null
-                        : () {
-                            setState(() => _others = false);
-                            controller.switchDirectPick(c.mac);
-                          },
+                  DirectCandidateTile(
+                    c,
+                    onPicked: () => setState(() => _others = false),
                   ),
               ],
             ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Above the nearby candidates of 「不是這台？」 / 「改選其他 PTU」.
+String directCandidatesHint(int count) =>
+    '附近候選（$count）：點選後閘道器會綁定並改連那一台，再按「辨識此樁」確認。';
+
+/// One nearby candidate: 「MAC 後 4 碼 · 峰值 RSSI」 with the full MAC below
+/// (round 16: no old star number); a tap makes the gateway switch to it.
+class DirectCandidateTile extends ConsumerWidget {
+  const DirectCandidateTile(this.candidate, {super.key, this.onPicked});
+
+  final DirectCandidate candidate;
+
+  /// Called right before the switch starts (collapse / close the sheet).
+  final VoidCallback? onPicked;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(commissionProvider);
+    final controller = ref.read(commissionProvider.notifier);
+    final colors = Theme.of(context).colorScheme;
+    final picked = state.direct?.pickedMac;
+    final c = candidate;
+    final current = picked != null && sameMac(picked, c.mac);
+    return ListTile(
+      key: ValueKey('direct-candidate-${c.mac}'),
+      dense: true,
+      contentPadding: EdgeInsets.zero,
+      title: Text(
+        '${macTailLabel(c.mac)} · ${c.rssiText}',
+        style: const TextStyle(fontWeight: FontWeight.w600),
+      ),
+      subtitle: Text(c.mac),
+      trailing: Text(
+        current ? '目前選中' : '改連這台',
+        style: TextStyle(
+          color: current ? colors.onSurfaceVariant : colors.primary,
+        ),
+      ),
+      onTap: state.busy || state.relinking || current
+          ? null
+          : () {
+              onPicked?.call();
+              controller.switchDirectPick(c.mac);
+            },
+    );
+  }
+}
+
+/// Round 16: 「不是這台？」 from the bottom bar — the nearby candidates in a
+/// sheet (the bar itself stays small and always on screen).
+Future<void> showDirectCandidates(BuildContext context) =>
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => const DirectCandidatesSheet(),
+    );
+
+class DirectCandidatesSheet extends ConsumerWidget {
+  const DirectCandidatesSheet({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final candidates =
+        ref.watch(commissionProvider).direct?.candidates ??
+        const <DirectCandidate>[];
+    final text = Theme.of(context).textTheme;
+    return SafeArea(
+      child: Padding(
+        key: const Key('direct-candidates-sheet'),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('不是這台？', style: text.titleMedium),
+            const SizedBox(height: 4),
+            Text(
+              candidates.isEmpty
+                  ? '閘道器目前沒有回報附近候選，請稍後再試。'
+                  : directCandidatesHint(candidates.length),
+              style: text.bodySmall,
+            ),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final c in candidates)
+                    DirectCandidateTile(
+                      c,
+                      onPicked: () => Navigator.of(context).pop(),
+                    ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -292,15 +389,28 @@ class _WarnBox extends StatelessWidget {
 }
 
 /// Round 15: direct flow bottom bar actions at step 7 — 「辨識此樁」 with its
-/// note right beside it, then 「是這台，開始監控」 for the PTU the gateway
-/// picked; 「重新搜尋」 while it has none.
-class DirectPickActions extends ConsumerWidget {
+/// note, then 「是這台，開始監控」 for the PTU the gateway picked;
+/// 「重新搜尋」 while it has none.
+///
+/// Round 16: 「不是這台？」 sits beside 「辨識此樁」 (always on screen, also
+/// at 360 dp) and the note is one line (「已送出 · 請看樁上燈號 · …MAC 後 4
+/// 碼 · RSSI」); tapping it shows the full note. Round 15: the four-line note
+/// grew the bar over 「不是這台？」.
+class DirectPickActions extends ConsumerStatefulWidget {
   const DirectPickActions({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<DirectPickActions> createState() => _DirectPickActionsState();
+}
+
+class _DirectPickActionsState extends ConsumerState<DirectPickActions> {
+  bool _detail = false;
+
+  @override
+  Widget build(BuildContext context) {
     final state = ref.watch(commissionProvider);
     final controller = ref.read(commissionProvider.notifier);
+    final colors = Theme.of(context).colorScheme;
     final picked = state.direct?.pickedMac;
     final shown = state.selected.firstOrNull;
     final ready = picked != null && shown != null && sameMac(picked, shown);
@@ -315,36 +425,88 @@ class DirectPickActions extends ConsumerWidget {
         label: const Text('重新搜尋'),
       );
     }
+    final identifySupported = state.config['identify_supported'] == true;
+    final canSwitch = state.direct?.candidates.isNotEmpty ?? false;
+    final note = state.identifyNote;
+    final line = note.isEmpty
+        ? '按下後請看樁上 PTU 與閘道器的燈號'
+        : state.identifyLine.isEmpty
+        ? note
+        : state.identifyLine;
+    final showDetail = _detail && note.isNotEmpty && note != line;
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (state.config['identify_supported'] == true)
+        if (identifySupported || canSwitch)
           Row(
             children: [
-              FilledButton.tonalIcon(
-                key: const Key('direct-identify'),
-                icon: const Icon(Icons.lightbulb_outline, size: 20),
-                onPressed: enabled ? controller.identify : null,
-                label: const Text('辨識此樁'),
-              ),
+              if (identifySupported)
+                FilledButton.tonalIcon(
+                  key: const Key('direct-identify'),
+                  icon: const Icon(Icons.lightbulb_outline, size: 20),
+                  onPressed: enabled ? controller.identify : null,
+                  label: const Text('辨識此樁'),
+                ),
               const SizedBox(width: 8),
               Expanded(
-                child: Text(
-                  state.identifyNote.isEmpty
-                      ? '按下後請看樁上 PTU 與閘道器的燈號'
-                      : state.identifyNote,
-                  key: const Key('direct-identify-note'),
-                  style: TextStyle(
-                    color: state.identifyNote.isEmpty
-                        ? Theme.of(context).colorScheme.onSurfaceVariant
-                        : Theme.of(context).colorScheme.primary,
-                  ),
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: canSwitch
+                      ? TextButton.icon(
+                          key: const Key('direct-not-this'),
+                          icon: const Icon(Icons.swap_horiz, size: 20),
+                          onPressed: () => showDirectCandidates(context),
+                          label: const Text('不是這台？'),
+                        )
+                      : null,
                 ),
               ),
             ],
           ),
-        const SizedBox(height: 6),
+        if (identifySupported)
+          InkWell(
+            key: const Key('direct-identify-toggle'),
+            onTap: note.isEmpty || note == line
+                ? null
+                : () => setState(() => _detail = !_detail),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      line,
+                      key: const Key('direct-identify-note'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: note.isEmpty
+                            ? colors.onSurfaceVariant
+                            : colors.primary,
+                      ),
+                    ),
+                  ),
+                  if (note.isNotEmpty && note != line)
+                    Icon(
+                      showDetail ? Icons.expand_less : Icons.expand_more,
+                      size: 18,
+                      color: colors.onSurfaceVariant,
+                    ),
+                ],
+              ),
+            ),
+          ),
+        if (showDetail)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Text(
+              note,
+              key: const Key('direct-identify-detail'),
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+        const SizedBox(height: 4),
         FilledButton(
           key: const Key('direct-confirm'),
           onPressed: enabled && confirmable

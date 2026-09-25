@@ -136,10 +136,12 @@ Future<void> _idle(WidgetTester tester, ProviderContainer container) =>
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  late Duration keepPoll, keepGap, keepBackendGap;
+  late Duration keepPoll, keepGap, keepBackendGap, keepSwitch;
   late List<Duration> keepGaps;
   setUp(() {
     keepPoll = directPollInterval;
+    keepSwitch = directSwitchWait;
+    directSwitchWait = const Duration(milliseconds: 60);
     keepGaps = step7RetryGaps;
     keepGap = connectRetryGap;
     keepBackendGap = backendRetryGap;
@@ -154,6 +156,7 @@ void main() {
   });
   tearDown(() {
     directPollInterval = keepPoll;
+    directSwitchWait = keepSwitch;
     step7RetryGaps = keepGaps;
     connectRetryGap = keepGap;
     backendRetryGap = keepBackendGap;
@@ -306,11 +309,22 @@ void main() {
       await tester.pump();
       await _idle(tester, container);
       await tester.pump();
+      // Round 16: one line (「已送出 · 請看樁上燈號 · …MAC 後 4 碼 · RSSI」);
+      // the full note (whole MAC) opens below it.
       final note = tester.widget<Text>(
         find.byKey(const Key('direct-identify-note')),
       );
-      expect(note.data, contains(identifySentText));
-      expect(note.data, contains(_pick));
+      expect(note.data, startsWith(identifySentLine));
+      expect(note.data, contains(macTail(_pick)));
+      expect(note.maxLines, 1);
+      expect(find.byKey(const Key('direct-identify-detail')), findsNothing);
+      await tester.tap(find.byKey(const Key('direct-identify-toggle')));
+      await tester.pump();
+      final detail = tester.widget<Text>(
+        find.byKey(const Key('direct-identify-detail')),
+      );
+      expect(detail.data, contains(identifySentText));
+      expect(detail.data, contains(_pick));
       expect(find.text('是這台，開始監控'), findsOneWidget);
     });
   });
@@ -376,8 +390,10 @@ void main() {
       });
       addTearDown(container.dispose);
       await tester.pumpWidget(_panel(container));
+      // Round 16: 「不是這台？」 (bottom bar) opens the candidates sheet.
       await tester.tap(find.byKey(const Key('direct-not-this')));
       await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
       expect(
         find.byKey(const ValueKey('direct-candidate-$_pick')),
         findsOneWidget,
@@ -386,7 +402,7 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('direct-candidate-$_first')));
       await tester.pump();
       await _idle(tester, container);
-      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
       expect(container.read(commissionProvider).selected, {_first});
       expect(find.text(_first), findsWidgets);
       expect(
@@ -792,7 +808,13 @@ void main() {
       await tester.pumpWidget(_panel(container));
       expect(find.byKey(const Key('direct-stray-bind')), findsOneWidget);
       expect(find.text(directStrayBindText(_first)), findsOneWidget);
-      expect(find.textContaining('MAC 後 4 碼 0001'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('direct-stray-bind')),
+          matching: find.textContaining('MAC 後 4 碼 0001'),
+        ),
+        findsOneWidget,
+      );
       expect(find.byKey(const Key('direct-stray-keep')), findsOneWidget);
       await tester.tap(find.byKey(const Key('direct-stray-release')));
       await tester.pump();
