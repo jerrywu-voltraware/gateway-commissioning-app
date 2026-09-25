@@ -34,9 +34,10 @@ class PtuSelectionTile extends StatelessWidget {
   /// [onReset] 按鈕文字（重置失敗時為「重試」）。
   final String resetLabel;
 
-  String get title => ((ptu['device_number'] as num?) ?? 0) > 0
-      ? 'PTU #${ptu['device_number']}'
-      : '未編號 PTU';
+  String get title {
+    final id = (ptu['device_number'] as num?)?.toInt() ?? 0;
+    return id > 0 && id != 255 ? 'PTU #$id' : '未指派 PTU';
+  }
 
   void _showDetails(BuildContext context) {
     final rssi = ptu['rssi'];

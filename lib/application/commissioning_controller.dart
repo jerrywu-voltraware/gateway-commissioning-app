@@ -185,6 +185,9 @@ const wrongDeviceText = '指派到錯誤裝置，請重試';
 /// Firmware 1.7.15+ assign ack check: `mac` (the PTU written) and
 /// `device_number` must match the request; absent fields (older firmware)
 /// keep the old behaviour. Returns the failure reason, or null when fine.
+/// `verified` is NOT a failure: the PTU has no read-back characteristic, so
+/// firmware always sends false; get_ble_devices read-back decides instead
+/// (see [ackNeedsReadback]).
 String? assignAckMismatch(Map<String, dynamic> ack, String mac, int id) {
   final written = ack['mac'];
   if (written != null && !sameMac(written, mac)) return wrongDeviceText;
@@ -192,9 +195,13 @@ String? assignAckMismatch(Map<String, dynamic> ack, String mac, int id) {
   if (number != null && (number is! num || number.toInt() != id)) {
     return '裝置回報編號 #$number 與指派 #$id 不符，請重試';
   }
-  if (ack['verified'] == false) return '裝置未確認寫入編號 #$id，請重試';
   return null;
 }
+
+/// The ack only confirms the write was sent; confirm via read-back.
+bool ackNeedsReadback(Map<String, dynamic> ack) => ack['verified'] == false;
+
+String pendingReadbackText(int id) => '已送出 #$id，待回讀確認';
 
 String readbackMismatchText(int actual, int wanted) =>
     '回讀編號為 #$actual，不是指派的 #$wanted，請重試';
@@ -495,11 +502,12 @@ class CommissioningController extends Notifier<CommissionState> {
   bool _topologyDeferred = false;
   bool _provisioningMayBeActive = false;
   Future<bool>? _stopping;
-  final Map<String, int> _restoredAssignments = {};
 
   /// Step 8 assignments that succeeded in this run (MAC → number); saved so a
   /// restart knows which PTUs are done.
   final Map<String, int> _doneAssign = {};
+  /// MACs whose ack had verified:false, awaiting get_ble_devices read-back.
+  final Set<String> _pendingReadback = {};
 
   /// Saved progress read by [restore] (for 「重新連線並繼續」).
   Map? _saved;
@@ -834,11 +842,6 @@ class CommissioningController extends Notifier<CommissionState> {
         data = jsonDecode(value) as Map;
       } catch (_) {
         return;
-      }
-      for (final p in (data['assignments'] as List? ?? [])) {
-        if (p['mac'] is String && p['id'] is int) {
-          _restoredAssignments[p['mac']] = p['id'];
-        }
       }
       _saved = data;
       final step = data['step'] is int ? data['step'] as int : 0;
@@ -1724,12 +1727,9 @@ class CommissioningController extends Notifier<CommissionState> {
       response['devices'] as List? ?? [],
       connected['devices'] as List? ?? [],
     );
-    for (final p in ptus) {
-      if (p['device_number'] == 0 &&
-          _restoredAssignments.containsKey(p['mac'])) {
-        p['device_number'] = _restoredAssignments[p['mac']];
-      }
-    }
+    // This scan's device_number is authoritative: never overlay numbers
+    // from saved progress (round 5 showed a stale 「PTU #5」 for a PTU the
+    // gateway had just reset to 0).
     final target = targetPtuCount;
     final isStar = ref.read(topologyProvider).topology.isStar;
     if (autoReset) {
@@ -1932,7 +1932,10 @@ class CommissioningController extends Notifier<CommissionState> {
         if (result['success'] == true) {
           // Firmware 1.7.15+: the ack names the PTU actually written.
           reason = assignAckMismatch(result, mac, id);
-          if (reason == null) return null;
+          if (reason == null) {
+            if (ackNeedsReadback(result)) _pendingReadback.add(mac);
+            return null;
+          }
           continue;
         }
         reason = ptuFailureText(result['error'] ?? result['result']);
@@ -2007,7 +2010,9 @@ class CommissioningController extends Notifier<CommissionState> {
       }
       p['device_number'] = id;
       _doneAssign[mac] = id;
-      results[mac] = '已指派 #$id，等待連線';
+      results[mac] = _pendingReadback.contains(mac)
+          ? pendingReadbackText(id)
+          : '已指派 #$id，等待連線';
       final stillFailed = Map<String, String>.of(state.assignFailed)
         ..remove(mac);
       state = state.copy(
@@ -2046,12 +2051,16 @@ class CommissioningController extends Notifier<CommissionState> {
         await _save();
         throw GatewayFailure('phone_link_lost', detail: e.toString());
       }
-      return; // Old firmware or a busy gateway: keep the ack result.
+      // Old firmware or a busy gateway: keep the ack result.
+      _settlePending(results);
+      state = state.copy(results: Map.of(results));
+      return;
     }
     _check(generation);
     final mismatched = <String>{};
     for (final entry in Map.of(_doneAssign).entries) {
       final found = devices.where((d) => sameMac(d['mac'], entry.key));
+      // Not listed yet: the gateway has not connected it; success, waiting.
       if (found.isEmpty) continue;
       final device = found.first;
       final actual = (device['device_number'] as num?)?.toInt();
@@ -2068,12 +2077,25 @@ class CommissioningController extends Notifier<CommissionState> {
         results[entry.key] = '已連線 #${entry.value}';
       }
     }
+    _settlePending(results);
     state = state.copy(
       results: Map.of(results),
       assignFailed: {...state.assignFailed, ...failed},
       assignedOk: state.assignedOk.difference(mismatched),
     );
     await _save();
+  }
+
+  /// Read-back done: unverified acks that did not mismatch are successes
+  /// still waiting for the gateway to connect.
+  void _settlePending(Map<String, String> results) {
+    for (final mac in _pendingReadback) {
+      final id = _doneAssign[mac];
+      if (id != null && results[mac] == pendingReadbackText(id)) {
+        results[mac] = '已指派 #$id，等待連線';
+      }
+    }
+    _pendingReadback.clear();
   }
 
   /// [skip]: PTUs already assigned before the APP restarted (not re-sent).
@@ -2181,9 +2203,22 @@ class CommissioningController extends Notifier<CommissionState> {
     Map<String, String> failed,
   ) async {
     final ok = chosen.where((p) => !failed.containsKey(p['mac'])).length;
+    if (ok == 0) {
+      // Nothing succeeded: do NOT send set_config (it would drop the gateway
+      // to max_connections=1) nor join_fleet; back to selection to retry.
+      _provisioningMayBeActive = false;
+      state = state.copy(
+        step: 4,
+        assignFailed: failed,
+        message:
+            '${failed.length} 台都指派失敗，Gateway 設定未變更；請確認 PTU 後按「重試這 ${failed.length} 台」。',
+      );
+      return;
+    }
+    final isStar = ref.read(topologyProvider).topology.isStar;
     try {
       await _command(generation, 'set_config', {
-        'max_connections': ok < 1 ? 1 : ok,
+        'max_connections': isStar && ok > 5 ? 5 : ok,
       });
       await _command(generation, 'join_fleet');
     } catch (e) {
@@ -2196,9 +2231,8 @@ class CommissioningController extends Notifier<CommissionState> {
       _provisioningMayBeActive = false;
       state = state.copy(
         step: 4,
-        message: ok == 0
-            ? '${failed.length} 台都指派失敗，Gateway 仍維持監控；請確認 PTU 後按「重試這 ${failed.length} 台」。'
-            : '已先讓 $ok 台上線；${failed.length} 台指派失敗，可按「重試這 ${failed.length} 台」。',
+        message:
+            '已先讓 $ok 台上線；${failed.length} 台指派失敗，可按「重試這 ${failed.length} 台」。',
       );
       return;
     }

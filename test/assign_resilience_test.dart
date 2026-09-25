@@ -134,7 +134,7 @@ void main() {
     expect(s.ptus.map((p) => p['device_number']).toSet(), hasLength(3));
   });
 
-  test('every PTU failing keeps max_connections at least 1', () async {
+  test('every PTU failing sends neither set_config nor join_fleet', () async {
     final fake = FlakyAssign();
     final (container, c) = await ready(fake);
     addTearDown(container.dispose);
@@ -144,8 +144,9 @@ void main() {
     await c.configurePtus();
     final s = container.read(commissionProvider);
     expect(s.assignFailed, hasLength(3));
-    expect(fake.config['max_connections'], 1);
-    expect(fake.commands, contains('join_fleet'));
+    expect(fake.commands, isNot(contains('set_config')));
+    expect(fake.commands, isNot(contains('join_fleet')));
+    expect(s.step, 4);
     expect(fake.disabled, isEmpty);
   });
 
