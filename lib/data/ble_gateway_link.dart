@@ -288,7 +288,8 @@ class BleGatewayLink
   // ---- Retry/timeout budget ----
   // Worst case (all attempts fail): connectTimeout * (connectRetries + 1)
   // + quickRetryTimeout + (retryGap + rescanWindow) * connectRetries
-  //   = 12s * 3 + 6s + 4.5s * 2 = 51s.
+  //   = 12s * 3 + 6s + 4.5s * 2 = 51s, plus the immediate retry's
+  // staleSettle + quickRescanWindow (0.5s + 1.5s) = 53s.
   // The callers budget above this with headroom for the outer machinery:
   // commissioning_controller._relink times out at 56s and the overall
   // commissioning_controller.reconnectBudget (used by _reconnect) is 66s.
@@ -307,6 +308,9 @@ class BleGatewayLink
   /// Timeout of the immediate retry after the first failed connect.
   @visibleForTesting
   static Duration quickRetryTimeout = const Duration(seconds: 6);
+
+  /// Short scan before the immediate retry (half of [rescanWindow]).
+  static Duration get quickRescanWindow => rescanWindow ~/ 2;
 
   String? _firstConnectFailure;
 
@@ -329,7 +333,7 @@ class BleGatewayLink
 
   /// Scans up to [rescanWindow] until [device] is advertised again, so the
   /// Android stack knows the address before the next connect.
-  Future<void> _rediscover(String device) async {
+  Future<void> _rediscover(String device, [Duration? window]) async {
     final seen = Completer<void>();
     StreamSubscription<BleDevice>? sub;
     try {
@@ -337,7 +341,7 @@ class BleGatewayLink
         if (result.deviceId == device && !seen.isCompleted) seen.complete();
       }, onError: (_) {});
       await UniversalBle.startScan();
-      await seen.future.timeout(rescanWindow, onTimeout: () {});
+      await seen.future.timeout(window ?? rescanWindow, onTimeout: () {});
     } catch (_) {
       /* Scan unavailable: just try the connect again. */
     } finally {
@@ -363,24 +367,46 @@ class BleGatewayLink
     onStage?.call('清除舊連線');
     await _dropStale(device);
     _firstConnectFailure = null;
+    var ready = false;
     for (int attempt = 0; ; attempt++) {
       if (epoch != _epoch) throw const GatewayFailure('cancelled');
       if (attempt > 0) onStage?.call('第 $attempt 次重試');
       onStage?.call('正在連線閘道器');
       try {
         await UniversalBle.connect(device, timeout: connectTimeout);
+        // Round 9: the first attempt includes the GATT setup — a 133
+        // (UniversalBleException unknownError) right after an APP restart
+        // often surfaces in discoverServices/subscribe, not in connect.
+        if (attempt == 0) {
+          await _setUp(device, epoch);
+          ready = true;
+        }
         break;
       } catch (error) {
+        if (error is GatewayFailure && error.code == 'cancelled') rethrow;
         if (attempt == 0) {
           // Round 8: the first reconnect sometimes fails once and the next
-          // try works; retry at once (no gap/rescan) and keep the type.
+          // try works; retry at once and keep the type. Round 9: any error
+          // type (133 unknownError included), and drop the half-open GATT
+          // client + a short scan first, else the retry hits the same 133.
           _firstConnectFailure = '${error.runtimeType}: $error';
           debugPrint('BLE first connect failed: $_firstConnectFailure');
+          await _tearDownSetup();
           if (epoch != _epoch) throw const GatewayFailure('cancelled');
           try {
+            await _dropStale(device);
+            await _rediscover(device, quickRescanWindow);
+            if (epoch != _epoch) throw const GatewayFailure('cancelled');
             await UniversalBle.connect(device, timeout: quickRetryTimeout);
+            await _setUp(device, epoch);
+            ready = true;
             break;
-          } catch (_) {}
+          } catch (retryError) {
+            if (retryError is GatewayFailure && retryError.code == 'cancelled') {
+              rethrow;
+            }
+            await _tearDownSetup();
+          }
         }
         if (attempt >= connectRetries) rethrow;
         onStage?.call('找不到閘道器，重新掃描中');
@@ -391,6 +417,20 @@ class BleGatewayLink
       }
     }
     if (epoch != _epoch) throw const GatewayFailure('cancelled');
+    if (!ready) await _setUp(device, epoch);
+  }
+
+  Future<void> _tearDownSetup() async {
+    await _notify?.cancel();
+    await _connection?.cancel();
+    _notify = null;
+    _connection = null;
+    _rx = null;
+  }
+
+  /// GATT setup after a successful connect: NUS service, notifications,
+  /// connection watch and MTU.
+  Future<void> _setUp(String device, int epoch) async {
     final services = await UniversalBle.discoverServices(
       device,
       timeout: const Duration(seconds: 12),
