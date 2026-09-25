@@ -293,6 +293,8 @@ class CommissioningController extends Notifier<CommissionState> {
   late GatewayApi _api;
   Timer? _clock, _health;
   int _generation = 0;
+  // Topology changed while a step was running; applied when it ends.
+  bool _topologyDeferred = false;
   bool _provisioningMayBeActive = false;
   Future<bool>? _stopping;
   final Map<String, int> _restoredAssignments = {};
@@ -344,7 +346,12 @@ class CommissioningController extends Notifier<CommissionState> {
     ref.listen(topologyProvider, (previous, next) {
       if (previous?.targetCount != next.targetCount ||
           previous?.topology != next.topology) {
-        _onTopologyChanged(next);
+        // 自動收編（重置迴圈＋重掃）進行中不在中途重算：延後到該步驟結束再套用。
+        if (state.busy) {
+          _topologyDeferred = true;
+        } else {
+          _onTopologyChanged(next);
+        }
       }
     });
     ref.onDispose(() {
@@ -553,6 +560,10 @@ class CommissioningController extends Notifier<CommissionState> {
       _clock?.cancel();
       if (ref.mounted) {
         state = state.copy(busy: false, seconds: 0, error: state.error);
+        if (_topologyDeferred) {
+          _topologyDeferred = false;
+          _onTopologyChanged(ref.read(topologyProvider));
+        }
       }
     }
   }

@@ -539,7 +539,8 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             // 避免 360dp 窄螢幕被多個 AppBar action 擠壓（narrow 360dp widget test）。
             PopupMenuButton<String>(
               key: const Key('topology-menu'),
-              tooltip: '拓撲模式（進階）',
+              tooltip: state.busy ? '操作進行中，完成後才能切換拓撲' : '拓撲模式（進階）',
+              enabled: !state.busy,
               icon: const Icon(Icons.hub_outlined),
               onSelected: (value) {
                 if (value.startsWith('topology:')) {

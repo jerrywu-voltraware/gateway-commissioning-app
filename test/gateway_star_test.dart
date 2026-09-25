@@ -360,4 +360,32 @@ void main() {
       expect(state.pendingNext, 1);
     },
   );
+
+  test(
+    'topology change while a step is running is deferred until it ends',
+    () async {
+      final fake = StarInventoryGateway();
+      final (container, controller) = await _connectStar(fake);
+      addTearDown(container.dispose);
+      expect(container.read(commissionProvider).pendingNext, 1);
+      final running = controller.resetAndInclude(
+        fake.nearby[2]['mac'].toString(),
+      );
+      expect(container.read(commissionProvider).busy, isTrue);
+      final switching = container
+          .read(topologyProvider.notifier)
+          .setTopology(GatewayTopology.direct);
+      // Not recomputed mid-step.
+      expect(container.read(commissionProvider).pendingNext, 1);
+      await switching;
+      await running;
+      final after = container.read(commissionProvider);
+      expect(after.busy, isFalse);
+      expect(after.pendingNext, 0);
+      expect(
+        after.selected.length,
+        lessThanOrEqualTo(container.read(topologyProvider).targetCount),
+      );
+    },
+  );
 }
