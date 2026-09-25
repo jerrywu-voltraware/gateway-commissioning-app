@@ -110,8 +110,28 @@ Future<ProviderContainer> pumpApp(
   return container;
 }
 
+/// Round 13: step 8 (like step 7) reconnects by itself after a phone link
+/// loss. Tests of the manual 「重新連線並繼續」 path — what is left once the
+/// automatic reconnect gave up — switch the automatic rounds off.
+void manualRelinkOnly() {
+  late int keep;
+  setUp(() {
+    keep = autoRelinkRounds;
+    autoRelinkRounds = 0;
+  });
+  tearDown(() => autoRelinkRounds = keep);
+}
+
+/// Same as [manualRelinkOnly], for a single test.
+void manualRelinkInThisTest() {
+  final keep = autoRelinkRounds;
+  autoRelinkRounds = 0;
+  addTearDown(() => autoRelinkRounds = keep);
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  manualRelinkOnly();
 
   test('phone link loss is not a PTU failure', () {
     expect(

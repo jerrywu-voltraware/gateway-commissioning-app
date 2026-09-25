@@ -5,7 +5,7 @@ import 'package:gateway_commissioning/application/topology_settings.dart';
 import 'package:gateway_commissioning/core/protocol.dart';
 import 'package:gateway_commissioning/data/ble_gateway_link.dart';
 import 'package:gateway_commissioning/data/contracts.dart';
-import 'link_loss_test.dart' show DroppingLink, ready;
+import 'link_loss_test.dart' show DroppingLink, manualRelinkOnly, ready;
 
 /// Drops the phone link on the [dropOnCall]-th [dropOp] command, throwing
 /// [error] (what BleGatewayLink really surfaces with the adapter off).
@@ -33,6 +33,8 @@ class AdapterOffLink extends DroppingLink {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  // Manual 「重新連線並繼續」 path (round 13: automatic otherwise).
+  manualRelinkOnly();
 
   // What BleGatewayLink.command raises while the phone's adapter is off:
   // normalizeBleError(deviceDisconnected) → disconnected, any other

@@ -311,7 +311,13 @@ const _savedStepLabels = {
 String configureLabel(CommissionState s) {
   final rest = configureTargets(s).length;
   // Round 12: step 7 link loss — never 「掃描中…」 beside the banner.
-  if (s.step == 4 && (s.relinking || (s.busy && _step7Lost(s)))) {
+  // Round 13: step 8 too — disabled 「重新連線中…」 while the automatic
+  // reconnect (or any run on a lost link) runs; 「重新連線並繼續」 only once
+  // it gave up.
+  if (s.relinking ||
+      (s.busy &&
+          ((s.step == 4 && _step7Lost(s)) ||
+              ((s.step == 4 || s.step == 5) && s.resumePending)))) {
     return relinkingLabel;
   }
   if (step7LinkLost(s)) return rescanAfterLossLabel;
@@ -331,8 +337,36 @@ String configureLabel(CommissionState s) {
 /// Step 7 bottom button while a scan is still running.
 const scanningLabel = '掃描中…';
 
-/// Step 7 bottom button while the automatic reconnect runs (disabled).
+/// Steps 7/8 bottom button while the automatic reconnect runs (disabled).
 const relinkingLabel = '重新連線中…';
+
+/// Round 13: status card / rescan button while the automatic reconnect runs.
+const autoRelinkingText = '正在自動重新連線…';
+
+/// Round 13: most automatic reconnect rounds per phone↔gateway link loss
+/// (steps 7 and 8, [CommissioningController] `_autoRelink`). Each round
+/// keeps reconnecting for [connectPersistence]; only step 8 starts another
+/// round, for a new loss after the previous round assigned more PTUs. A
+/// give-up, or a loss that recurs without progress, ends them. Tests set 0
+/// to exercise the manual 「重新連線並繼續」 path.
+int autoRelinkRounds = 3;
+
+/// Round 13: step 9 retries a backend that answers 5xx, cannot be reached
+/// or times out every [backendRetryGap] until [backendRetryWindow] of
+/// failures has accumulated, then stops with 「重試」.
+Duration backendRetryGap = const Duration(seconds: 5);
+Duration backendRetryWindow = const Duration(seconds: 60);
+
+/// Step 9 busy text while the backend is retried automatically.
+String backendRetryText(int attempt) => '後端暫時無回應，自動重試中（$attempt）';
+
+/// A backend failure worth retrying by itself: HTTP 5xx (e.g. 502 while the
+/// API container restarts), unreachable, or timed out.
+bool isTransientBackendFailure(Object error) =>
+    error is TimeoutException ||
+    (error is GatewayFailure &&
+        (error.code == 'network' ||
+            (error.code == 'api' && (error.status ?? 0) >= 500)));
 
 /// Step 7 bottom button after the automatic reconnect gave up.
 const rescanAfterLossLabel = '重新連線並掃描 PTU';
@@ -522,6 +556,7 @@ class CommissionState {
     this.monitorUnconfirmed = false,
     this.scanResumePending = false,
     this.relinking = false,
+    this.verifyBackendDown = false,
     this.reconnectFailed = false,
     this.savedResume = false,
     this.lastCompleted = false,
@@ -635,6 +670,11 @@ class CommissionState {
   /// running; the bottom button shows [relinkingLabel], disabled.
   final bool relinking;
 
+  /// Round 13: step 9 stopped because the backend stayed unavailable
+  /// (5xx / unreachable / timeout) through the automatic retries; the page
+  /// offers 「重試」, which keeps the per-PTU progress.
+  final bool verifyBackendDown;
+
   /// 最近一次重新連線閘道器逾時／失敗（顯示重試與回到找閘道器）。
   final bool reconnectFailed;
 
@@ -715,6 +755,7 @@ class CommissionState {
     bool? monitorUnconfirmed,
     bool? scanResumePending,
     bool? relinking,
+    bool? verifyBackendDown,
     bool? reconnectFailed,
     bool? savedResume,
     bool? lastCompleted,
@@ -735,6 +776,7 @@ class CommissionState {
     monitorUnconfirmed: monitorUnconfirmed ?? this.monitorUnconfirmed,
     scanResumePending: scanResumePending ?? this.scanResumePending,
     relinking: relinking ?? this.relinking,
+    verifyBackendDown: verifyBackendDown ?? this.verifyBackendDown,
     reconnectFailed: reconnectFailed ?? this.reconnectFailed,
     savedResume: savedResume ?? this.savedResume,
     assignFailed: assignFailed ?? this.assignFailed,
@@ -957,6 +999,53 @@ class CommissioningController extends Notifier<CommissionState> {
     }
   }
 
+  /// Round 13: the password that last logged in to a backend (memory only,
+  /// never saved). A session the backend dropped (401, e.g. after the API
+  /// was restarted) is renewed with it once before the installer is asked.
+  (String, String)? _credentials;
+
+  /// A successful login to [base] with [password].
+  void _loginOk(String base, String password) {
+    _setLoggedIn(true, base);
+    _credentials = (base.trim(), password);
+  }
+
+  /// [password] as typed, or — left empty — the one that last logged in to
+  /// this same [base].
+  String _passwordFor(String base, String? password) {
+    if ((password ?? '').isNotEmpty) return password!;
+    final saved = _credentials;
+    return saved != null && saved.$1 == base.trim() ? saved.$2 : '';
+  }
+
+  /// Runs a backend [call]; a 401 on a session believed valid logs in again
+  /// once with the stored password and repeats it. Only a refused re-login
+  /// ends the session (「登入失敗或已失效」, the password field kept).
+  Future<T> _withRelogin<T>(Future<T> Function() call) async {
+    try {
+      return await call();
+    } on GatewayFailure catch (error) {
+      final saved = _credentials;
+      if (error.code != 'authentication' ||
+          !_loggedIn ||
+          saved == null ||
+          saved.$1 != _loginBase) {
+        rethrow;
+      }
+      try {
+        await _api.login(saved.$1, saved.$2);
+      } on GatewayFailure catch (failure) {
+        // Unreachable backend: keep the session and let the caller retry.
+        if (failure.code == 'authentication') {
+          _credentials = null;
+          _setLoggedIn(false);
+        }
+        rethrow;
+      }
+      return await call();
+    }
+  }
+
   Future<void> _wait(int seconds, int generation) async {
     await Future<void>.delayed(
       _link.demo ? const Duration(milliseconds: 1) : Duration(seconds: seconds),
@@ -1019,7 +1108,7 @@ class CommissioningController extends Notifier<CommissionState> {
     Map<String, dynamic>? body,
   ]) async {
     _check(generation);
-    final result = await _api.request(method, path, body);
+    final result = await _withRelogin(() => _api.request(method, path, body));
     if (generation != _generation &&
         path.endsWith('/bot-monitor') &&
         body?['enabled'] == false) {
@@ -1060,11 +1149,14 @@ class CommissioningController extends Notifier<CommissionState> {
     }
   }
 
+  /// [relinkStep] (4 = step 7 scan, 5 = step 8): a link loss ending this run
+  /// hands over to the automatic reconnect ([_autoRelink]) of that step.
   Future<void> _run(
     String label,
     int timeout,
-    Future<void> Function(int) action,
-  ) async {
+    Future<void> Function(int) action, {
+    int? relinkStep,
+  }) async {
     if (state.busy) return;
     final generation = ++_generation;
     _diagnosis = null;
@@ -1110,6 +1202,9 @@ class CommissioningController extends Notifier<CommissionState> {
       if (ref.mounted &&
           state.step == 5 &&
           isStep8LinkLoss(error, generation == _generation)) {
+        // Round 13: remembered so the automatic reconnect starts only for
+        // the loss of the run still current (not after 「取消操作」).
+        _step8LossGeneration = generation;
         state = state.copy(resumePending: true);
         unawaited(_save());
         if (!(error is GatewayFailure &&
@@ -1180,7 +1275,20 @@ class CommissioningController extends Notifier<CommissionState> {
     } finally {
       _clock?.cancel();
       if (ref.mounted) {
-        state = state.copy(busy: false, seconds: 0, error: state.error);
+        // Round 13: the automatic reconnect follows at once — relinking is
+        // set with busy:false in one update, so the button never flashes
+        // 「重新連線並繼續」 during the hand-over.
+        final follows =
+            relinkStep != null &&
+            autoRelinkRounds > 0 &&
+            !_autoRelinking &&
+            _linkLostAt(relinkStep, running: true);
+        state = state.copy(
+          busy: false,
+          seconds: 0,
+          error: state.error,
+          relinking: follows ? true : null,
+        );
         if (_topologyDeferred) {
           _topologyDeferred = false;
           _onTopologyChanged(ref.read(topologyProvider));
@@ -1400,9 +1508,10 @@ class CommissioningController extends Notifier<CommissionState> {
         _check(generation);
         _backend = describeBackend(Uri.tryParse(base.trim()));
         if (!offline) {
-          await _api.login(base, password);
+          final secret = _passwordFor(base, password);
+          await _api.login(base, secret);
           _check(generation);
-          _setLoggedIn(true, base);
+          _loginOk(base, secret);
         }
         state = state.copy(
           step: 1,
@@ -2124,11 +2233,12 @@ class CommissioningController extends Notifier<CommissionState> {
     String? environment,
     String? password,
   }) => _run('確認閘道器持續上線', 90, (generation) async {
-    if (!skip && !_loggedIn && base != null && (password ?? '').isNotEmpty) {
+    final secret = base == null ? '' : _passwordFor(base, password);
+    if (!skip && !_loggedIn && base != null && secret.isNotEmpty) {
       _backend = describeBackend(Uri.tryParse(base.trim()));
-      await _api.login(base.trim(), password!);
+      await _api.login(base.trim(), secret);
       _check(generation);
-      _setLoggedIn(true, base);
+      _loginOk(base, secret);
     }
     if (skip || !_loggedIn) {
       state = state.copy(step: 4, message: '後端尚未確認；完成配置後仍需驗證');
@@ -2174,7 +2284,14 @@ class CommissioningController extends Notifier<CommissionState> {
   Future<void> rescanPtus() async {
     if (state.busy || state.step < 4) return;
     _health?.cancel();
-    state = state.copy(step: 4, verified: false, report: '', results: {});
+    _verifyCarry = null;
+    state = state.copy(
+      step: 4,
+      verified: false,
+      report: '',
+      results: {},
+      verifyBackendDown: false,
+    );
     await discover();
   }
 
@@ -2193,14 +2310,15 @@ class CommissioningController extends Notifier<CommissionState> {
       _autoResetRescan = false;
       await _discover(autoReset: false, keep: keep);
     }
-    if (ref.mounted &&
-        !_autoRelinking &&
-        !state.reconnectFailed &&
-        step7LinkLost(state) &&
-        state.error != null) {
-      // Round 12: a drop during the scan reconnects and rescans by itself.
-      await _autoRelinkStep7(keep: keep);
-      return;
+    if (ref.mounted && !_autoRelinking) {
+      if (_linkLostAt(4)) {
+        // Round 12: a drop during the scan reconnects and rescans by itself.
+        await _autoRelink(4, keep: keep);
+        return;
+      }
+      if (state.relinking) {
+        state = state.copy(relinking: false, error: state.error);
+      }
     }
     if (ref.mounted &&
         (state.step == 4 || state.step == 5) &&
@@ -2229,7 +2347,7 @@ class CommissioningController extends Notifier<CommissionState> {
   Future<void> _discover({
     bool autoReset = true,
     Set<String>? keep,
-  }) => _run('Gateway 正在掃描周邊 PTU，請稍候', 75, (generation) async {
+  }) => _run(relinkStep: 4, 'Gateway 正在掃描周邊 PTU，請稍候', 75, (generation) async {
     if (state.uploadWatch == UploadWatch.linkLost || state.resumePending) {
       await _reconnect(generation);
       // Re-establish the same gateway link and read fresh network status;
@@ -2437,7 +2555,7 @@ class CommissioningController extends Notifier<CommissionState> {
   /// 「開始驗證」 goes straight to step 9 when the gateway already monitors
   /// them; otherwise 「恢復監控」 sends join_fleet first. Never re-assigns.
   Future<void> finishConfigured() =>
-      _run('正在確認 Gateway 監控狀態', 90, (generation) async {
+      _step8Run('正在確認 Gateway 監控狀態', 90, (generation) async {
         final chosen = state.ptus
             .where((p) => state.selected.contains(p['mac']))
             .toList();
@@ -2794,7 +2912,7 @@ class CommissioningController extends Notifier<CommissionState> {
 
   /// [skip]: PTUs already assigned before the APP restarted (not re-sent).
   Future<void> configurePtus({Set<String> skip = const {}}) =>
-      _run('逐台編號並開始監控', 240, (generation) async {
+      _step8Run('逐台編號並開始監控', 240, (generation) async {
         final chosen = state.ptus
             .where((p) => state.selected.contains(p['mac']))
             .toList();
@@ -2999,7 +3117,7 @@ class CommissioningController extends Notifier<CommissionState> {
   int? _resumeGeneration;
 
   Future<void> resumeAssign() =>
-      _run(reconnectingText, 240, (generation) async {
+      _step8Run(reconnectingText, 240, (generation) async {
         _resumeGeneration = generation;
         // Round 11: the reconcile (get_ble_devices) runs inside the
         // persistent link loop, so a link that drops right after connecting
@@ -3107,7 +3225,7 @@ class CommissioningController extends Notifier<CommissionState> {
 
   /// 「重試這 N 台」：只對上次指派失敗的 PTU 重跑指派，再 set_config/join_fleet。
   Future<void> retryFailedAssign() =>
-      _run('重試指派失敗的 PTU', 240, (generation) async {
+      _step8Run('重試指派失敗的 PTU', 240, (generation) async {
         final chosen = state.ptus
             .where(
               (p) =>
@@ -3319,11 +3437,50 @@ class CommissioningController extends Notifier<CommissionState> {
 
   /// [environment] is the selector value (`production` / `local` / `custom`);
   /// when omitted the target is derived from [base] alone.
-  Future<void> verify(
+  ///
+  /// Round 13: a backend that answers 5xx, cannot be reached or times out is
+  /// retried every [backendRetryGap] (「後端暫時無回應，自動重試中（n）」)
+  /// until [backendRetryWindow] of failures has accumulated; the per-PTU
+  /// progress is kept, also for the 「重試」 after that.
+  Future<void> verify(String base, String password, {String? environment}) =>
+      _run('確認每台 PTU 的資料持續進入後端', _verifyRunSeconds, (generation) async {
+        state = state.copy(verifyBackendDown: false);
+        try {
+          await _verify(generation, base, password, environment);
+        } on GatewayFailure catch (error) {
+          if (error.code == 'backend_unavailable' && ref.mounted) {
+            state = state.copy(verifyBackendDown: true);
+          }
+          rethrow;
+        }
+      });
+
+  /// Step 9 poll window (seconds of successful polls).
+  static const _verifyWindow = 180;
+
+  /// Overall step 9 budget: the poll window, the backend retry window and
+  /// one slow failing request on top.
+  int get _verifyRunSeconds =>
+      _verifyWindow + backendRetryWindow.inSeconds + 40;
+
+  /// Step 9 progress kept when the backend stayed unavailable
+  /// ('backend_unavailable'); the next verification of the same PTUs
+  /// continues it instead of starting from 0/3.
+  ({
+    Set<int> ids,
+    Map<int, DateTime> previous,
+    Map<int, int> counts,
+    Map<int, int> lastNew,
+    int elapsed,
+  })?
+  _verifyCarry;
+
+  Future<void> _verify(
+    int generation,
     String base,
-    String password, {
+    String password,
     String? environment,
-  }) => _run('確認每台 PTU 的資料持續進入後端', 180, (generation) async {
+  ) async {
     if (!state.ptus.any((p) => state.selected.contains(p['mac']))) {
       state = state.copy(step: 4, verified: false, report: '');
       throw const GatewayFailure('no_devices');
@@ -3337,26 +3494,58 @@ class CommissioningController extends Notifier<CommissionState> {
       wanted: wanted,
       mqttConnected: state.config['mqtt_connected'],
     );
+    // Round 13: time spent on a failing backend in this run (5xx /
+    // unreachable / timeout); never counted as the PTUs being idle.
+    final outage = Stopwatch();
+    var retries = 0;
+    Future<T> backend<T>(Future<T> Function() call) async {
+      while (true) {
+        try {
+          final result = await call();
+          outage.stop();
+          return result;
+        } catch (error) {
+          if (!isTransientBackendFailure(error)) rethrow;
+          _check(generation);
+          outage.start();
+          if (outage.elapsed >= backendRetryWindow) {
+            throw GatewayFailure(
+              'backend_unavailable',
+              detail: error is GatewayFailure
+                  ? '${error.message}\n$error'
+                  : error.toString(),
+            );
+          }
+          retries++;
+          state = state.copy(
+            message: backendRetryText(retries),
+            error: state.error,
+          );
+          await Future<void>.delayed(backendRetryGap);
+          _check(generation);
+        }
+      }
+    }
+
     if (!_loggedIn) {
-      await _api.login(base, password);
+      final secret = _passwordFor(base, password);
+      await backend(() => _api.login(base, secret));
       _check(generation);
-      _setLoggedIn(true, base);
+      _loginOk(base, secret);
     }
     try {
       // Renew the lease for every verification attempt; a cached flag may have expired.
-      await _request(generation, 'PATCH', '$_path/bot-monitor', {
-        'enabled': false,
-        'ttl_minutes': 30,
-      });
+      await backend(
+        () => _request(generation, 'PATCH', '$_path/bot-monitor', {
+          'enabled': false,
+          'ttl_minutes': 30,
+        }),
+      );
       _lease = true;
     } on GatewayFailure catch (error) {
       if (error.gatewayNotFound) throw error.withCause(cause);
       rethrow;
     }
-    final previous = <int, DateTime>{};
-    // Per PTU (round 8: one PTU without a new row reset everyone to 0/3).
-    final counts = <int, int>{};
-    final lastNew = <int, int>{};
     final chosen = state.ptus
         .where((p) => state.selected.contains(p['mac']))
         .toList();
@@ -3373,118 +3562,150 @@ class CommissioningController extends Notifier<CommissionState> {
       _diagnosis = (generation, unnumbered.join('\n'));
       throw const GatewayFailure('incomplete');
     }
+    // Round 13: continue the progress a backend outage interrupted.
+    final carry = _verifyCarry;
+    _verifyCarry = null;
+    final resume =
+        carry != null &&
+        carry.ids.length == ids.length &&
+        carry.ids.containsAll(ids);
+    final previous = resume ? carry.previous : <int, DateTime>{};
+    // Per PTU (round 8: one PTU without a new row reset everyone to 0/3).
+    final counts = resume ? carry.counts : <int, int>{};
+    final lastNew = resume ? carry.lastNew : <int, int>{};
+    final start = resume ? carry.elapsed : 0;
     state = state.copy(
-      verifyCounts: {for (final id in ids) id: 0},
-      verifyWaiting: {},
-      verifySkipped: {},
+      verifyCounts: {for (final id in ids) id: counts[id] ?? 0},
+      verifyWaiting: resume ? null : {},
+      verifySkipped: resume ? null : {},
     );
-    for (int elapsed = 0; elapsed < 180; elapsed += verifyPollSeconds) {
-      final fleet = await _fleet(generation);
-      if (fleet?['upload_paused'] == true) {
-        await _command(generation, 'set_data_upload', {'enabled': true});
-      }
-      final install = await _request(
-        generation,
-        'GET',
-        '$_path/verify-installation?threshold_minutes=2&device_ids=${ids.join(',')}',
-      );
-      final latest = await _request(
-        generation,
-        'GET',
-        '/api/latest?site_id=$site&gateway_id=$gateway',
-      );
-      _check(generation);
-      final rows = (latest['items'] as List? ?? [])
-          .map((p) => Map<String, dynamic>.from(p as Map))
-          .toList();
-      if (fleet?['online'] == true || backendRowsFresh(rows)) {
-        state = state.copy(backendSeenAt: DateTime.now());
-      }
-      final before = Map<int, DateTime>.of(previous);
-      verifyTally(
-        ids: ids,
-        rows: rows,
-        previous: previous,
-        counts: counts,
-        lastNew: lastNew,
-        elapsed: elapsed,
-      );
-      final waiting = {
-        for (final id in ids)
-          if (elapsed - (lastNew[id] ?? 0) >= verifyIdleLimit) id,
-      };
-      // Round 9: a PTU the installer skipped (after staying idle) no longer
-      // blocks the rest — judge pass/fail on the remaining, active PTUs only.
-      final skipped = state.verifySkipped;
-      final active = ids.where((id) => !skipped.contains(id)).toList();
-      final installDevices = (install['devices'] as List? ?? [])
-          .whereType<Map>()
-          .map((p) => Map<String, dynamic>.from(p))
-          .toList();
-      // No per-device breakdown (older backend, or the demo stub): fall
-      // back to the overall flag for every active PTU.
-      final allOkActive = active.every(
-        (id) => installDevices.isEmpty
-            ? install['all_ok'] == true
-            : installDevices.any(
-                (d) => d['device_id'] == id && d['data_ok'] == true,
-              ),
-      );
-      final consecutive = active.isEmpty
-          ? 0
-          : active.map((id) => counts[id] ?? 0).reduce(min);
-      final good = active.isNotEmpty && allOkActive && consecutive >= 3;
-      _diagnosis = (
-        generation,
-        verifyDiagnosis(
-          ids: ids,
-          install: install,
-          rows: rows,
-          fleet: fleet,
-          previous: before,
-          site: site,
-          gateway: gateway,
-          consecutive: consecutive,
-          backend: _backend,
-          cause: cause,
-        ),
-      );
-      state = state.copy(
-        message: verifyProgressText(ids, counts, waiting, skipped),
-        verifyCounts: Map.of(counts),
-        verifyWaiting: waiting,
-      );
-      if (good) {
-        await _request(generation, 'PATCH', '$_path/bot-monitor', {
-          'enabled': true,
+    var elapsed = start;
+    try {
+      for (; elapsed < start + _verifyWindow; elapsed += verifyPollSeconds) {
+        final (fleet, install, latest) = await backend(() async {
+          final fleet = await _fleet(generation);
+          if (fleet?['upload_paused'] == true) {
+            await _command(generation, 'set_data_upload', {'enabled': true});
+          }
+          final install = await _request(
+            generation,
+            'GET',
+            '$_path/verify-installation?threshold_minutes=2&device_ids=${ids.join(',')}',
+          );
+          final latest = await _request(
+            generation,
+            'GET',
+            '/api/latest?site_id=$site&gateway_id=$gateway',
+          );
+          return (fleet, install, latest);
         });
-        _lease = false;
-        final skippedIds = ids.where(skipped.contains).toList()..sort();
-        final skippedNote = skippedIds.isEmpty
-            ? ''
-            : '\n未驗證（已略過）：${skippedIds.map((id) => "#$id").join('、')}，'
-                  '請現場確認 ${skippedIds.map((id) => "PTU #$id").join('、')} 電源與位置';
-        _reportBody =
-            '${_link.demo ? "模擬安裝報告（非實機驗證）" : "安裝報告"}\n站點 $site / 閘道器 $gateway\n${byDeviceNumber(state.ptus).map((p) => "#${p['device_number']}  ${p['mac']}").join('\n')}\n驗證時間：${DateTime.now().toIso8601String()}\n驗證後端：$_backend\n每台連續三次資料更新通過$skippedNote';
+        _check(generation);
+        final rows = (latest['items'] as List? ?? [])
+            .map((p) => Map<String, dynamic>.from(p as Map))
+            .toList();
+        if (fleet?['online'] == true || backendRowsFresh(rows)) {
+          state = state.copy(backendSeenAt: DateTime.now());
+        }
+        final before = Map<int, DateTime>.of(previous);
+        verifyTally(
+          ids: ids,
+          rows: rows,
+          previous: previous,
+          counts: counts,
+          lastNew: lastNew,
+          elapsed: elapsed,
+        );
+        final waiting = {
+          for (final id in ids)
+            if (elapsed - (lastNew[id] ?? 0) >= verifyIdleLimit) id,
+        };
+        // Round 9: a PTU the installer skipped (after staying idle) no longer
+        // blocks the rest — judge pass/fail on the remaining, active PTUs only.
+        final skipped = state.verifySkipped;
+        final active = ids.where((id) => !skipped.contains(id)).toList();
+        final installDevices = (install['devices'] as List? ?? [])
+            .whereType<Map>()
+            .map((p) => Map<String, dynamic>.from(p))
+            .toList();
+        // No per-device breakdown (older backend, or the demo stub): fall
+        // back to the overall flag for every active PTU.
+        final allOkActive = active.every(
+          (id) => installDevices.isEmpty
+              ? install['all_ok'] == true
+              : installDevices.any(
+                  (d) => d['device_id'] == id && d['data_ok'] == true,
+                ),
+        );
+        final consecutive = active.isEmpty
+            ? 0
+            : active.map((id) => counts[id] ?? 0).reduce(min);
+        final good = active.isNotEmpty && allOkActive && consecutive >= 3;
+        _diagnosis = (
+          generation,
+          verifyDiagnosis(
+            ids: ids,
+            install: install,
+            rows: rows,
+            fleet: fleet,
+            previous: before,
+            site: site,
+            gateway: gateway,
+            consecutive: consecutive,
+            backend: _backend,
+            cause: cause,
+          ),
+        );
         state = state.copy(
-          step: 7,
-          verified: true,
-          online: true,
-          report: _report(),
-          message: verifiedText,
+          message: verifyProgressText(ids, counts, waiting, skipped),
+          verifyCounts: Map.of(counts),
+          verifyWaiting: waiting,
         );
-        _health?.cancel();
-        _abnormalStreak = 0;
-        _health = Timer.periodic(
-          const Duration(seconds: 15),
-          (_) => unawaited(refreshHealth()),
-        );
-        return;
+        if (good) {
+          await backend(
+            () => _request(generation, 'PATCH', '$_path/bot-monitor', {
+              'enabled': true,
+            }),
+          );
+          _lease = false;
+          final skippedIds = ids.where(skipped.contains).toList()..sort();
+          final skippedNote = skippedIds.isEmpty
+              ? ''
+              : '\n未驗證（已略過）：${skippedIds.map((id) => "#$id").join('、')}，'
+                    '請現場確認 ${skippedIds.map((id) => "PTU #$id").join('、')} 電源與位置';
+          _reportBody =
+              '${_link.demo ? "模擬安裝報告（非實機驗證）" : "安裝報告"}\n站點 $site / 閘道器 $gateway\n${byDeviceNumber(state.ptus).map((p) => "#${p['device_number']}  ${p['mac']}").join('\n')}\n驗證時間：${DateTime.now().toIso8601String()}\n驗證後端：$_backend\n每台連續三次資料更新通過$skippedNote';
+          state = state.copy(
+            step: 7,
+            verified: true,
+            online: true,
+            report: _report(),
+            message: verifiedText,
+          );
+          _health?.cancel();
+          _abnormalStreak = 0;
+          _health = Timer.periodic(
+            const Duration(seconds: 15),
+            (_) => unawaited(refreshHealth()),
+          );
+          return;
+        }
+        await _wait(verifyPollSeconds, generation);
       }
-      await _wait(verifyPollSeconds, generation);
+    } on GatewayFailure catch (error) {
+      if (error.code == 'backend_unavailable') {
+        _verifyCarry = (
+          ids: ids,
+          previous: previous,
+          counts: counts,
+          lastNew: lastNew,
+          elapsed: elapsed,
+        );
+      }
+      rethrow;
     }
     throw const GatewayFailure('incomplete');
-  });
+  }
+
   // ---- Gateway upload target (firmware 1.7.3, docs/mqtt_target.md) ----
 
   static const _reconnectBudget = Duration(seconds: 45);
@@ -3531,11 +3752,16 @@ class CommissioningController extends Notifier<CommissionState> {
     if (_loginBase == next && _loggedIn) return;
     if (!state.busy) _backend = describeBackend(Uri.tryParse(next));
     _setLoggedIn(false);
+    // Progress kept for 「重試」 belongs to the old backend.
+    _verifyCarry = null;
     if (!ref.mounted || state.busy) return;
     if (state.step == 7) {
       state = state.copy(online: false, message: backendSwitchedDoneText);
     } else if (state.step == 6) {
-      state = state.copy(message: backendSwitchedVerifyText);
+      state = state.copy(
+        message: backendSwitchedVerifyText,
+        verifyBackendDown: false,
+      );
     }
   }
 
@@ -3545,7 +3771,7 @@ class CommissioningController extends Notifier<CommissionState> {
         await _api.login(base.trim(), password);
         _check(generation);
         _backend = describeBackend(Uri.tryParse(base.trim()));
-        _setLoggedIn(true, base);
+        _loginOk(base, password);
       });
 
   // ---- Background upload-state polling ----
@@ -4080,24 +4306,83 @@ class CommissioningController extends Notifier<CommissionState> {
     );
     if (state.step == 4) {
       final keep = Set.of(state.selected);
-      unawaited(_autoRelinkStep7(keep: keep.isEmpty ? null : keep));
+      unawaited(_autoRelink(4, keep: keep.isEmpty ? null : keep));
     }
   }
 
   bool _autoRelinking = false;
 
-  /// Round 12: step 7 link loss (scan running or idle) → reconnect for
-  /// [connectPersistence] via the discover reconnect ([_persistentLink]),
-  /// then rescan; no tap needed. One automatic round per loss: if it gives
-  /// up, the banner keeps 「重新連線並掃描 PTU」 for a manual retry.
-  Future<void> _autoRelinkStep7({Set<String>? keep}) async {
-    if (_autoRelinking || !ref.mounted || state.step != 4 || state.busy) {
+  /// Generation of the step 8 run that last ended in a phone link loss.
+  int? _step8LossGeneration;
+
+  /// A step 8 action ([configurePtus], [resumeAssign], [retryFailedAssign],
+  /// [finishConfigured]); round 13: a phone↔gateway link loss that ends it
+  /// starts the automatic reconnect at once (no tap, like step 7).
+  Future<void> _step8Run(
+    String label,
+    int timeout,
+    Future<void> Function(int) action,
+  ) async {
+    await _run(label, timeout, action, relinkStep: 5);
+    if (!ref.mounted || _autoRelinking) return;
+    if (_linkLostAt(5)) {
+      await _autoRelink(5);
+    } else if (state.relinking) {
+      state = state.copy(relinking: false, error: state.error);
+    }
+  }
+
+  /// The phone↔gateway link is lost at [step] (4 = step 7, 5 = step 8) and
+  /// the automatic reconnect may (still) run: nothing running, not given up
+  /// ('reconnect_failed'), and — step 8 — lost by the current run, not
+  /// stopped by 「取消操作」 or waiting for the monitor confirmation.
+  ///
+  /// [running]: asked from inside the run that just failed (still busy).
+  bool _linkLostAt(int step, {bool running = false}) {
+    if (!ref.mounted || state.reconnectFailed) return false;
+    if (state.busy && !running) return false;
+    if (step == 4) return _step7Lost(state) && state.error != null;
+    return state.step == 5 &&
+        state.resumePending &&
+        !state.monitorUnconfirmed &&
+        _step8LossGeneration == _generation;
+  }
+
+  /// Round 12 (step 7) / round 13 (step 8): one automatic reconnect after a
+  /// phone↔gateway link loss, shared by both steps. Keeps reconnecting for
+  /// [connectPersistence] ([_persistentLink]); step 7 then rescans
+  /// ([discover]), step 8 reconciles with the gateway and assigns the rest
+  /// ([resumeAssign]). While it runs [CommissionState.relinking] keeps the
+  /// button a disabled 「重新連線中…」. At step 8 a new loss after a round
+  /// that assigned more PTUs starts another round (at most
+  /// [autoRelinkRounds]); once the reconnect gives up (or the loss recurs
+  /// without progress) the banner offers the manual 「重新連線並掃描 PTU」
+  /// / 「重新連線並繼續」.
+  Future<void> _autoRelink(int step, {Set<String>? keep}) async {
+    if (_autoRelinking ||
+        autoRelinkRounds <= 0 ||
+        !ref.mounted ||
+        state.step != step ||
+        state.busy) {
       return;
     }
     _autoRelinking = true;
     state = state.copy(relinking: true, error: state.error);
     try {
-      await discover(keep: keep);
+      for (var round = 0; round < autoRelinkRounds; round++) {
+        final done = state.assignedOk.length;
+        if (step == 4) {
+          await discover(keep: keep);
+        } else {
+          await resumeAssign();
+        }
+        // A loss that recurs at once is not chased (round 12: one round).
+        if (step == 4 ||
+            !_linkLostAt(step) ||
+            state.assignedOk.length <= done) {
+          break;
+        }
+      }
     } finally {
       _autoRelinking = false;
       if (ref.mounted) {
@@ -4118,9 +4403,11 @@ class CommissioningController extends Notifier<CommissionState> {
     // A switch of backend while the request runs makes its answer stale.
     bool stale() => !_loggedIn || _loginBase != loginBase;
     try {
-      final latest = await _api.request(
-        'GET',
-        '/api/latest?site_id=$site&gateway_id=$gateway',
+      final latest = await _withRelogin(
+        () => _api.request(
+          'GET',
+          '/api/latest?site_id=$site&gateway_id=$gateway',
+        ),
       );
       if (stale()) return;
       final rows = (latest['items'] as List? ?? []).cast<Map>();
@@ -4171,11 +4458,12 @@ class CommissioningController extends Notifier<CommissionState> {
   Future<void> repair({String? base, String? password}) => _run('重新連接閘道器', 60, (
     generation,
   ) async {
-    if (!_loggedIn && base != null && (password ?? '').isNotEmpty) {
+    final secret = base == null ? '' : _passwordFor(base, password);
+    if (!_loggedIn && base != null && secret.isNotEmpty) {
       _backend = describeBackend(Uri.tryParse(base.trim()));
-      await _api.login(base.trim(), password!);
+      await _api.login(base.trim(), secret);
       _check(generation);
-      _setLoggedIn(true, base);
+      _loginOk(base, secret);
     }
     // After an environment switch the old login must not reach the new
     // site.
@@ -4213,11 +4501,13 @@ class CommissioningController extends Notifier<CommissionState> {
     _generation++;
     _clock?.cancel();
     _health?.cancel();
+    _verifyCarry = null;
     state = state.copy(
       step: 4,
       busy: false,
       seconds: 0,
       verified: false,
+      verifyBackendDown: false,
       report: '',
       verifyCounts: const {},
       verifyWaiting: const {},
@@ -4254,6 +4544,7 @@ class CommissioningController extends Notifier<CommissionState> {
   Future<void> cancel() async {
     _generation++;
     _health?.cancel();
+    _verifyCarry = null;
     _grace?.cancel();
     _stopWatch(UploadWatch.idle);
     final safe = await _safeStop();

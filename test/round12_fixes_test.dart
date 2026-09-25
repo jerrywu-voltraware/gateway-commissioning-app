@@ -14,7 +14,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:gateway_commissioning/application/commissioning_controller.dart';
 import 'package:gateway_commissioning/core/protocol.dart';
 
-import 'link_loss_test.dart' show DroppingLink, ready;
+import 'link_loss_test.dart' show DroppingLink, manualRelinkInThisTest, ready;
 
 /// Drops the link during the next [scanDrops] scan_ble_discover.
 class ScanDropLink extends DroppingLink {
@@ -166,6 +166,7 @@ void main() {
     });
 
     test('step 8 while assigning', () async {
+      manualRelinkInThisTest();
       final fake = DroppingLink();
       final (container, c) = await ready(fake);
       addTearDown(container.dispose);

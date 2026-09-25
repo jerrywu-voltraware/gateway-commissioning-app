@@ -273,6 +273,7 @@ class GatewayFailure implements Exception {
     'gateway_full' => '本機已滿，請連另一台閘道器。',
     'incomplete' => '仍有 PTU 未連線或資料未到達，請查看各台狀態後重試。',
     'authentication' => '登入失敗或已失效，請重新輸入登入資訊。',
+    'backend_unavailable' => backendUnavailableText,
     'https_required' => '正式環境需要有效的 HTTPS 網址。',
     _ => '操作未完成，請確認裝置狀態後重試。',
   };
@@ -287,6 +288,11 @@ class GatewayFailure implements Exception {
 
 /// Step 8: the phone's BLE link to the gateway dropped (not a PTU failure).
 const phoneLinkLostText = '手機與閘道器的藍牙連線中斷，請靠近閘道器後按「重新連線並繼續」';
+
+/// Step 9 stopped: the backend stayed unavailable (5xx / unreachable /
+/// timeout) through the automatic retries (round 13).
+const backendUnavailableText =
+    '後端暫時無回應，已自動重試 60 秒仍未恢復。請確認後端後按「重試」，已累計的驗證進度會保留。';
 
 /// Reconnecting the phone to the gateway did not succeed in time.
 const reconnectFailedText = '重新連線失敗，請靠近閘道器後重試，或回到找閘道器。';

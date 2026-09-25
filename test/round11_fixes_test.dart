@@ -12,7 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:gateway_commissioning/application/commissioning_controller.dart';
 import 'package:gateway_commissioning/core/protocol.dart';
 
-import 'link_loss_test.dart' show DroppingLink, ready;
+import 'link_loss_test.dart' show DroppingLink, manualRelinkOnly, ready;
 
 /// Drops the link again on the first [reconcileDrops] get_ble_devices after
 /// a reconnect.
@@ -35,6 +35,8 @@ class RedropLink extends DroppingLink {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  // Manual 「重新連線並繼續」 path (round 13: automatic otherwise).
+  manualRelinkOnly();
 
   late Duration keepPersistence;
   late Duration keepGap;

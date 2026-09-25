@@ -8,7 +8,8 @@ import 'package:gateway_commissioning/core/protocol.dart';
 import 'package:gateway_commissioning/data/contracts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'link_loss_test.dart' show DroppingLink, pumpApp, ready;
+import 'link_loss_test.dart'
+    show DroppingLink, manualRelinkOnly, pumpApp, ready;
 
 /// Firmware 1.7.15 style ack. [writeTo] makes the gateway write another PTU
 /// than requested (the round-4 mix-up); [ackOverride] replaces ack fields;
@@ -115,6 +116,8 @@ Future<void> settle(
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  // Manual 「重新連線並繼續」 path (round 13: automatic otherwise).
+  manualRelinkOnly();
 
   group('resume to step 9', () {
     testWidgets('saved resume with login verifies step 9 by itself', (

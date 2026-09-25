@@ -114,13 +114,29 @@ String uploadCheckHint(MqttTarget current) => current.isLocal
 String wifiProblemHint(CommissionState state) {
   final ssid = gatewaySsid(state.net, state.config['wifi_ssid']);
   final action = ssid?.isEmpty == true ? '設定 Wi-Fi' : '重設 Wi-Fi';
-  final next = state.uploadWatch == UploadWatch.linkLost
+  final next = state.uploadWatch == UploadWatch.linkLost && state.relinking
+      ? '手機和 Gateway 的藍牙也斷了，$autoRelinkingText'
+      : state.uploadWatch == UploadWatch.linkLost
       ? '手機和 Gateway 的藍牙也斷了：請靠近 Gateway，按「結束並重新選擇閘道器」'
             '重新連線，再按「$action」。'
       : state.step == 2
       ? '請按「$action」，改成現場的 2.4 GHz Wi-Fi。'
       : '請按「結束並重新選擇閘道器」重新連線，在網路體檢按「$action」。';
   return '${wifiProblemText(ssid)}\n$next';
+}
+
+/// 「連線狀態」 hint while the phone↔gateway Bluetooth is down. Round 13:
+/// while the automatic reconnect runs ([CommissionState.relinking]) it says
+/// so instead of asking for a tap; afterwards it names the button actually
+/// shown (steps 7 / 8).
+String linkLostHint(CommissionState state) {
+  if (state.relinking) return '手機和 Gateway 的藍牙已中斷，$autoRelinkingText';
+  final action = switch (state.step) {
+    4 when !state.resumePending => '請按「$rescanAfterLossLabel」。',
+    4 || 5 => '請按「重新連線並繼續」。',
+    _ => '請重新連線 Gateway 後再確認。',
+  };
+  return '手機和 Gateway 的藍牙已中斷，無法讀取目前狀態。$action';
 }
 
 String _envPlace(BackendEnv env) => switch (env) {
@@ -290,8 +306,7 @@ ConnectionStatus connectionStatus({
     }
     hint = wifi == WifiVerdict.failed || wifi == WifiVerdict.notConfigured
         ? wifiProblemHint(state)
-        : '手機和 Gateway 的藍牙已中斷，無法讀取目前狀態。'
-              '${state.step == 4 ? '請按「重新連線並掃描 PTU」。' : '請重新連線 Gateway 後再確認。'}';
+        : linkLostHint(state);
   }
   if (hint == null && phone.tone == StatusTone.bad) {
     hint = env.environment == BackendEnv.local

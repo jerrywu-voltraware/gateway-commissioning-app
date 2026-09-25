@@ -13,7 +13,8 @@ import 'package:gateway_commissioning/core/protocol.dart';
 import 'package:gateway_commissioning/data/ble_gateway_link.dart';
 import 'package:gateway_commissioning/data/contracts.dart';
 
-import 'link_loss_test.dart' show DroppingLink, ready, pumpApp;
+import 'link_loss_test.dart'
+    show DroppingLink, manualRelinkInThisTest, ready, pumpApp;
 import 'round6_fixes_test.dart' show StaleAdapterPlatform;
 
 /// The gateway takes (and connects) the [takeAt]-th assignment, then the
@@ -69,6 +70,7 @@ void main() {
 
   group('1. resume count follows the gateway', () {
     test('in-flight assignment is saved and reconciled on resume', () async {
+      manualRelinkInThisTest();
       final fake = TakeThenDrop();
       final (container, c) = await ready(fake);
       addTearDown(container.dispose);

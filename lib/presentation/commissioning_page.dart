@@ -519,6 +519,16 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           _login.text,
           environment: current.environment.name,
         );
+    _afterLogin();
+  }
+
+  /// Round 13: a failed login (Bluetooth off, backend restarted, wrong
+  /// password) never empties the password field, and the local test host
+  /// keeps its known password; other backends clear it once logged in (the
+  /// controller keeps it in memory to renew an expired session).
+  void _afterLogin() {
+    if (!mounted || !ref.read(commissionProvider).loggedIn) return;
+    if (ref.read(backendEnvProvider).environment == BackendEnv.local) return;
     _login.clear();
   }
 
@@ -736,7 +746,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                         ],
                         FilledButton(
                           key: const Key('ptu-configure'),
-                          onPressed: step7LinkLost(state)
+                          onPressed: state.relinking
+                              ? null
+                              : step7LinkLost(state)
                               ? () => controller.discover()
                               : !state.busy &&
                                     configureLabel(state) != scanningLabel &&
@@ -910,6 +922,18 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                                           ? '重新連線並繼續'
                                           : '重新連線',
                                     ),
+                                  ),
+                                ),
+                              if (state.verifyBackendDown &&
+                                  !state.busy &&
+                                  state.step == 6)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 12),
+                                  child: FilledButton.icon(
+                                    key: const Key('verify-retry'),
+                                    icon: const Icon(Icons.refresh, size: 20),
+                                    onPressed: _startVerify,
+                                    label: const Text('重試'),
                                   ),
                                 ),
                               if (state.monitorUnconfirmed && !state.busy)
@@ -1097,7 +1121,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         await c.login(env.base, password);
         if (!mounted) return;
         if (!ref.read(commissionProvider).loggedIn) return;
-        _login.clear();
+        _afterLogin();
       }
     }
     await c.resumeSaved();
@@ -1107,7 +1131,8 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   /// Every link-loss banner gets one (round 8: a step 7 drop had only
   /// 「詳細資訊」).
   VoidCallback? _resumeAction(CommissionState s, CommissioningController c) {
-    if (s.busy) return null;
+    // Round 13: nothing to tap while the automatic reconnect runs.
+    if (s.busy || s.relinking) return null;
     if (s.step == 4 || s.step == 5) {
       if (s.resumePending) return c.resumeAssign;
       if (s.scanResumePending || s.uploadWatch == UploadWatch.linkLost) {
@@ -1228,7 +1253,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               }
             }
             await c.prepare(current.base, _login.text, offline: _offline);
-            _login.clear();
+            _afterLogin();
           }, enabled),
         ];
       case 1:
@@ -1432,7 +1457,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             icon: const Icon(Icons.refresh, size: 20),
             onPressed: enabled ? c.discover : null,
             label: Text(
-              s.uploadWatch == UploadWatch.linkLost || s.resumePending
+              s.relinking
+                  ? autoRelinkingText
+                  : s.uploadWatch == UploadWatch.linkLost || s.resumePending
                   ? '重新連線並掃描 PTU'
                   : '由 Gateway 重新掃描 PTU',
             ),
@@ -1635,11 +1662,28 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                         Expanded(child: Text('${s.message}（${s.seconds} 秒）')),
                       ],
                     )
-                  : Text(
-                      s.error!,
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.error,
-                      ),
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          s.error!,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.error,
+                          ),
+                        ),
+                        // Round 13: the backend stayed down through the
+                        // automatic retries; the progress so far is kept.
+                        if (s.verifyBackendDown)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: FilledButton.icon(
+                              key: const Key('verify-retry-bottom'),
+                              icon: const Icon(Icons.refresh, size: 20),
+                              onPressed: _startVerify,
+                              label: const Text('重試'),
+                            ),
+                          ),
+                      ],
                     ),
             ),
         ];
@@ -1671,7 +1715,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               if (!_passwordReady(demo)) return;
               await c.login(ref.read(backendEnvProvider).base, _login.text);
               if (mounted && ref.read(commissionProvider).loggedIn) {
-                _login.clear();
+                _afterLogin();
                 await c.refreshHealth();
               }
             }, enabled),
@@ -1715,7 +1759,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                         password: _login.text,
                       );
                       if (mounted && ref.read(commissionProvider).loggedIn) {
-                        _login.clear();
+                        _afterLogin();
                       }
                     }
                   }

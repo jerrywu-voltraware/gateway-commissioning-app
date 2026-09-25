@@ -13,7 +13,8 @@ import 'package:gateway_commissioning/data/ble_gateway_link.dart';
 import 'package:gateway_commissioning/data/contracts.dart';
 
 import 'ble_transport_test.dart' show FakePlatform;
-import 'link_loss_test.dart' show DroppingLink, ready, pumpApp;
+import 'link_loss_test.dart'
+    show DroppingLink, manualRelinkOnly, ready, pumpApp;
 
 /// Android after Bluetooth off/on: the first [failConnects] connects fail
 /// with "Failed to connect".
@@ -53,6 +54,8 @@ Future<void> flush() async {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  // Manual 「重新連線並繼續」 path (round 13: automatic otherwise).
+  manualRelinkOnly();
 
   group('1. reconnect after phone Bluetooth off/on', () {
     setUp(() {
