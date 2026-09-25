@@ -186,6 +186,9 @@ class GatewayFailure implements Exception {
     if (fromGateway && !_knownCodes.contains(code)) {
       if (code.isEmpty) return 'Gateway 回報失敗（未提供原因）。';
       final lower = code.toLowerCase();
+      if (lower.contains('service not ready')) {
+        return '閘道器藍牙服務尚未就緒，請稍後再試';
+      }
       if (lower.contains('133') ||
           lower.contains('connect') ||
           lower.contains('discovery')) {
@@ -227,15 +230,21 @@ class GatewayFailure implements Exception {
     'time_not_synced',
     'expired',
     'otp_required',
-    'otp_enabled',
+    'otp_invalid',
+    'otp_locked',
+    'otp_reused',
     'not_ready',
     'busy',
     'timeout',
   };
 
   String get _baseMessage => switch (code) {
-    'time_not_synced' || 'expired' => '閘道器時間尚未同步。若無可用網路，請先以 USB 更新韌體。',
+    'time_not_synced' => '閘道器時間尚未同步。若無可用網路，請先以 USB 更新韌體。',
+    'expired' => '指令已逾期（手機時間與閘道器差異過大或傳送延遲），請重試',
     'otp_required' || 'otp_enabled' => '此閘道器已啟用一次性密碼，請聯絡管理員。',
+    'otp_invalid' => '一次性密碼錯誤',
+    'otp_locked' => '一次性密碼已鎖定，請稍後再試',
+    'otp_reused' => '一次性密碼已用過',
     'not_ready' || 'busy' => '閘道器正在準備或處理其他操作，請稍後重試。',
     'permission' => '需要藍牙權限，請至系統設定允許後重試。',
     'bluetooth_off' => '請開啟手機藍牙後重試。',

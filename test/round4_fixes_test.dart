@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gateway_commissioning/application/commissioning_controller.dart';
+import 'package:gateway_commissioning/core/protocol.dart';
 import 'package:gateway_commissioning/data/contracts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -199,6 +200,60 @@ void main() {
       expect(
         assignAckMismatch({'mac': 'aa01', 'device_number': 3}, 'AA:01', 3),
         isNull,
+      );
+    });
+
+    test('OTP and expired ack codes map to firmware contract text', () {
+      expect(
+        const GatewayFailure(
+          'otp_invalid',
+          fromGateway: true,
+        ).message,
+        '一次性密碼錯誤',
+      );
+      expect(
+        const GatewayFailure(
+          'otp_locked',
+          fromGateway: true,
+        ).message,
+        '一次性密碼已鎖定，請稍後再試',
+      );
+      expect(
+        const GatewayFailure(
+          'otp_reused',
+          fromGateway: true,
+        ).message,
+        '一次性密碼已用過',
+      );
+      expect(
+        const GatewayFailure('expired', fromGateway: true).message,
+        '指令已逾期（手機時間與閘道器差異過大或傳送延遲），請重試',
+      );
+      expect(
+        const GatewayFailure(
+          'device connected but service not ready, try again',
+          fromGateway: true,
+        ).message,
+        '閘道器藍牙服務尚未就緒，請稍後再試',
+      );
+    });
+
+    test('new_id=255 (reset) matches device_number 0 or 255', () {
+      expect(
+        assignAckMismatch({'mac': 'aa01', 'device_number': 0}, 'AA:01', 255),
+        isNull,
+      );
+      expect(
+        assignAckMismatch(
+          {'mac': 'aa01', 'device_number': 255},
+          'AA:01',
+          255,
+        ),
+        isNull,
+      );
+      expect(
+        assignAckMismatch({'mac': 'aa01', 'device_number': 4}, 'AA:01', 255),
+        isNotNull,
       );
     });
 

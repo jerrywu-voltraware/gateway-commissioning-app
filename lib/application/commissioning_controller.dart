@@ -192,6 +192,15 @@ String? assignAckMismatch(Map<String, dynamic> ack, String mac, int id) {
   final written = ack['mac'];
   if (written != null && !sameMac(written, mac)) return wrongDeviceText;
   final number = ack['device_number'];
+  // Firmware writes new_id=255 (reset) but the slot's device_number comes
+  // back as 0; either value is a match for a reset request.
+  if (id == 255) {
+    if (number != null &&
+        (number is! num || (number.toInt() != 0 && number.toInt() != 255))) {
+      return '裝置回報編號 #$number 與指派 #$id 不符，請重試';
+    }
+    return null;
+  }
   if (number != null && (number is! num || number.toInt() != id)) {
     return '裝置回報編號 #$number 與指派 #$id 不符，請重試';
   }
