@@ -423,10 +423,43 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     }
   }
 
+  /// Step 6 already started its automatic verification for this entry.
+  bool _autoVerifyStarted = false;
+
+  /// Entering step 6 (驗證資料) starts one verification by itself when logged
+  /// in; the manual button stays for re-runs.
+  void _maybeAutoVerify(CommissionState? previous, CommissionState next) {
+    if (next.step != 6) {
+      _autoVerifyStarted = false;
+      return;
+    }
+    if (_autoVerifyStarted ||
+        next.busy ||
+        !next.loggedIn ||
+        next.error != null ||
+        !next.ptus.any((p) => next.selected.contains(p['mac']))) {
+      return;
+    }
+    _autoVerifyStarted = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_startVerify());
+    });
+  }
+
+  Future<void> _startVerify() async {
+    _flushBase();
+    final current = ref.read(backendEnvProvider);
+    await ref
+        .read(commissionProvider.notifier)
+        .verify(current.base, _login.text, environment: current.environment.name);
+    _login.clear();
+  }
+
   @override
   void initState() {
     super.initState();
     ref.listenManual(backendEnvProvider, _onEnvironment, fireImmediately: true);
+    ref.listenManual(commissionProvider, _maybeAutoVerify);
     _host.addListener(() => _envController.setLocalHost(_host.text));
     _base.addListener(_onBaseEdited);
     WidgetsBinding.instance.addObserver(this);
@@ -1122,7 +1155,14 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             ),
           ...s.ptus.map((ptu) {
             final blocked = c.ptuOutOfRange(ptu);
+            final resetFailed = s.resetFailed.contains(ptu['mac']);
             return PtuSelectionTile(
+              blockedText: resetFailed
+                  ? resetFailedText
+                  : c.ptuOwnerConfirmed(ptu)
+                  ? '已屬於其他閘道器'
+                  : '編號不在本機範圍，所屬閘道器未確認',
+              resetLabel: resetFailed ? '重試' : '重置並納入',
               key: ValueKey('ptu-${ptu['mac']}'),
               ptu: ptu,
               selected: s.selected.contains(ptu['mac']),
@@ -1191,16 +1231,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             onPressed: enabled ? c.rescanPtus : null,
             child: const Text('返回選擇 PTU，由 Gateway 重新掃描'),
           ),
-          button('開始資料驗證', () async {
-            _flushBase();
-            final current = ref.read(backendEnvProvider);
-            await c.verify(
-              current.base,
-              _login.text,
-              environment: current.environment.name,
-            );
-            _login.clear();
-          }, enabled && s.ptus.any((p) => s.selected.contains(p['mac']))),
+          button('開始資料驗證', _startVerify, enabled && s.ptus.any((p) => s.selected.contains(p['mac']))),
         ];
       default:
         return [
@@ -1216,8 +1247,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           ),
           const SizedBox(height: 8),
           Text(
-            '掃到 ${s.scannedTotal} 台，本機配置 ${s.ptus.length} 台'
-            '${s.pendingNext > 0 ? '，${s.pendingNext} 台屬於其他閘道器' : ''}',
+            commissionSummaryText(s),
             key: const Key('commission-summary'),
             style: Theme.of(context).textTheme.bodyMedium,
           ),

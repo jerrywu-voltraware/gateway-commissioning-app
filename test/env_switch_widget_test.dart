@@ -7,6 +7,7 @@ import 'package:gateway_commissioning/application/backend_environment.dart';
 import 'package:gateway_commissioning/application/commissioning_controller.dart';
 import 'package:gateway_commissioning/application/local_backend_finder.dart';
 import 'package:gateway_commissioning/core/mqtt_target.dart';
+import 'package:gateway_commissioning/core/protocol.dart';
 import 'package:gateway_commissioning/data/contracts.dart';
 import 'package:gateway_commissioning/data/demo_system.dart';
 import 'package:gateway_commissioning/data/local_backend_probe.dart';
@@ -56,9 +57,24 @@ class SimGateway extends DemoSystem {
     await prepareGate?.future;
   }
 
+  /// Step 6's verification fails at once (keeps the page on step 6).
+  bool failVerify = false;
+
   @override
   Future<void> login(String base, String password) async =>
       logins.add((base, password));
+
+  @override
+  Future<Map<String, dynamic>> request(
+    String method,
+    String path, [
+    Map<String, dynamic>? body,
+  ]) {
+    if (failVerify && path.contains('bot-monitor')) {
+      throw const GatewayFailure('incomplete');
+    }
+    return super.request(method, path, body);
+  }
 
   @override
   Future<void> connect(GatewayPeer peer) async {
@@ -404,9 +420,7 @@ void main() {
     await _passCheck(tester);
     await _tap(tester, find.text('沿用目前站點'));
     await _tap(tester, find.text('配置 3 台並開始監控'));
-    expect(find.text('驗證後端：本地測試（這台電腦上的測試主機）'), findsOneWidget);
-    expect(find.textContaining('http://192.168.1.50'), findsNothing);
-    await _tap(tester, find.text('開始資料驗證'));
+    // Step 6 starts the data verification by itself (no 開始資料驗證 tap).
     var state = container.read(commissionProvider);
     expect(state.error, isNull);
     expect(state.step, 7);
@@ -463,7 +477,6 @@ void main() {
     await _passCheck(tester);
     await _tap(tester, find.text('沿用目前站點'));
     await _tap(tester, find.text('配置 3 台並開始監控'));
-    await _tap(tester, find.text('開始資料驗證'));
     await _tap(tester, find.text('手機和 Gateway 都切回正式站'));
     await tester.enterText(
       find.widgetWithText(TextField, '正式站的登入密碼'),
@@ -482,7 +495,7 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    final fake = SimGateway.commissioned();
+    final fake = SimGateway.commissioned()..failVerify = true;
     final prober = _Prober();
     final container = await _pumpApp(
       tester,
@@ -499,6 +512,8 @@ void main() {
     await _tap(tester, find.text('配置 3 台並開始監控'));
     expect(container.read(commissionProvider).step, 6);
     expect(container.read(commissionProvider).loggedIn, isTrue);
+    // The automatic verification ran once (and failed here), staying on 6.
+    expect(container.read(commissionProvider).error, isNotNull);
     final url = find.widgetWithText(TextField, '後端網址');
     prober.probed.clear();
 
