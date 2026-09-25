@@ -258,12 +258,12 @@ void main() {
       expect(counts, {1: 3, 2: 2});
       tick(30, [row(1, '2030-01-01T00:00:30'), row(2, '2030-01-01T00:00:40')]);
       expect(counts, {1: 3, 2: 3});
-      // An offline row resets only that PTU.
+      // Round 10: an offline row no longer resets (counts are cumulative).
       tick(40, [
         row(1, '2030-01-01T00:00:40', online: false),
         row(2, '2030-01-01T00:00:50'),
       ]);
-      expect(counts, {1: 0, 2: 3});
+      expect(counts, {1: 3, 2: 3});
     });
 
     test('text shows each PTU and 尚無資料 after 60 s', () {

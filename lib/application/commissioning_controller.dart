@@ -308,9 +308,16 @@ String configureLabel(CommissionState s) {
     return rest == 0 ? '重新連線並繼續' : '重新連線並繼續（剩 $rest 台）';
   }
   // Round 9: everything assigned is not a dead end any more.
-  if (rest == 0) return s.monitoringOk ? '開始驗證' : '恢復監控';
+  if (rest == 0) {
+    // Round 10: a rescan in progress is not 「恢復監控」 with 已選 0/5.
+    if (s.busy || s.ptus.isEmpty) return scanningLabel;
+    return s.monitoringOk ? '開始驗證' : '恢復監控';
+  }
   return '配置 $rest 台並開始監控';
 }
+
+/// Step 7 bottom button while a scan is still running.
+const scanningLabel = '掃描中…';
 
 /// 「配置」按鈕的目標集合：已勾選但尚未成功指派的 PTU MAC。
 Set<String> configureTargets(CommissionState s) =>
@@ -375,8 +382,9 @@ const verifyPollSeconds = 10;
 const verifyIdleLimit = 60;
 
 /// Step 9 per-PTU tally of one /api/latest answer: a fresh row with a newer
-/// timestamp adds one (max 3); an offline, late or erroring row resets that
-/// PTU only; an unchanged timestamp keeps its count. [lastNew] records the
+/// timestamp than any counted before adds one (max 3). Round 10: counts are
+/// cumulative — a missing, offline, late or erroring row, or an unchanged
+/// timestamp, keeps the count (the reset made 3/3 fall back to 0/3). [lastNew] records the
 /// [elapsed] second of each PTU's latest new row.
 void verifyTally({
   required Iterable<int> ids,
@@ -388,18 +396,16 @@ void verifyTally({
 }) {
   for (final id in ids) {
     final found = rows.where((p) => p['device_id'] == id).toList();
-    if (found.isEmpty) {
-      counts[id] = 0;
-      continue;
-    }
+    // Round 10: cumulative — no (good) new row neither adds nor resets.
+    if (found.isEmpty) continue;
     final row = found.first;
     final stamp = DateTime.tryParse(row['ts']?.toString() ?? '');
     if (row['online'] != true ||
         ((row['lag_seconds'] as num?) ?? 999) >= 60 ||
         row['error_num'] != 0 ||
         stamp == null) {
+      // Not counted, but its timestamp is not "new" later either.
       if (stamp != null) previous[id] = stamp;
-      counts[id] = 0;
       continue;
     }
     final seen = previous[id];

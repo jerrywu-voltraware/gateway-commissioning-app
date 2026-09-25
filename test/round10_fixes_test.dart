@@ -10,6 +10,7 @@ import 'package:gateway_commissioning/core/protocol.dart';
 import 'package:gateway_commissioning/data/contracts.dart';
 
 import 'link_loss_test.dart' show DroppingLink, ready;
+import 'round8_fixes_test.dart' show row;
 
 /// The first [failures] connects fail with the listed errors.
 class FlakyConnectLink extends DroppingLink {
@@ -104,6 +105,61 @@ void main() {
       expect(isRetryableConnect(const GatewayFailure('disconnected')), isTrue);
       expect(isRetryableConnect(const GatewayFailure('cancelled')), isFalse);
       expect(connectFailureType(gatt133), 'ble_error 133');
+    });
+  });
+
+  group('2. cumulative verification', () {
+    test('a round without new data does not go back', () {
+      final previous = <int, DateTime>{};
+      final counts = <int, int>{};
+      final lastNew = <int, int>{};
+      void tick(int elapsed, List<Map<String, dynamic>> rows) => verifyTally(
+        ids: [1, 2],
+        rows: rows,
+        previous: previous,
+        counts: counts,
+        lastNew: lastNew,
+        elapsed: elapsed,
+      );
+      tick(0, [row(1, '2030-01-01T00:00:00'), row(2, '2030-01-01T00:00:00')]);
+      tick(10, [row(1, '2030-01-01T00:00:10'), row(2, '2030-01-01T00:00:10')]);
+      expect(counts, {1: 2, 2: 2});
+      // No rows at all this round: nothing is added, nothing reset.
+      tick(20, []);
+      expect(counts, {1: 2, 2: 2});
+      // Same ts again, and an offline row: still no reset.
+      tick(30, [
+        row(1, '2030-01-01T00:00:10'),
+        row(2, '2030-01-01T00:00:30', online: false),
+      ]);
+      expect(counts, {1: 2, 2: 2});
+      tick(40, [row(1, '2030-01-01T00:00:40'), row(2, '2030-01-01T00:00:40')]);
+      expect(counts, {1: 3, 2: 3});
+      tick(50, []);
+      expect(counts, {1: 3, 2: 3});
+      expect(lastNew, {1: 40, 2: 40});
+    });
+  });
+
+  group('3. step 7 button while scanning', () {
+    test('busy or empty list shows 掃描中…', () async {
+      final fake = DroppingLink();
+      final (container, c) = await ready(fake);
+      addTearDown(container.dispose);
+      await c.configurePtus();
+      await c.backToSelection();
+      final s = container.read(commissionProvider);
+      expect(configureLabel(s), '開始驗證');
+      expect(configureLabel(s.copy(busy: true)), scanningLabel);
+      expect(
+        configureLabel(s.copy(ptus: const [], selected: const {})),
+        scanningLabel,
+      );
+      // Still configuring targets keeps its own label.
+      expect(
+        configureLabel(s.copy(busy: true, assignedOk: const {})),
+        startsWith('配置'),
+      );
     });
   });
 }

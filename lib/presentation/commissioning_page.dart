@@ -696,6 +696,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                           key: const Key('ptu-configure'),
                           onPressed:
                               !state.busy &&
+                                  configureLabel(state) != scanningLabel &&
                                   (state.resumePending ||
                                       state.selected.isNotEmpty)
                               ? () {
