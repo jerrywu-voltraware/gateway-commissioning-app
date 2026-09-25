@@ -79,12 +79,13 @@ void main() {
   });
   tearDown(() => container.dispose());
 
-  test('poll failure disables monitoring and verifies safe state', () async {
+  test('poll failure keeps monitoring on and verifies it', () async {
     await controller.discover();
     fake.failPoll = true;
     await controller.configurePtus();
-    expect(fake.config['ble_enabled'], false);
-    expect(fake.config['upload_paused'], true);
+    // Never leave the gateway with BLE / upload switched off.
+    expect(fake.config['ble_enabled'], true);
+    expect(fake.config['upload_paused'], false);
     expect(container.read(commissionProvider).error, isNotNull);
     expect(fake.commands.last, 'get_config');
   });

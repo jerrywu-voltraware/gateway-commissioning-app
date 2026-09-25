@@ -124,6 +124,37 @@ String commissionSummaryText(CommissionState s) =>
     '${s.pendingNext > 0 ? '，${s.pendingNext} 台屬於其他閘道器' : ''}'
     '${s.resetFailed.isNotEmpty ? '，${s.resetFailed.length} 台重置失敗' : ''}';
 
+/// Step 8: automatic retries per PTU after a failed assign_device_id.
+const assignRetries = 2;
+
+/// Plain-language reason for a failed PTU command ([error] is a
+/// [GatewayFailure], the ack's error/result text, or null).
+String ptuFailureText(Object? error) {
+  final raw = error is GatewayFailure
+      ? '${error.code} ${error.detail ?? ''}'
+      : error?.toString() ?? '';
+  final text = raw.toLowerCase();
+  if (text.contains('133') ||
+      text.contains('connect') ||
+      text.contains('discovery') ||
+      text.contains('gatt')) {
+    return 'PTU 連線失敗，請確認 PTU 電源與距離';
+  }
+  if (text.contains('timeout') || text.contains('timed out')) {
+    return 'PTU 沒有回應';
+  }
+  if (text.contains('not found') || text.contains('not_found')) {
+    return 'Gateway 找不到這台 PTU，請重新掃描';
+  }
+  if (error is GatewayFailure && error.code != 'unexpected') {
+    return error.message;
+  }
+  return 'PTU 設定未完成，請靠近後重試';
+}
+
+/// Text for 「N 台在本次掃描未出現，已取消勾選」.
+String absentSelectionText(int n) => '$n 台在本次掃描未出現，已取消勾選';
+
 /// /api/latest rows show this gateway uploading within the last 60 s.
 bool backendRowsFresh(Iterable<Map> rows) => rows.any(
   (r) => r['online'] == true && ((r['lag_seconds'] as num?) ?? 999) < 60,
@@ -165,6 +196,9 @@ class CommissionState {
     this.resetFailed = const {},
     this.backendSeenAt,
     this.starNotice = '',
+    this.assignFailed = const {},
+    this.errorDetail,
+    this.absentNotice = '',
   });
   final int step, seconds;
   final bool busy, verified, online;
@@ -212,6 +246,15 @@ class CommissionState {
   /// 星狀模式：掃描後無法向後台確認範圍外 PTU 的所屬閘道器是否登記時的提示
   /// （此時不自動重置）；空字串代表不顯示。
   final String starNotice;
+
+  /// 第 8 步：重試後仍指派失敗的 PTU（MAC → 人話原因）。
+  final Map<String, String> assignFailed;
+
+  /// 錯誤原始內容（放在橫幅的「詳細資訊」裡）；只跟著 [error] 存在。
+  final String? errorDetail;
+
+  /// 重掃後原本勾選但本次沒掃到的提示；空字串不顯示。
+  final String absentNotice;
 
   /// Gateway Wi-Fi as the network check judges it.
   WifiVerdict get wifi => wifiVerdictOf(
@@ -277,7 +320,13 @@ class CommissionState {
     Set<String>? resetFailed,
     DateTime? backendSeenAt,
     String? starNotice,
+    Map<String, String>? assignFailed,
+    String? errorDetail,
+    String? absentNotice,
   }) => CommissionState(
+    assignFailed: assignFailed ?? this.assignFailed,
+    errorDetail: error == null ? null : (errorDetail ?? this.errorDetail),
+    absentNotice: absentNotice ?? this.absentNotice,
     resetFailed: resetFailed ?? this.resetFailed,
     backendSeenAt: backendSeenAt ?? this.backendSeenAt,
     loggedIn: loggedIn ?? this.loggedIn,
@@ -333,6 +382,7 @@ class CommissioningController extends Notifier<CommissionState> {
       _lease = false,
       _foreground = true,
       _healthBusy = false;
+
   /// Backend already reserved this (site, gateway) as a replacement, but
   /// writing it to the device itself has not been confirmed yet — set right
   /// after a successful force_replace reserve-identity, cleared once
@@ -340,6 +390,7 @@ class CommissioningController extends Notifier<CommissionState> {
   /// retry with replaceExisting so it does not re-reserve (already granted).
   bool _pendingReplace = false;
   bool get pendingReplace => _pendingReplace;
+
   /// PTU 目標台數：直連固定 1，星狀依「每台 PTU 數」設定（預設 5）。
   int get targetPtuCount => ref.read(topologyProvider).targetCount;
   int get site => (state.config['site_id'] as num?)?.toInt() ?? 1;
@@ -406,7 +457,8 @@ class CommissioningController extends Notifier<CommissionState> {
     final pending = isStar
         ? state.ptus
               .where(
-                (p) => _isOutOfRange(p) && !state.resetFailed.contains(p['mac']),
+                (p) =>
+                    _isOutOfRange(p) && !state.resetFailed.contains(p['mac']),
               )
               .length
         : 0;
@@ -418,7 +470,8 @@ class CommissioningController extends Notifier<CommissionState> {
               .map((p) => p['mac'].toString())
               .toSet()
         : state.selected;
-    if (selected.length != state.selected.length || pending != state.pendingNext) {
+    if (selected.length != state.selected.length ||
+        pending != state.pendingNext) {
       state = state.copy(selected: selected, pendingNext: pending);
     }
     _trimSelectionToTarget(next.targetCount);
@@ -428,13 +481,13 @@ class CommissioningController extends Notifier<CommissionState> {
   /// a no-op when already within the target (never auto-adds).
   void _trimSelectionToTarget(int target) {
     if (!ref.mounted || state.selected.length <= target) return;
-    final kept = state.ptus
-        .where((p) => state.selected.contains(p['mac']))
-        .toList()
-      ..sort(
-        (a, b) =>
-            ((b['rssi'] as num?) ?? -127).compareTo((a['rssi'] as num?) ?? -127),
-      );
+    final kept =
+        state.ptus.where((p) => state.selected.contains(p['mac'])).toList()
+          ..sort(
+            (a, b) => ((b['rssi'] as num?) ?? -127).compareTo(
+              (a['rssi'] as num?) ?? -127,
+            ),
+          );
     state = state.copy(
       selected: kept.take(target).map((p) => p['mac'].toString()).toSet(),
     );
@@ -519,11 +572,13 @@ class CommissioningController extends Notifier<CommissionState> {
     if (_stopping != null) return _stopping!;
     final future = () async {
       try {
-        await _link.command('set_ble_enabled', {'enabled': false});
-        await _link.command('set_data_upload', {'enabled': false});
+        // Never leave the gateway with BLE or upload switched off: an
+        // interrupted step 8 turns monitoring back on.
+        await _link.command('set_ble_enabled', {'enabled': true});
+        await _link.command('set_data_upload', {'enabled': true});
         final config = await _link.command('get_config');
         final safe =
-            config['ble_enabled'] == false && config['upload_paused'] == true;
+            config['ble_enabled'] != false && config['upload_paused'] != true;
         if (safe) _provisioningMayBeActive = false;
         return safe;
       } catch (_) {
@@ -586,8 +641,9 @@ class CommissioningController extends Notifier<CommissionState> {
               failure.code == 'incomplete');
       if (ref.mounted) {
         state = state.copy(
+          errorDetail: failure.toString(),
           error: !safe
-              ? '尚未確認安全停止，請重新連線關閉監控並核對設定。'
+              ? '尚未確認 Gateway 已恢復監控，請重新連線核對設定。'
               : detailed
               ? '資料驗證未通過：\n${diagnosis.$2}'
               : failure.message,
@@ -729,125 +785,124 @@ class CommissioningController extends Notifier<CommissionState> {
         if (net.containsKey(key)) key: net[key],
   };
 
-  Future<void> _connect(GatewayPeer peer) => _run(
-    '正在連線 ${peer.name}，請保持靠近',
-    120,
-    (generation) async {
-      await _link.connect(peer);
-      _check(generation);
-      state = state.copy(message: '藍牙已連線，正在確認閘道器回應與設定…');
-      for (int attempt = 0; ; attempt++) {
-        try {
-          await _command(generation, 'ping');
-          break;
-        } catch (_) {
-          if (attempt == 4) rethrow;
-          await _wait(3, generation);
-        }
-      }
-      final config = await _command(generation, 'get_config');
-      _check(generation);
+  Future<void> _connect(
+    GatewayPeer peer,
+  ) => _run('正在連線 ${peer.name}，請保持靠近', 120, (generation) async {
+    await _link.connect(peer);
+    _check(generation);
+    state = state.copy(message: '藍牙已連線，正在確認閘道器回應與設定…');
+    for (int attempt = 0; ; attempt++) {
       try {
-        await RecentGateways.remember(_link.demo, peer, config['gateway_uid']);
+        await _command(generation, 'ping');
+        break;
       } catch (_) {
-        /* Recents must not block a successful BLE connection. */
+        if (attempt == 4) rethrow;
+        await _wait(3, generation);
       }
-      _check(generation);
-      // 網路體檢: the gateway's own Wi-Fi and upload state.
-      final net = await _readNet(generation, config);
-      if (config['fleet_joined'] == true) {
-        final existing = await _command(generation, 'get_ble_devices');
-        final devices = (existing['devices'] as List? ?? [])
-            .map((d) => Map<String, dynamic>.from(d as Map))
-            .toList();
-        state = state.copy(
-          step: 2,
-          peer: peer,
-          config: {..._withUpload(config, net), 'choose_station': true},
-          net: _netFields(net),
-          checkPassed: false,
-          ptus: devices,
-          selected: devices.map((d) => d['mac'].toString()).toSet(),
-          message: '已連線，此閘道器已有站點設定。先做網路體檢，再選擇沿用或設定新站。',
-          uploadNotice: '',
-        );
-        return;
-      }
-      if (config['fleet_joined'] != true) {
-        // Initial guess for a brand-new gateway: find some free site+gateway
-        // slot to prefill, through the same suggestGateway the site field
-        // uses later (one source of truth, see GatewaySuggestKind).
-        int? site;
-        int gw = 1;
-        var offline = !_loggedIn;
-        if (_loggedIn) {
-          try {
-            final discover = await _request(
-              generation,
-              'GET',
-              '/api/gateways/discover',
-            );
-            final fleet = await _request(
-              generation,
-              'GET',
-              '/api/gateways/fleet-status',
-            );
-            final occupied = <String>{};
-            for (final row in [
-              ...(discover['items'] as List? ?? []),
-              ...(fleet['gateways'] as List? ?? []),
-            ]) {
-              final uid = row['mac'] ?? row['last_seen_mac'];
-              if (uid == null || _mac(uid) != _mac(config['gateway_uid'])) {
-                occupied.add('${row['site_id']}/${row['gateway_id']}');
-              }
-            }
-            candidate:
-            for (int s = 1; s <= 65535; s++) {
-              if (List.generate(kMaxGatewayId, (i) => i + 1).every(
-                (g) => occupied.contains('$s/$g'),
-              )) {
-                continue; // known fully occupied: skip without a network call
-              }
-              final (g, kind) = await suggestGateway(s);
-              _check(generation);
-              if (kind == GatewaySuggestKind.online) {
-                site = s;
-                gw = g;
-                break candidate;
-              }
-              if (kind == GatewaySuggestKind.offline) {
-                site = s;
-                gw = g;
-                offline = true;
-                break candidate;
-              }
-              // full: this site has no free 1–kMaxGatewayId slot, try the next one.
-            }
-          } catch (_) {
-            offline = true;
-          }
-        }
-        if (site == null) {
-          site = 1;
-          gw = _offlineGatewaySuggestion(1);
-          offline = true;
-        }
-        config['suggested_site_id'] = site;
-        config['suggested_gateway_id'] = gw;
-        config['suggested_offline'] = offline;
-      }
+    }
+    final config = await _command(generation, 'get_config');
+    _check(generation);
+    try {
+      await RecentGateways.remember(_link.demo, peer, config['gateway_uid']);
+    } catch (_) {
+      /* Recents must not block a successful BLE connection. */
+    }
+    _check(generation);
+    // 網路體檢: the gateway's own Wi-Fi and upload state.
+    final net = await _readNet(generation, config);
+    if (config['fleet_joined'] == true) {
+      final existing = await _command(generation, 'get_ble_devices');
+      final devices = (existing['devices'] as List? ?? [])
+          .map((d) => Map<String, dynamic>.from(d as Map))
+          .toList();
       state = state.copy(
         step: 2,
         peer: peer,
-        config: _withUpload(config, net),
+        config: {..._withUpload(config, net), 'choose_station': true},
         net: _netFields(net),
         checkPassed: false,
-        message: '已連線。先做網路體檢，再設定身份與 Wi-Fi。',
+        ptus: devices,
+        selected: devices.map((d) => d['mac'].toString()).toSet(),
+        message: '已連線，此閘道器已有站點設定。先做網路體檢，再選擇沿用或設定新站。',
         uploadNotice: '',
       );
-    },
-  );
+      return;
+    }
+    if (config['fleet_joined'] != true) {
+      // Initial guess for a brand-new gateway: find some free site+gateway
+      // slot to prefill, through the same suggestGateway the site field
+      // uses later (one source of truth, see GatewaySuggestKind).
+      int? site;
+      int gw = 1;
+      var offline = !_loggedIn;
+      if (_loggedIn) {
+        try {
+          final discover = await _request(
+            generation,
+            'GET',
+            '/api/gateways/discover',
+          );
+          final fleet = await _request(
+            generation,
+            'GET',
+            '/api/gateways/fleet-status',
+          );
+          final occupied = <String>{};
+          for (final row in [
+            ...(discover['items'] as List? ?? []),
+            ...(fleet['gateways'] as List? ?? []),
+          ]) {
+            final uid = row['mac'] ?? row['last_seen_mac'];
+            if (uid == null || _mac(uid) != _mac(config['gateway_uid'])) {
+              occupied.add('${row['site_id']}/${row['gateway_id']}');
+            }
+          }
+          candidate:
+          for (int s = 1; s <= 65535; s++) {
+            if (List.generate(
+              kMaxGatewayId,
+              (i) => i + 1,
+            ).every((g) => occupied.contains('$s/$g'))) {
+              continue; // known fully occupied: skip without a network call
+            }
+            final (g, kind) = await suggestGateway(s);
+            _check(generation);
+            if (kind == GatewaySuggestKind.online) {
+              site = s;
+              gw = g;
+              break candidate;
+            }
+            if (kind == GatewaySuggestKind.offline) {
+              site = s;
+              gw = g;
+              offline = true;
+              break candidate;
+            }
+            // full: this site has no free 1–kMaxGatewayId slot, try the next one.
+          }
+        } catch (_) {
+          offline = true;
+        }
+      }
+      if (site == null) {
+        site = 1;
+        gw = _offlineGatewaySuggestion(1);
+        offline = true;
+      }
+      config['suggested_site_id'] = site;
+      config['suggested_gateway_id'] = gw;
+      config['suggested_offline'] = offline;
+    }
+    state = state.copy(
+      step: 2,
+      peer: peer,
+      config: _withUpload(config, net),
+      net: _netFields(net),
+      checkPassed: false,
+      message: '已連線。先做網路體檢，再設定身份與 Wi-Fi。',
+      uploadNotice: '',
+    );
+  });
 
   // ---- 網路體檢 (step 2 before the station choice) ----
 
@@ -1384,6 +1439,7 @@ class CommissioningController extends Notifier<CommissionState> {
       unawaited(refreshPtuRssi());
     });
     _autoResetRescan = false;
+    final before = Set<String>.of(state.selected);
     await _discover();
     if (ref.mounted && _autoResetRescan && state.error == null) {
       // 殘留編號已歸零：重掃一次讓它們變成可勾選；這次不再自動重置。
@@ -1398,16 +1454,26 @@ class CommissioningController extends Notifier<CommissionState> {
         error: state.error,
       );
     }
+    if (ref.mounted && state.error == null) {
+      final seen = state.ptus.map((p) => p['mac'].toString()).toSet();
+      final absent = before.where((m) => !seen.contains(m)).length;
+      state = state.copy(
+        selected: state.selected.where(seen.contains).toSet(),
+        absentNotice: absent > 0 ? absentSelectionText(absent) : '',
+      );
+    }
   }
 
-  Future<void> _discover({bool autoReset = true}) =>
-      _run('Gateway 正在掃描周邊 PTU，請稍候', 75, (generation) async {
+  Future<void> _discover({
+    bool autoReset = true,
+  }) => _run('Gateway 正在掃描周邊 PTU，請稍候', 75, (generation) async {
     state = state.copy(
       ptus: [],
       selected: {},
       results: {},
       missing: [],
       starNotice: '',
+      assignFailed: {},
     );
     if (state.uploadWatch == UploadWatch.linkLost) {
       final peer = state.peer;
@@ -1453,9 +1519,7 @@ class CommissioningController extends Notifier<CommissionState> {
             .where((p) => !registry.contains(_ownerGateway(p)))
             .toList();
         if (stale.isNotEmpty) {
-          state = state.copy(
-            message: '發現 ${stale.length} 台殘留編號的 PTU，自動重置中',
-          );
+          state = state.copy(message: '發現 ${stale.length} 台殘留編號的 PTU，自動重置中');
           for (final p in stale) {
             final mac = p['mac'].toString();
             var ok = false;
@@ -1594,22 +1658,85 @@ class CommissioningController extends Notifier<CommissionState> {
       await discover();
     }
   }
+
   void select(String mac, bool selected) {
     if (state.busy) return;
     final next = Set<String>.of(state.selected);
     if (selected &&
         next.length < targetPtuCount &&
         !ptuOutOfRange(
-          state.ptus.firstWhere(
-            (p) => p['mac'] == mac,
-            orElse: () => const {},
-          ),
+          state.ptus.firstWhere((p) => p['mac'] == mac, orElse: () => const {}),
         )) {
       next.add(mac);
     } else if (!selected) {
       next.remove(mac);
     }
     state = state.copy(selected: next);
+  }
+
+  /// 逐台指派一台 PTU：失敗自動重試 [assignRetries] 次（間隔 2 秒）。
+  /// 成功回 null，否則回給前線看的失敗原因；取消一律往外丟。
+  Future<String?> _assignOne(int generation, String mac, int id) async {
+    String? reason;
+    for (int attempt = 0; attempt <= assignRetries; attempt++) {
+      if (attempt > 0) await _wait(2, generation);
+      _check(generation);
+      try {
+        final result = await _command(generation, 'assign_device_id', {
+          'mac': mac,
+          'new_id': id,
+        });
+        if (result['success'] == true) return null;
+        reason = ptuFailureText(result['error'] ?? result['result']);
+      } catch (e) {
+        if (e is GatewayFailure && e.code == 'cancelled') rethrow;
+        _check(generation);
+        reason = ptuFailureText(e);
+      }
+    }
+    return reason ?? ptuFailureText(null);
+  }
+
+  /// 指派 [targets]；單台失敗不中止。回傳失敗 MAC → 原因。
+  Future<Map<String, String>> _assignAll(
+    int generation,
+    List<Map<String, dynamic>> targets,
+  ) async {
+    final results = Map<String, String>.of(state.results);
+    final targetMacs = targets.map((p) => p['mac']).toSet();
+    final used = state.ptus
+        .where((p) => !targetMacs.contains(p['mac']))
+        .map((p) => (p['device_number'] as num?)?.toInt() ?? 0)
+        .where((id) => id > 0)
+        .toSet();
+    final failed = <String, String>{};
+    final first = (gateway - 1) * 5 + 1;
+    for (final p in targets) {
+      _check(generation);
+      final mac = p['mac'].toString();
+      final old = (p['device_number'] as num?)?.toInt() ?? 0;
+      final id = old >= first && old < first + 5 && !used.contains(old)
+          ? old
+          : List.generate(5, (i) => first + i).firstWhere(
+              (id) => !used.contains(id),
+              orElse: () => throw const GatewayFailure('gateway_full'),
+            );
+      used.add(id);
+      results[mac] = '正在指派 #$id';
+      state = state.copy(results: Map.of(results));
+      final reason = await _assignOne(generation, mac, id);
+      if (reason != null) {
+        failed[mac] = reason;
+        results[mac] = '指派失敗：$reason';
+        state = state.copy(results: Map.of(results));
+        continue;
+      }
+      p['device_number'] = id;
+      results[mac] = '已指派 #$id，等待連線';
+      state = state.copy(results: Map.of(results));
+      await _save();
+    }
+    return failed;
   }
 
   Future<void> configurePtus() => _run('逐台編號並開始監控', 240, (generation) async {
@@ -1620,40 +1747,57 @@ class CommissioningController extends Notifier<CommissionState> {
       throw const GatewayFailure('no_devices');
     }
     _provisioningMayBeActive = true;
-    final results = <String, String>{};
-    final used = state.ptus
-        .where((p) => !state.selected.contains(p['mac']))
-        .map((p) => (p['device_number'] as num?)?.toInt() ?? 0)
-        .where((id) => id > 0)
-        .toSet();
-    state = state.copy(step: 5);
-    for (final p in chosen) {
-      _check(generation);
-      final old = (p['device_number'] as num?)?.toInt() ?? 0;
-      final first = (gateway - 1) * 5 + 1;
-      final id = old >= first && old < first + 5 && !used.contains(old)
-          ? old
-          : List.generate(5, (i) => first + i).firstWhere(
-              (id) => !used.contains(id),
-              orElse: () => throw const GatewayFailure('gateway_full'),
-            );
-      used.add(id);
-      results[p['mac'].toString()] = '正在指派 #$id';
-      state = state.copy(results: Map.of(results));
-      final result = await _command(generation, 'assign_device_id', {
-        'mac': p['mac'],
-        'new_id': id,
+    state = state.copy(step: 5, results: {}, assignFailed: {});
+    final failed = await _assignAll(generation, chosen);
+    await _startMonitoring(generation, chosen, failed);
+  });
+
+  /// 「重試這 N 台」：只對上次指派失敗的 PTU 重跑指派，再 set_config/join_fleet。
+  Future<void> retryFailedAssign() =>
+      _run('重試指派失敗的 PTU', 240, (generation) async {
+        final chosen = state.ptus
+            .where((p) => state.selected.contains(p['mac']))
+            .toList();
+        final targets = chosen
+            .where((p) => state.assignFailed.containsKey(p['mac']))
+            .toList();
+        if (targets.isEmpty) throw const GatewayFailure('no_devices');
+        _provisioningMayBeActive = true;
+        state = state.copy(step: 5);
+        final failed = await _assignAll(generation, targets);
+        await _startMonitoring(generation, chosen, failed);
       });
-      if (result['success'] != true) throw const GatewayFailure('incomplete');
-      p['device_number'] = id;
-      results[p['mac'].toString()] = '已指派 #$id，等待連線';
-      state = state.copy(results: Map.of(results));
-      await _save();
-    }
+
+  /// set_config（成功台數，至少 1）＋ join_fleet；有失敗時先讓成功的上線、
+  /// 停在選擇頁列出失敗台；全部成功才等連線並進入驗證。
+  Future<void> _startMonitoring(
+    int generation,
+    List<Map<String, dynamic>> chosen,
+    Map<String, String> failed,
+  ) async {
+    final ok = chosen.where((p) => !failed.containsKey(p['mac'])).length;
     await _command(generation, 'set_config', {
-      'max_connections': chosen.length,
+      'max_connections': ok < 1 ? 1 : ok,
     });
     await _command(generation, 'join_fleet');
+    state = state.copy(assignFailed: failed);
+    if (failed.isNotEmpty) {
+      _provisioningMayBeActive = false;
+      state = state.copy(
+        step: 4,
+        message: ok == 0
+            ? '${failed.length} 台都指派失敗，Gateway 仍維持監控；請確認 PTU 後按「重試這 ${failed.length} 台」。'
+            : '已先讓 $ok 台上線；${failed.length} 台指派失敗，可按「重試這 ${failed.length} 台」。',
+      );
+      return;
+    }
+    await _waitConnected(generation, chosen);
+  }
+
+  Future<void> _waitConnected(
+    int generation,
+    List<Map<String, dynamic>> chosen,
+  ) async {
     for (int elapsed = 0; elapsed < 90; elapsed += 5) {
       await _wait(5, generation);
       final response = await _command(generation, 'get_ble_devices');
@@ -1691,10 +1835,8 @@ class CommissioningController extends Notifier<CommissionState> {
       }
       if (elapsed >= 85) {
         // Never leave a target above actual connections after a failed installation.
-        if (connected.isEmpty) {
-          await _command(generation, 'set_ble_enabled', {'enabled': false});
-          await _command(generation, 'set_data_upload', {'enabled': false});
-        } else {
+        // Never switch BLE or upload off here: the gateway keeps monitoring.
+        if (connected.isNotEmpty) {
           await _command(generation, 'set_config', {
             'max_connections': connected.length,
           });
@@ -1712,13 +1854,13 @@ class CommissioningController extends Notifier<CommissionState> {
               .map((p) => p['mac'].toString())
               .toList(),
           message: connected.isEmpty
-              ? '未連上任何 PTU，已停止監控以避免反覆重啟。'
+              ? '未連上任何 PTU，請確認 PTU 電源與距離後重試；Gateway 仍維持監控。'
               : '已調整為 ${connected.length} 台；請重新選擇已連線裝置或修復缺少的 PTU。',
         );
         throw const GatewayFailure('incomplete');
       }
     }
-  });
+  }
 
   /// [environment] is the selector value (`production` / `local` / `custom`);
   /// when omitted the target is derived from [base] alone.
@@ -2413,7 +2555,7 @@ class CommissioningController extends Notifier<CommissionState> {
         net: const {},
         checkPassed: false,
         wifiGraceOver: false,
-        error: safe ? null : '尚未確認安全停止，請重新連線核對。',
+        error: safe ? null : '尚未確認 Gateway 已恢復監控，請重新連線核對。',
         message: '已取消。請重新連線核對進度；未成功恢復的監控會話最晚於到期時恢復。',
       );
     }

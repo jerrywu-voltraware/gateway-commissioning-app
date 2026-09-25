@@ -451,7 +451,11 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     final current = ref.read(backendEnvProvider);
     await ref
         .read(commissionProvider.notifier)
-        .verify(current.base, _login.text, environment: current.environment.name);
+        .verify(
+          current.base,
+          _login.text,
+          environment: current.environment.name,
+        );
     _login.clear();
   }
 
@@ -634,6 +638,14 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                           key: const Key('ptu-selection-count'),
                         ),
                         const SizedBox(height: 6),
+                        if (state.assignFailed.isNotEmpty && !state.busy) ...[
+                          FilledButton.tonal(
+                            key: const Key('ptu-retry-failed'),
+                            onPressed: controller.retryFailedAssign,
+                            child: Text('重試這 ${state.assignFailed.length} 台'),
+                          ),
+                          const SizedBox(height: 6),
+                        ],
                         FilledButton(
                           key: const Key('ptu-configure'),
                           onPressed: !state.busy && state.selected.isNotEmpty
@@ -740,12 +752,45 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                       child: Text(state.message),
                     ),
                   if (state.error != null)
-                    Container(
-                      padding: const EdgeInsets.all(16),
+                    Material(
+                      key: const Key('error-banner'),
                       color: colors.errorContainer,
-                      child: Text(
-                        state.error!,
-                        style: TextStyle(color: colors.onErrorContainer),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              state.error!,
+                              style: TextStyle(color: colors.onErrorContainer),
+                            ),
+                            if (state.errorDetail != null)
+                              Theme(
+                                data: Theme.of(
+                                  context,
+                                ).copyWith(dividerColor: Colors.transparent),
+                                child: ExpansionTile(
+                                  key: const Key('error-detail'),
+                                  tilePadding: EdgeInsets.zero,
+                                  title: Text(
+                                    '詳細資訊',
+                                    style: TextStyle(
+                                      color: colors.onErrorContainer,
+                                    ),
+                                  ),
+                                  children: [
+                                    SelectableText(
+                                      state.errorDetail!,
+                                      style: TextStyle(
+                                        color: colors.onErrorContainer,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
                     ),
                   if (state.busy)
@@ -1144,6 +1189,33 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                 style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
             ),
+          if (s.absentNotice.isNotEmpty)
+            Padding(
+              key: const Key('absent-notice'),
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                s.absentNotice,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ),
+          if (s.assignFailed.isNotEmpty)
+            Padding(
+              key: const Key('assign-failed-list'),
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${s.assignFailed.length} 台指派失敗：',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                  for (final e in s.assignFailed.entries)
+                    Text('PTU ${e.key}：${e.value}'),
+                ],
+              ),
+            ),
           if (topology.isStar && s.starNotice.isNotEmpty)
             Padding(
               key: const Key('star-owner-notice'),
@@ -1231,7 +1303,11 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             onPressed: enabled ? c.rescanPtus : null,
             child: const Text('返回選擇 PTU，由 Gateway 重新掃描'),
           ),
-          button('開始資料驗證', _startVerify, enabled && s.ptus.any((p) => s.selected.contains(p['mac']))),
+          button(
+            '開始資料驗證',
+            _startVerify,
+            enabled && s.ptus.any((p) => s.selected.contains(p['mac'])),
+          ),
         ];
       default:
         return [
