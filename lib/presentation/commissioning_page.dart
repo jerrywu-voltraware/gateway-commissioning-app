@@ -911,6 +911,23 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     );
   }
 
+  /// 「重新連線並繼續」 for progress saved before the APP was closed.
+  List<Widget> _savedResume(
+    CommissionState s,
+    CommissioningController c,
+    bool enabled,
+  ) => [
+    if (s.savedResume) ...[
+      FilledButton.icon(
+        key: const Key('saved-resume'),
+        icon: const Icon(Icons.bluetooth_searching, size: 20),
+        onPressed: enabled ? c.resumeSaved : null,
+        label: const Text('重新連線並繼續'),
+      ),
+      const SizedBox(height: 16),
+    ],
+  ];
+
   List<Widget> content(
     CommissionState s,
     CommissioningController c,
@@ -923,6 +940,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     switch (s.step) {
       case 0:
         return [
+          ..._savedResume(s, c, enabled),
           const Text('先確認現場 WiFi 路由器與裝置電源已開啟。'),
           const SizedBox(height: 20),
           DropdownButtonFormField<BackendEnv>(
@@ -994,6 +1012,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         ];
       case 1:
         return [
+          ..._savedResume(s, c, enabled),
           GatewayDiscovery(
             enabled: enabled,
             onConnect: (peer) async {
@@ -1175,11 +1194,42 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       case 4:
       case 5:
         return [
+          if (s.resumePending && !s.busy && !s.reconnectFailed)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: FilledButton.icon(
+                key: const Key('ptu-resume'),
+                icon: const Icon(Icons.bluetooth_searching, size: 20),
+                onPressed: c.resumeAssign,
+                label: const Text('重新連線並繼續'),
+              ),
+            ),
+          if (s.reconnectFailed && !s.busy)
+            Padding(
+              key: const Key('reconnect-failed'),
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  FilledButton.icon(
+                    key: const Key('reconnect-retry'),
+                    icon: const Icon(Icons.refresh, size: 20),
+                    onPressed: s.resumePending ? c.resumeAssign : c.discover,
+                    label: const Text('重試重新連線'),
+                  ),
+                  TextButton(
+                    key: const Key('back-to-gateway'),
+                    onPressed: c.cancel,
+                    child: const Text('回到找閘道器'),
+                  ),
+                ],
+              ),
+            ),
           OutlinedButton.icon(
             icon: const Icon(Icons.refresh, size: 20),
             onPressed: enabled ? c.discover : null,
             label: Text(
-              s.uploadWatch == UploadWatch.linkLost
+              s.uploadWatch == UploadWatch.linkLost || s.resumePending
                   ? '重新連線並掃描 PTU'
                   : '由 Gateway 重新掃描 PTU',
             ),
