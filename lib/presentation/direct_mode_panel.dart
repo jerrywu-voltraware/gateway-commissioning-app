@@ -272,6 +272,11 @@ String directCandidatesHint(int count) =>
 /// target; busy is checked again at the tap and [onPicked] (closing the
 /// sheet) only runs when the switch really starts (field round 16: a tap
 /// on the last row closed the sheet and sent nothing).
+///
+/// Round 17: while busy the whole row is dimmed (0.5 opacity) — [onTap]
+/// alone gave no cue the tap did nothing (the row just looked unresponsive).
+/// [DirectCandidatesSheet] shows the matching 「處理中」 line above the list;
+/// both clear on their own once [CommissionState.busy] does.
 class DirectCandidateTile extends ConsumerWidget {
   const DirectCandidateTile(this.candidate, {super.key, this.onPicked});
 
@@ -293,51 +298,56 @@ class DirectCandidateTile extends ConsumerWidget {
       for (final o in state.direct?.candidates ?? const []) o.mac,
     ];
     final enabled = !current && !state.busy && !state.relinking;
-    return InkWell(
-      key: ValueKey('direct-candidate-${c.mac}'),
-      onTap: enabled
-          ? () {
-              final now = ref.read(commissionProvider);
-              if (now.busy || now.relinking) return;
-              onPicked?.call();
-              controller.switchDirectPick(c.mac);
-            }
-          : null,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 56),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    MacText(
-                      c.mac,
-                      others: others,
-                      fullBelow: true,
-                      style: text.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w600,
+    return Opacity(
+      // Round 17: busy has no other cue on this row (onTap already null);
+      // dim the whole row so it does not look merely unresponsive.
+      opacity: state.busy ? 0.5 : 1.0,
+      child: InkWell(
+        key: ValueKey('direct-candidate-${c.mac}'),
+        onTap: enabled
+            ? () {
+                final now = ref.read(commissionProvider);
+                if (now.busy || now.relinking) return;
+                onPicked?.call();
+                controller.switchDirectPick(c.mac);
+              }
+            : null,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 56),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      MacText(
+                        c.mac,
+                        others: others,
+                        fullBelow: true,
+                        style: text.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                    ),
-                    Text(
-                      c.rssiText,
-                      style: text.bodySmall?.copyWith(
-                        color: colors.onSurfaceVariant,
+                      Text(
+                        c.rssiText,
+                        style: text.bodySmall?.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Text(
-                current ? '目前選中' : '改連這台',
-                style: TextStyle(
-                  color: current ? colors.onSurfaceVariant : colors.primary,
+                const SizedBox(width: 12),
+                Text(
+                  current ? '目前選中' : '改連這台',
+                  style: TextStyle(
+                    color: current ? colors.onSurfaceVariant : colors.primary,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -370,10 +380,10 @@ class DirectCandidatesSheet extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final candidates =
-        ref.watch(commissionProvider).direct?.candidates ??
-        const <DirectCandidate>[];
+    final state = ref.watch(commissionProvider);
+    final candidates = state.direct?.candidates ?? const <DirectCandidate>[];
     final text = Theme.of(context).textTheme;
+    final colors = Theme.of(context).colorScheme;
     return SafeArea(
       bottom: false,
       child: Padding(
@@ -390,6 +400,33 @@ class DirectCandidatesSheet extends ConsumerWidget {
           children: [
             Text('不是這台？', style: text.titleMedium),
             const SizedBox(height: 4),
+            // Round 17: the rows go dim while busy but give no reason why
+            // a tap does nothing; this line (with the gateway's own
+            // progress) says so, and clears itself once busy does.
+            if (state.busy)
+              Padding(
+                key: const Key('direct-candidates-busy'),
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: colors.primary,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '閘道器處理中，請稍候…',
+                        style: text.bodySmall?.copyWith(color: colors.primary),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             Text(
               candidates.isEmpty
                   ? '閘道器目前沒有回報附近候選，請稍後再試。'
