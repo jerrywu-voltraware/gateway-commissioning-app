@@ -8,10 +8,16 @@ class TopologySettingsState {
   const TopologySettingsState({
     this.topology = GatewayTopology.star,
     this.starCount = defaultStarPtuCount,
+    this.directBindOnConfirm = false,
     this.loaded = false,
   });
   final GatewayTopology topology;
   final int starCount;
+
+  /// Direct mode (firmware 1.7.20+): 「是這台，開始監控」 also binds the
+  /// gateway to that PTU's MAC (`direct_bind_mac`), so it never connects a
+  /// neighbouring pile's PTU later. Off by default (the firmware default).
+  final bool directBindOnConfirm;
 
   /// Saved values have been read from SharedPreferences.
   final bool loaded;
@@ -22,10 +28,12 @@ class TopologySettingsState {
   TopologySettingsState copy({
     GatewayTopology? topology,
     int? starCount,
+    bool? directBindOnConfirm,
     bool? loaded,
   }) => TopologySettingsState(
     topology: topology ?? this.topology,
     starCount: starCount ?? this.starCount,
+    directBindOnConfirm: directBindOnConfirm ?? this.directBindOnConfirm,
     loaded: loaded ?? this.loaded,
   );
 }
@@ -38,6 +46,7 @@ final topologyProvider =
 class TopologySettingsController extends Notifier<TopologySettingsState> {
   static const _topologyKey = 'gateway_topology';
   static const _starCountKey = 'gateway_star_ptu_count';
+  static const _bindKey = 'direct_bind_on_confirm';
 
   /// Completes once the saved values are loaded.
   Future<void> ready = Future.value();
@@ -61,6 +70,7 @@ class TopologySettingsController extends Notifier<TopologySettingsState> {
       starCount: savedCount == null
           ? state.starCount
           : savedCount.clamp(minStarPtuCount, maxStarPtuCount),
+      directBindOnConfirm: prefs.getBool(_bindKey) ?? state.directBindOnConfirm,
       loaded: true,
     );
   }
@@ -69,6 +79,12 @@ class TopologySettingsController extends Notifier<TopologySettingsState> {
     state = state.copy(topology: value);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_topologyKey, value.name);
+  }
+
+  Future<void> setDirectBindOnConfirm(bool value) async {
+    state = state.copy(directBindOnConfirm: value);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_bindKey, value);
   }
 
   Future<void> setStarCount(int value) async {

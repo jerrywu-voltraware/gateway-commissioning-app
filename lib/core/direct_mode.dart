@@ -47,22 +47,29 @@ class DirectCandidate {
 
 enum DirectState {
   connected,
+  connecting,
   noCandidate,
   scanning,
   boundMissing;
 
+  /// `off` (star mode) and unknown values are null: nothing to show.
   static DirectState? parse(Object? value) => switch (value) {
     'connected' => DirectState.connected,
+    'connecting' => DirectState.connecting,
     'no_candidate' => DirectState.noCandidate,
     'scanning' => DirectState.scanning,
     'bound_missing' => DirectState.boundMissing,
     _ => null,
   };
 
+  /// Round 14: 「已連上同樁 PTU」 claimed more than the gateway knows (an
+  /// ambiguous pick is only the strongest); the installer confirms with
+  /// 「辨識此樁」.
   String get label => switch (this) {
-    DirectState.connected => '已連上同樁 PTU',
+    DirectState.connected => '已連上 PTU',
+    DirectState.connecting => '正在連線 PTU',
     DirectState.noCandidate => '找不到夠近的 PTU',
-    DirectState.scanning => '正在尋找同樁 PTU',
+    DirectState.scanning => '正在尋找最近的 PTU',
     DirectState.boundMissing => '已綁定的 PTU 不在場',
   };
 
@@ -74,30 +81,82 @@ enum DirectState {
   };
 }
 
-/// Parsed `direct` object; null for firmware without it.
+/// Parsed `direct` object; null for firmware without it (or star mode,
+/// `state:"off"`).
 class DirectStatus {
   const DirectStatus({
     required this.state,
     this.minRssi,
     this.boundMac,
+    this.selectReason = '',
+    this.ptuMac,
+    this.ptuRssi,
+    this.ptuDeviceNumber,
     this.candidates = const [],
   });
   final DirectState state;
   final int? minRssi;
   final String? boundMac;
 
+  /// Latest collection window: `ok` / `ambiguous` / `none` /
+  /// `bound_missing`, `""` before the first window (cmd_contract.md §3A).
+  /// `connected` + `ambiguous` = the gateway could not tell and took the
+  /// strongest — not a clear pick.
+  final String selectReason;
+
+  /// The PTU the gateway is connected to (firmware 1.7.20 `ptu_mac`,
+  /// `ptu_rssi`, `ptu_device_number`); null while not connected.
+  final String? ptuMac;
+  final int? ptuRssi;
+  final int? ptuDeviceNumber;
+
   /// At most 5, as the firmware sends them (strongest first).
   final List<DirectCandidate> candidates;
+
+  /// The gateway's own pick: connected and naming the PTU.
+  String? get pickedMac =>
+      state == DirectState.connected && ptuMac != null ? ptuMac : null;
+
+  /// Signals too close to tell apart: the installer must confirm the pick
+  /// with 「辨識此樁」 (not shown for a PTU the gateway is bound to).
+  bool get ambiguous =>
+      selectReason == 'ambiguous' &&
+      !(boundMac != null && ptuMac != null && _same(boundMac!, ptuMac!));
+
+  static bool _same(String a, String b) =>
+      a.toLowerCase().replaceAll(RegExp('[^0-9a-f]'), '') ==
+      b.toLowerCase().replaceAll(RegExp('[^0-9a-f]'), '');
+
+  /// Why the gateway picked [pickedMac], for the installer; null when there
+  /// is nothing useful to say.
+  String? get reasonText {
+    if (pickedMac == null) return null;
+    if (boundMac != null && _same(boundMac!, pickedMac!)) {
+      return '已綁定這台，閘道器只連它';
+    }
+    return switch (selectReason) {
+      'ok' => '門檻內訊號明顯最強',
+      'ambiguous' => '附近訊號相近，閘道器暫選最強的一台',
+      _ => null,
+    };
+  }
 
   static DirectStatus? from(Object? source) {
     if (source is! Map) return null;
     final state = DirectState.parse(source['state']);
     if (state == null) return null;
     final rows = source['candidates'];
+    final ptuMac = source['ptu_mac'];
     return DirectStatus(
       state: state,
       minRssi: (source['min_rssi'] as num?)?.toInt(),
       boundMac: directBoundMacOf({'bound_mac': source['bound_mac']}),
+      selectReason: source['select_reason']?.toString() ?? '',
+      ptuMac: ptuMac is String && ptuMac.trim().isNotEmpty
+          ? ptuMac.trim()
+          : null,
+      ptuRssi: (source['ptu_rssi'] as num?)?.toInt(),
+      ptuDeviceNumber: (source['ptu_device_number'] as num?)?.toInt(),
       candidates: [
         if (rows is List)
           for (final row in rows.whereType<Map>().take(5))
@@ -110,6 +169,24 @@ class DirectStatus {
       ],
     );
   }
+}
+
+/// Step 7 direct flow: shown when the gateway's pick is ambiguous.
+const directAmbiguousText = '附近有訊號相近的 PTU，請按「辨識此樁」確認是否為眼前這台';
+
+/// Beside 「辨識此樁」 right after the tap, before the ack.
+const identifySentText = '已送出，請看樁上燈號';
+
+/// Beside 「辨識此樁」 once the gateway acked. [ack] is the identify ack.
+String identifyNoteText(Map<String, dynamic> ack) {
+  final ptuWrite = ack['ptu_write'];
+  if (ptuWrite != null && ptuWrite != 'ok') {
+    return '已送出：只有閘道器在閃燈，PTU 未收到（$ptuWrite）';
+  }
+  final mac = ack['mac'];
+  if (mac == null) return '$identifySentText（閘道器雙閃 6 秒）';
+  final rssi = ack['rssi'];
+  return '$identifySentText（PTU $mac${rssi is num ? ' · $rssi dBm' : ''}）';
 }
 
 /// identify on firmware 1.7.20+ when target=ptu itself fails outright

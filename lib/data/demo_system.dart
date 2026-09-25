@@ -31,36 +31,109 @@ class DemoSystem implements GatewayLink, GatewayApi {
   /// Identify requests received (params as sent).
   final identifyRequests = <Map<String, dynamic>>[];
 
+  /// Firmware 1.7.20 direct mode: `max_connections` 1 on a firmware that
+  /// picks the PTU itself (cmd_contract.md §3A).
+  bool get directMode =>
+      config['direct_autoconnect_supported'] == true &&
+      config['max_connections'] == 1;
+
+  /// `select_reason` of the latest simulated collection window.
+  String directReason = '';
+
+  static String _macKey(Object? mac) =>
+      (mac?.toString() ?? '').toLowerCase().replaceAll(RegExp('[^0-9a-f]'), '');
+
+  /// Simulated direct-mode pick after a BLE restart (set_config of
+  /// max_connections / threshold / binding) or while nothing is connected:
+  /// only the bound MAC when bound, else the strongest at or above the
+  /// threshold; a runner-up within 6 dB is `ambiguous` (the strongest is
+  /// still connected, as after two ambiguous windows).
+  void directReselect() {
+    if (!directMode) return;
+    for (final d in devices) {
+      d['connected'] = false;
+      d['notify_enabled'] = false;
+    }
+    final min = (config['auto_connect_min_rssi'] as num?)?.toInt() ?? -55;
+    final bound = _macKey(config['direct_bind_mac']);
+    Map<String, dynamic>? pick;
+    if (bound.isNotEmpty) {
+      pick = devices.where((d) => _macKey(d['mac']) == bound).firstOrNull;
+      directReason = pick == null ? 'bound_missing' : 'ok';
+    } else {
+      final sorted = List.of(devices)
+        ..sort((a, b) => (b['rssi'] as num).compareTo(a['rssi'] as num));
+      final best = sorted.firstOrNull;
+      if (best == null || (best['rssi'] as num) < min) {
+        directReason = 'none';
+      } else {
+        pick = best;
+        final second = sorted.length > 1 ? sorted[1] : null;
+        directReason =
+            second != null &&
+                (best['rssi'] as num) - (second['rssi'] as num) < 6
+            ? 'ambiguous'
+            : 'ok';
+      }
+    }
+    if (pick != null) {
+      pick['connected'] = true;
+      pick['notify_enabled'] = true;
+    }
+  }
+
   /// `direct` object as firmware 1.7.20 reports it; null for older firmware
-  /// (no `direct_autoconnect_supported`).
+  /// (no `direct_autoconnect_supported`), `state:"off"` in star mode.
   Map<String, dynamic>? directStatus() {
     if (config['direct_autoconnect_supported'] != true) return null;
     final min = (config['auto_connect_min_rssi'] as num?)?.toInt() ?? -55;
     final bound = config['direct_bind_mac']?.toString() ?? '';
-    final connected = devices.where((d) => d['connected'] == true).firstOrNull;
+    if (!directMode) {
+      return {
+        'active': false,
+        'state': 'off',
+        'min_rssi': min,
+        'bound_mac': bound,
+        'select_reason': '',
+        'candidates': const [],
+      };
+    }
+    // The gateway keeps scanning while nothing (or not the bound PTU) is
+    // connected.
+    var linked = devices.where((d) => d['connected'] == true).firstOrNull;
+    if (linked == null ||
+        (bound.isNotEmpty && _macKey(linked['mac']) != _macKey(bound))) {
+      directReselect();
+      linked = devices.where((d) => d['connected'] == true).firstOrNull;
+    }
     final candidates = devices.where((d) => (d['rssi'] as num) >= -100).toList()
       ..sort((a, b) => (b['rssi'] as num).compareTo(a['rssi'] as num));
     final String state;
-    if (connected != null) {
+    if (linked != null) {
       state = 'connected';
-    } else if (bound.isNotEmpty) {
-      state = devices.any((d) => d['mac'] == bound)
-          ? 'scanning'
-          : 'bound_missing';
+    } else if (directReason == 'bound_missing') {
+      state = 'bound_missing';
+    } else if (directReason == 'none') {
+      state = 'no_candidate';
     } else {
-      state = candidates.any((d) => (d['rssi'] as num) >= min)
-          ? 'scanning'
-          : 'no_candidate';
+      state = 'scanning';
     }
     return {
+      'active': true,
       'state': state,
       'min_rssi': min,
       'bound_mac': bound,
+      'select_reason': directReason,
+      if (linked != null) 'ptu_mac': linked['mac'],
+      if (linked != null) 'ptu_rssi': linked['rssi'],
+      if (linked != null) 'ptu_device_number': linked['device_number'],
       'candidates': [
         for (final d in candidates.take(5))
           {
             'mac': d['mac'],
             'rssi_peak': d['rssi'],
+            'rssi_last': d['rssi'],
+            'count': 3,
             'device_number': d['device_number'],
           },
       ],
@@ -242,11 +315,31 @@ class DemoSystem implements GatewayLink, GatewayApi {
             params['new_id'];
         return {'success': true};
       case 'set_config':
+        const selection = [
+          'max_connections',
+          'auto_connect_min_rssi',
+          'direct_bind_mac',
+        ];
+        final before = [for (final k in selection) config[k]];
         config.addAll(params);
+        final after = [for (final k in selection) config[k]];
+        // Firmware 1.7.20: a selection-affecting change restarts BLE and,
+        // in direct mode, picks again.
+        if (directMode &&
+            [
+              for (var i = 0; i < before.length; i++) before[i] != after[i],
+            ].any((changed) => changed)) {
+          directReselect();
+        }
         return {};
       case 'join_fleet':
         config['fleet_joined'] = true;
         config['upload_paused'] = false;
+        if (directMode) {
+          // Direct mode: the gateway keeps its own pick (numbers ignored).
+          if (!devices.any((d) => d['connected'] == true)) directReselect();
+          return {};
+        }
         for (final d in devices) {
           if ((d['device_number'] as int) > 0) {
             d['connected'] = true;

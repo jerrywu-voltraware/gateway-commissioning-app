@@ -255,6 +255,9 @@ class GatewayFailure implements Exception {
     'identify_no_ptu' => '閘道器尚未連上 PTU，無法讓 PTU 閃燈。請確認同樁 PTU 已上電並靠近後重試。',
     'direct_no_ptu' => '閘道器目前沒有連上 PTU，無法綁定。請等 PTU 連上後再試。',
     'direct_unsupported' => '此韌體尚未支援直連門檻與綁定，請先更新韌體（1.7.20 起）。',
+    'direct_pick_missing' => '閘道器目前沒有連上 PTU，請確認 PTU 電源後按「重新搜尋」。',
+    'direct_switch_failed' =>
+      '閘道器沒有在時限內改連這台 PTU（已暫時綁定它）。請確認這台 PTU 已上電並靠近，或改選其他 PTU。',
     'identify_unsupported' => '此韌體尚未支援辨識燈號，請先更新韌體。連線時的呼吸燈仍可協助辨識。',
     'location_off' => '此版本 Android 搜尋藍牙需要定位服務，請開啟手機定位後重新搜尋。',
     'disconnected' || 'not_connected' => '與閘道器的連線已中斷，請靠近後重新連線。',
