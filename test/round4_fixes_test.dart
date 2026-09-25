@@ -224,7 +224,7 @@ void main() {
       await c.configurePtus();
       final s = container.read(commissionProvider);
       expect(s.resumePending, isTrue);
-      expect(configureLabel(s), '繼續配置剩餘 2 台');
+      expect(configureLabel(s), '配置 2 台並開始監控');
     });
 
     test('assigned and connected PTUs show 已連線 #n', () async {

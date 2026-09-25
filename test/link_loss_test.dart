@@ -159,6 +159,40 @@ void main() {
     expect(s.resumePending, isFalse);
   });
 
+  test(
+    'resumeAssign also configures a PTU checked after the disconnect',
+    () async {
+      final fake = DroppingLink();
+      final (container, c) = await ready(fake);
+      addTearDown(container.dispose);
+      final macs = fake.devices.map((d) => d['mac'].toString()).toList();
+      // macs[2] starts unselected, so it is not part of the first pass.
+      c.select(macs[2], false);
+      fake.dropAfterAssigns = 1;
+      await c.configurePtus();
+      var s = container.read(commissionProvider);
+      expect(s.assignedOk, {macs[0]});
+      expect(s.unassigned, {macs[1]});
+      expect(s.resumePending, isTrue);
+
+      // Checked only after the disconnect: not in unassigned/assignFailed,
+      // but still not yet successfully assigned.
+      c.select(macs[2], true);
+      s = container.read(commissionProvider);
+      expect(configureTargets(s), {macs[1], macs[2]});
+      expect(configureLabel(s), '配置 2 台並開始監控');
+
+      fake.assigns.clear();
+      await c.resumeAssign();
+      s = container.read(commissionProvider);
+      expect(s.error, isNull);
+      expect(fake.assigns.toSet(), {macs[1], macs[2]});
+      expect(s.assignedOk, {macs[0], macs[1], macs[2]});
+      expect(s.resumePending, isFalse);
+      expect(s.step, 6);
+    },
+  );
+
   test('link loss after a real PTU failure keeps the failed list', () async {
     final fake = DroppingLink();
     final (container, c) = await ready(fake);

@@ -88,6 +88,8 @@ class NetGateway extends DemoSystem {
 
   final paths = <String>[];
   Completer<void>? latestGate;
+  /// When set, replaces the demo /api/latest answer (health-check tests).
+  Map<String, dynamic>? latestOverride;
   @override
   Future<Map<String, dynamic>> request(
     String method,
@@ -95,7 +97,11 @@ class NetGateway extends DemoSystem {
     Map<String, dynamic>? body,
   ]) async {
     paths.add('$method $path');
-    if (path.startsWith('/api/latest')) await latestGate?.future;
+    if (path.startsWith('/api/latest')) {
+      await latestGate?.future;
+      final override = latestOverride;
+      if (override != null) return override;
+    }
     return super.request(method, path, body);
   }
 
@@ -659,6 +665,50 @@ void main() {
       expect(s.online, isTrue);
       expect(fake.paths.last, startsWith('GET /api/latest'));
     });
+    test(
+      '資料有異常 only shows after two abnormal health checks in a row',
+      () async {
+        final fake = NetGateway();
+        final (container, c) = await _verified(fake);
+        addTearDown(container.dispose);
+        final ids = container
+            .read(commissionProvider)
+            .ptus
+            .map((p) => p['device_number'] as int)
+            .toList();
+        Map<String, dynamic> row(int id, {bool abnormal = false}) => {
+          'device_id': id,
+          'online': !abnormal,
+          'lag_seconds': 0,
+          'error_num': 0,
+        };
+        Map<String, dynamic> latest({required bool abnormal}) => {
+          'items': [for (final id in ids) row(id, abnormal: abnormal)],
+        };
+
+        // 1st abnormal answer: still "正在確認資料上傳…", not yet "異常".
+        fake.latestOverride = latest(abnormal: true);
+        await c.refreshHealth();
+        expect(container.read(commissionProvider).message, healthPendingText);
+
+        // 2nd abnormal answer in a row: now reports 資料有異常.
+        await c.refreshHealth();
+        expect(
+          container.read(commissionProvider).message,
+          '資料有異常，請檢查 PTU 與網路。',
+        );
+
+        // A normal answer resets the streak.
+        fake.latestOverride = latest(abnormal: false);
+        await c.refreshHealth();
+        expect(container.read(commissionProvider).message, '資料持續更新');
+
+        // One abnormal answer again is not enough by itself.
+        fake.latestOverride = latest(abnormal: true);
+        await c.refreshHealth();
+        expect(container.read(commissionProvider).message, healthPendingText);
+      },
+    );
     test('step 7: 重新連線並驗證 logs in with the given password', () async {
       final fake = NetGateway();
       final (container, c) = await _verified(fake);

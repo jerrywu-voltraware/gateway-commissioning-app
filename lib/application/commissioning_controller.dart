@@ -211,16 +211,18 @@ const _savedStepLabels = {
 
 /// Restore prompt after the APP was killed; [done] are the PTU numbers
 /// already assigned, [pending] the selected ones still to configure.
-/// Step 8 bottom button: after a phone link loss only the rest is left.
+/// Step 8 bottom button: always targets selected-but-not-yet-successfully-
+/// assigned PTUs (newly checked ones after a disconnect included; already
+/// assigned ones excluded so they are not re-sent).
 String configureLabel(CommissionState s) {
-  if (s.resumePending) {
-    final rest = s.selected
-        .where((m) => s.unassigned.contains(m) || s.assignFailed.containsKey(m))
-        .length;
-    if (rest > 0) return '繼續配置剩餘 $rest 台';
-  }
-  return '配置 ${s.selected.length} 台並開始監控';
+  final rest = configureTargets(s).length;
+  if (rest == 0) return '全部已配置';
+  return '配置 $rest 台並開始監控';
 }
+
+/// 「配置」按鈕的目標集合：已勾選但尚未成功指派的 PTU MAC。
+Set<String> configureTargets(CommissionState s) =>
+    s.selected.difference(s.assignedOk);
 
 /// Step 10 message right after verification, before any health answer.
 const verifiedText = '開通驗證通過，已恢復自動監控';
@@ -282,6 +284,7 @@ class CommissionState {
     this.errorDetail,
     this.absentNotice = '',
     this.unassigned = const {},
+    this.assignedOk = const {},
     this.resumePending = false,
     this.scanResumePending = false,
     this.reconnectFailed = false,
@@ -345,6 +348,10 @@ class CommissionState {
 
   /// 第 8 步因手機↔閘道器斷線而尚未處理的 PTU MAC。
   final Set<String> unassigned;
+
+  /// 已成功指派（含 readback 通過）的 PTU MAC；續作按鈕以
+  /// `selected - assignedOk` 決定還要配置哪些台。
+  final Set<String> assignedOk;
 
   /// 第 8 步被手機斷線打斷，可按「重新連線並繼續」。
   final bool resumePending;
@@ -426,12 +433,14 @@ class CommissionState {
     String? errorDetail,
     String? absentNotice,
     Set<String>? unassigned,
+    Set<String>? assignedOk,
     bool? resumePending,
     bool? scanResumePending,
     bool? reconnectFailed,
     bool? savedResume,
   }) => CommissionState(
     unassigned: unassigned ?? this.unassigned,
+    assignedOk: assignedOk ?? this.assignedOk,
     resumePending: resumePending ?? this.resumePending,
     scanResumePending: scanResumePending ?? this.scanResumePending,
     reconnectFailed: reconnectFailed ?? this.reconnectFailed,
@@ -2005,6 +2014,7 @@ class CommissioningController extends Notifier<CommissionState> {
         results: Map.of(results),
         assignFailed: stillFailed,
         unassigned: state.unassigned.difference({mac}),
+        assignedOk: {...state.assignedOk, mac},
       );
       await _save();
     }
@@ -2039,6 +2049,7 @@ class CommissioningController extends Notifier<CommissionState> {
       return; // Old firmware or a busy gateway: keep the ack result.
     }
     _check(generation);
+    final mismatched = <String>{};
     for (final entry in Map.of(_doneAssign).entries) {
       final found = devices.where((d) => sameMac(d['mac'], entry.key));
       if (found.isEmpty) continue;
@@ -2047,6 +2058,7 @@ class CommissioningController extends Notifier<CommissionState> {
       if (actual != null && actual != entry.value) {
         final reason = readbackMismatchText(actual, entry.value);
         _doneAssign.remove(entry.key);
+        mismatched.add(entry.key);
         failed[entry.key] = reason;
         results[entry.key] = '指派失敗：$reason';
         for (final p in state.ptus.where((p) => p['mac'] == entry.key)) {
@@ -2059,6 +2071,7 @@ class CommissioningController extends Notifier<CommissionState> {
     state = state.copy(
       results: Map.of(results),
       assignFailed: {...state.assignFailed, ...failed},
+      assignedOk: state.assignedOk.difference(mismatched),
     );
     await _save();
   }
@@ -2083,6 +2096,7 @@ class CommissioningController extends Notifier<CommissionState> {
           },
           assignFailed: {},
           unassigned: {},
+          assignedOk: skip,
           resumePending: false,
         );
         final targets = chosen.where((p) => !skip.contains(p['mac'])).toList();
@@ -2113,8 +2127,9 @@ class CommissioningController extends Notifier<CommissionState> {
     _stopWatch(UploadWatch.idle);
   }
 
-  /// 「重新連線並繼續」: reconnect the gateway, then assign only the PTUs
-  /// step 8 did not finish, then set_config / join_fleet.
+  /// 「重新連線並繼續」: reconnect the gateway, then assign every selected
+  /// PTU not yet successfully assigned (including ones checked after the
+  /// disconnect), then set_config / join_fleet.
   Future<void> resumeAssign() =>
       _run(reconnectingText, 240, (generation) async {
         await _reconnect(generation);
@@ -2122,11 +2137,7 @@ class CommissioningController extends Notifier<CommissionState> {
             .where((p) => state.selected.contains(p['mac']))
             .toList();
         final targets = chosen
-            .where(
-              (p) =>
-                  state.unassigned.contains(p['mac']) ||
-                  state.assignFailed.containsKey(p['mac']),
-            )
+            .where((p) => !state.assignedOk.contains(p['mac']))
             .toList();
         _provisioningMayBeActive = true;
         state = state.copy(

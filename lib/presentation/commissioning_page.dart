@@ -267,6 +267,36 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     }
   }
 
+  /// 「全部重新配置」：清空 assignedOk，讓所有已勾選的台重新指派一次；
+  /// 二次確認以免手滑蓋掉已成功的台。
+  Future<void> _reconfigureAll(CommissioningController controller) async {
+    if (!mounted) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('全部重新配置？'),
+        content: const Text('已成功指派的台也會重新指派一次，確定要繼續嗎？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('全部重新配置'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final warning = controller.starFullWarning;
+    if (warning != null) {
+      _snack(warning);
+      return;
+    }
+    controller.configurePtus();
+  }
+
   /// 「儲存並連接 WiFi」 for a new station: pre-checks (site, gateway) for an
   /// existing MAC before committing, so a conflict can offer 「取代舊機」 or
   /// 「下一個編號」 instead of just failing with a generic error.
@@ -644,20 +674,33 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                             onPressed: controller.retryFailedAssign,
                             child: Text('重試這 ${state.assignFailed.length} 台'),
                           ),
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: TextButton(
+                              key: const Key('ptu-reconfigure-all'),
+                              onPressed: () => _reconfigureAll(controller),
+                              child: const Text('全部重新配置'),
+                            ),
+                          ),
                           const SizedBox(height: 6),
                         ],
                         FilledButton(
                           key: const Key('ptu-configure'),
-                          onPressed: !state.busy && state.resumePending
-                              ? controller.resumeAssign
-                              : !state.busy && state.selected.isNotEmpty
+                          onPressed:
+                              !state.busy && configureTargets(state).isNotEmpty
                               ? () {
                                   final warning = controller.starFullWarning;
                                   if (warning != null) {
                                     _snack(warning);
                                     return;
                                   }
-                                  controller.configurePtus();
+                                  if (state.resumePending) {
+                                    controller.resumeAssign();
+                                  } else {
+                                    controller.configurePtus(
+                                      skip: state.assignedOk,
+                                    );
+                                  }
                                 }
                               : null,
                           child: Text(configureLabel(state)),
