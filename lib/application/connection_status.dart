@@ -181,8 +181,14 @@ ConnectionStatus connectionStatus({
   required CommissionState state,
   ProbeResult? probe,
   bool demo = false,
+  DateTime? now,
 }) {
   final app = env.uploadTarget;
+  // The backend saw this gateway's heartbeat or data within the last 60 s.
+  final seen = state.backendSeenAt;
+  final backendFresh =
+      seen != null &&
+      (now ?? DateTime.now()).difference(seen) < const Duration(seconds: 60);
   final config = state.config;
   final net = state.net;
   final phone = _phoneRow(
@@ -227,7 +233,7 @@ ConnectionStatus connectionStatus({
         : 'Gateway 把資料送到${current.plainLabel}，但手機連的是'
               '${syncTarget.plainLabel}。按「同步」讓 Gateway 改送到'
               '${placeOf(syncTarget)}。';
-  } else if (uploading) {
+  } else if (uploading || backendFresh) {
     gateway = StatusRow(placeOf(current), '✓ 資料上傳中', StatusTone.ok);
   } else if (polling) {
     gateway = StatusRow(placeOf(current), '⏳ 連線中…', StatusTone.pending);

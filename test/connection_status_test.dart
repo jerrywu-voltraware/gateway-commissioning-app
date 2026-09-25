@@ -163,6 +163,36 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('status model', () {
+    test('backend heartbeat within 60 s shows 資料上傳中, older is 未確認', () {
+      final now = DateTime(2026, 9, 25, 15, 30);
+      CommissionState seen(Duration ago) => CommissionState(
+        step: 6,
+        peer: _peer,
+        config: _target('local'),
+        loggedIn: true,
+        backendSeenAt: now.subtract(ago),
+      );
+      final fresh = connectionStatus(
+        env: _local,
+        state: seen(const Duration(seconds: 20)),
+        probe: _healthy,
+        now: now,
+      );
+      expect(fresh.gateway.status, '✓ 資料上傳中');
+      expect(fresh.gateway.tone, StatusTone.ok);
+      final old = connectionStatus(
+        env: _local,
+        state: seen(const Duration(seconds: 90)),
+        probe: _healthy,
+        now: now,
+      );
+      expect(old.gateway.status, '？ 未確認');
+    });
+    test('backendRowsFresh needs an online row under 60 s lag', () {
+      expect(backendRowsFresh([{'online': true, 'lag_seconds': 12}]), isTrue);
+      expect(backendRowsFresh([{'online': true, 'lag_seconds': 75}]), isFalse);
+      expect(backendRowsFresh([{'online': false, 'lag_seconds': 5}]), isFalse);
+    });
     test('gateway on another /24 gets the Wi-Fi hint only after waiting', () {
       const net = {
         'wifi_state': 'got_ip',

@@ -115,6 +115,20 @@ const backendSwitchedDoneText = '已切換連線環境，資料要在新的環�
 /// Step 6 after a backend switch.
 const backendSwitchedVerifyText = '已切換連線環境，請按「開始資料驗證」重新確認。';
 
+/// PTU tile text when the automatic reset still failed after its retry.
+const resetFailedText = '重置失敗（連線逾時），請靠近後重試';
+
+/// 完成頁摘要：「掃到 X 台，本機配置 Y 台」，其他閘道器／重置失敗台數 >0 才顯示。
+String commissionSummaryText(CommissionState s) =>
+    '掃到 ${s.scannedTotal} 台，本機配置 ${s.ptus.length} 台'
+    '${s.pendingNext > 0 ? '，${s.pendingNext} 台屬於其他閘道器' : ''}'
+    '${s.resetFailed.isNotEmpty ? '，${s.resetFailed.length} 台重置失敗' : ''}';
+
+/// /api/latest rows show this gateway uploading within the last 60 s.
+bool backendRowsFresh(Iterable<Map> rows) => rows.any(
+  (r) => r['online'] == true && ((r['lag_seconds'] as num?) ?? 999) < 60,
+);
+
 /// Star mode: fleet-status could not tell whether out-of-range PTUs' owner
 /// gateways are registered, so nothing was reset automatically.
 const starOwnerUnknownText = '無法確認閘道器登記狀態，請手動重置';
@@ -148,6 +162,8 @@ class CommissionState {
     this.autoRssi = true,
     this.scannedTotal = 0,
     this.pendingNext = 0,
+    this.resetFailed = const {},
+    this.backendSeenAt,
     this.starNotice = '',
   });
   final int step, seconds;
@@ -184,6 +200,14 @@ class CommissionState {
   /// 星狀強化：最近一次 discover() 掃到的 PTU 總數，以及可納入但目前不在本機
   /// 5 格範圍內、待下一台閘道器認領的台數（完成畫面的 X / Z 統計）。
   final int scannedTotal, pendingNext;
+
+  /// 星狀模式：自動重置（含重試 1 次）後仍失敗的範圍外 PTU MAC；這些不算
+  /// 「屬於其他閘道器」，pendingNext 也不含它們。
+  final Set<String> resetFailed;
+
+  /// 最近一次後端（fleet-status online 或 /api/latest 有新鮮資料）確認此
+  /// gateway 有在上傳的時間；null＝尚未確認。
+  final DateTime? backendSeenAt;
 
   /// 星狀模式：掃描後無法向後台確認範圍外 PTU 的所屬閘道器是否登記時的提示
   /// （此時不自動重置）；空字串代表不顯示。
@@ -250,8 +274,12 @@ class CommissionState {
     bool? autoRssi,
     int? scannedTotal,
     int? pendingNext,
+    Set<String>? resetFailed,
+    DateTime? backendSeenAt,
     String? starNotice,
   }) => CommissionState(
+    resetFailed: resetFailed ?? this.resetFailed,
+    backendSeenAt: backendSeenAt ?? this.backendSeenAt,
     loggedIn: loggedIn ?? this.loggedIn,
     net: net ?? this.net,
     uploadWatch: uploadWatch ?? this.uploadWatch,
@@ -331,6 +359,9 @@ class CommissioningController extends Notifier<CommissionState> {
   /// 本輪 discover() 已自動把殘留編號歸零，需要再重掃一次（只做一輪）。
   bool _autoResetRescan = false;
 
+  /// 本輪自動重置（重試後）仍失敗的 PTU MAC，跨重掃保留到下一輪 autoReset。
+  final Set<String> _resetFailed = {};
+
   /// Base URL of the backend the login (if any) belongs to.
   String? _loginBase;
 
@@ -372,7 +403,13 @@ class CommissioningController extends Notifier<CommissionState> {
   void _onTopologyChanged(TopologySettingsState next) {
     if (!ref.mounted) return;
     final isStar = next.topology.isStar;
-    final pending = isStar ? state.ptus.where(_isOutOfRange).length : 0;
+    final pending = isStar
+        ? state.ptus
+              .where(
+                (p) => _isOutOfRange(p) && !state.resetFailed.contains(p['mac']),
+              )
+              .length
+        : 0;
     final selected = isStar
         ? state.ptus
               .where(
@@ -1403,7 +1440,10 @@ class CommissioningController extends Notifier<CommissionState> {
     }
     final target = targetPtuCount;
     final isStar = ref.read(topologyProvider).topology.isStar;
-    if (autoReset) _ownerRegistry = null;
+    if (autoReset) {
+      _ownerRegistry = null;
+      _resetFailed.clear();
+    }
     final outOfRange = isStar ? ptus.where(_isOutOfRange).toList() : const [];
     if (autoReset && outOfRange.isNotEmpty) {
       _ownerRegistry = await _siteGatewayIds(generation);
@@ -1417,18 +1457,29 @@ class CommissioningController extends Notifier<CommissionState> {
             message: '發現 ${stale.length} 台殘留編號的 PTU，自動重置中',
           );
           for (final p in stale) {
-            try {
-              final result = await _command(generation, 'assign_device_id', {
-                'mac': p['mac'],
-                'new_id': 255,
-              });
-              if (result['success'] == true) _autoResetRescan = true;
-            } catch (e) {
-              // Cancellation (generation changed / widget disposed) must
-              // still abort the whole discover flow; any other failure
-              // (GatewayFailure or not) just leaves this one PTU blocked
-              // and we move on to the next stale PTU.
-              if (e is GatewayFailure && e.code == 'cancelled') rethrow;
+            final mac = p['mac'].toString();
+            var ok = false;
+            // 實機常見 BLE 133 / provision timeout：每顆自動重試 1 次（間隔 2 秒）。
+            for (int attempt = 0; attempt < 2 && !ok; attempt++) {
+              if (attempt > 0) await _wait(2, generation);
+              try {
+                final result = await _command(generation, 'assign_device_id', {
+                  'mac': mac,
+                  'new_id': 255,
+                });
+                ok = result['success'] == true;
+              } catch (e) {
+                // Cancellation (generation changed / widget disposed) must
+                // still abort the whole discover flow; any other failure
+                // (GatewayFailure or not) just marks this one PTU as a
+                // failed reset and we move on to the next stale PTU.
+                if (e is GatewayFailure && e.code == 'cancelled') rethrow;
+              }
+            }
+            if (ok) {
+              _autoResetRescan = true;
+            } else {
+              _resetFailed.add(mac);
             }
           }
         }
@@ -1439,12 +1490,21 @@ class CommissioningController extends Notifier<CommissionState> {
         .take(target)
         .map((p) => p['mac'].toString())
         .toSet();
-    final pending = isStar ? ptus.where(_isOutOfRange).length : 0;
+    final failed = isStar
+        ? ptus
+              .where((p) => _isOutOfRange(p) && _resetFailed.contains(p['mac']))
+              .map((p) => p['mac'].toString())
+              .toSet()
+        : <String>{};
+    final pending = isStar
+        ? ptus.where(_isOutOfRange).length - failed.length
+        : 0;
     state = state.copy(
       ptus: ptus,
       selected: selected,
       scannedTotal: ptus.length,
       pendingNext: pending,
+      resetFailed: failed,
       starNotice: outOfRange.isNotEmpty && _ownerRegistry == null
           ? starOwnerUnknownText
           : '',
@@ -1495,6 +1555,12 @@ class CommissioningController extends Notifier<CommissionState> {
   /// 直連模式恆為 false。
   bool ptuOutOfRange(Map<String, dynamic> ptu) =>
       ref.read(topologyProvider).topology.isStar && _isOutOfRange(ptu);
+
+  /// 範圍外 PTU 的所屬閘道器是否經後端 fleet-status 確認已登記；只有此時才
+  /// 顯示「已屬於其他閘道器」。
+  bool ptuOwnerConfirmed(Map<String, dynamic> ptu) =>
+      ptuOutOfRange(ptu) &&
+      (_ownerRegistry?.contains(_ownerGateway(ptu)) ?? false);
 
   /// 星狀模式：本機 5 格是否已被「已配置且在範圍內」的 PTU 佔滿，此時若又
   /// 勾了新裝置（未編號），送出前要提示改連別台 gateway。
@@ -1727,6 +1793,9 @@ class CommissioningController extends Notifier<CommissionState> {
       final rows = (latest['items'] as List? ?? [])
           .map((p) => Map<String, dynamic>.from(p as Map))
           .toList();
+      if (fleet?['online'] == true || backendRowsFresh(rows)) {
+        state = state.copy(backendSeenAt: DateTime.now());
+      }
       final before = Map<int, DateTime>.of(previous);
       bool good = install['all_ok'] == true;
       for (final id in ids) {
@@ -2267,6 +2336,9 @@ class CommissioningController extends Notifier<CommissionState> {
       );
       if (stale()) return;
       final rows = (latest['items'] as List? ?? []).cast<Map>();
+      if (ref.mounted && backendRowsFresh(rows)) {
+        state = state.copy(backendSeenAt: DateTime.now());
+      }
       final expected = state.ptus.map((p) => p['device_number']).toSet();
       final complete =
           expected.isNotEmpty &&

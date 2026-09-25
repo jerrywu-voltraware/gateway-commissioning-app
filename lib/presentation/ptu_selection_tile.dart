@@ -12,6 +12,8 @@ class PtuSelectionTile extends StatelessWidget {
     this.result,
     this.blocked = false,
     this.onReset,
+    this.blockedText = '已屬於其他閘道器',
+    this.resetLabel = '重置並納入',
   });
 
   final Map<String, dynamic> ptu;
@@ -24,6 +26,13 @@ class PtuSelectionTile extends StatelessWidget {
 
   /// 「重置並納入」：把編號清掉並重新掃描，讓 [blocked] 的裝置可被勾選。
   final VoidCallback? onReset;
+
+  /// [blocked] 時的說明：後端確認已登記才是「已屬於其他閘道器」；自動重置
+  /// 失敗時改為「重置失敗…」。
+  final String blockedText;
+
+  /// [onReset] 按鈕文字（重置失敗時為「重試」）。
+  final String resetLabel;
 
   String get title => ((ptu['device_number'] as num?) ?? 0) > 0
       ? 'PTU #${ptu['device_number']}'
@@ -116,7 +125,7 @@ class PtuSelectionTile extends StatelessWidget {
                         crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
                           Text(
-                            '已屬於其他閘道器',
+                            blockedText,
                             style: theme.textTheme.bodySmall?.copyWith(
                               color: theme.colorScheme.error,
                             ),
@@ -130,7 +139,7 @@ class PtuSelectionTile extends StatelessWidget {
                                 tapTargetSize:
                                     MaterialTapTargetSize.shrinkWrap,
                               ),
-                              child: const Text('重置並納入'),
+                              child: Text(resetLabel),
                             ),
                         ],
                       ),

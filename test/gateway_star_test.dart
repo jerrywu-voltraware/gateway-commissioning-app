@@ -333,13 +333,19 @@ void main() {
       expect(controller.ptuOutOfRange(failed), isTrue);
       expect(failed['device_number'], 7);
       expect(controller.ptuOutOfRange(reset2), isFalse);
-      expect(state.pendingNext, 1);
+      // Retried once, then counted as a failed reset, not as another
+      // gateway's PTU (gateway 2 is not registered).
+      expect(fake.resets.where((m) => m == failingMac).length, 2);
+      expect(state.pendingNext, 0);
+      expect(state.resetFailed, {failingMac});
+      expect(controller.ptuOwnerConfirmed(failed), isFalse);
+      expect(commissionSummaryText(state), '掃到 3 台，本機配置 3 台，1 台重置失敗');
     },
   );
 
   test(
     'star mode: one stale PTU reporting success:false during auto-reset '
-    'still counts toward pendingNext without failing discover',
+    'counts as a failed reset (not pendingNext) without failing discover',
     () async {
       const failingMac = 'AA:BB:CC:00:00:05';
       final fake = PartialResetFailureGateway(
@@ -357,7 +363,8 @@ void main() {
       final failed = state.ptus.firstWhere((p) => p['mac'] == failingMac);
       expect(controller.ptuOutOfRange(failed), isTrue);
       expect(failed['device_number'], 7);
-      expect(state.pendingNext, 1);
+      expect(state.pendingNext, 0);
+      expect(state.resetFailed, {failingMac});
     },
   );
 
@@ -388,4 +395,67 @@ void main() {
       );
     },
   );
+
+  test(
+    'star mode: a stale PTU failing its first auto-reset is retried and '
+    'then included',
+    () async {
+      const flakyMac = 'AA:BB:CC:00:00:05';
+      final fake = FlakyResetGateway(flakyMac);
+      final (container, controller) = await _connectStar(fake, offline: false);
+      addTearDown(container.dispose);
+      expect(fake.resets.where((m) => m == flakyMac).length, 2);
+      final state = container.read(commissionProvider);
+      expect(state.resetFailed, isEmpty);
+      final ptu = state.ptus.firstWhere((p) => p['mac'] == flakyMac);
+      expect(controller.ptuOutOfRange(ptu), isFalse);
+      expect(state.selected, contains(flakyMac));
+    },
+  );
+
+  test(
+    'star mode: only a backend-registered owner reads as 屬於其他閘道器',
+    () async {
+      final fake = StarInventoryGateway()..registered = {2};
+      final (container, controller) = await _connectStar(fake, offline: false);
+      addTearDown(container.dispose);
+      final state = container.read(commissionProvider);
+      expect(fake.resets, isEmpty);
+      final owned = state.ptus.firstWhere((p) => p['device_number'] == 8);
+      expect(controller.ptuOwnerConfirmed(owned), isTrue);
+      expect(state.resetFailed, isEmpty);
+      expect(state.pendingNext, 1);
+      expect(commissionSummaryText(state), '掃到 3 台，本機配置 3 台，1 台屬於其他閘道器');
+    },
+  );
+
+  test('completion summary hides zero counts', () {
+    const state = CommissionState(scannedTotal: 5, ptus: [{}, {}]);
+    expect(commissionSummaryText(state), '掃到 5 台，本機配置 2 台');
+  });
+}
+
+/// Star mode: [flakyMac]'s first reset fails (BLE 133), the retry succeeds.
+class FlakyResetGateway extends StarInventoryGateway {
+  FlakyResetGateway(this.flakyMac) {
+    nearby = [
+      {'mac': 'AA:BB:CC:00:00:04', 'device_number': 0, 'rssi': -40},
+      {'mac': flakyMac, 'device_number': 7, 'rssi': -42},
+    ];
+  }
+  final String flakyMac;
+  bool _failed = false;
+
+  @override
+  Future<Map<String, dynamic>> command(
+    String op, [
+    Map<String, dynamic> params = const {},
+  ]) async {
+    if (op == 'assign_device_id' && params['mac'] == flakyMac && !_failed) {
+      _failed = true;
+      resets.add(flakyMac);
+      throw const GatewayFailure('timeout');
+    }
+    return super.command(op, params);
+  }
 }

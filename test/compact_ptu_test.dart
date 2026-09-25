@@ -125,4 +125,27 @@ void main() {
     );
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('failed auto-reset tile says so and offers 重試', (tester) async {
+    var tapped = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: PtuSelectionTile(
+            ptu: const {'mac': 'AA:BB', 'device_number': 7},
+            selected: false,
+            onChanged: null,
+            blocked: true,
+            blockedText: resetFailedText,
+            resetLabel: '重試',
+            onReset: () => tapped++,
+          ),
+        ),
+      ),
+    );
+    expect(find.text('重置失敗（連線逾時），請靠近後重試'), findsOneWidget);
+    expect(find.text('已屬於其他閘道器'), findsNothing);
+    await tester.tap(find.text('重試'));
+    expect(tapped, 1);
+  });
 }
