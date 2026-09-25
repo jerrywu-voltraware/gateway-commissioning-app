@@ -325,6 +325,9 @@ String configureLabel(CommissionState s) {
   if (s.resumePending) {
     return rest == 0 ? '重新連線並繼續' : '重新連線並繼續（剩 $rest 台）';
   }
+  // Round 15: a step 7 scan that failed, timed out or found nothing is
+  // over — 「重新掃描」, never a stuck 「掃描中…」.
+  if (s.rescanNeeded && !s.busy && s.step == 4) return rescanLabel;
   // Round 9: everything assigned is not a dead end any more.
   if (rest == 0) {
     // Round 10: a rescan in progress is not 「恢復監控」 with 已選 0/5.
@@ -336,6 +339,10 @@ String configureLabel(CommissionState s) {
 
 /// Step 7 bottom button while a scan is still running.
 const scanningLabel = '掃描中…';
+
+/// Round 15: step 7 bottom button after a scan failed, timed out (e.g. the
+/// get_ble_devices reply lost over BLE) or found no PTU.
+const rescanLabel = '重新掃描';
 
 /// Steps 7/8 bottom button while the automatic reconnect runs (disabled).
 const relinkingLabel = '重新連線中…';
@@ -368,8 +375,58 @@ bool isTransientBackendFailure(Object error) =>
         (error.code == 'network' ||
             (error.code == 'api' && (error.status ?? 0) >= 500)));
 
-/// Step 7 bottom button after the automatic reconnect gave up.
-const rescanAfterLossLabel = '重新連線並掃描 PTU';
+/// Step 7 bottom button after the automatic reconnect gave up. Round 15:
+/// one name for every reconnect after a link loss (steps 7 and 8).
+const rescanAfterLossLabel = '重新連線並繼續';
+
+/// Round 15: step 7 idle link loss — after the first automatic reconnect
+/// (immediate), a loss that recurs is retried after each of these gaps
+/// (5 / 10 / 20 s, at most three retries) before the manual
+/// 「重新連線並繼續」. Tests shorten them.
+List<Duration> step7RetryGaps = const [
+  Duration(seconds: 5),
+  Duration(seconds: 10),
+  Duration(seconds: 20),
+];
+
+/// Round 15: a step 7 loss this soon after an automatic reconnect counts
+/// as the same unstable spell (its retries are not reset).
+Duration step7StableAfter = const Duration(seconds: 60);
+
+/// Step 7 banner while waiting before an automatic retry.
+String step7RetryText(int retry, int total, Duration gap) =>
+    '藍牙連線又中斷，${gap.inSeconds} 秒後自動重新連線（第 $retry/$total 次重試）';
+
+/// Round 15: direct flow (firmware 1.7.20+) polls get_status.direct this
+/// often, at most [directPollLimit] times (~20 s), for the gateway's pick.
+Duration directPollInterval = const Duration(milliseconds: 1500);
+int directPollLimit = 14;
+
+/// Step 7 direct flow busy text while the gateway picks its PTU.
+const directPickingText = '閘道器正在選擇最近的 PTU，請稍候';
+
+/// Round 15: done page / install report line when the direct-mode gateway
+/// is bound to a PTU MAC (「確認後綁定 PTU」, or kept from 「不是這台？」).
+String? directBoundNote(CommissionState s) {
+  final bound = directBoundMacOf(s.config) ?? s.direct?.boundMac;
+  return bound == null ? null : '已綁定 PTU MAC：$bound（閘道器只連這台）';
+}
+
+/// Step 7 direct flow message once the gateway's pick has been polled.
+String directPickMessage(DirectStatus? direct) {
+  final mac = direct?.pickedMac;
+  if (mac != null) {
+    return direct!.ambiguous
+        ? '閘道器選中 PTU $mac，但附近有訊號相近的 PTU，請按「辨識此樁」確認'
+        : '閘道器選中 PTU $mac，請按「辨識此樁」確認是眼前這台';
+  }
+  return switch (direct?.state) {
+    DirectState.noCandidate => '閘道器找不到夠近的 PTU：請確認同樁 PTU 已上電並靠近，再按「重新搜尋」。',
+    DirectState.boundMissing => '閘道器綁定的 PTU 不在場：請確認它已上電，或解除綁定後按「重新搜尋」。',
+    null => '閘道器尚未回報選台結果，請按「重新搜尋」。',
+    _ => '閘道器仍在尋找 PTU，請稍候再按「重新搜尋」。',
+  };
+}
 
 /// Step 7, not busy, phone↔gateway link lost (banner shown).
 bool step7LinkLost(CommissionState s) => !s.busy && _step7Lost(s);
@@ -564,7 +621,18 @@ class CommissionState {
     this.verifyWaiting = const {},
     this.verifySkipped = const {},
     this.directRaw = const {},
+    this.identifyNote = '',
+    this.rescanNeeded = false,
   });
+
+  /// Round 15: shown right beside 「辨識此樁」 — 「已送出，請看樁上燈號」 at
+  /// once, then the acked PTU MAC / RSSI (or that only the gateway blinks).
+  /// Step 7 hides [message], so this is the only place the ack shows there.
+  final String identifyNote;
+
+  /// Round 15: the last step 7 scan failed, timed out or found nothing; the
+  /// bottom button reads [rescanLabel] instead of a stuck 「掃描中…」.
+  final bool rescanNeeded;
 
   /// Last `direct` object the gateway reported (firmware 1.7.20+ in direct
   /// mode); empty for older firmware or before the first read.
@@ -763,8 +831,12 @@ class CommissionState {
     Set<int>? verifyWaiting,
     Set<int>? verifySkipped,
     Map<String, dynamic>? directRaw,
+    String? identifyNote,
+    bool? rescanNeeded,
   }) => CommissionState(
     directRaw: directRaw ?? this.directRaw,
+    identifyNote: identifyNote ?? this.identifyNote,
+    rescanNeeded: rescanNeeded ?? this.rescanNeeded,
     lastCompleted: lastCompleted ?? this.lastCompleted,
     verifyCounts: verifyCounts ?? this.verifyCounts,
     verifyWaiting: verifyWaiting ?? this.verifyWaiting,
@@ -862,6 +934,25 @@ class CommissioningController extends Notifier<CommissionState> {
 
   /// PTU 目標台數：直連固定 1，星狀依「每台 PTU 數」設定（預設 5）。
   int get targetPtuCount => ref.read(topologyProvider).targetCount;
+
+  /// Round 15: direct mode on firmware that picks the PTU itself (1.7.20+,
+  /// `direct_autoconnect_supported`). Step 7 then shows the gateway's own
+  /// pick (「辨識此樁」 → 「是這台，開始監控」) instead of a list the APP
+  /// preselects — round 14: the APP ticked one PTU while the gateway
+  /// connected another. Older firmware keeps the list flow.
+  bool get directFlow =>
+      ref.read(topologyProvider).topology.isDirect &&
+      directAutoConnectSupported(state.config);
+
+  /// Round 15: retries used in the current step 7 unstable spell and when
+  /// its last automatic reconnect succeeded ([step7StableAfter]).
+  int _step7Retries = 0;
+  DateTime? _step7RelinkedAt;
+
+  /// Round 15: the saved record says 「上次配置已完成」; a later run does not
+  /// overwrite it before it reaches the PTU steps (a connect or identify
+  /// from the gateway list left 「上次中斷於第 5 步」 in round 14).
+  bool _completedSticky = false;
   int get site => (state.config['site_id'] as num?)?.toInt() ?? 1;
   int get gateway => (state.config['gateway_id'] as num?)?.toInt() ?? 1;
   String get _path => '/api/gateways/$site/$gateway';
@@ -1306,13 +1397,37 @@ class CommissioningController extends Notifier<CommissionState> {
 
   Future<void> _save() async {
     final shown = _shown(state);
+    final completed = state.step == 7 && state.verified;
+    // Round 15: a finished run keeps 「上次配置已完成」 until a later run
+    // reaches the PTU steps; its resume data is dropped (nothing to resume).
+    if (completed) {
+      _completedSticky = true;
+    } else if (_completedSticky && state.step < 4) {
+      return;
+    } else {
+      _completedSticky = false;
+    }
     final prefs = await SharedPreferences.getInstance();
+    if (completed) {
+      await prefs.setString(
+        _link.demo ? 'demo_progress' : 'progress',
+        jsonEncode({
+          'step': state.step,
+          'shown': shown,
+          'completed': true,
+          'count': state.ptus.length,
+          'site': site,
+          'gateway': gateway,
+        }),
+      );
+      return;
+    }
     await prefs.setString(
       _link.demo ? 'demo_progress' : 'progress',
       jsonEncode({
         'step': state.step,
         'shown': shown,
-        'completed': state.step == 7 && state.verified,
+        'completed': false,
         'count': state.ptus.length,
         'site': site,
         'gateway': gateway,
@@ -1339,6 +1454,7 @@ class CommissioningController extends Notifier<CommissionState> {
         return;
       }
       if (data['completed'] == true) {
+        _completedSticky = true;
         state = state.copy(
           savedResume: false,
           lastCompleted: true,
@@ -1388,6 +1504,7 @@ class CommissioningController extends Notifier<CommissionState> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_link.demo ? 'demo_progress' : 'progress');
     _saved = null;
+    _completedSticky = false;
     if (ref.mounted) {
       state = state.copy(lastCompleted: false, savedResume: false, message: '');
     }
@@ -1543,38 +1660,73 @@ class CommissioningController extends Notifier<CommissionState> {
   /// itself fail. So for target=both a non-ok `ptu_write` is read out of a
   /// successful ack, not caught as an exception — never resent, never
   /// treated as a dropped phone↔gateway link.
+  ///
+  /// Round 15: [CommissionState.identifyNote] (beside the button) reads
+  /// 「已送出，請看樁上燈號」 as soon as it is tapped, then the acked PTU;
+  /// cleared again when the identify fails.
   Future<void> identify({String target = 'both'}) =>
       _run('辨識閘道器', 12, (generation) async {
         if (state.config['identify_supported'] != true) {
           throw const GatewayFailure('identify_unsupported');
         }
-        if (!identifyPtuSupported(state.config)) {
-          await _command(generation, 'identify');
-          state = state.copy(message: '請找出雙閃藍燈的閘道器，6 秒後會恢復原本燈號。');
-          return;
-        }
-        Map<String, dynamic> ack;
+        state = state.copy(identifyNote: identifySentText);
         try {
-          ack = await _command(generation, 'identify', {'target': target});
-        } on GatewayFailure catch (e) {
-          // The gateway's own not_connected means "no PTU connected", not a
-          // phone link loss: never let it trigger the relink handling.
-          // Kept for target=ptu (which does fail outright on it) and as a
-          // safety net for a future/older firmware that fails target=both
-          // too.
-          if (!e.fromGateway || e.code != 'not_connected') rethrow;
-          if (target != 'both') throw const GatewayFailure('identify_no_ptu');
-          await _command(generation, 'identify', {'target': 'gateway'});
-          state = state.copy(message: identifyNoPtuText);
-          return;
+          await _identify(generation, target);
+        } catch (_) {
+          if (ref.mounted) state = state.copy(identifyNote: '');
+          rethrow;
         }
-        final ptuWrite = ack['ptu_write'];
-        state = state.copy(
-          message: ptuWrite == null || ptuWrite == 'ok'
-              ? identifyAckText(ack)
-              : identifyPtuFailedText(ptuWrite.toString()),
-        );
       });
+
+  Future<void> _identify(int generation, String target) async {
+    if (!identifyPtuSupported(state.config)) {
+      await _command(generation, 'identify');
+      state = state.copy(
+        message: '請找出雙閃藍燈的閘道器，6 秒後會恢復原本燈號。',
+        identifyNote: identifyNoteText(const {}),
+      );
+      return;
+    }
+    Map<String, dynamic> ack;
+    try {
+      ack = await _command(generation, 'identify', {'target': target});
+    } on GatewayFailure catch (e) {
+      // The gateway's own not_connected means "no PTU connected", not a
+      // phone link loss: never let it trigger the relink handling.
+      // Kept for target=ptu (which does fail outright on it) and as a
+      // safety net for a future/older firmware that fails target=both
+      // too.
+      if (!e.fromGateway || e.code != 'not_connected') rethrow;
+      if (target != 'both') throw const GatewayFailure('identify_no_ptu');
+      await _command(generation, 'identify', {'target': 'gateway'});
+      state = state.copy(
+        message: identifyNoPtuText,
+        identifyNote: identifyNoteText(const {'ptu_write': 'not_connected'}),
+      );
+      return;
+    }
+    final ptuWrite = ack['ptu_write'];
+    state = state.copy(
+      message: ptuWrite == null || ptuWrite == 'ok'
+          ? identifyAckText(ack)
+          : identifyPtuFailedText(ptuWrite.toString()),
+      identifyNote: identifyNoteText(ack),
+    );
+    // Direct flow: the ack names the PTU that actually blinks. If the
+    // gateway has switched since the pick was shown, show its new pick.
+    final blinked = ack['mac'];
+    final shown = state.selected.firstOrNull;
+    if (directFlow &&
+        state.step == 4 &&
+        blinked != null &&
+        shown != null &&
+        !sameMac(blinked, shown)) {
+      final status = await _command(generation, 'get_status');
+      _takeDirect(status['direct']);
+      _syncDirectPick();
+      state = state.copy(identifyNote: identifyNoteText(ack));
+    }
+  }
 
   Future<void> connect(GatewayPeer peer) async {
     if (state.busy) return;
@@ -2232,7 +2384,21 @@ class CommissioningController extends Notifier<CommissionState> {
     String? base,
     String? environment,
     String? password,
-  }) => _run('確認閘道器持續上線', 90, (generation) async {
+  }) async {
+    await _online(skip, base, environment, password);
+    // Round 15: direct flow — entering step 7 starts the gateway's own PTU
+    // pick at once (max_connections 1), no 「掃描」 tap needed.
+    if (ref.mounted && state.step == 4 && state.error == null && directFlow) {
+      await discover();
+    }
+  }
+
+  Future<void> _online(
+    bool skip,
+    String? base,
+    String? environment,
+    String? password,
+  ) => _run('確認閘道器持續上線', 90, (generation) async {
     final secret = base == null ? '' : _passwordFor(base, password);
     if (!skip && !_loggedIn && base != null && secret.isNotEmpty) {
       _backend = describeBackend(Uri.tryParse(base.trim()));
@@ -2304,6 +2470,9 @@ class CommissioningController extends Notifier<CommissionState> {
     });
     _autoResetRescan = false;
     final before = Set<String>.of(state.selected);
+    if (state.rescanNeeded) {
+      state = state.copy(rescanNeeded: false, error: state.error);
+    }
     await _discover(keep: keep);
     if (ref.mounted && _autoResetRescan && state.error == null) {
       // 殘留編號已歸零：重掃一次讓它們變成可勾選；這次不再自動重置。
@@ -2329,8 +2498,10 @@ class CommissioningController extends Notifier<CommissionState> {
             : state.scanResumePending
             ? phoneLinkLostText
             : state.uploadWatch == UploadWatch.linkLost
-            ? 'Gateway 掃描未完成：藍牙連線已中斷。請靠近 Gateway，再按「重新連線並掃描 PTU」。'
-            : 'Gateway 掃描未完成，請查看錯誤後重新掃描。',
+            ? 'Gateway 掃描未完成：藍牙連線已中斷。請靠近 Gateway，再按「$rescanAfterLossLabel」。'
+            : directFlow
+            ? '閘道器選台未完成，請查看錯誤後按「重新搜尋」。'
+            : 'Gateway 掃描未完成，請查看錯誤後按「$rescanLabel」。',
         error: state.error,
       );
     }
@@ -2339,12 +2510,198 @@ class CommissioningController extends Notifier<CommissionState> {
       final absent = before.where((m) => !seen.contains(m)).length;
       state = state.copy(
         selected: state.selected.where(seen.contains).toSet(),
-        absentNotice: absent > 0 ? absentSelectionText(absent) : '',
+        // Direct flow: the gateway's pick simply replaces the last one.
+        absentNotice: absent > 0 && !directFlow
+            ? absentSelectionText(absent)
+            : '',
       );
+    }
+    // Round 15: a scan that failed (e.g. get_ble_devices lost over BLE),
+    // timed out or found nothing is over: 「重新掃描」 instead of a stuck
+    // 「掃描中…」 (a link loss has its own 「重新連線並繼續」).
+    if (ref.mounted &&
+        state.step == 4 &&
+        !state.busy &&
+        !state.relinking &&
+        !directFlow &&
+        state.ptus.isEmpty &&
+        !_step7Lost(state)) {
+      state = state.copy(rescanNeeded: true, error: state.error);
+    }
+    // A scan the installer started that worked: a later loss gets the full
+    // automatic retries again.
+    if (ref.mounted && !_autoRelinking && state.error == null) {
+      _step7Retries = 0;
+      _step7RelinkedAt = null;
     }
   }
 
-  Future<void> _discover({
+  Future<void> _discover({bool autoReset = true, Set<String>? keep}) =>
+      directFlow
+      ? _directDiscover()
+      : _listDiscover(autoReset: autoReset, keep: keep);
+
+  /// Round 15: step 7 in direct mode on firmware 1.7.20+ — the gateway
+  /// picks the PTU itself (the strongest over its threshold, or the bound
+  /// MAC). Entering step 7 therefore switches it to direct mode at once
+  /// (max_connections 1, BLE scanning on) and polls get_status.direct for
+  /// its pick ([directPollInterval] × [directPollLimit], ~20 s) instead of a
+  /// list the APP preselects (round 14: the APP ticked one PTU, the gateway
+  /// connected another and both ended up #1).
+  Future<void> _directDiscover() =>
+      _run(relinkStep: 4, directPickingText, 45, (generation) async {
+        if (state.uploadWatch == UploadWatch.linkLost || state.resumePending) {
+          await _reconnect(generation);
+          final net = await _command(
+            generation,
+            state.netCheckSupported ? 'get_net_status' : 'get_status',
+          );
+          _absorbTarget(net);
+          _absorbNet(net);
+          _stopWatch(UploadWatch.idle);
+        }
+        state = state.copy(
+          message: directPickingText,
+          ptus: [],
+          selected: {},
+          results: {},
+          missing: [],
+          starNotice: '',
+          identifyNote: '',
+        );
+        final config = await _command(generation, 'get_config');
+        state = state.copy(
+          config: {
+            ...state.config,
+            for (final key in const [
+              'max_connections',
+              'ble_enabled',
+              'upload_paused',
+              'auto_connect_min_rssi',
+              'direct_bind_mac',
+            ])
+              if (config.containsKey(key)) key: config[key],
+          },
+        );
+        if (config['max_connections'] != 1) {
+          await _command(generation, 'set_config', {'max_connections': 1});
+          state = state.copy(config: {...state.config, 'max_connections': 1});
+        }
+        // A new identity (set_site_identity) leaves BLE off until
+        // join_fleet: scanning must run for the gateway to pick. Upload
+        // stays paused until 「是這台，開始監控」 sends join_fleet.
+        if (config['ble_enabled'] == false) {
+          await _command(generation, 'set_ble_enabled', {'enabled': true});
+          state = state.copy(config: {...state.config, 'ble_enabled': true});
+        }
+        await _pollDirectPick(generation);
+        _syncDirectPick();
+        final direct = state.direct;
+        final seen = state.ptus.map((p) => p['mac'].toString()).toSet();
+        state = state.copy(
+          scannedTotal: max(direct?.candidates.length ?? 0, state.ptus.length),
+          pendingNext: 0,
+          resetFailed: {},
+          assignFailed: {
+            for (final e in state.assignFailed.entries)
+              if (seen.contains(e.key)) e.key: e.value,
+          },
+          unassigned: {},
+          resumePending: false,
+          scanResumePending: false,
+          message: directPickMessage(direct),
+        );
+        await _reconcileAssigned(generation, state.ptus);
+      });
+
+  /// Polls get_status.direct until the gateway reports a connected pick
+  /// ([want]: that MAC); false when [directPollLimit] polls pass without,
+  /// or once two polls in a row say no_candidate / bound_missing (the
+  /// gateway keeps scanning; the step 7 refresh shows a later pick).
+  Future<bool> _pollDirectPick(int generation, {String? want}) async {
+    var negative = 0;
+    for (var i = 0; i < directPollLimit; i++) {
+      if (i > 0) {
+        await Future<void>.delayed(directPollInterval);
+        _check(generation);
+      }
+      final status = await _command(generation, 'get_status');
+      _check(generation);
+      _takeDirect(status['direct']);
+      final direct = state.direct;
+      final picked = direct?.pickedMac;
+      if (picked != null && (want == null || sameMac(picked, want))) {
+        return true;
+      }
+      final settled =
+          direct?.state == DirectState.noCandidate ||
+          direct?.state == DirectState.boundMissing;
+      negative = settled ? negative + 1 : 0;
+      if (negative >= 2) return false;
+    }
+    return false;
+  }
+
+  void _takeDirect(Object? direct) {
+    if (!ref.mounted || direct is! Map) return;
+    state = state.copy(
+      directRaw: Map<String, dynamic>.from(direct),
+      error: state.error,
+    );
+  }
+
+  /// Direct flow: state.ptus / selected follow the gateway's own pick (one
+  /// row, or none); a new pick clears the identify note.
+  void _syncDirectPick() {
+    if (!ref.mounted || !directFlow || state.step != 4) return;
+    final direct = state.direct;
+    final mac = direct?.pickedMac;
+    if (mac == null) {
+      if (state.ptus.isEmpty && state.selected.isEmpty) return;
+      state = state.copy(
+        ptus: const [],
+        selected: const {},
+        identifyNote: '',
+        error: state.error,
+      );
+      return;
+    }
+    final current = state.ptus.length == 1 ? state.ptus.single : null;
+    if (current != null && sameMac(current['mac'], mac)) {
+      final key = current['mac'].toString();
+      final rssi = direct!.ptuRssi;
+      state = state.copy(
+        ptus: [
+          {
+            ...current,
+            'connected': true,
+            if (rssi != null && rssi < 0) 'rssi': rssi,
+            if (rssi != null && rssi < 0) 'rssi_age_ms': 0,
+            'rssi_stale': false,
+          },
+        ],
+        selected: {key},
+        error: state.error,
+      );
+      return;
+    }
+    state = state.copy(
+      ptus: [
+        {
+          'mac': mac,
+          'rssi': direct!.ptuRssi,
+          'device_number': direct.ptuDeviceNumber ?? 0,
+          'connected': true,
+          'rssi_age_ms': 0,
+        },
+      ],
+      selected: {mac},
+      identifyNote: '',
+      error: state.error,
+    );
+  }
+
+  Future<void> _listDiscover({
     bool autoReset = true,
     Set<String>? keep,
   }) => _run(relinkStep: 4, 'Gateway 正在掃描周邊 PTU，請稍候', 75, (generation) async {
@@ -3003,7 +3360,95 @@ class CommissioningController extends Notifier<CommissionState> {
         final config = await _command(generation, 'get_config');
         state = state.copy(config: {...state.config, ...config});
         await _absorbDirect(generation);
+        _syncDirectPick();
       });
+
+  /// Round 15 「是這台，開始監控」 (direct flow): number the PTU the gateway
+  /// itself picked (#1), bind it when 「確認後綁定 PTU」 is on, then
+  /// join_fleet and wait for its data — no waiting for a PTU the APP chose.
+  /// The pick is read again first: when the gateway switched meanwhile the
+  /// new one is shown and nothing is assigned (confirm it with 「辨識此樁」).
+  Future<void> confirmDirectPick() async {
+    await _confirmDirectPick();
+    // A link loss before step 8 began (re-reading the pick) is a step 7
+    // loss: the same automatic reconnect as there.
+    if (ref.mounted && !_autoRelinking && _linkLostAt(4)) {
+      await _autoRelink(4);
+    }
+  }
+
+  Future<void> _confirmDirectPick() =>
+      _step8Run('正在指派 #$directPtuId 並開始監控', 150, (generation) async {
+        if (!directFlow) throw const GatewayFailure('direct_unsupported');
+        final shown = state.selected.firstOrNull;
+        final status = await _command(generation, 'get_status');
+        _check(generation);
+        _takeDirect(status['direct']);
+        final picked = state.direct?.pickedMac;
+        _syncDirectPick();
+        if (picked == null) {
+          state = state.copy(message: directPickMessage(state.direct));
+          throw const GatewayFailure('direct_pick_missing');
+        }
+        if (shown == null || !sameMac(shown, picked)) {
+          state = state.copy(
+            message: '閘道器目前連的是 PTU $picked，請先按「辨識此樁」確認是眼前這台，再按「是這台，開始監控」。',
+          );
+          return;
+        }
+        final row = state.ptus.single;
+        final mac = row['mac'].toString();
+        final done =
+            state.assignedOk.any((m) => sameMac(m, mac)) &&
+            (row['device_number'] as num?)?.toInt() == directPtuId;
+        _provisioningMayBeActive = true;
+        if (!done) {
+          _doneAssign.clear();
+          _inflightAssign.clear();
+        }
+        state = state.copy(
+          step: 5,
+          results: done ? {mac: '已指派 #$directPtuId'} : {},
+          assignFailed: {},
+          unassigned: {},
+          assignedOk: done ? {mac} : {},
+          resumePending: false,
+          monitoringOk: false,
+          identifyNote: '',
+        );
+        final failed = done
+            ? <String, String>{}
+            : await _assignAll(generation, [row]);
+        final bound = directBoundMacOf(state.config);
+        if (failed.isEmpty &&
+            ref.read(topologyProvider).directBindOnConfirm &&
+            (bound == null || !sameMac(bound, mac))) {
+          await _command(generation, 'set_config', {'direct_bind_mac': mac});
+          state = state.copy(config: {...state.config, 'direct_bind_mac': mac});
+        }
+        await _startMonitoring(generation, [row], failed);
+      });
+
+  /// Round 15 「不是這台？」 → a candidate: bind the gateway to [mac] (a
+  /// temporary binding that makes it switch) and wait until it reports that
+  /// PTU connected; the installer then identifies it again. The binding is
+  /// kept afterwards — the installer chose this PTU explicitly — and the
+  /// done page names it.
+  Future<void> switchDirectPick(String mac) async {
+    await _run(relinkStep: 4, '正在讓閘道器改連 PTU $mac', 45, (generation) async {
+      if (!directFlow) throw const GatewayFailure('direct_unsupported');
+      state = state.copy(identifyNote: '');
+      await _command(generation, 'set_config', {'direct_bind_mac': mac});
+      state = state.copy(config: {...state.config, 'direct_bind_mac': mac});
+      final ok = await _pollDirectPick(generation, want: mac);
+      _syncDirectPick();
+      if (!ok) throw const GatewayFailure('direct_switch_failed');
+      state = state.copy(message: '閘道器已改連 PTU $mac（已綁定），請按「辨識此樁」確認是眼前這台。');
+    });
+    if (ref.mounted && !_autoRelinking && _linkLostAt(4)) {
+      await _autoRelink(4);
+    }
+  }
 
   /// [id] is a number this gateway assigns: #1 in direct mode, else its
   /// five-number range starting at [first].
@@ -3427,7 +3872,9 @@ class CommissioningController extends Notifier<CommissionState> {
               .map((p) => p['mac'].toString())
               .toList(),
           message: connected.isEmpty
-              ? '未連上任何 PTU，請確認 PTU 電源與距離後重試；Gateway 仍維持監控。'
+              ? directFlow
+                    ? '閘道器還沒收到這台 PTU 的資料，請確認 PTU 電源後再按「是這台，開始監控」重試；Gateway 仍維持監控。'
+                    : '未連上任何 PTU，請確認 PTU 電源與距離後重試；Gateway 仍維持監控。'
               : '已調整為 ${connected.length} 台；請重新選擇已連線裝置或修復缺少的 PTU。',
         );
         throw const GatewayFailure('incomplete');
@@ -3498,6 +3945,8 @@ class CommissioningController extends Notifier<CommissionState> {
     // unreachable / timeout); never counted as the PTUs being idle.
     final outage = Stopwatch();
     var retries = 0;
+    // Round 15: the per-PTU progress stays visible under the retry line.
+    var progress = '';
     Future<T> backend<T>(Future<T> Function() call) async {
       while (true) {
         try {
@@ -3518,7 +3967,10 @@ class CommissioningController extends Notifier<CommissionState> {
           }
           retries++;
           state = state.copy(
-            message: backendRetryText(retries),
+            message: [
+              backendRetryText(retries),
+              if (progress.isNotEmpty) progress,
+            ].join('\n'),
             error: state.error,
           );
           await Future<void>.delayed(backendRetryGap);
@@ -3578,6 +4030,12 @@ class CommissioningController extends Notifier<CommissionState> {
       verifyCounts: {for (final id in ids) id: counts[id] ?? 0},
       verifyWaiting: resume ? null : {},
       verifySkipped: resume ? null : {},
+    );
+    progress = verifyProgressText(
+      ids,
+      counts,
+      state.verifyWaiting,
+      state.verifySkipped,
     );
     var elapsed = start;
     try {
@@ -3655,8 +4113,9 @@ class CommissioningController extends Notifier<CommissionState> {
             cause: cause,
           ),
         );
+        progress = verifyProgressText(ids, counts, waiting, skipped);
         state = state.copy(
-          message: verifyProgressText(ids, counts, waiting, skipped),
+          message: progress,
           verifyCounts: Map.of(counts),
           verifyWaiting: waiting,
         );
@@ -3673,7 +4132,7 @@ class CommissioningController extends Notifier<CommissionState> {
               : '\n未驗證（已略過）：${skippedIds.map((id) => "#$id").join('、')}，'
                     '請現場確認 ${skippedIds.map((id) => "PTU #$id").join('、')} 電源與位置';
           _reportBody =
-              '${_link.demo ? "模擬安裝報告（非實機驗證）" : "安裝報告"}\n站點 $site / 閘道器 $gateway\n${byDeviceNumber(state.ptus).map((p) => "#${p['device_number']}  ${p['mac']}").join('\n')}\n驗證時間：${DateTime.now().toIso8601String()}\n驗證後端：$_backend\n每台連續三次資料更新通過$skippedNote';
+              '${_link.demo ? "模擬安裝報告（非實機驗證）" : "安裝報告"}\n站點 $site / 閘道器 $gateway\n${byDeviceNumber(state.ptus).map((p) => "#${p['device_number']}  ${p['mac']}").join('\n')}${directBoundNote(state) == null ? '' : '\n${directBoundNote(state)}'}\n驗證時間：${DateTime.now().toIso8601String()}\n驗證後端：$_backend\n每台連續三次資料更新通過$skippedNote';
           state = state.copy(
             step: 7,
             verified: true,
@@ -4205,13 +4664,14 @@ class CommissioningController extends Notifier<CommissionState> {
         !_foreground ||
         state.step != 4 ||
         state.peer == null ||
-        state.ptus.isEmpty ||
+        (state.ptus.isEmpty && !directFlow) ||
         state.busy ||
         _pollInFlight ||
         _rssiInFlight ||
         state.uploadWatch == UploadWatch.linkLost) {
       return;
     }
+    if (directFlow) return _refreshDirect();
     _rssiInFlight = true;
     final generation = _generation;
     try {
@@ -4246,6 +4706,36 @@ class CommissioningController extends Notifier<CommissionState> {
     } catch (error) {
       if (!ref.mounted || generation != _generation) return;
       _markRssiStale();
+      if (error is GatewayFailure &&
+          (error.code == 'disconnected' ||
+              error.code == 'not_connected' ||
+              error.code == 'phone_link_lost')) {
+        _stepSevenLinkLost(error);
+      }
+    } finally {
+      _rssiInFlight = false;
+    }
+  }
+
+  /// Round 15 direct flow at step 7: follow the gateway's own pick (and its
+  /// RSSI) with get_status alone — a new pick (e.g. after a threshold
+  /// change, or the PTU dropped) replaces the one shown.
+  Future<void> _refreshDirect() async {
+    _rssiInFlight = true;
+    final generation = _generation;
+    try {
+      _lastLinkTraffic = DateTime.now();
+      final status = await _link.command('get_status');
+      if (!ref.mounted ||
+          generation != _generation ||
+          state.busy ||
+          state.step != 4) {
+        return;
+      }
+      _takeDirect(status['direct']);
+      _syncDirectPick();
+    } catch (error) {
+      if (!ref.mounted || generation != _generation) return;
       if (error is GatewayFailure &&
           (error.code == 'disconnected' ||
               error.code == 'not_connected' ||
@@ -4369,24 +4859,53 @@ class CommissioningController extends Notifier<CommissionState> {
     _autoRelinking = true;
     state = state.copy(relinking: true, error: state.error);
     try {
-      for (var round = 0; round < autoRelinkRounds; round++) {
-        final done = state.assignedOk.length;
-        if (step == 4) {
-          await discover(keep: keep);
-        } else {
+      if (step == 4) {
+        await _autoRelinkStep7(keep);
+      } else {
+        for (var round = 0; round < autoRelinkRounds; round++) {
+          final done = state.assignedOk.length;
           await resumeAssign();
-        }
-        // A loss that recurs at once is not chased (round 12: one round).
-        if (step == 4 ||
-            !_linkLostAt(step) ||
-            state.assignedOk.length <= done) {
-          break;
+          // A loss that recurs without progress is not chased.
+          if (!_linkLostAt(step) || state.assignedOk.length <= done) break;
         }
       }
     } finally {
       _autoRelinking = false;
       if (ref.mounted) {
         state = state.copy(relinking: false, error: state.error);
+      }
+    }
+  }
+
+  /// Round 15 (step 7): the first automatic reconnect runs at once. A loss
+  /// that recurs — during that rescan, or idle within [step7StableAfter] of
+  /// the last automatic reconnect (round 14: two drops 11 s apart ended in
+  /// a tap) — is retried after each [step7RetryGaps] gap (5 / 10 / 20 s);
+  /// only then does the banner wait for 「重新連線並繼續」. A reconnect that
+  /// gave up ('reconnect_failed') is not retried.
+  Future<void> _autoRelinkStep7(Set<String>? keep) async {
+    final last = _step7RelinkedAt;
+    final spell =
+        last != null && DateTime.now().difference(last) < step7StableAfter;
+    if (!spell) _step7Retries = 0;
+    var wait = spell;
+    while (true) {
+      if (wait) {
+        if (_step7Retries >= step7RetryGaps.length) return;
+        final gap = step7RetryGaps[_step7Retries++];
+        state = state.copy(
+          message: step7RetryText(_step7Retries, step7RetryGaps.length, gap),
+          error: state.error,
+        );
+        await Future<void>.delayed(gap);
+        if (!ref.mounted || state.step != 4 || !_linkLostAt(4)) return;
+      }
+      wait = true;
+      await discover(keep: keep);
+      if (!ref.mounted) return;
+      if (!_linkLostAt(4)) {
+        if (state.error == null) _step7RelinkedAt = DateTime.now();
+        return;
       }
     }
   }

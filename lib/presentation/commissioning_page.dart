@@ -638,6 +638,15 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     final targetPtuCount = topologySettings.targetCount;
     final shown = displayStep(state, env);
     final selectingPtus = state.step == 4 || state.step == 5;
+    // Round 15: direct flow step 7 — the gateway's own pick with
+    // 「辨識此樁」/「是這台，開始監控」; a link loss or a resume keeps the
+    // reconnect button below.
+    final directPicking =
+        state.step == 4 &&
+        controller.directFlow &&
+        !state.relinking &&
+        !state.resumePending &&
+        !step7LinkLost(state);
     return PopScope(
       canPop: !state.busy,
       child: Scaffold(
@@ -723,69 +732,81 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Text(
-                          '已選 ${state.selected.length} / $targetPtuCount 台',
-                          key: const Key('ptu-selection-count'),
-                        ),
-                        const SizedBox(height: 6),
-                        if (state.assignFailed.isNotEmpty && !state.busy) ...[
-                          FilledButton.tonal(
-                            key: const Key('ptu-retry-failed'),
-                            onPressed: controller.retryFailedAssign,
-                            child: Text('重試這 ${state.assignFailed.length} 台'),
-                          ),
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: TextButton(
-                              key: const Key('ptu-reconfigure-all'),
-                              onPressed: () => _reconfigureAll(controller),
-                              child: const Text('全部重新配置'),
+                        if (directPicking) ...[
+                          const DirectPickActions(),
+                          if (state.busy)
+                            TextButton(
+                              key: const Key('ptu-stop'),
+                              onPressed: controller.stopStep8,
+                              child: const Text('取消操作'),
                             ),
+                        ] else ...[
+                          Text(
+                            '已選 ${state.selected.length} / $targetPtuCount 台',
+                            key: const Key('ptu-selection-count'),
                           ),
                           const SizedBox(height: 6),
-                        ],
-                        FilledButton(
-                          key: const Key('ptu-configure'),
-                          onPressed: state.relinking
-                              ? null
-                              : step7LinkLost(state)
-                              ? () => controller.discover()
-                              : !state.busy &&
-                                    configureLabel(state) != scanningLabel &&
-                                    (state.resumePending ||
-                                        state.selected.isNotEmpty)
-                              ? () {
-                                  if (!state.resumePending &&
-                                      configureTargets(state).isEmpty) {
-                                    // Round 9: all assigned → 開始驗證 /
-                                    // 恢復監控, never a disabled dead end.
-                                    controller.finishConfigured();
-                                    return;
+                          if (state.assignFailed.isNotEmpty && !state.busy) ...[
+                            FilledButton.tonal(
+                              key: const Key('ptu-retry-failed'),
+                              onPressed: controller.retryFailedAssign,
+                              child: Text('重試這 ${state.assignFailed.length} 台'),
+                            ),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: TextButton(
+                                key: const Key('ptu-reconfigure-all'),
+                                onPressed: () => _reconfigureAll(controller),
+                                child: const Text('全部重新配置'),
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                          ],
+                          FilledButton(
+                            key: const Key('ptu-configure'),
+                            onPressed: state.relinking
+                                ? null
+                                : step7LinkLost(state) ||
+                                      (!state.busy &&
+                                          configureLabel(state) == rescanLabel)
+                                ? () => controller.discover()
+                                : !state.busy &&
+                                      configureLabel(state) != scanningLabel &&
+                                      (state.resumePending ||
+                                          state.selected.isNotEmpty)
+                                ? () {
+                                    if (!state.resumePending &&
+                                        configureTargets(state).isEmpty) {
+                                      // Round 9: all assigned → 開始驗證 /
+                                      // 恢復監控, never a disabled dead end.
+                                      controller.finishConfigured();
+                                      return;
+                                    }
+                                    final warning = controller.starFullWarning;
+                                    if (warning != null) {
+                                      _snack(warning);
+                                      return;
+                                    }
+                                    if (state.resumePending) {
+                                      controller.resumeAssign();
+                                    } else {
+                                      controller.configurePtus(
+                                        skip: state.assignedOk,
+                                      );
+                                    }
                                   }
-                                  final warning = controller.starFullWarning;
-                                  if (warning != null) {
-                                    _snack(warning);
-                                    return;
-                                  }
-                                  if (state.resumePending) {
-                                    controller.resumeAssign();
-                                  } else {
-                                    controller.configurePtus(
-                                      skip: state.assignedOk,
-                                    );
-                                  }
-                                }
-                              : null,
-                          child: Text(configureLabel(state)),
-                        ),
-                        if (state.busy)
-                          TextButton(
-                            key: const Key('ptu-stop'),
-                            // Step 8: stop but keep the progress (round 7b:
-                            // a cancel here dropped back to step 2).
-                            onPressed: controller.stopStep8,
-                            child: const Text('取消操作'),
+                                : null,
+                            child: Text(configureLabel(state)),
                           ),
+                          if (state.busy)
+                            TextButton(
+                              key: const Key('ptu-stop'),
+                              // Step 8: stop but keep the progress (round 7b:
+                              // a cancel here dropped back to step 2).
+                              onPressed: controller.stopStep8,
+                              child: const Text('取消操作'),
+                            ),
+                        ],
                       ],
                     ),
                   ),
@@ -862,7 +883,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                       peer: state.peer!,
                       busy: state.busy,
                     ),
-                  if (state.peer != null && state.step >= 2)
+                  if (state.peer != null && state.step >= 2 && !directPicking)
                     state.config['identify_supported'] == true
                         ? OutlinedButton.icon(
                             onPressed: state.busy
@@ -879,6 +900,17 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                             ),
                           )
                         : const Text('連線時藍燈呼吸；更新韌體後可使用雙閃辨識。'),
+                  if (selectingPtus &&
+                      !directPicking &&
+                      state.identifyNote.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        state.identifyNote,
+                        key: const Key('identify-note'),
+                        style: TextStyle(color: colors.primary),
+                      ),
+                    ),
                   if (state.message.isNotEmpty &&
                       (!selectingPtus ||
                           state.busy ||
@@ -1155,14 +1187,14 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     CommissioningController c,
     bool enabled,
   ) => [
-    if (s.lastCompleted)
+    if (s.lastCompleted || s.savedResume)
       OutlinedButton.icon(
         key: const Key('restart-after-done'),
         icon: const Icon(Icons.restart_alt, size: 20),
         onPressed: enabled ? c.clearCompleted : null,
         label: const Text('重新開始'),
       ),
-    if (s.lastCompleted) const SizedBox(height: 16),
+    if (s.lastCompleted || s.savedResume) const SizedBox(height: 16),
     if (s.savedResume) ...[
       FilledButton.icon(
         key: const Key('saved-resume'),
@@ -1431,6 +1463,8 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         ];
       case 4:
       case 5:
+        // Round 15: direct flow step 7 shows the gateway's own pick only.
+        final directStep7 = c.directFlow && s.step == 4;
         return [
           if (s.reconnectFailed && !s.busy)
             Padding(
@@ -1453,26 +1487,34 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                 ],
               ),
             ),
-          OutlinedButton.icon(
-            icon: const Icon(Icons.refresh, size: 20),
-            onPressed: enabled ? c.discover : null,
-            label: Text(
-              s.relinking
-                  ? autoRelinkingText
-                  : s.uploadWatch == UploadWatch.linkLost || s.resumePending
-                  ? '重新連線並掃描 PTU'
-                  : '由 Gateway 重新掃描 PTU',
+          if (!directStep7) ...[
+            OutlinedButton.icon(
+              icon: const Icon(Icons.refresh, size: 20),
+              onPressed: enabled ? c.discover : null,
+              label: Text(
+                s.relinking
+                    ? autoRelinkingText
+                    : s.uploadWatch == UploadWatch.linkLost || s.resumePending
+                    ? rescanAfterLossLabel
+                    : '由 Gateway 重新掃描 PTU',
+              ),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Text(
-              '已連線 ${s.ptus.where((p) => p['connected'] == true).length} 台／周邊未連線 ${s.ptus.where((p) => p['connected'] != true).length} 台',
-              style: Theme.of(context).textTheme.bodySmall,
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(
+                '已連線 ${s.ptus.where((p) => p['connected'] == true).length} 台／周邊未連線 ${s.ptus.where((p) => p['connected'] != true).length} 台',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
             ),
-          ),
-          if (topology.isDirect) const DirectStatusPanel(),
-          if (topology.isDirect && s.ptus.isEmpty && !s.busy)
+          ],
+          if (directStep7) const DirectStatusPanel(),
+          // Old firmware direct list only; a failed scan has its own error
+          // (round 14: 「未掃到 PTU」 beside a get_ble_devices timeout).
+          if (topology.isDirect &&
+              !c.directFlow &&
+              s.ptus.isEmpty &&
+              !s.busy &&
+              s.error == null)
             Padding(
               key: const Key('direct-no-ptu-hint'),
               padding: const EdgeInsets.only(bottom: 8),
@@ -1517,33 +1559,34 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                 style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
             ),
-          ...s.ptus.map((ptu) {
-            final blocked = c.ptuOutOfRange(ptu);
-            final resetFailed = s.resetFailed.contains(ptu['mac']);
-            return PtuSelectionTile(
-              blockedText: resetFailed
-                  ? resetFailedText
-                  : c.ptuOwnerConfirmed(ptu)
-                  ? '已屬於其他閘道器'
-                  : '編號不在本機範圍，所屬閘道器未確認',
-              resetLabel: resetFailed ? '重試' : '重置並納入',
-              key: ValueKey('ptu-${ptu['mac']}'),
-              ptu: ptu,
-              selected: s.selected.contains(ptu['mac']),
-              result: s.results[ptu['mac']],
-              blocked: blocked,
-              // 直連模式：已自動勾選 RSSI 最強的一台，這裡只留「配置並開始監控」
-              // 當確認鈕，不再開放改選。星狀模式：範圍外（屬於其他閘道器）的
-              // PTU 不能直接勾，要先「重置並納入」。
-              onChanged: enabled && !topology.isDirect && !blocked
-                  ? (value) => c.select(ptu['mac'].toString(), value)
-                  : null,
-              onReset: enabled && blocked
-                  ? () => c.resetAndInclude(ptu['mac'].toString())
-                  : null,
-            );
-          }),
-          if (s.ptus.length > 1)
+          if (!directStep7)
+            ...s.ptus.map((ptu) {
+              final blocked = c.ptuOutOfRange(ptu);
+              final resetFailed = s.resetFailed.contains(ptu['mac']);
+              return PtuSelectionTile(
+                blockedText: resetFailed
+                    ? resetFailedText
+                    : c.ptuOwnerConfirmed(ptu)
+                    ? '已屬於其他閘道器'
+                    : '編號不在本機範圍，所屬閘道器未確認',
+                resetLabel: resetFailed ? '重試' : '重置並納入',
+                key: ValueKey('ptu-${ptu['mac']}'),
+                ptu: ptu,
+                selected: s.selected.contains(ptu['mac']),
+                result: s.results[ptu['mac']],
+                blocked: blocked,
+                // 直連模式：已自動勾選 RSSI 最強的一台，這裡只留「配置並開始監控」
+                // 當確認鈕，不再開放改選。星狀模式：範圍外（屬於其他閘道器）的
+                // PTU 不能直接勾，要先「重置並納入」。
+                onChanged: enabled && !topology.isDirect && !blocked
+                    ? (value) => c.select(ptu['mac'].toString(), value)
+                    : null,
+                onReset: enabled && blocked
+                    ? () => c.resetAndInclude(ptu['mac'].toString())
+                    : null,
+              );
+            }),
+          if (s.ptus.length > 1 && !directStep7)
             Align(
               alignment: Alignment.centerLeft,
               child: TextButton.icon(
@@ -1553,15 +1596,16 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                 label: const Text('依訊號重新排序'),
               ),
             ),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            dense: true,
-            // Values update in place; the order changes only on a rescan or
-            // 「依訊號重新排序」, so a tap never lands on a row that moved.
-            title: const Text('動態 RSSI · 每 5 秒更新（順序不變）'),
-            value: s.autoRssi,
-            onChanged: enabled ? c.setAutoRssi : null,
-          ),
+          if (!directStep7)
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              // Values update in place; the order changes only on a rescan or
+              // 「依訊號重新排序」, so a tap never lands on a row that moved.
+              title: const Text('動態 RSSI · 每 5 秒更新（順序不變）'),
+              value: s.autoRssi,
+              onChanged: enabled ? c.setAutoRssi : null,
+            ),
           if (s.missing.isNotEmpty) Text('尚未連線：${s.missing.join('、')}'),
           ExpansionTile(
             tilePadding: EdgeInsets.zero,
@@ -1572,7 +1616,11 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             children: [
               Text(
                 '由 Gateway 掃描附近的 PTU，再透過藍牙把清單傳回手機。'
-                '${topology.isDirect ? "直連模式：已自動選定訊號最強的一台。" : "最多可選 ${ref.read(topologyProvider).starCount} 台。"}'
+                '${c.directFlow
+                    ? "直連模式：由閘道器自己選最近的 PTU（門檻內最強，或已綁定的那台），這裡只顯示它的選擇；請用「辨識此樁」確認是眼前這台，不是的話按「不是這台？」改選。"
+                    : topology.isDirect
+                    ? "直連模式：已自動選定訊號最強的一台。"
+                    : "最多可選 ${ref.read(topologyProvider).starCount} 台。"}'
                 'RSSI 是 Gateway 與 PTU 之間的訊號；未連線裝置顯示掃描值。「上次」表示暫停或過期，「快取」表示韌體未提供讀值時間。韌體 1.7.5 起可在配置期間量測；RSSI — 表示尚無有效讀值。',
               ),
               StepList(current: displayStep(s, env)),
@@ -1706,6 +1754,14 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               key: Key('health-pending'),
               padding: EdgeInsets.only(top: 8),
               child: Text(healthPendingText),
+            ),
+          // Round 15: the binding (「確認後綁定 PTU」, or kept from 「不是這
+          // 台？」) is named so a PTU swap later is not a mystery.
+          if (topology.isDirect && directBoundNote(s) != null)
+            Padding(
+              key: const Key('direct-bound-note'),
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(directBoundNote(s)!),
             ),
           // After a switch of environment: log in there to check the data.
           if (!s.loggedIn) ...[
