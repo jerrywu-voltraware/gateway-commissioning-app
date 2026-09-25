@@ -717,7 +717,10 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                         ),
                         if (state.busy)
                           TextButton(
-                            onPressed: controller.cancel,
+                            key: const Key('ptu-stop'),
+                            // Step 8: stop but keep the progress (round 7b:
+                            // a cancel here dropped back to step 2).
+                            onPressed: controller.stopStep8,
                             child: const Text('取消操作'),
                           ),
                       ],
@@ -847,6 +850,15 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                                     ),
                                     onPressed: _resumeAction(state, controller),
                                     label: const Text('重新連線並繼續'),
+                                  ),
+                                ),
+                              if (state.monitorUnconfirmed && !state.busy)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 8),
+                                  child: OutlinedButton(
+                                    key: const Key('monitor-skip'),
+                                    onPressed: controller.skipMonitorConfirm,
+                                    child: const Text('略過'),
                                   ),
                                 ),
                               if (state.errorDetail != null)

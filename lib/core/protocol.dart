@@ -255,6 +255,8 @@ class GatewayFailure implements Exception {
     'reconnect_failed' => reconnectFailedText,
     'timeout' => '等待超時，請確認裝置與網路後重試。',
     'cancelled' => '操作已取消，可從最近完成的步驟重試。',
+    'monitor_unconfirmed' =>
+      '30 秒內未確認 Gateway 已恢復監控，可按「重新連線並繼續」重試，或「略過」直接驗證資料。',
     'conflict' => '此站點或編號已被使用，請選擇其他編號。',
     'replace_unsupported' => '後端版本不支援取代舊機，請改用下一個編號。裝置設定未變更。',
     'replace_pending' => '後台已登記為新機，但寫入裝置失敗。請重新執行配置，系統會沿用取代設定。',
