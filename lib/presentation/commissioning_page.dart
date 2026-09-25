@@ -1435,10 +1435,22 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                   : null,
             );
           }),
+          if (s.ptus.length > 1)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                key: const Key('ptu-resort'),
+                icon: const Icon(Icons.sort, size: 18),
+                onPressed: enabled ? c.sortPtusBySignal : null,
+                label: const Text('依訊號重新排序'),
+              ),
+            ),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             dense: true,
-            title: const Text('動態 RSSI · 每 5 秒更新'),
+            // Values update in place; the order changes only on a rescan or
+            // 「依訊號重新排序」, so a tap never lands on a row that moved.
+            title: const Text('動態 RSSI · 每 5 秒更新（順序不變）'),
             value: s.autoRssi,
             onChanged: enabled ? c.setAutoRssi : null,
           ),

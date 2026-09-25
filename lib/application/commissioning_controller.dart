@@ -97,6 +97,15 @@ final ptuSignalIntervalProvider = Provider<Duration>(
 );
 
 /// Gateway network fields copied from get_net_status (firmware cmd_handler.c).
+/// Connected PTUs first, then strongest RSSI (missing RSSI last). Used for
+/// the default selection, trimming and 「依訊號重新排序」.
+int comparePtuForSelection(Map<String, dynamic> a, Map<String, dynamic> b) {
+  final connection =
+      (b['connected'] == true ? 1 : 0) - (a['connected'] == true ? 1 : 0);
+  if (connection != 0) return connection;
+  return ((b['rssi'] as num?) ?? -127).compareTo((a['rssi'] as num?) ?? -127);
+}
+
 const gatewayNetKeys = ['wifi_state', 'ip', 'ssid', 'rssi', 'uptime_sec'];
 
 /// 「沿用目前站點」 refused because the gateway cannot upload yet.
@@ -667,17 +676,14 @@ class CommissioningController extends Notifier<CommissionState> {
     _trimSelectionToTarget(next.targetCount);
   }
 
-  /// Keeps the RSSI-strongest [target] selected PTUs, dropping the rest;
+  /// Keeps [target] selected PTUs (connected first, then strongest RSSI),
+  /// dropping the rest;
   /// a no-op when already within the target (never auto-adds).
   void _trimSelectionToTarget(int target) {
     if (!ref.mounted || state.selected.length <= target) return;
     final kept =
         state.ptus.where((p) => state.selected.contains(p['mac'])).toList()
-          ..sort(
-            (a, b) => ((b['rssi'] as num?) ?? -127).compareTo(
-              (a['rssi'] as num?) ?? -127,
-            ),
-          );
+          ..sort(comparePtuForSelection);
     state = state.copy(
       selected: kept.take(target).map((p) => p['mac'].toString()).toSet(),
     );
@@ -1870,11 +1876,14 @@ class CommissioningController extends Notifier<CommissionState> {
         }
       }
     }
-    final selected = ptus
-        .where((p) => !isStar || !_isOutOfRange(p))
-        .take(target)
-        .map((p) => p['mac'].toString())
-        .toSet();
+    // Connected in-range PTUs are always preselected first (round 7: a
+    // connected #1 was left unticked); the order shown stays [ptus].
+    final selected =
+        (ptus.where((p) => !isStar || !_isOutOfRange(p)).toList()
+              ..sort(comparePtuForSelection))
+            .take(target)
+            .map((p) => p['mac'].toString())
+            .toSet();
     final failed = isStar
         ? ptus
               .where((p) => _isOutOfRange(p) && _resetFailed.contains(p['mac']))
@@ -3030,6 +3039,16 @@ class CommissioningController extends Notifier<CommissionState> {
   void setAutoRssi(bool value) {
     state = state.copy(autoRssi: value, error: state.error);
     if (!value) _markRssiStale();
+  }
+
+  /// 「依訊號重新排序」: the only place besides a fresh scan where the PTU
+  /// list order changes; periodic RSSI refreshes keep the order.
+  void sortPtusBySignal() {
+    if (!ref.mounted || state.busy || state.ptus.length < 2) return;
+    state = state.copy(
+      ptus: List.of(state.ptus)..sort(comparePtuForSelection),
+      error: state.error,
+    );
   }
 
   Future<void> refreshPtuRssi() async {
