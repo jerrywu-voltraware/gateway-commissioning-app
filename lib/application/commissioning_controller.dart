@@ -165,6 +165,40 @@ const reconnectingText = '正在重新連線閘道器';
 /// Overall budget for re-opening the phone↔gateway link.
 const reconnectBudget = Duration(seconds: 30);
 
+/// Shown while the phone's Bluetooth was just turned on (「重新連線並繼續」).
+const waitingBluetoothText = '等待藍牙就緒';
+
+/// Longest wait for a just-enabled phone Bluetooth before reconnecting.
+const bluetoothReadyBudget = Duration(seconds: 10);
+
+/// Done page: before the first health check has an answer.
+const healthPendingText = '正在確認資料上傳…';
+
+/// Normalised MAC for comparisons (case and separators ignored).
+String macKey(Object? mac) =>
+    (mac?.toString() ?? '').toLowerCase().replaceAll(RegExp('[^0-9a-f]'), '');
+
+bool sameMac(Object? a, Object? b) => macKey(a) == macKey(b);
+
+const wrongDeviceText = '指派到錯誤裝置，請重試';
+
+/// Firmware 1.7.15+ assign ack check: `mac` (the PTU written) and
+/// `device_number` must match the request; absent fields (older firmware)
+/// keep the old behaviour. Returns the failure reason, or null when fine.
+String? assignAckMismatch(Map<String, dynamic> ack, String mac, int id) {
+  final written = ack['mac'];
+  if (written != null && !sameMac(written, mac)) return wrongDeviceText;
+  final number = ack['device_number'];
+  if (number != null && (number is! num || number.toInt() != id)) {
+    return '裝置回報編號 #$number 與指派 #$id 不符，請重試';
+  }
+  if (ack['verified'] == false) return '裝置未確認寫入編號 #$id，請重試';
+  return null;
+}
+
+String readbackMismatchText(int actual, int wanted) =>
+    '回讀編號為 #$actual，不是指派的 #$wanted，請重試';
+
 /// Display labels for a saved [CommissionState.step] (restore prompt).
 const _savedStepLabels = {
   1: '第 2 步（找到閘道器）',
@@ -177,6 +211,20 @@ const _savedStepLabels = {
 
 /// Restore prompt after the APP was killed; [done] are the PTU numbers
 /// already assigned, [pending] the selected ones still to configure.
+/// Step 8 bottom button: after a phone link loss only the rest is left.
+String configureLabel(CommissionState s) {
+  if (s.resumePending) {
+    final rest = s.selected
+        .where((m) => s.unassigned.contains(m) || s.assignFailed.containsKey(m))
+        .length;
+    if (rest > 0) return '繼續配置剩餘 $rest 台';
+  }
+  return '配置 ${s.selected.length} 台並開始監控';
+}
+
+/// Step 10 message right after verification, before any health answer.
+const verifiedText = '開通驗證通過，已恢復自動監控';
+
 String resumeText(int step, List<int> done, int pending) {
   final where = _savedStepLabels[step];
   if (where == null) return '已保留先前進度，請重新連線以核對裝置現況。';
@@ -470,6 +518,7 @@ class CommissioningController extends Notifier<CommissionState> {
   late UploadWatchTiming _timing;
   Timer? _poll, _grace;
   int _pollTicks = 0;
+  int _abnormalStreak = 0;
   bool _pollInFlight = false;
   Timer? _rssiTimer;
   bool _rssiInFlight = false;
@@ -1871,7 +1920,12 @@ class CommissioningController extends Notifier<CommissionState> {
           'mac': mac,
           'new_id': id,
         });
-        if (result['success'] == true) return null;
+        if (result['success'] == true) {
+          // Firmware 1.7.15+: the ack names the PTU actually written.
+          reason = assignAckMismatch(result, mac, id);
+          if (reason == null) return null;
+          continue;
+        }
         reason = ptuFailureText(result['error'] ?? result['result']);
       } catch (e) {
         if (e is GatewayFailure && e.code == 'cancelled') rethrow;
@@ -1954,7 +2008,59 @@ class CommissioningController extends Notifier<CommissionState> {
       );
       await _save();
     }
+    await _readBack(generation, targets, results, failed);
     return failed;
+  }
+
+  /// After the assignments, reads get_ble_devices once and checks every
+  /// assigned MAC carries the number the APP sent; a mismatch (the firmware
+  /// wrote another PTU) goes to [failed]. Connected ones show 已連線 #n.
+  Future<void> _readBack(
+    int generation,
+    List<Map<String, dynamic>> targets,
+    Map<String, String> results,
+    Map<String, String> failed,
+  ) async {
+    if (targets.isEmpty) return;
+    final List<Map<String, dynamic>> devices;
+    try {
+      final response = await _command(generation, 'get_ble_devices');
+      devices = (response['devices'] as List? ?? [])
+          .map((d) => Map<String, dynamic>.from(d as Map))
+          .toList();
+    } catch (e) {
+      if (e is GatewayFailure && e.code == 'cancelled') rethrow;
+      _check(generation);
+      if (isPhoneLinkFailure(e)) {
+        state = state.copy(assignFailed: Map.of(failed), resumePending: true);
+        await _save();
+        throw GatewayFailure('phone_link_lost', detail: e.toString());
+      }
+      return; // Old firmware or a busy gateway: keep the ack result.
+    }
+    _check(generation);
+    for (final entry in Map.of(_doneAssign).entries) {
+      final found = devices.where((d) => sameMac(d['mac'], entry.key));
+      if (found.isEmpty) continue;
+      final device = found.first;
+      final actual = (device['device_number'] as num?)?.toInt();
+      if (actual != null && actual != entry.value) {
+        final reason = readbackMismatchText(actual, entry.value);
+        _doneAssign.remove(entry.key);
+        failed[entry.key] = reason;
+        results[entry.key] = '指派失敗：$reason';
+        for (final p in state.ptus.where((p) => p['mac'] == entry.key)) {
+          p['device_number'] = actual;
+        }
+      } else if (device['connected'] == true) {
+        results[entry.key] = '已連線 #${entry.value}';
+      }
+    }
+    state = state.copy(
+      results: Map.of(results),
+      assignFailed: {...state.assignFailed, ...failed},
+    );
+    await _save();
   }
 
   /// [skip]: PTUs already assigned before the APP restarted (not re-sent).
@@ -1989,6 +2095,12 @@ class CommissioningController extends Notifier<CommissionState> {
   Future<void> _reconnect(int generation) async {
     final peer = state.peer;
     if (peer == null) throw const GatewayFailure('reconnect_failed');
+    final Object link = _link;
+    if (link is BluetoothReadiness && await link.adapterSettling()) {
+      state = state.copy(message: waitingBluetoothText);
+      await link.waitAdapterReady(bluetoothReadyBudget);
+      _check(generation);
+    }
     state = state.copy(message: reconnectingText);
     try {
       await _relink(generation, peer).timeout(reconnectBudget);
@@ -2274,9 +2386,10 @@ class CommissioningController extends Notifier<CommissionState> {
           verified: true,
           online: true,
           report: _report(),
-          message: '開通驗證通過，已恢復自動監控',
+          message: verifiedText,
         );
         _health?.cancel();
+        _abnormalStreak = 0;
         _health = Timer.periodic(
           const Duration(seconds: 15),
           (_) => unawaited(refreshHealth()),
@@ -2786,10 +2899,15 @@ class CommissioningController extends Notifier<CommissionState> {
                 ((r['error_num'] as num?) ?? 0) > 0 ||
                 ((r['lag_seconds'] as num?) ?? 999) > 300,
           );
+      // The first answer right after verification may still lag behind:
+      // report 資料有異常 only when it is seen twice in a row.
+      _abnormalStreak = abnormal ? _abnormalStreak + 1 : 0;
       if (ref.mounted) {
         state = state.copy(
           online: fresh,
-          message: abnormal
+          message: abnormal && _abnormalStreak < 2
+              ? healthPendingText
+              : abnormal
               ? '資料有異常，請檢查 PTU 與網路。'
               : fresh
               ? '資料持續更新'

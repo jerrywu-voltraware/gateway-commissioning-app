@@ -648,7 +648,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                         ],
                         FilledButton(
                           key: const Key('ptu-configure'),
-                          onPressed: !state.busy && state.selected.isNotEmpty
+                          onPressed: !state.busy && state.resumePending
+                              ? controller.resumeAssign
+                              : !state.busy && state.selected.isNotEmpty
                               ? () {
                                   final warning = controller.starFullWarning;
                                   if (warning != null) {
@@ -658,7 +660,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                                   controller.configurePtus();
                                 }
                               : null,
-                          child: Text('配置 ${state.selected.length} 台並開始監控'),
+                          child: Text(configureLabel(state)),
                         ),
                         if (state.busy)
                           TextButton(
@@ -1411,6 +1413,31 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             _startVerify,
             enabled && s.ptus.any((p) => s.selected.contains(p['mac'])),
           ),
+          // The status/error banner is at the top of the page; repeat it
+          // here so a tap at the bottom never looks like nothing happened.
+          if (s.busy || s.error != null)
+            Padding(
+              key: const Key('verify-feedback'),
+              padding: const EdgeInsets.only(top: 12),
+              child: s.busy
+                  ? Row(
+                      children: [
+                        const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(child: Text('${s.message}（${s.seconds} 秒）')),
+                      ],
+                    )
+                  : Text(
+                      s.error!,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
+            ),
         ];
       default:
         return [
@@ -1424,6 +1451,14 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             demo ? '模擬開通完成' : '開通完成',
             style: Theme.of(context).textTheme.headlineSmall,
           ),
+          // Until the first health check answers, say so instead of a
+          // premature 資料有異常.
+          if (s.loggedIn && s.message == verifiedText)
+            const Padding(
+              key: Key('health-pending'),
+              padding: EdgeInsets.only(top: 8),
+              child: Text(healthPendingText),
+            ),
           // After a switch of environment: log in there to check the data.
           if (!s.loggedIn) ...[
             const SizedBox(height: 16),
