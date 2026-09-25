@@ -218,6 +218,7 @@ class GatewayFailure implements Exception {
         'Gateway 已收到切換指令並重新開機，但 45 秒內未能重新連上藍牙。'
             '請靠近 Gateway，按「結束並重新選擇閘道器」重新連線後看「連線狀態」。',
       'target_unsupported' => legacyTargetText(detail),
+      'ble_error' => bleErrorText(detail),
       _ => _baseMessage,
     };
   }
@@ -241,6 +242,8 @@ class GatewayFailure implements Exception {
     'identify_unsupported' => '此韌體尚未支援辨識燈號，請先更新韌體。連線時的呼吸燈仍可協助辨識。',
     'location_off' => '此版本 Android 搜尋藍牙需要定位服務，請開啟手機定位後重新搜尋。',
     'disconnected' || 'not_connected' => '與閘道器的連線已中斷，請靠近後重新連線。',
+    'phone_link_lost' => phoneLinkLostText,
+    'reconnect_failed' => reconnectFailedText,
     'timeout' => '等待超時，請確認裝置與網路後重試。',
     'cancelled' => '操作已取消，可從最近完成的步驟重試。',
     'conflict' => '此站點或編號已被使用，請選擇其他編號。',
@@ -263,6 +266,26 @@ class GatewayFailure implements Exception {
       '${endpoint == null ? '' : ', $endpoint'}'
       '${detail == null ? '' : ', $detail'})';
 }
+
+/// Step 8: the phone's BLE link to the gateway dropped (not a PTU failure).
+const phoneLinkLostText = '手機與閘道器的藍牙連線中斷，請靠近閘道器後按「重新連線並繼續」';
+
+/// Reconnecting the phone to the gateway did not succeed in time.
+const reconnectFailedText = '重新連線失敗，請靠近閘道器後重試，或回到找閘道器。';
+
+/// Phone could not open the BLE link (UniversalBleException, e.g. GATT 133).
+String bleErrorText(String? detail) {
+  final code = RegExp(r'^(\d{1,3}) ').firstMatch(detail ?? '')?.group(1);
+  return code == null
+      ? '無法連上閘道器（藍牙錯誤），請靠近閘道器後重試'
+      : '無法連上閘道器（藍牙錯誤 $code），請靠近閘道器後重試';
+}
+
+/// True for failures meaning the phone↔gateway BLE link itself is down.
+bool isPhoneLinkFailure(Object? error) =>
+    error is GatewayFailure &&
+    const {'not_connected', 'disconnected', 'phone_link_lost', 'reconnect_failed', 'ble_error'}
+        .contains(error.code);
 
 /// Fail ack → [GatewayFailure]: a map result (e.g. assign_device_id's
 /// `{mac, success:false, error}`) uses its `error` text as the code and keeps

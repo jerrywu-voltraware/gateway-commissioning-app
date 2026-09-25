@@ -13,6 +13,13 @@ Object normalizeBleError(Object error) {
       error.code == UniversalBleErrorCode.deviceDisconnected) {
     return const GatewayFailure('disconnected');
   }
+  if (error is UniversalBleException) {
+    var text = error.toString().replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (text.length > 160) text = '${text.substring(0, 160)}…';
+    // Prefer the GATT status (e.g. 133) as the first number in the detail.
+    final gatt = text.contains('133') ? '133 ' : '';
+    return GatewayFailure('ble_error', detail: '$gatt$text');
+  }
   return error;
 }
 
