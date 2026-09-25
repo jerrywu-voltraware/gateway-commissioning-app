@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
-import 'dart:typed_data';
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:flutter/foundation.dart';
 import 'package:universal_ble/universal_ble.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../core/protocol.dart';
@@ -47,6 +47,7 @@ class BleGatewayLink
       /* No plugin (tests): only the current state is checked. */
     }
   }
+
   AvailabilityState? _adapter;
   DateTime? _poweredOnAt;
 
@@ -280,9 +281,57 @@ class BleGatewayLink
     }
   }
 
+  /// Connect retries after the first attempt (interval [retryGap]).
+  static const connectRetries = 2;
+  @visibleForTesting
+  static Duration staleSettle = const Duration(milliseconds: 500);
+  @visibleForTesting
+  static Duration retryGap = const Duration(milliseconds: 1500);
+  @visibleForTesting
+  static Duration rescanWindow = const Duration(seconds: 3);
+
+  /// Disconnects a leftover GATT client for [device] (errors ignored), then
+  /// gives the stack [staleSettle] to release it.
+  Future<void> _dropStale(String device) async {
+    try {
+      await UniversalBle.disconnect(
+        device,
+        timeout: const Duration(seconds: 5),
+      );
+    } catch (_) {}
+    await Future<void>.delayed(staleSettle);
+  }
+
+  /// Scans up to [rescanWindow] until [device] is advertised again, so the
+  /// Android stack knows the address before the next connect.
+  Future<void> _rediscover(String device) async {
+    final seen = Completer<void>();
+    StreamSubscription<BleDevice>? sub;
+    try {
+      sub = UniversalBle.scanStream.listen((result) {
+        if (result.deviceId == device && !seen.isCompleted) seen.complete();
+      }, onError: (_) {});
+      await UniversalBle.startScan();
+      await seen.future.timeout(rescanWindow, onTimeout: () {});
+    } catch (_) {
+      /* Scan unavailable: just try the connect again. */
+    } finally {
+      try {
+        await UniversalBle.stopScan();
+      } catch (_) {}
+      await sub?.cancel();
+    }
+  }
+
   Future<void> _connectPeer(GatewayPeer peer, int epoch) async {
     final device = peer.id;
     _device = device;
+    // After the phone's Bluetooth was turned off and on, Android keeps a
+    // stale GATT client for this address and forgets it from its scan
+    // cache: a bare connect then fails with "Failed to connect" until the
+    // APP restarts (round 6). Drop any stale client first, and before each
+    // retry re-find the gateway with a short scan.
+    await _dropStale(device);
     for (int attempt = 0; ; attempt++) {
       if (epoch != _epoch) throw const GatewayFailure('cancelled');
       try {
@@ -292,12 +341,11 @@ class BleGatewayLink
         );
         break;
       } catch (error) {
-        if (attempt >= 2 || !error.toString().contains('133')) rethrow;
-        await UniversalBle.disconnect(
-          device,
-          timeout: const Duration(seconds: 5),
-        );
-        await Future<void>.delayed(Duration(seconds: 1 << attempt));
+        if (attempt >= connectRetries) rethrow;
+        await _dropStale(device);
+        await Future<void>.delayed(retryGap);
+        if (epoch != _epoch) throw const GatewayFailure('cancelled');
+        await _rediscover(device);
       }
     }
     if (epoch != _epoch) throw const GatewayFailure('cancelled');
