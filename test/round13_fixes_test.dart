@@ -411,10 +411,14 @@ void main() {
       expect(s.step, 7);
       expect(s.verified, isTrue);
       final messages = states.map((x) => x.message).toList();
-      expect(
-        messages,
-        containsAll([for (var n = 1; n <= 3; n++) backendRetryText(n)]),
-      );
+      // Round 15: the retry line is on top, the per-PTU progress below it.
+      for (var n = 1; n <= 3; n++) {
+        expect(
+          messages.any((m) => m.startsWith('${backendRetryText(n)}\n資料驗證 #')),
+          isTrue,
+          reason: 'retry $n with progress',
+        );
+      }
       // Counts never fell back while the backend was retried.
       final seen = <int, int>{};
       for (final x in states) {
@@ -521,7 +525,7 @@ void main() {
         linkLostHint(lost.copy(relinking: true)),
         '手機和 Gateway 的藍牙已中斷，$autoRelinkingText',
       );
-      expect(linkLostHint(lost), contains('請按「重新連線並掃描 PTU」'));
+      expect(linkLostHint(lost), contains('請按「重新連線並繼續」'));
       expect(
         linkLostHint(const CommissionState(step: 5, resumePending: true)),
         contains('請按「重新連線並繼續」'),

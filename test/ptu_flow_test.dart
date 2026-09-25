@@ -78,6 +78,16 @@ Future<(ProviderContainer, CommissioningController)> connect(
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  // Round 15: these cases pin one automatic step 7 reconnect; the retries
+  // after a recurring loss (step7RetryGaps) are covered in
+  // round15_direct_flow_test.dart.
+  late List<Duration> keepGaps;
+  setUp(() {
+    keepGaps = step7RetryGaps;
+    step7RetryGaps = const [];
+  });
+  tearDown(() => step7RetryGaps = keepGaps);
+
   test(
     'empty existing station asks Gateway to discover before verification',
     () async {
@@ -218,7 +228,7 @@ void main() {
       // Round 12: the automatic reconnect + rescan already ran (and failed
       // again); the banner and the bottom button both offer the retry.
       expect(fake.connects, 2);
-      final retry = find.text('重新連線並掃描 PTU').first;
+      final retry = find.text(rescanAfterLossLabel).first;
       await tester.ensureVisible(retry);
       fake.failScan = false;
       await tester.tap(retry);

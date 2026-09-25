@@ -160,7 +160,8 @@ void main() {
       expect(direct.state.hint, contains('已綁定的 PTU 不在場'));
 
       fake.config['direct_bind_mac'] = '';
-      await c.configurePtus();
+      // Round 15: the gateway connects by itself once a PTU is near enough.
+      fake.devices.first['rssi'] = -40;
       await c.rescanPtus();
       direct = container.read(commissionProvider).direct!;
       expect(direct.state, DirectState.connected);
@@ -190,6 +191,9 @@ void main() {
       );
       expect(find.textContaining('已綁定的 PTU 不在場'), findsWidgets);
       expect(find.byKey(const Key('direct-unbind')), findsOneWidget);
+      // Round 15: candidates only under 「改選其他 PTU」 / 「不是這台？」.
+      await tester.tap(find.byKey(const Key('direct-not-this')));
+      await tester.pump();
       expect(
         find.byKey(const ValueKey('direct-candidate-AA:BB:CC:00:00:01')),
         findsOneWidget,
@@ -206,7 +210,8 @@ void main() {
         }
       });
       expect(fake.sent('set_config').last, {'direct_bind_mac': ''});
-      expect(c.directConnectedMac, isNull);
+      // Round 15: unbound, the gateway connects the nearest PTU by itself.
+      expect(c.directConnectedMac, 'AA:BB:CC:00:00:01');
     });
   });
 
@@ -228,7 +233,9 @@ void main() {
       expect(fake.sent('set_config'), hasLength(before));
       expect(container.read(commissionProvider).error, contains('無法綁定'));
 
-      await c.configurePtus();
+      // Round 15: back to a threshold the demo PTU passes; the gateway
+      // connects it by itself.
+      await c.setDirectMinRssi(-55);
       await c.rescanPtus();
       final mac = c.directConnectedMac;
       expect(mac, isNotNull);

@@ -487,6 +487,13 @@ class LinkDropResetGateway extends StarInventoryGateway {
 }
 
 void linkDropMain() {
+  // Round 15: one automatic reconnect pinned (retries covered elsewhere).
+  late List<Duration> keepGaps;
+  setUp(() {
+    keepGaps = step7RetryGaps;
+    step7RetryGaps = const [];
+  });
+  tearDown(() => step7RetryGaps = keepGaps);
   test(
     'star mode: phone link loss during auto-reset stops the loop at once and '
     'offers 重新連線並繼續; earlier resets are kept',
