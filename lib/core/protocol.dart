@@ -69,12 +69,12 @@ class GatewayFailure implements Exception {
        expected = null,
        cause = null;
 
-  /// Fail ack sent by the gateway firmware over BLE.
-  const GatewayFailure.gateway(String text)
+  /// Fail ack sent by the gateway firmware over BLE; [detail] keeps the raw
+  /// ack result when it was not a plain string.
+  const GatewayFailure.gateway(String text, {this.detail})
     : code = text,
       status = null,
       endpoint = null,
-      detail = null,
       backend = null,
       fromGateway = true,
       expected = null,
@@ -184,7 +184,17 @@ class GatewayFailure implements Exception {
   String get message {
     if (code == 'upload_target') return uploadTargetFailureText(detail ?? '');
     if (fromGateway && !_knownCodes.contains(code)) {
-      return code.isEmpty ? 'Gateway 回報失敗（未提供原因）。' : 'Gateway 回報失敗：$code';
+      if (code.isEmpty) return 'Gateway 回報失敗（未提供原因）。';
+      final lower = code.toLowerCase();
+      if (lower.contains('133') ||
+          lower.contains('connect') ||
+          lower.contains('discovery')) {
+        return 'PTU 連線失敗，請確認 PTU 電源與距離';
+      }
+      if (lower.contains('timeout')) return 'PTU 沒有回應';
+      // Never show a raw JSON ack in the banner (it stays in detail).
+      if (code.contains('{')) return 'Gateway 回報失敗，請查看詳細資訊。';
+      return 'Gateway 回報失敗：$code';
     }
     return switch (code) {
       'api' when status != null => _httpMessage,
@@ -235,8 +245,7 @@ class GatewayFailure implements Exception {
     'cancelled' => '操作已取消，可從最近完成的步驟重試。',
     'conflict' => '此站點或編號已被使用，請選擇其他編號。',
     'replace_unsupported' => '後端版本不支援取代舊機，請改用下一個編號。裝置設定未變更。',
-    'replace_pending' =>
-      '後台已登記為新機，但寫入裝置失敗。請重新執行配置，系統會沿用取代設定。',
+    'replace_pending' => '後台已登記為新機，但寫入裝置失敗。請重新執行配置，系統會沿用取代設定。',
     'new_site_required' => '請輸入與目前站點不同的新站點 ID。',
     'wifi_failed' => '新 WiFi 連線未成功，請檢查密碼與訊號後重試。',
     'no_devices' => '未找到 PTU。請確認已上電並靠近閘道器後重掃。',
@@ -253,6 +262,27 @@ class GatewayFailure implements Exception {
       '${status == null ? '' : ', $status'}'
       '${endpoint == null ? '' : ', $endpoint'}'
       '${detail == null ? '' : ', $detail'})';
+}
+
+/// Fail ack → [GatewayFailure]: a map result (e.g. assign_device_id's
+/// `{mac, success:false, error}`) uses its `error` text as the code and keeps
+/// the raw JSON as detail.
+GatewayFailure gatewayAckFailure(Object? result) {
+  if (result is String && result.trimLeft().startsWith('{')) {
+    try {
+      result = jsonDecode(result);
+    } on FormatException {
+      // keep the text
+    }
+  }
+  if (result is Map) {
+    final error = result['error'] ?? result['reason'] ?? result['message'];
+    return GatewayFailure.gateway(
+      error?.toString() ?? '',
+      detail: jsonEncode(result),
+    );
+  }
+  return GatewayFailure.gateway(result?.toString() ?? '');
 }
 
 /// Byte framing keeps split UTF-8 characters intact and respects JSON strings.

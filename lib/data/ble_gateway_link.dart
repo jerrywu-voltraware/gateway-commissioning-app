@@ -372,7 +372,7 @@ class BleGatewayLink
       }
       final frame = await response;
       if (frame['status'] != 'ok') {
-        throw GatewayFailure.gateway(frame['result']?.toString() ?? '');
+        throw gatewayAckFailure(frame['result']);
       }
       dynamic payload = frame['result'];
       if (payload is String) {
