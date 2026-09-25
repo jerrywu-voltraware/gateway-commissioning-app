@@ -25,12 +25,12 @@ class DroppingLink extends DemoSystem {
   final commands = <String>[];
 
   @override
-  Future<void> connect(GatewayPeer peer) async {
+  Future<void> connect(GatewayPeer peer, {void Function(String stage)? onStage}) async {
     if (failConnect) {
       throw const GatewayFailure('ble_error', detail: '133 Unknown Error 133');
     }
     down = false;
-    await super.connect(peer);
+    await super.connect(peer, onStage: onStage);
   }
 
   @override

@@ -270,19 +270,29 @@ class BleGatewayLink
   }
 
   @override
-  Future<void> connect(GatewayPeer peer) async {
+  Future<void> connect(GatewayPeer peer, {void Function(String stage)? onStage}) async {
     await disconnect();
     final epoch = _epoch;
     try {
-      await _connectPeer(peer, epoch);
+      await _connectPeer(peer, epoch, onStage);
     } catch (error) {
       if (epoch == _epoch) await disconnect();
       throw normalizeBleError(error);
     }
   }
 
+  // ---- Retry/timeout budget ----
+  // Worst case (all attempts fail): connectTimeout * (connectRetries + 1)
+  // + (retryGap + rescanWindow) * connectRetries
+  //   = 12s * 3 + 4.5s * 2 = 45s.
+  // The callers budget above this with headroom for the outer machinery:
+  // commissioning_controller._relink times out at 50s and the overall
+  // commissioning_controller.reconnectBudget (used by _reconnect) is 60s.
+  // Keep all three numbers in sync when tuning retry behaviour.
   /// Connect retries after the first attempt (interval [retryGap]).
   static const connectRetries = 2;
+  @visibleForTesting
+  static Duration connectTimeout = const Duration(seconds: 12);
   @visibleForTesting
   static Duration staleSettle = const Duration(milliseconds: 500);
   @visibleForTesting
@@ -323,7 +333,11 @@ class BleGatewayLink
     }
   }
 
-  Future<void> _connectPeer(GatewayPeer peer, int epoch) async {
+  Future<void> _connectPeer(
+    GatewayPeer peer,
+    int epoch, [
+    void Function(String stage)? onStage,
+  ]) async {
     final device = peer.id;
     _device = device;
     // After the phone's Bluetooth was turned off and on, Android keeps a
@@ -331,17 +345,18 @@ class BleGatewayLink
     // cache: a bare connect then fails with "Failed to connect" until the
     // APP restarts (round 6). Drop any stale client first, and before each
     // retry re-find the gateway with a short scan.
+    onStage?.call('清除舊連線');
     await _dropStale(device);
     for (int attempt = 0; ; attempt++) {
       if (epoch != _epoch) throw const GatewayFailure('cancelled');
+      if (attempt > 0) onStage?.call('第 $attempt 次重試');
+      onStage?.call('正在連線閘道器');
       try {
-        await UniversalBle.connect(
-          device,
-          timeout: const Duration(seconds: 15),
-        );
+        await UniversalBle.connect(device, timeout: connectTimeout);
         break;
       } catch (error) {
         if (attempt >= connectRetries) rethrow;
+        onStage?.call('找不到閘道器，重新掃描中');
         await _dropStale(device);
         await Future<void>.delayed(retryGap);
         if (epoch != _epoch) throw const GatewayFailure('cancelled');

@@ -82,7 +82,8 @@ class DemoSystem implements GatewayLink, GatewayApi {
     const GatewayPeer('demo-gateway', 'GIOS-S1-GW01', -42),
   ];
   @override
-  Future<void> connect(GatewayPeer peer) async {
+  Future<void> connect(GatewayPeer peer, {void Function(String stage)? onStage}) async {
+    onStage?.call('正在連線閘道器');
     connects++;
     if (rebooting) {
       // Booted again: the Wi-Fi is joined from scratch.

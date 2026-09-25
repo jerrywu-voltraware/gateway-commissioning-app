@@ -8,7 +8,11 @@ abstract class GatewayLink {
   bool get demo;
   Future<void> prepare();
   Future<List<GatewayPeer>> scan();
-  Future<void> connect(GatewayPeer peer);
+  /// [onStage] (optional) reports human-readable progress as the link is
+  /// (re)established, e.g. for a reconnect banner: "清除舊連線" →
+  /// "正在連線閘道器" → (on a failed attempt) "找不到閘道器，重新掃描中" →
+  /// "第 n 次重試" → "正在連線閘道器" ...
+  Future<void> connect(GatewayPeer peer, {void Function(String stage)? onStage});
   Future<Map<String, dynamic>> command(
     String op, [
     Map<String, dynamic> params = const {},

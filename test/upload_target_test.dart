@@ -26,14 +26,14 @@ class TargetGateway extends DemoSystem {
   final paths = <String>[];
 
   @override
-  Future<void> connect(GatewayPeer peer) async {
+  Future<void> connect(GatewayPeer peer, {void Function(String stage)? onStage}) async {
     await connectGate?.future;
     if (failConnects > 0) {
       failConnects--;
       connects++;
       throw StateError('GATT 133');
     }
-    await super.connect(peer);
+    await super.connect(peer, onStage: onStage);
   }
 
   @override

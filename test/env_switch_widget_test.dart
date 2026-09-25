@@ -77,9 +77,9 @@ class SimGateway extends DemoSystem {
   }
 
   @override
-  Future<void> connect(GatewayPeer peer) async {
+  Future<void> connect(GatewayPeer peer, {void Function(String stage)? onStage}) async {
     await connectGate?.future;
-    await super.connect(peer);
+    await super.connect(peer, onStage: onStage);
   }
 
   @override

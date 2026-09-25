@@ -162,8 +162,11 @@ const notAssignedLinkText = '尚未指派（手機與閘道器斷線）';
 /// Shown while the phone re-opens the BLE link to the gateway.
 const reconnectingText = '正在重新連線閘道器';
 
-/// Overall budget for re-opening the phone↔gateway link.
-const reconnectBudget = Duration(seconds: 50);
+/// Overall budget for re-opening the phone↔gateway link. Must stay above
+/// [BleGatewayLink]'s own worst-case retry budget (45s, see
+/// ble_gateway_link.dart) plus headroom for _relink's own overhead; keep it
+/// in sync with _reconnectBudget below.
+const reconnectBudget = Duration(seconds: 60);
 
 /// Shown while the phone's Bluetooth was just turned on (「重新連線並繼續」).
 const waitingBluetoothText = '等待藍牙就緒';
@@ -2897,13 +2900,26 @@ class CommissioningController extends Notifier<CommissionState> {
     );
   });
 
-  /// Reconnects a link that dropped while idle (no reboot involved).
+  /// Reconnects a link that dropped while idle (no reboot involved). Times
+  /// out above the link's own worst-case retry budget (45s, see
+  /// ble_gateway_link.dart); keep in sync with [reconnectBudget] above.
+  static const _relinkBudget = Duration(seconds: 50);
+
   Future<void> _relink(int generation, GatewayPeer peer) async {
     await _link.disconnect();
     _check(generation);
     try {
       // The link itself retries (stale client drop, rescan, 3 attempts).
-      await _link.connect(peer).timeout(const Duration(seconds: 45));
+      await _link
+          .connect(
+            peer,
+            onStage: (stage) {
+              if (generation == _generation) {
+                state = state.copy(message: stage);
+              }
+            },
+          )
+          .timeout(_relinkBudget);
     } on GatewayFailure {
       rethrow;
     } catch (_) {
