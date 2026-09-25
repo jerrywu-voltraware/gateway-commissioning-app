@@ -375,14 +375,14 @@ void main() {
       expect(s.step, 4);
     });
 
-    test('partial success sets max_connections to the success count', () async {
+    test('partial success keeps max_connections at the star range (5)', () async {
       final fake = AckLink()..ackOverride = {'verified': false};
       final (container, c) = await ready(fake);
       addTearDown(container.dispose);
       final macs = fake.devices.map((d) => d['mac'].toString()).toList();
       fake.failing.add(macs[2]);
       await c.configurePtus();
-      expect(fake.config['max_connections'], 2);
+      expect(fake.config['max_connections'], 5);
       expect(fake.commands, contains('join_fleet'));
     });
 
@@ -437,7 +437,7 @@ void main() {
       await c.configurePtus();
       final s = container.read(commissionProvider);
       expect(s.resumePending, isTrue);
-      expect(configureLabel(s), '配置 2 台並開始監控');
+      expect(configureLabel(s), '重新連線並繼續（剩 2 台）');
     });
 
     test('assigned and connected PTUs show 已連線 #n', () async {
@@ -467,7 +467,7 @@ void main() {
       expect(container.read(commissionProvider).error, isNull);
     });
 
-    testWidgets('done page says 正在確認資料上傳 before the first health check', (
+    testWidgets('done page skips 正在確認資料上傳 when verify saw a heartbeat', (
       tester,
     ) async {
       final fake = DroppingLink();
@@ -486,7 +486,9 @@ void main() {
       await tester.runAsync(() => c.verify('https://example.invalid', ''));
       await tester.pumpAndSettle();
       expect(container.read(commissionProvider).step, 7);
-      expect(find.byKey(const Key('health-pending')), findsOneWidget);
+      // Step 9 already recorded a fresh heartbeat: show 上傳中 directly.
+      expect(container.read(commissionProvider).backendSeenAt, isNotNull);
+      expect(find.byKey(const Key('health-pending')), findsNothing);
       expect(find.textContaining('資料有異常'), findsNothing);
       await tester.pumpWidget(const SizedBox());
     });

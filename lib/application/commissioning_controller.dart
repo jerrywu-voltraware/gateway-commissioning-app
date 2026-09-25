@@ -163,7 +163,7 @@ const notAssignedLinkText = '尚未指派（手機與閘道器斷線）';
 const reconnectingText = '正在重新連線閘道器';
 
 /// Overall budget for re-opening the phone↔gateway link.
-const reconnectBudget = Duration(seconds: 30);
+const reconnectBudget = Duration(seconds: 50);
 
 /// Shown while the phone's Bluetooth was just turned on (「重新連線並繼續」).
 const waitingBluetoothText = '等待藍牙就緒';
@@ -232,6 +232,10 @@ const _savedStepLabels = {
 /// assigned ones excluded so they are not re-sent).
 String configureLabel(CommissionState s) {
   final rest = configureTargets(s).length;
+  // Phone link lost: the button reconnects first (same as the banner).
+  if (s.resumePending) {
+    return rest == 0 ? '重新連線並繼續' : '重新連線並繼續（剩 $rest 台）';
+  }
   if (rest == 0) return '全部已配置';
   return '配置 $rest 台並開始監控';
 }
@@ -242,6 +246,35 @@ Set<String> configureTargets(CommissionState s) =>
 
 /// Step 10 message right after verification, before any health answer.
 const verifiedText = '開通驗證通過，已恢復自動監控';
+
+/// Restart prompt when the saved run already finished (round 6: a finished
+/// run still showed 「已保留先前進度」).
+String completedText(Object? site, Object? gateway, int count) =>
+    '上次配置已完成（site $site / gateway $gateway，$count 台）';
+
+/// Step 8/max_connections policy: star mode always opens the full range (5)
+/// so a later 5th PTU can still connect; direct mode is one PTU.
+int monitorLimit(bool isStar) => isStar ? maxStarPtuCount : 1;
+
+/// Done page: 「正在確認資料上傳…」 only while no recent heartbeat is known;
+/// the step 9 verification already records one, so normally the status
+/// panel's 「✓ 資料上傳中」 shows directly.
+bool showHealthPending(CommissionState s, {DateTime? now}) {
+  if (!s.loggedIn || s.message != verifiedText) return false;
+  final seen = s.backendSeenAt;
+  return seen == null ||
+      (now ?? DateTime.now()).difference(seen) >= const Duration(seconds: 60);
+}
+
+/// Install report lines, ordered by PTU number.
+List<Map<String, dynamic>> byDeviceNumber(
+  Iterable<Map<String, dynamic>> ptus,
+) => List.of(ptus)
+  ..sort(
+    (a, b) => ((a['device_number'] as num?) ?? 0).compareTo(
+      (b['device_number'] as num?) ?? 0,
+    ),
+  );
 
 String resumeText(int step, List<int> done, int pending) {
   final where = _savedStepLabels[step];
@@ -305,10 +338,15 @@ class CommissionState {
     this.scanResumePending = false,
     this.reconnectFailed = false,
     this.savedResume = false,
+    this.lastCompleted = false,
   });
   final int step, seconds;
   final bool busy, verified, online;
   final String message, report;
+
+  /// Saved progress belongs to a run that finished (step 10 verified):
+  /// offer 「重新開始」 instead of 「重新連線並繼續」.
+  final bool lastCompleted;
 
   /// Logged in to the backend currently selected (reset on a switch).
   final bool loggedIn;
@@ -454,7 +492,9 @@ class CommissionState {
     bool? scanResumePending,
     bool? reconnectFailed,
     bool? savedResume,
+    bool? lastCompleted,
   }) => CommissionState(
+    lastCompleted: lastCompleted ?? this.lastCompleted,
     unassigned: unassigned ?? this.unassigned,
     assignedOk: assignedOk ?? this.assignedOk,
     resumePending: resumePending ?? this.resumePending,
@@ -515,6 +555,7 @@ class CommissioningController extends Notifier<CommissionState> {
   /// Step 8 assignments that succeeded in this run (MAC → number); saved so a
   /// restart knows which PTUs are done.
   final Map<String, int> _doneAssign = {};
+
   /// MACs whose ack had verified:false, awaiting get_ble_devices read-back.
   final Set<String> _pendingReadback = {};
 
@@ -829,6 +870,8 @@ class CommissioningController extends Notifier<CommissionState> {
       _link.demo ? 'demo_progress' : 'progress',
       jsonEncode({
         'step': state.step,
+        'completed': state.step == 7 && state.verified,
+        'count': state.ptus.length,
         'site': site,
         'gateway': gateway,
         'peer': state.peer?.id,
@@ -852,6 +895,18 @@ class CommissioningController extends Notifier<CommissionState> {
       } catch (_) {
         return;
       }
+      if (data['completed'] == true) {
+        state = state.copy(
+          savedResume: false,
+          lastCompleted: true,
+          message: completedText(
+            data['site'],
+            data['gateway'],
+            (data['count'] as num?)?.toInt() ?? 0,
+          ),
+        );
+        return;
+      }
       _saved = data;
       final step = data['step'] is int ? data['step'] as int : 0;
       final done = <String, int>{
@@ -869,6 +924,16 @@ class CommissioningController extends Notifier<CommissionState> {
         savedResume: data['peer'] is String && step >= 4 && step <= 5,
         message: resumeText(step, done.values.toList(), pending),
       );
+    }
+  }
+
+  /// 「重新開始」 after a finished run: forget the saved progress.
+  Future<void> clearCompleted() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_link.demo ? 'demo_progress' : 'progress');
+    _saved = null;
+    if (ref.mounted) {
+      state = state.copy(lastCompleted: false, savedResume: false, message: '');
     }
   }
 
@@ -929,8 +994,18 @@ class CommissioningController extends Notifier<CommissionState> {
     final keep = wanted.where(seen.contains).toSet();
     if (keep.isEmpty) return;
     state = state.copy(selected: keep);
+    // The gateway may have taken assignments the APP never saw acked (killed
+    // mid-step): what it reports connected with a matching number counts.
+    done.addAll(_reconcileFrom(state.ptus, keep));
+    final ids = [
+      for (final m in done.where(keep.contains))
+        if (_doneAssign[m] != null) _doneAssign[m]!,
+    ];
+    state = state.copy(
+      message: resumeText(5, ids, keep.difference(done).length),
+    );
     if (keep.every(done.contains)) return;
-    await configurePtus(skip: done);
+    await configurePtus(skip: done.intersection(keep));
   }
 
   Future<void> prepare(String base, String password, {bool offline = false}) =>
@@ -1924,6 +1999,9 @@ class CommissioningController extends Notifier<CommissionState> {
       next.remove(mac);
     }
     state = state.copy(selected: next);
+    // Mid step 8 (e.g. added after a link loss): keep the choice across an
+    // APP restart (round 6 lost a PTU checked after the disconnect).
+    if (state.step == 5) unawaited(_save());
   }
 
   /// 逐台指派一台 PTU：失敗自動重試 [assignRetries] 次（間隔 2 秒）。
@@ -2135,6 +2213,70 @@ class CommissioningController extends Notifier<CommissionState> {
         await _startMonitoring(generation, chosen, failed);
       });
 
+  /// Selected PTUs that [devices] (get_ble_devices rows) show connected with
+  /// the number the APP assigned, or, when the ack was lost, with a unique
+  /// number inside this gateway's range. Marks them assigned (「已連線 #n」).
+  Set<String> _reconcileFrom(
+    Iterable<Map<String, dynamic>> devices,
+    Set<String> selected,
+  ) {
+    final first = (gateway - 1) * 5 + 1;
+    final rows = devices.where((d) => d['connected'] == true).toList();
+    final ok = <String>{};
+    final results = Map<String, String>.of(state.results);
+    for (final mac in selected) {
+      final found = rows.where((d) => sameMac(d['mac'], mac));
+      if (found.isEmpty) continue;
+      final id = (found.first['device_number'] as num?)?.toInt() ?? 0;
+      final expected = _doneAssign[mac];
+      final inRange = id >= first && id < first + 5;
+      final unique =
+          rows
+              .where((d) => (d['device_number'] as num?)?.toInt() == id)
+              .length ==
+          1;
+      if (expected != null ? id != expected : !(inRange && unique)) continue;
+      _doneAssign[mac] = id;
+      ok.add(mac);
+      results[mac] = '已連線 #$id';
+      for (final p in state.ptus.where((p) => sameMac(p['mac'], mac))) {
+        p['device_number'] = id;
+      }
+    }
+    if (ok.isNotEmpty) {
+      state = state.copy(
+        results: results,
+        assignedOk: {...state.assignedOk, ...ok},
+        unassigned: state.unassigned.difference(ok),
+        assignFailed: {
+          for (final e in state.assignFailed.entries)
+            if (!ok.contains(e.key)) e.key: e.value,
+        },
+      );
+    }
+    return ok;
+  }
+
+  /// After a link loss: read the gateway's view before resending anything.
+  Future<void> _reconcile(int generation) async {
+    final Map<String, dynamic> response;
+    try {
+      response = await _command(generation, 'get_ble_devices');
+    } catch (e) {
+      if (e is GatewayFailure && e.code == 'cancelled') rethrow;
+      if (isPhoneLinkFailure(e)) rethrow;
+      return; // Old firmware / busy: fall back to the APP's own record.
+    }
+    _check(generation);
+    _reconcileFrom(
+      (response['devices'] as List? ?? []).map(
+        (d) => Map<String, dynamic>.from(d as Map),
+      ),
+      state.selected,
+    );
+    await _save();
+  }
+
   /// Re-opens the phone↔gateway BLE link within [reconnectBudget]; a
   /// failure becomes 'reconnect_failed' (retry / back to gateway search).
   Future<void> _reconnect(int generation) async {
@@ -2164,6 +2306,7 @@ class CommissioningController extends Notifier<CommissionState> {
   Future<void> resumeAssign() =>
       _run(reconnectingText, 240, (generation) async {
         await _reconnect(generation);
+        await _reconcile(generation);
         final chosen = state.ptus
             .where((p) => state.selected.contains(p['mac']))
             .toList();
@@ -2227,7 +2370,9 @@ class CommissioningController extends Notifier<CommissionState> {
     final isStar = ref.read(topologyProvider).topology.isStar;
     try {
       await _command(generation, 'set_config', {
-        'max_connections': isStar && ok > 5 ? 5 : ok,
+        // Never shrink to the success count (round 6: 4 PTUs locked the
+        // gateway at 4 and a 5th could never connect).
+        'max_connections': monitorLimit(isStar),
       });
       await _command(generation, 'join_fleet');
     } catch (e) {
@@ -2270,7 +2415,8 @@ class CommissioningController extends Notifier<CommissionState> {
           .toList();
       if (connected.length == chosen.length) {
         final config = await _command(generation, 'get_config');
-        if (config['max_connections'] != chosen.length) {
+        if (config['max_connections'] !=
+            monitorLimit(ref.read(topologyProvider).topology.isStar)) {
           throw const GatewayFailure('incomplete');
         }
         await _command(generation, 'check_db_upload');
@@ -2291,11 +2437,12 @@ class CommissioningController extends Notifier<CommissionState> {
         // Never leave a target above actual connections after a failed installation.
         // Never switch BLE or upload off here: the gateway keeps monitoring.
         if (connected.isNotEmpty) {
-          await _command(generation, 'set_config', {
-            'max_connections': connected.length,
-          });
+          final limit = monitorLimit(
+            ref.read(topologyProvider).topology.isStar,
+          );
+          await _command(generation, 'set_config', {'max_connections': limit});
           final readback = await _command(generation, 'get_config');
-          if (readback['max_connections'] != connected.length) {
+          if (readback['max_connections'] != limit) {
             throw const GatewayFailure('incomplete');
           }
           _provisioningMayBeActive = false;
@@ -2434,7 +2581,7 @@ class CommissioningController extends Notifier<CommissionState> {
         });
         _lease = false;
         _reportBody =
-            '${_link.demo ? "模擬安裝報告（非實機驗證）" : "安裝報告"}\n站點 $site / 閘道器 $gateway\n${state.ptus.map((p) => "#${p['device_number']}  ${p['mac']}").join('\n')}\n驗證時間：${DateTime.now().toIso8601String()}\n驗證後端：$_backend\n每台連續三次資料更新通過';
+            '${_link.demo ? "模擬安裝報告（非實機驗證）" : "安裝報告"}\n站點 $site / 閘道器 $gateway\n${byDeviceNumber(state.ptus).map((p) => "#${p['device_number']}  ${p['mac']}").join('\n')}\n驗證時間：${DateTime.now().toIso8601String()}\n驗證後端：$_backend\n每台連續三次資料更新通過';
         state = state.copy(
           step: 7,
           verified: true,
@@ -2755,7 +2902,8 @@ class CommissioningController extends Notifier<CommissionState> {
     await _link.disconnect();
     _check(generation);
     try {
-      await _link.connect(peer).timeout(const Duration(seconds: 20));
+      // The link itself retries (stale client drop, rescan, 3 attempts).
+      await _link.connect(peer).timeout(const Duration(seconds: 45));
     } on GatewayFailure {
       rethrow;
     } catch (_) {

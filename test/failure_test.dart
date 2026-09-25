@@ -95,11 +95,11 @@ void main() {
     expect(container.read(commissionProvider).step, 3);
     expect(container.read(commissionProvider).error, isNull);
   });
-  test('partial installation retains a verified reduced target', () async {
+  test('partial installation keeps the full star range', () async {
     await controller.discover();
     fake.partial = true;
     await controller.configurePtus();
-    expect(fake.config['max_connections'], 1);
+    expect(fake.config['max_connections'], 5);
     expect(fake.config['ble_enabled'], true);
     expect(fake.config['upload_paused'], false);
     expect(container.read(commissionProvider).missing.length, 2);

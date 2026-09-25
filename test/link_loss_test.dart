@@ -154,7 +154,7 @@ void main() {
     expect(s.error, isNull);
     expect(fake.assigns, [macs[1], macs[2]]);
     expect(fake.commands, contains('join_fleet'));
-    expect(fake.config['max_connections'], 3);
+    expect(fake.config['max_connections'], 5);
     expect(s.step, 6);
     expect(s.resumePending, isFalse);
   });
@@ -180,7 +180,7 @@ void main() {
       c.select(macs[2], true);
       s = container.read(commissionProvider);
       expect(configureTargets(s), {macs[1], macs[2]});
-      expect(configureLabel(s), '配置 2 台並開始監控');
+      expect(configureLabel(s), '重新連線並繼續（剩 2 台）');
 
       fake.assigns.clear();
       await c.resumeAssign();

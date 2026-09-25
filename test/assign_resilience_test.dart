@@ -112,7 +112,7 @@ void main() {
     expect(fake.assigns.where((m) => m == bad), hasLength(1 + assignRetries));
     // The PTU after the failing one was still assigned.
     expect(fake.assigns.toSet(), hasLength(3));
-    expect(fake.config['max_connections'], 2);
+    expect(fake.config['max_connections'], 5);
     expect(fake.commands, contains('join_fleet'));
     expect(fake.disabled, isEmpty);
     expect(fake.config['ble_enabled'], isNot(false));
@@ -129,7 +129,7 @@ void main() {
     expect(fake.assigns, [bad]);
     expect(s.error, isNull);
     expect(s.assignFailed, isEmpty);
-    expect(fake.config['max_connections'], 3);
+    expect(fake.config['max_connections'], 5);
     expect(s.step, 6);
     expect(s.ptus.map((p) => p['device_number']).toSet(), hasLength(3));
   });

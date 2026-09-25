@@ -687,7 +687,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                         FilledButton(
                           key: const Key('ptu-configure'),
                           onPressed:
-                              !state.busy && configureTargets(state).isNotEmpty
+                              !state.busy &&
+                                  (state.resumePending ||
+                                      configureTargets(state).isNotEmpty)
                               ? () {
                                   final warning = controller.starFullWarning;
                                   if (warning != null) {
@@ -811,41 +813,61 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                     Material(
                       key: const Key('error-banner'),
                       color: colors.errorContainer,
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              state.error!,
-                              style: TextStyle(color: colors.onErrorContainer),
-                            ),
-                            if (state.errorDetail != null)
-                              Theme(
-                                data: Theme.of(
-                                  context,
-                                ).copyWith(dividerColor: Colors.transparent),
-                                child: ExpansionTile(
-                                  key: const Key('error-detail'),
-                                  tilePadding: EdgeInsets.zero,
-                                  title: Text(
-                                    '詳細資訊',
-                                    style: TextStyle(
-                                      color: colors.onErrorContainer,
-                                    ),
-                                  ),
-                                  children: [
-                                    SelectableText(
-                                      state.errorDetail!,
-                                      style: TextStyle(
-                                        color: colors.onErrorContainer,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ],
+                      child: InkWell(
+                        // Round 6: the resume action was two screens below
+                        // the banner; the banner itself is the action now.
+                        onTap: _resumeAction(state, controller),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Text(
+                                state.error!,
+                                style: TextStyle(
+                                  color: colors.onErrorContainer,
                                 ),
                               ),
-                          ],
+                              if (_resumeAction(state, controller) != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 12),
+                                  child: FilledButton.icon(
+                                    key: const Key('ptu-resume'),
+                                    icon: const Icon(
+                                      Icons.bluetooth_searching,
+                                      size: 20,
+                                    ),
+                                    onPressed: _resumeAction(state, controller),
+                                    label: const Text('重新連線並繼續'),
+                                  ),
+                                ),
+                              if (state.errorDetail != null)
+                                Theme(
+                                  data: Theme.of(
+                                    context,
+                                  ).copyWith(dividerColor: Colors.transparent),
+                                  child: ExpansionTile(
+                                    key: const Key('error-detail'),
+                                    tilePadding: EdgeInsets.zero,
+                                    title: Text(
+                                      '詳細資訊',
+                                      style: TextStyle(
+                                        color: colors.onErrorContainer,
+                                      ),
+                                    ),
+                                    children: [
+                                      SelectableText(
+                                        state.errorDetail!,
+                                        style: TextStyle(
+                                          color: colors.onErrorContainer,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -996,12 +1018,30 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     await c.resumeSaved();
   }
 
+  /// Step 8 link loss: the one action that reconnects and continues.
+  VoidCallback? _resumeAction(CommissionState s, CommissioningController c) {
+    if (s.busy || s.reconnectFailed || (s.step != 4 && s.step != 5)) {
+      return null;
+    }
+    if (s.resumePending) return c.resumeAssign;
+    if (s.scanResumePending) return c.discover;
+    return null;
+  }
+
   /// 「重新連線並繼續」 for progress saved before the APP was closed.
   List<Widget> _savedResume(
     CommissionState s,
     CommissioningController c,
     bool enabled,
   ) => [
+    if (s.lastCompleted)
+      OutlinedButton.icon(
+        key: const Key('restart-after-done'),
+        icon: const Icon(Icons.restart_alt, size: 20),
+        onPressed: enabled ? c.clearCompleted : null,
+        label: const Text('重新開始'),
+      ),
+    if (s.lastCompleted) const SizedBox(height: 16),
     if (s.savedResume) ...[
       FilledButton.icon(
         key: const Key('saved-resume'),
@@ -1279,18 +1319,6 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       case 4:
       case 5:
         return [
-          if ((s.resumePending || s.scanResumePending) &&
-              !s.busy &&
-              !s.reconnectFailed)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: FilledButton.icon(
-                key: const Key('ptu-resume'),
-                icon: const Icon(Icons.bluetooth_searching, size: 20),
-                onPressed: s.resumePending ? c.resumeAssign : c.discover,
-                label: const Text('重新連線並繼續'),
-              ),
-            ),
           if (s.reconnectFailed && !s.busy)
             Padding(
               key: const Key('reconnect-failed'),
@@ -1496,7 +1524,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           ),
           // Until the first health check answers, say so instead of a
           // premature 資料有異常.
-          if (s.loggedIn && s.message == verifiedText)
+          if (showHealthPending(s))
             const Padding(
               key: Key('health-pending'),
               padding: EdgeInsets.only(top: 8),

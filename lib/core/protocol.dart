@@ -293,8 +293,13 @@ String bleErrorText(String? detail) {
 /// True for failures meaning the phone↔gateway BLE link itself is down.
 bool isPhoneLinkFailure(Object? error) =>
     error is GatewayFailure &&
-    const {'not_connected', 'disconnected', 'phone_link_lost', 'reconnect_failed', 'ble_error'}
-        .contains(error.code);
+    const {
+      'not_connected',
+      'disconnected',
+      'phone_link_lost',
+      'reconnect_failed',
+      'ble_error',
+    }.contains(error.code);
 
 /// Fail ack → [GatewayFailure]: a map result (e.g. assign_device_id's
 /// `{mac, success:false, error}`) uses its `error` text as the code and keeps
