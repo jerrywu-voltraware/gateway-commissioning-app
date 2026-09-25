@@ -7,12 +7,15 @@ import '../application/commissioning_controller.dart';
 import '../application/connection_status.dart';
 import '../application/network_check.dart';
 import '../application/topology_settings.dart';
+import '../core/direct_mode.dart';
 import '../core/gateway_net.dart';
 import '../core/gateway_topology.dart';
 import '../core/local_backend_address.dart';
 import '../core/mqtt_target.dart';
+import '../data/contracts.dart';
 import '../data/wifi_scan.dart';
 import 'connection_status_panel.dart';
+import 'direct_mode_panel.dart';
 import 'environment_switch.dart';
 import 'local_backend_field.dart';
 import 'ptu_selection_tile.dart';
@@ -147,6 +150,28 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(text)));
+  }
+
+  /// Connects to [peer] from the gateway list and fills the forms.
+  Future<void> _connectPeer(CommissioningController c, GatewayPeer peer) async {
+    await c.connect(peer);
+    if (mounted && _pageScroll.hasClients) _pageScroll.jumpTo(0);
+    if (mounted) {
+      final next = ref.read(commissionProvider);
+      _site.text =
+          '${next.config['suggested_site_id'] ?? next.config['site_id'] ?? 1}';
+      _gateway.text =
+          '${next.config['suggested_gateway_id'] ?? next.config['gateway_id'] ?? 1}';
+      _gatewayKind = next.config['suggested_offline'] == true
+          ? GatewaySuggestKind.offline
+          : GatewaySuggestKind.online;
+      _ssid.text = next.config['wifi_ssid']?.toString() ?? '';
+      _customWifi = false;
+      // Remembered environment: sync the gateway to it.
+      if (next.error == null && next.step >= 2) {
+        await _syncGateway(explicit: false);
+      }
+    }
   }
 
   Future<void> _openEnvironmentSheet() async {
@@ -626,6 +651,12 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                 } else if (value.startsWith('starcount:')) {
                   final n = int.parse(value.substring('starcount:'.length));
                   ref.read(topologyProvider.notifier).setStarCount(n);
+                } else if (value == 'direct:settings') {
+                  showModalBottomSheet<void>(
+                    context: context,
+                    isScrollControlled: true,
+                    builder: (_) => const DirectSettingsSheet(),
+                  );
                 }
               },
               itemBuilder: (_) => [
@@ -635,6 +666,17 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                     checked: t == topology,
                     child: Text(t.label),
                   ),
+                // 直連進階設定：只在直連、且已連上支援直連選台的韌體時出現。
+                if (topology.isDirect &&
+                    state.peer != null &&
+                    directAutoConnectSupported(state.config)) ...[
+                  const PopupMenuDivider(),
+                  const PopupMenuItem(
+                    key: Key('direct-settings'),
+                    value: 'direct:settings',
+                    child: Text('直連進階設定…'),
+                  ),
+                ],
                 if (topology.isStar) ...[
                   const PopupMenuDivider(),
                   for (var n = minStarPtuCount; n <= maxStarPtuCount; n++)
@@ -817,7 +859,12 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                                       .read(commissionProvider.notifier)
                                       .identify,
                             icon: const Icon(Icons.lightbulb_outline),
-                            label: const Text('辨識這台・雙閃 6 秒'),
+                            label: Text(
+                              identifyPtuSupported(state.config)
+                                  ? '辨識此樁（PTU 與閘道器閃燈）'
+                                  : '辨識這台・雙閃 6 秒',
+                              key: const Key('identify-label'),
+                            ),
                           )
                         : const Text('連線時藍燈呼吸；更新韌體後可使用雙閃辨識。'),
                   if (state.message.isNotEmpty &&
@@ -1189,26 +1236,18 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           ..._savedResume(s, c, enabled),
           GatewayDiscovery(
             enabled: enabled,
-            onConnect: (peer) async {
-              await c.connect(peer);
-              if (mounted && _pageScroll.hasClients) _pageScroll.jumpTo(0);
-              if (mounted) {
-                final next = ref.read(commissionProvider);
-                _site.text =
-                    '${next.config['suggested_site_id'] ?? next.config['site_id'] ?? 1}';
-                _gateway.text =
-                    '${next.config['suggested_gateway_id'] ?? next.config['gateway_id'] ?? 1}';
-                _gatewayKind = next.config['suggested_offline'] == true
-                    ? GatewaySuggestKind.offline
-                    : GatewaySuggestKind.online;
-                _ssid.text = next.config['wifi_ssid']?.toString() ?? '';
-                _customWifi = false;
-                // Remembered environment: sync the gateway to it.
-                if (next.error == null && next.step >= 2) {
-                  await _syncGateway(explicit: false);
-                }
+            // 「辨識」：連上這台（保持連線進入流程）後立即送 identify。
+            onIdentify: (peer) async {
+              await _connectPeer(c, peer);
+              final next = ref.read(commissionProvider);
+              if (mounted &&
+                  next.error == null &&
+                  next.peer != null &&
+                  next.step >= 2) {
+                await c.identify();
               }
             },
+            onConnect: (peer) => _connectPeer(c, peer),
           ),
         ];
       case 2:
@@ -1405,6 +1444,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ),
+          if (topology.isDirect) const DirectStatusPanel(),
           if (topology.isDirect && s.ptus.isEmpty && !s.busy)
             Padding(
               key: const Key('direct-no-ptu-hint'),

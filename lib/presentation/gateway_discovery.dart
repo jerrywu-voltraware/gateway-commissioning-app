@@ -13,9 +13,14 @@ class GatewayDiscovery extends ConsumerStatefulWidget {
     super.key,
     required this.enabled,
     required this.onConnect,
+    this.onIdentify,
   });
   final bool enabled;
   final Future<void> Function(GatewayPeer) onConnect;
+
+  /// 「辨識」 on a row: connect to it (the link stays open and the flow
+  /// continues) and blink it. Null hides the button.
+  final Future<void> Function(GatewayPeer)? onIdentify;
   @override
   ConsumerState<GatewayDiscovery> createState() => _GatewayDiscoveryState();
 }
@@ -207,12 +212,13 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     }
   }
 
-  Future<void> _connect(GatewayPeer peer) async {
+  Future<void> _connect(GatewayPeer peer, {bool identify = false}) async {
     if (_selecting || !widget.enabled) return;
     setState(() => _selecting = true);
     try {
       await _stop();
-      if (mounted) await widget.onConnect(peer);
+      final action = identify ? widget.onIdentify : widget.onConnect;
+      if (mounted && action != null) await action(peer);
     } finally {
       if (mounted) setState(() => _selecting = false);
     }
@@ -259,6 +265,20 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
             Text(status, maxLines: 1, overflow: TextOverflow.ellipsis),
           ],
         ),
+        trailing: widget.onIdentify == null
+            ? null
+            : TextButton(
+                key: ValueKey('identify-${peer.id}'),
+                style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  minimumSize: const Size(0, 32),
+                ),
+                onPressed: widget.enabled && !_selecting
+                    ? () => _connect(found ?? peer, identify: true)
+                    : null,
+                child: const Text('辨識'),
+              ),
         onTap: widget.enabled && !_selecting
             ? () => _connect(found ?? peer)
             : null,
