@@ -849,7 +849,11 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                                       size: 20,
                                     ),
                                     onPressed: _resumeAction(state, controller),
-                                    label: const Text('重新連線並繼續'),
+                                    label: Text(
+                                      state.step == 4 || state.step == 5
+                                          ? '重新連線並繼續'
+                                          : '重新連線',
+                                    ),
                                   ),
                                 ),
                               if (state.monitorUnconfirmed && !state.busy)
@@ -942,7 +946,12 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                   ),
                   if (state.step > 0 && !(selectingPtus && state.busy))
                     TextButton(
-                      onPressed: () => controller.cancel(),
+                      key: const Key('page-cancel'),
+                      // Step 9: back to step 7 keeping the progress (round
+                      // 8: a cancel here dropped back to step 2).
+                      onPressed: state.step == 6 && state.busy
+                          ? controller.backToSelection
+                          : () => controller.cancel(),
                       child: Text(state.busy ? '取消操作' : '結束並重新選擇閘道器'),
                     ),
                   if (state.step == 0)
@@ -1039,12 +1048,23 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   }
 
   /// Step 8 link loss: the one action that reconnects and continues.
+  /// Every link-loss banner gets one (round 8: a step 7 drop had only
+  /// 「詳細資訊」).
   VoidCallback? _resumeAction(CommissionState s, CommissioningController c) {
-    if (s.busy || s.reconnectFailed || (s.step != 4 && s.step != 5)) {
+    if (s.busy) return null;
+    if (s.step == 4 || s.step == 5) {
+      if (s.resumePending) return c.resumeAssign;
+      if (s.scanResumePending || s.uploadWatch == UploadWatch.linkLost) {
+        return c.discover;
+      }
+      if (s.reconnectFailed) return null; // own 「重試重新連線」 below
       return null;
     }
-    if (s.resumePending) return c.resumeAssign;
-    if (s.scanResumePending) return c.discover;
+    if (s.peer != null &&
+        s.step >= 2 &&
+        (s.reconnectFailed || s.uploadWatch == UploadWatch.linkLost)) {
+      return c.reconnectLink;
+    }
     return null;
   }
 
@@ -1499,13 +1519,29 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               ),
             ),
           if (!s.loggedIn) field(_login, '若尚未登入，請輸入登入密碼', secret: true),
-          ...s.ptus.map(
-            (ptu) => ListTile(
+          // Round 8: listed in scan order (#1, #2, #4, #3); by number now.
+          ...byDeviceNumber(s.ptus).map((ptu) {
+            final id = (ptu['device_number'] as num?)?.toInt() ?? 0;
+            final count = s.verifyCounts[id];
+            return ListTile(
+              key: Key('verify-ptu-$id'),
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.sensors),
-              title: Text('PTU #${ptu['device_number']}'),
+              title: Text('PTU #$id'),
               subtitle: Text(ptu['mac'].toString()),
-            ),
+              trailing: count == null
+                  ? null
+                  : Text(
+                      s.verifyWaiting.contains(id) ? '尚無資料' : '$count/3',
+                      key: Key('verify-count-$id'),
+                    ),
+            );
+          }),
+          TextButton(
+            key: const Key('verify-back'),
+            // Keeps the selection and what was assigned; no cancel.
+            onPressed: c.backToSelection,
+            child: const Text('返回選擇 PTU'),
           ),
           TextButton(
             onPressed: enabled ? c.rescanPtus : null,

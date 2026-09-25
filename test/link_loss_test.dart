@@ -25,7 +25,10 @@ class DroppingLink extends DemoSystem {
   final commands = <String>[];
 
   @override
-  Future<void> connect(GatewayPeer peer, {void Function(String stage)? onStage}) async {
+  Future<void> connect(
+    GatewayPeer peer, {
+    void Function(String stage)? onStage,
+  }) async {
     if (failConnect) {
       throw const GatewayFailure('ble_error', detail: '133 Unknown Error 133');
     }
@@ -377,7 +380,9 @@ void main() {
     var s = second.read(commissionProvider);
     expect(
       s.message,
-      '上次中斷於第 8 步（開始監控），已完成 1 台（#1），尚有 2 台未配置。'
+      // Round 8: #2 was in flight when the link dropped; the gateway decides.
+      '上次中斷於第 8 步（開始監控），已完成 1 台（#1），'
+      '#2 指派中斷、重新連線後以閘道器核對為準，尚有 1 台未配置。'
       '閘道器仍在運作，不需重新上電。',
     );
     expect(s.savedResume, isTrue);

@@ -18,49 +18,45 @@ void main() {
   const peer = GatewayPeer('AA:BB:CC:DD:EE:FF', 'GIOS-S1', -28);
 
   group('reconnect budgets', () {
-    test(
-      'worst-case connect time (all retries fail) fits inside the outer '
-      'budgets with headroom',
-      () {
-        final worstCase =
-            BleGatewayLink.connectTimeout * (BleGatewayLink.connectRetries + 1) +
-            (BleGatewayLink.retryGap + BleGatewayLink.rescanWindow) *
-                BleGatewayLink.connectRetries;
-        expect(worstCase, lessThanOrEqualTo(const Duration(seconds: 45)));
-        expect(worstCase, lessThan(reconnectBudget));
-      },
-    );
+    test('worst-case connect time (all retries fail) fits inside the outer '
+        'budgets with headroom', () {
+      final worstCase =
+          BleGatewayLink.connectTimeout * (BleGatewayLink.connectRetries + 1) +
+          BleGatewayLink.quickRetryTimeout +
+          (BleGatewayLink.retryGap + BleGatewayLink.rescanWindow) *
+              BleGatewayLink.connectRetries;
+      expect(worstCase, lessThanOrEqualTo(const Duration(seconds: 51)));
+      expect(worstCase, lessThan(reconnectBudget));
+    });
 
     test('reconnectBudget stays above the link retry budget', () {
       // reconnectBudget wraps _relink, which itself wraps _link.connect;
       // both outer numbers must have headroom over the link's own worst
       // case (documented in ble_gateway_link.dart).
-      expect(reconnectBudget, const Duration(seconds: 60));
-      expect(reconnectBudget, greaterThan(const Duration(seconds: 45)));
+      expect(reconnectBudget, const Duration(seconds: 66));
+      expect(reconnectBudget, greaterThan(const Duration(seconds: 51)));
     });
 
-    test(
-      'connect() reports stages in order: clear stale, connecting, rescan, '
-      'retry, connecting again',
-      () async {
-        BleGatewayLink.staleSettle = Duration.zero;
-        BleGatewayLink.retryGap = Duration.zero;
-        BleGatewayLink.rescanWindow = const Duration(milliseconds: 10);
-        final platform = StaleAdapterPlatform()..failConnects = 1;
-        UniversalBle.setInstance(platform);
-        final link = BleGatewayLink();
-        final stages = <String>[];
-        await link.connect(peer, onStage: stages.add);
-        expect(stages, [
-          '清除舊連線',
-          '正在連線閘道器',
-          '找不到閘道器，重新掃描中',
-          '第 1 次重試',
-          '正在連線閘道器',
-        ]);
-        await link.disconnect();
-      },
-    );
+    test('connect() reports stages in order: clear stale, connecting, rescan, '
+        'retry, connecting again', () async {
+      BleGatewayLink.staleSettle = Duration.zero;
+      BleGatewayLink.retryGap = Duration.zero;
+      BleGatewayLink.rescanWindow = const Duration(milliseconds: 10);
+      // 2: the first failure's immediate retry fails too (round 8).
+      final platform = StaleAdapterPlatform()..failConnects = 2;
+      UniversalBle.setInstance(platform);
+      final link = BleGatewayLink();
+      final stages = <String>[];
+      await link.connect(peer, onStage: stages.add);
+      expect(stages, [
+        '清除舊連線',
+        '正在連線閘道器',
+        '找不到閘道器，重新掃描中',
+        '第 1 次重試',
+        '正在連線閘道器',
+      ]);
+      await link.disconnect();
+    });
 
     test('every failed attempt is preceded by a rescan stage', () async {
       BleGatewayLink.staleSettle = Duration.zero;

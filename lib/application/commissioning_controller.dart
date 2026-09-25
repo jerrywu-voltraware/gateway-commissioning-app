@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/gateway_net.dart';
@@ -92,6 +93,10 @@ class UploadWatchTiming {
 final uploadWatchTimingProvider = Provider<UploadWatchTiming>(
   (ref) => const UploadWatchTiming(),
 );
+
+/// Step 7 idle keep-alive ping interval (no RSSI traffic meanwhile).
+const keepAliveInterval = Duration(seconds: 15);
+
 final ptuSignalIntervalProvider = Provider<Duration>(
   (ref) => const Duration(seconds: 5),
 );
@@ -178,14 +183,20 @@ String ptuFailureText(Object? error) {
 /// PTU tile text when step 8 stopped because the phone lost the gateway.
 const notAssignedLinkText = '尚未指派（手機與閘道器斷線）';
 
+/// Appends the link's first connect failure type (round 8 analysis aid).
+String withFirstFailure(String detail, Object link) {
+  final first = link is ConnectDiagnostics ? link.firstConnectFailure : null;
+  return first == null ? detail : '$detail\n第一次連線失敗：$first';
+}
+
 /// Shown while the phone re-opens the BLE link to the gateway.
 const reconnectingText = '正在重新連線閘道器';
 
 /// Overall budget for re-opening the phone↔gateway link. Must stay above
-/// [BleGatewayLink]'s own worst-case retry budget (45s, see
+/// [BleGatewayLink]'s own worst-case retry budget (51s, see
 /// ble_gateway_link.dart) plus headroom for _relink's own overhead; keep it
 /// in sync with _reconnectBudget below.
-const reconnectBudget = Duration(seconds: 60);
+const reconnectBudget = Duration(seconds: 66);
 
 /// Shown while the phone's Bluetooth was just turned on (「重新連線並繼續」).
 const waitingBluetoothText = '等待藍牙就緒';
@@ -298,13 +309,82 @@ List<Map<String, dynamic>> byDeviceNumber(
     ),
   );
 
-String resumeText(int step, List<int> done, int pending) {
+String resumeText(
+  int step,
+  List<int> done,
+  int pending, {
+  List<int> inflight = const [],
+}) {
   final where = _savedStepLabels[step];
   if (where == null) return '已保留先前進度，請重新連線以核對裝置現況。';
-  final ids = (List<int>.of(done)..sort()).map((i) => '#$i').join('、');
-  final doneText = done.isEmpty ? '尚未完成任何 PTU' : '已完成 ${done.length} 台（$ids）';
+  String list(List<int> v) =>
+      (List<int>.of(v)..sort()).map((i) => '#$i').join('、');
+  final doneText = done.isEmpty
+      ? '尚未完成任何 PTU'
+      : '已完成 ${done.length} 台（${list(done)}）';
+  final inflightText = inflight.isEmpty
+      ? ''
+      : '，${list(inflight)} 指派中斷、重新連線後以閘道器核對為準';
   final pendingText = pending > 0 ? '，尚有 $pending 台未配置' : '';
-  return '上次中斷於$where，$doneText$pendingText。閘道器仍在運作，不需重新上電。';
+  return '上次中斷於$where，$doneText$inflightText$pendingText。閘道器仍在運作，不需重新上電。';
+}
+
+/// Step 9 polls /api/latest this often (seconds).
+const verifyPollSeconds = 10;
+
+/// Step 9: a PTU without a new row for this long gets 「尚無資料」 (seconds).
+const verifyIdleLimit = 60;
+
+/// Step 9 per-PTU tally of one /api/latest answer: a fresh row with a newer
+/// timestamp adds one (max 3); an offline, late or erroring row resets that
+/// PTU only; an unchanged timestamp keeps its count. [lastNew] records the
+/// [elapsed] second of each PTU's latest new row.
+void verifyTally({
+  required Iterable<int> ids,
+  required List<Map<String, dynamic>> rows,
+  required Map<int, DateTime> previous,
+  required Map<int, int> counts,
+  required Map<int, int> lastNew,
+  required int elapsed,
+}) {
+  for (final id in ids) {
+    final found = rows.where((p) => p['device_id'] == id).toList();
+    if (found.isEmpty) {
+      counts[id] = 0;
+      continue;
+    }
+    final row = found.first;
+    final stamp = DateTime.tryParse(row['ts']?.toString() ?? '');
+    if (row['online'] != true ||
+        ((row['lag_seconds'] as num?) ?? 999) >= 60 ||
+        row['error_num'] != 0 ||
+        stamp == null) {
+      if (stamp != null) previous[id] = stamp;
+      counts[id] = 0;
+      continue;
+    }
+    final seen = previous[id];
+    previous[id] = stamp;
+    if (seen == null || stamp.isAfter(seen)) {
+      counts[id] = min(3, (counts[id] ?? 0) + 1);
+      lastNew[id] = elapsed;
+    }
+  }
+}
+
+/// Step 9 busy text: 「#1 2/3、#2 1/3」 plus 「PTU #n 尚無資料」 lines.
+String verifyProgressText(
+  Iterable<int> ids,
+  Map<int, int> counts,
+  Set<int> waiting,
+) {
+  final sorted = List.of(ids)..sort();
+  final line = sorted.map((id) => '#$id ${counts[id] ?? 0}/3').join('、');
+  final idle = [
+    for (final id in sorted)
+      if (waiting.contains(id)) 'PTU #$id 尚無資料',
+  ];
+  return ['資料驗證 $line', ...idle].join('\n');
 }
 
 /// Text for 「N 台在本次掃描未出現，已取消勾選」.
@@ -362,7 +442,15 @@ class CommissionState {
     this.reconnectFailed = false,
     this.savedResume = false,
     this.lastCompleted = false,
+    this.verifyCounts = const {},
+    this.verifyWaiting = const {},
   });
+
+  /// Step 9: fresh-data rounds seen per PTU number (0..3).
+  final Map<int, int> verifyCounts;
+
+  /// Step 9: PTU numbers with no new data for [verifyIdleLimit].
+  final Set<int> verifyWaiting;
   final int step, seconds;
   final bool busy, verified, online;
   final String message, report;
@@ -521,8 +609,12 @@ class CommissionState {
     bool? reconnectFailed,
     bool? savedResume,
     bool? lastCompleted,
+    Map<int, int>? verifyCounts,
+    Set<int>? verifyWaiting,
   }) => CommissionState(
     lastCompleted: lastCompleted ?? this.lastCompleted,
+    verifyCounts: verifyCounts ?? this.verifyCounts,
+    verifyWaiting: verifyWaiting ?? this.verifyWaiting,
     unassigned: unassigned ?? this.unassigned,
     assignedOk: assignedOk ?? this.assignedOk,
     resumePending: resumePending ?? this.resumePending,
@@ -584,6 +676,11 @@ class CommissioningController extends Notifier<CommissionState> {
   /// Step 8 assignments that succeeded in this run (MAC → number); saved so a
   /// restart knows which PTUs are done.
   final Map<String, int> _doneAssign = {};
+
+  /// Step 8 assignments sent but not yet acked (MAC → number). Saved before
+  /// each assign_ptu so a kill between the gateway's ack and the save is
+  /// still reconciled on resume (round 8: the prompt said 2, gateway had 3).
+  final Map<String, int> _inflightAssign = {};
 
   /// MACs whose ack had verified:false, awaiting get_ble_devices read-back.
   final Set<String> _pendingReadback = {};
@@ -929,6 +1026,7 @@ class CommissioningController extends Notifier<CommissionState> {
         'peer_name': state.peer?.name,
         'selected': state.selected.toList(),
         'done': _doneAssign,
+        'inflight': _inflightAssign,
         'assignments': state.ptus
             .map((p) => {'mac': p['mac'], 'id': p['device_number']})
             .toList(),
@@ -967,13 +1065,25 @@ class CommissioningController extends Notifier<CommissionState> {
       final selected = ((data['selected'] as List?) ?? const [])
           .map((m) => m.toString())
           .toSet();
+      final inflight = <String, int>{
+        for (final e in ((data['inflight'] as Map?) ?? const {}).entries)
+          if (e.value is int && !done.containsKey(e.key.toString()))
+            e.key.toString(): e.value as int,
+      };
       final pending = step == 5
-          ? selected.where((m) => !done.containsKey(m)).length
+          ? selected
+                .where((m) => !done.containsKey(m) && !inflight.containsKey(m))
+                .length
           : 0;
       state = state.copy(
         config: {'site_id': data['site'], 'gateway_id': data['gateway']},
         savedResume: data['peer'] is String && step >= 4 && step <= 5,
-        message: resumeText(step, done.values.toList(), pending),
+        message: resumeText(
+          step,
+          done.values.toList(),
+          pending,
+          inflight: inflight.values.toList(),
+        ),
       );
     }
   }
@@ -1013,6 +1123,14 @@ class CommissioningController extends Notifier<CommissionState> {
       if (e.value is int) {
         done.add(e.key.toString());
         _doneAssign[e.key.toString()] = e.value as int;
+      }
+    }
+    // In flight when killed: the gateway may or may not have taken it; only
+    // the reconcile below (get_ble_devices) decides.
+    _inflightAssign.clear();
+    for (final e in ((data['inflight'] as Map?) ?? const {}).entries) {
+      if (e.value is int && !done.contains(e.key.toString())) {
+        _inflightAssign[e.key.toString()] = e.value as int;
       }
     }
     final wanted = ((data['selected'] as List?) ?? const [])
@@ -1055,9 +1173,12 @@ class CommissioningController extends Notifier<CommissionState> {
     state = state.copy(selected: merged);
     // The gateway may have taken assignments the APP never saw acked (killed
     // mid-step): what it reports connected with a matching number counts.
-    done.addAll(_reconcileFrom(state.ptus, merged));
+    // The prompt counts what the gateway reports, not the saved file.
+    final confirmed = _reconcileFrom(state.ptus, merged);
+    done.addAll(confirmed);
+    _inflightAssign.clear();
     final ids = [
-      for (final m in done.where(merged.contains))
+      for (final m in confirmed)
         if (_doneAssign[m] != null) _doneAssign[m]!,
     ];
     state = state.copy(
@@ -1807,6 +1928,7 @@ class CommissioningController extends Notifier<CommissionState> {
   Future<void> discover() async {
     _rssiTimer ??= Timer.periodic(ref.read(ptuSignalIntervalProvider), (_) {
       unawaited(refreshPtuRssi());
+      unawaited(keepAlive());
     });
     _autoResetRescan = false;
     final before = Set<String>.of(state.selected);
@@ -2171,6 +2293,8 @@ class CommissioningController extends Notifier<CommissionState> {
       used.add(id);
       results[mac] = '正在指派 #$id';
       state = state.copy(results: Map.of(results));
+      _inflightAssign[mac] = id;
+      await _save();
       final String? reason;
       try {
         reason = await _assignOne(generation, mac, id);
@@ -2193,7 +2317,9 @@ class CommissioningController extends Notifier<CommissionState> {
         await _save();
         throw GatewayFailure('phone_link_lost', detail: e.toString());
       }
+      _inflightAssign.remove(mac);
       if (reason != null) {
+        await _save();
         failed[mac] = reason;
         results[mac] = '指派失敗：$reason';
         state = state.copy(
@@ -2302,7 +2428,10 @@ class CommissioningController extends Notifier<CommissionState> {
           throw const GatewayFailure('no_devices');
         }
         _provisioningMayBeActive = true;
-        if (skip.isEmpty) _doneAssign.clear();
+        if (skip.isEmpty) {
+          _doneAssign.clear();
+          _inflightAssign.clear();
+        }
         state = state.copy(
           step: 5,
           results: {
@@ -2335,7 +2464,7 @@ class CommissioningController extends Notifier<CommissionState> {
       final found = rows.where((d) => sameMac(d['mac'], mac));
       if (found.isEmpty) continue;
       final id = (found.first['device_number'] as num?)?.toInt() ?? 0;
-      final expected = _doneAssign[mac];
+      final expected = _doneAssign[mac] ?? _inflightAssign[mac];
       final inRange = id >= first && id < first + 5;
       final unique =
           rows
@@ -2402,7 +2531,10 @@ class CommissioningController extends Notifier<CommissionState> {
       if (e is GatewayFailure && e.code == 'cancelled') rethrow;
       _check(generation);
       unawaited(_link.disconnect());
-      throw GatewayFailure('reconnect_failed', detail: e.toString());
+      throw GatewayFailure(
+        'reconnect_failed',
+        detail: withFirstFailure(e.toString(), _link),
+      );
     }
     _stopWatch(UploadWatch.idle);
   }
@@ -2742,8 +2874,10 @@ class CommissioningController extends Notifier<CommissionState> {
       if (error.gatewayNotFound) throw error.withCause(cause);
       rethrow;
     }
-    int consecutive = 0;
     final previous = <int, DateTime>{};
+    // Per PTU (round 8: one PTU without a new row reset everyone to 0/3).
+    final counts = <int, int>{};
+    final lastNew = <int, int>{};
     final chosen = state.ptus
         .where((p) => state.selected.contains(p['mac']))
         .toList();
@@ -2760,7 +2894,11 @@ class CommissioningController extends Notifier<CommissionState> {
       _diagnosis = (generation, unnumbered.join('\n'));
       throw const GatewayFailure('incomplete');
     }
-    for (int elapsed = 0; elapsed < 180; elapsed += 10) {
+    state = state.copy(
+      verifyCounts: {for (final id in ids) id: 0},
+      verifyWaiting: {},
+    );
+    for (int elapsed = 0; elapsed < 180; elapsed += verifyPollSeconds) {
       final fleet = await _fleet(generation);
       if (fleet?['upload_paused'] == true) {
         await _command(generation, 'set_data_upload', {'enabled': true});
@@ -2783,25 +2921,20 @@ class CommissioningController extends Notifier<CommissionState> {
         state = state.copy(backendSeenAt: DateTime.now());
       }
       final before = Map<int, DateTime>.of(previous);
-      bool good = install['all_ok'] == true;
-      for (final id in ids) {
-        final found = rows.where((p) => p['device_id'] == id).toList();
-        if (found.isEmpty) {
-          good = false;
-          continue;
-        }
-        final row = found.first;
-        final stamp = DateTime.tryParse(row['ts']?.toString() ?? '');
-        if (row['online'] != true ||
-            ((row['lag_seconds'] as num?) ?? 999) >= 60 ||
-            row['error_num'] != 0 ||
-            stamp == null ||
-            (previous[id] != null && !stamp.isAfter(previous[id]!))) {
-          good = false;
-        }
-        if (stamp != null) previous[id] = stamp;
-      }
-      consecutive = good ? consecutive + 1 : 0;
+      verifyTally(
+        ids: ids,
+        rows: rows,
+        previous: previous,
+        counts: counts,
+        lastNew: lastNew,
+        elapsed: elapsed,
+      );
+      final waiting = {
+        for (final id in ids)
+          if (elapsed - (lastNew[id] ?? 0) >= verifyIdleLimit) id,
+      };
+      final consecutive = ids.map((id) => counts[id] ?? 0).reduce(min);
+      final good = install['all_ok'] == true && consecutive >= 3;
       _diagnosis = (
         generation,
         verifyDiagnosis(
@@ -2817,8 +2950,12 @@ class CommissioningController extends Notifier<CommissionState> {
           cause: cause,
         ),
       );
-      state = state.copy(message: '連續資料驗證 $consecutive / 3');
-      if (consecutive >= 3) {
+      state = state.copy(
+        message: verifyProgressText(ids, counts, waiting),
+        verifyCounts: Map.of(counts),
+        verifyWaiting: waiting,
+      );
+      if (good) {
         await _request(generation, 'PATCH', '$_path/bot-monitor', {
           'enabled': true,
         });
@@ -2840,7 +2977,7 @@ class CommissioningController extends Notifier<CommissionState> {
         );
         return;
       }
-      await _wait(10, generation);
+      await _wait(verifyPollSeconds, generation);
     }
     throw const GatewayFailure('incomplete');
   });
@@ -3141,7 +3278,7 @@ class CommissioningController extends Notifier<CommissionState> {
   });
 
   /// Reconnects a link that dropped while idle (no reboot involved). Times
-  /// out above the link's own worst-case retry budget (45s, see
+  /// out above the link's own worst-case retry budget (51s, see
   /// ble_gateway_link.dart); keep in sync with [reconnectBudget] above.
   /// Shows the link's connect stage as the busy text of [generation]'s run.
   void Function(String) _stageFor(int generation) => (stage) {
@@ -3150,7 +3287,7 @@ class CommissioningController extends Notifier<CommissionState> {
     }
   };
 
-  static const _relinkBudget = Duration(seconds: 50);
+  static const _relinkBudget = Duration(seconds: 56);
 
   Future<void> _relink(int generation, GatewayPeer peer) async {
     await _link.disconnect();
@@ -3298,6 +3435,7 @@ class CommissioningController extends Notifier<CommissionState> {
     _rssiInFlight = true;
     final generation = _generation;
     try {
+      _lastLinkTraffic = DateTime.now();
       final result = await _link.command('get_ble_devices');
       if (!ref.mounted ||
           generation != _generation ||
@@ -3330,12 +3468,60 @@ class CommissioningController extends Notifier<CommissionState> {
           (error.code == 'disconnected' ||
               error.code == 'not_connected' ||
               error.code == 'phone_link_lost')) {
-        _stopWatch(UploadWatch.linkLost);
-        state = state.copy(error: error.message);
+        _stepSevenLinkLost(error);
       }
     } finally {
       _rssiInFlight = false;
     }
+  }
+
+  /// Last command traffic on the phone↔gateway link at step 7 (RSSI poll
+  /// or keep-alive ping).
+  DateTime _lastLinkTraffic = DateTime.now();
+
+  /// Step 7 keep-alive: when the RSSI poll is off (or has nothing to poll),
+  /// a light ping every [keepAliveInterval] keeps the link in use and
+  /// notices a drop early (with the banner's reconnect action).
+  Future<void> keepAlive({DateTime? now}) async {
+    final at = now ?? DateTime.now();
+    if (!ref.mounted ||
+        !_foreground ||
+        state.step != 4 ||
+        state.peer == null ||
+        state.busy ||
+        _pollInFlight ||
+        _rssiInFlight ||
+        state.uploadWatch == UploadWatch.linkLost ||
+        at.difference(_lastLinkTraffic) < keepAliveInterval) {
+      return;
+    }
+    _rssiInFlight = true;
+    _lastLinkTraffic = at;
+    final generation = _generation;
+    try {
+      await _link.command('ping');
+    } catch (error) {
+      if (!ref.mounted || generation != _generation) return;
+      if (error is GatewayFailure &&
+          (error.code == 'disconnected' ||
+              error.code == 'not_connected' ||
+              error.code == 'phone_link_lost')) {
+        _stepSevenLinkLost(error);
+      }
+    } finally {
+      _rssiInFlight = false;
+    }
+  }
+
+  /// Step 7 link drop seen by a background poll: banner with 「重新連線並
+  /// 繼續」 (round 8: this banner only had 「詳細資訊」).
+  void _stepSevenLinkLost(GatewayFailure error) {
+    _stopWatch(UploadWatch.linkLost);
+    state = state.copy(
+      error: error.message,
+      errorDetail: error.toString(),
+      scanResumePending: state.step == 4 ? true : null,
+    );
   }
 
   void setForeground(bool value) {
@@ -3435,6 +3621,46 @@ class CommissioningController extends Notifier<CommissionState> {
     );
     await _save();
   }
+
+  /// Step 9 「返回選擇 PTU」 / 「取消操作」: back to step 7 keeping the
+  /// selection and assignedOk (round 8: a cancel here dropped to step 2).
+  /// Stops a running verification but never disconnects the gateway.
+  Future<void> backToSelection() async {
+    if (state.step != 6) return;
+    final wasBusy = state.busy;
+    _generation++;
+    _clock?.cancel();
+    _health?.cancel();
+    state = state.copy(
+      step: 4,
+      busy: false,
+      seconds: 0,
+      verified: false,
+      report: '',
+      verifyCounts: const {},
+      verifyWaiting: const {},
+      message: wasBusy ? '已停止驗證，可調整勾選後重新配置。' : '',
+    );
+    if (_lease) {
+      try {
+        await _api.request('PATCH', '$_path/bot-monitor', {'enabled': true});
+        _lease = false;
+      } catch (_) {}
+    }
+  }
+
+  /// Banner 「重新連線」 outside steps 7/8: re-open the BLE link and read
+  /// fresh network status, keeping the current step.
+  Future<void> reconnectLink() => _sideTask('重新連線閘道器', 70, (generation) async {
+    await _reconnect(generation);
+    final net = await _command(
+      generation,
+      state.netCheckSupported ? 'get_net_status' : 'get_status',
+    );
+    _absorbTarget(net);
+    _absorbNet(net);
+    state = state.copy(reconnectFailed: false);
+  });
 
   Future<void> cancel() async {
     _generation++;
