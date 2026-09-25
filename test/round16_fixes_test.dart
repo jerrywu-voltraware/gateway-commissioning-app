@@ -258,11 +258,13 @@ void main() {
       await tester.pump();
       final s = container.read(commissionProvider);
       expect(s.identifyNote, contains(_first));
-      expect(s.identifyLine, '已送出 · 請看樁上燈號 · …0001 · -40 dBm');
+      // Round 16b: the full MAC; at 360 dp the line does not fit, so the
+      // bar shows the bytes that tell it apart (the full note on tap).
+      expect(s.identifyLine, '已送出 · 請看樁上燈號 · $_first · -40 dBm');
       final note = tester.widget<Text>(
         find.byKey(const Key('direct-identify-note')),
       );
-      expect(note.data, s.identifyLine);
+      expect(note.textSpan!.toPlainText(), '已送出 · 請看樁上燈號 · …01 · -40 dBm');
       expect(note.maxLines, 1);
       expect(
         tester.getSize(find.byKey(const Key('direct-identify-note'))).height,
@@ -312,7 +314,8 @@ void main() {
       expect(
         tester
             .widget<Text>(find.byKey(const Key('direct-identify-detail')))
-            .data,
+            .textSpan!
+            .toPlainText(),
         identifyNoteText({'mac': _pick, 'rssi': -38}),
       );
     });
@@ -320,8 +323,8 @@ void main() {
     test('one-line note texts', () {
       expect(identifySentLine, '已送出 · 請看樁上燈號');
       expect(
-        identifyLineText({'mac': '90:5F:E8:9A:96:00', 'rssi': -45}),
-        '已送出 · 請看樁上燈號 · …9600 · -45 dBm',
+        identifyLineText({'mac': '90:5f:e8:9a:96:00', 'rssi': -45}),
+        '已送出 · 請看樁上燈號 · 90:5F:E8:9A:96:00 · -45 dBm',
       );
       expect(identifyLineText(const {}), '已送出 · 請看樁上燈號 · 閘道器雙閃 6 秒');
       expect(
@@ -332,7 +335,8 @@ void main() {
   });
 
   group('3. no old star numbers in the direct flow', () {
-    testWidgets('picked card and candidates: MAC 後 4 碼 + RSSI, no #n', (
+    // Round 16b: the full MAC (「MAC 後 4 碼」 read 9600 for a whole fleet).
+    testWidgets('picked card and candidates: full MAC + RSSI, no #n', (
       tester,
     ) async {
       _phone(tester);
@@ -347,23 +351,31 @@ void main() {
       addTearDown(container.dispose);
       await tester.pumpWidget(_screen(container));
       expect(
-        tester.widget<Text>(find.byKey(const Key('direct-linked-tail'))).data,
-        'MAC 後 4 碼 0002',
+        find.descendant(
+          of: find.byKey(const Key('direct-linked')),
+          matching: find.text(_pick),
+        ),
+        findsOneWidget,
       );
       expect(find.text(_pick), findsOneWidget);
+      expect(find.textContaining('後 4 碼'), findsNothing);
       expect(find.textContaining(RegExp(r'#\d')), findsNothing);
 
       await tester.tap(find.byKey(const Key('direct-not-this')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
-      expect(
-        find.textContaining('MAC 後 4 碼 0001 · 峰值 -50 dBm'),
-        findsOneWidget,
-      );
-      expect(
-        find.textContaining('MAC 後 4 碼 0002 · 峰值 -38 dBm'),
-        findsOneWidget,
-      );
+      for (final (mac, rssi) in [(_first, -50), (_pick, -38)]) {
+        final row = find.byKey(ValueKey('direct-candidate-$mac'));
+        expect(
+          find.descendant(of: row, matching: find.text(mac)),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: row, matching: find.text('峰值 $rssi dBm')),
+          findsOneWidget,
+        );
+      }
+      expect(find.textContaining('後 4 碼'), findsNothing);
       expect(find.textContaining(RegExp(r'#\d')), findsNothing);
     });
 
@@ -381,11 +393,9 @@ void main() {
       await tester.pumpWidget(_screen(container));
       await tester.tap(find.byKey(const Key('direct-not-this')));
       await tester.pump();
-      expect(
-        find.textContaining('MAC 後 4 碼 0001 · 峰值 -80 dBm'),
-        findsOneWidget,
-      );
+      expect(find.text('峰值 -80 dBm'), findsOneWidget);
       expect(find.text(_first), findsOneWidget);
+      expect(find.textContaining('後 4 碼'), findsNothing);
       expect(find.textContaining(RegExp(r'#\d')), findsNothing);
     });
   });

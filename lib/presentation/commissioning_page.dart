@@ -785,7 +785,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                             ),
                         ] else ...[
                           Text(
-                            '已選 ${state.selected.length} / $targetPtuCount 台',
+                            selectionCountText(state, targetPtuCount),
                             key: const Key('ptu-selection-count'),
                           ),
                           const SizedBox(height: 6),

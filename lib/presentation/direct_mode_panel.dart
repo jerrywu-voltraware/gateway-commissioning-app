@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../application/commissioning_controller.dart';
@@ -11,11 +13,14 @@ import '../core/ptu_rssi.dart';
 /// makes the gateway switch (a binding) so the installer can identify it.
 /// Hidden for firmware without `direct` (the page keeps the old list).
 ///
-/// Round 16: PTUs are named by 「MAC 後 4 碼」 + RSSI, never by the old
-/// star number they may still carry (round 15 showed #1–#5 here). With a
-/// pick, 「不是這台？」 sits in the bottom bar ([DirectPickActions]) so it
-/// is always on screen; this card keeps 「改選其他 PTU」 only while there
-/// is no pick.
+/// Round 16: PTUs are named by MAC + RSSI, never by the old star number
+/// they may still carry (round 15 showed #1–#5 here). With a pick,
+/// 「不是這台？」 sits in the bottom bar ([DirectPickActions]) so it is
+/// always on screen; this card keeps 「改選其他 PTU」 only while there is
+/// no pick.
+///
+/// Round 16b: the full MAC in monospace ([MacText]) — 「MAC 後 4 碼」 read
+/// 「9600」 for a whole fleet of 90:xx:xx:xx:96:00 PTUs.
 class DirectStatusPanel extends ConsumerStatefulWidget {
   const DirectStatusPanel({super.key});
 
@@ -42,6 +47,7 @@ class _DirectStatusPanelState extends ConsumerState<DirectStatusPanel> {
         ? null
         : state.ptus.where((p) => sameMac(p['mac'], picked)).firstOrNull;
     final hint = direct?.state.hint;
+    final others = [for (final c in direct?.candidates ?? const []) c.mac];
     final warnFg = dark ? Colors.amber.shade200 : Colors.brown.shade900;
     final warnBg = dark
         ? Colors.amber.shade900.withValues(alpha: 0.35)
@@ -66,9 +72,10 @@ class _DirectStatusPanelState extends ConsumerState<DirectStatusPanel> {
                 spacing: 12,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  Text(
-                    macTailLabel(picked),
-                    key: const Key('direct-linked-tail'),
+                  MacText(
+                    picked,
+                    key: const Key('direct-linked'),
+                    others: others,
                     style: text.titleMedium?.copyWith(
                       fontWeight: FontWeight.w700,
                     ),
@@ -83,11 +90,6 @@ class _DirectStatusPanelState extends ConsumerState<DirectStatusPanel> {
                     style: text.titleMedium,
                   ),
                 ],
-              ),
-              Text(
-                picked,
-                key: const Key('direct-linked'),
-                style: text.bodySmall?.copyWith(color: colors.onSurfaceVariant),
               ),
               if (direct.reasonText != null)
                 Text(
@@ -131,7 +133,7 @@ class _DirectStatusPanelState extends ConsumerState<DirectStatusPanel> {
                 key: const Key('direct-notice'),
                 fg: warnFg,
                 bg: warnBg,
-                child: Text(
+                child: macRichText(
                   state.directNotice,
                   style: TextStyle(color: warnFg),
                 ),
@@ -146,7 +148,7 @@ class _DirectStatusPanelState extends ConsumerState<DirectStatusPanel> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    macRichText(
                       directStrayBindText(state.strayBindMac),
                       style: TextStyle(
                         color: warnFg,
@@ -194,7 +196,9 @@ class _DirectStatusPanelState extends ConsumerState<DirectStatusPanel> {
                 child: Text(
                   [
                     if (direct.minRssi != null) '門檻 ${direct.minRssi} dBm',
-                    direct.boundMac == null ? '未綁定' : '已綁定 ${direct.boundMac}',
+                    direct.boundMac == null
+                        ? '未綁定'
+                        : '已綁定 ${formatMac(direct.boundMac)}',
                   ].join(' · '),
                   style: text.bodySmall,
                 ),
@@ -261,8 +265,13 @@ class _DirectStatusPanelState extends ConsumerState<DirectStatusPanel> {
 String directCandidatesHint(int count) =>
     '附近候選（$count）：點選後閘道器會綁定並改連那一台，再按「辨識此樁」確認。';
 
-/// One nearby candidate: 「MAC 後 4 碼 · 峰值 RSSI」 with the full MAC below
+/// One nearby candidate: the full MAC (monospace) with 「峰值 RSSI」 below
 /// (round 16: no old star number); a tap makes the gateway switch to it.
+///
+/// Round 16b: the whole row — trailing 「改連這台」 included — is one tap
+/// target; busy is checked again at the tap and [onPicked] (closing the
+/// sheet) only runs when the switch really starts (field round 16: a tap
+/// on the last row closed the sheet and sent nothing).
 class DirectCandidateTile extends ConsumerWidget {
   const DirectCandidateTile(this.candidate, {super.key, this.onPicked});
 
@@ -276,30 +285,62 @@ class DirectCandidateTile extends ConsumerWidget {
     final state = ref.watch(commissionProvider);
     final controller = ref.read(commissionProvider.notifier);
     final colors = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
     final picked = state.direct?.pickedMac;
     final c = candidate;
     final current = picked != null && sameMac(picked, c.mac);
-    return ListTile(
+    final others = [
+      for (final o in state.direct?.candidates ?? const []) o.mac,
+    ];
+    final enabled = !current && !state.busy && !state.relinking;
+    return InkWell(
       key: ValueKey('direct-candidate-${c.mac}'),
-      dense: true,
-      contentPadding: EdgeInsets.zero,
-      title: Text(
-        '${macTailLabel(c.mac)} · ${c.rssiText}',
-        style: const TextStyle(fontWeight: FontWeight.w600),
-      ),
-      subtitle: Text(c.mac),
-      trailing: Text(
-        current ? '目前選中' : '改連這台',
-        style: TextStyle(
-          color: current ? colors.onSurfaceVariant : colors.primary,
-        ),
-      ),
-      onTap: state.busy || state.relinking || current
-          ? null
-          : () {
+      onTap: enabled
+          ? () {
+              final now = ref.read(commissionProvider);
+              if (now.busy || now.relinking) return;
               onPicked?.call();
               controller.switchDirectPick(c.mac);
-            },
+            }
+          : null,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 56),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    MacText(
+                      c.mac,
+                      others: others,
+                      fullBelow: true,
+                      style: text.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Text(
+                      c.rssiText,
+                      style: text.bodySmall?.copyWith(
+                        color: colors.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                current ? '目前選中' : '改連這台',
+                style: TextStyle(
+                  color: current ? colors.onSurfaceVariant : colors.primary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -313,6 +354,17 @@ Future<void> showDirectCandidates(BuildContext context) =>
       builder: (_) => const DirectCandidatesSheet(),
     );
 
+/// Round 16b: room below the last candidate — the largest of the system
+/// bar and the gesture area, plus a margin — so the last row never sits
+/// on the navigation / gesture bar.
+double candidatesSheetBottom(MediaQueryData media) =>
+    16 +
+    [
+      media.padding.bottom,
+      media.viewPadding.bottom,
+      media.systemGestureInsets.bottom,
+    ].reduce(math.max);
+
 class DirectCandidatesSheet extends ConsumerWidget {
   const DirectCandidatesSheet({super.key});
 
@@ -323,9 +375,15 @@ class DirectCandidatesSheet extends ConsumerWidget {
         const <DirectCandidate>[];
     final text = Theme.of(context).textTheme;
     return SafeArea(
+      bottom: false,
       child: Padding(
         key: const Key('direct-candidates-sheet'),
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+        padding: EdgeInsets.fromLTRB(
+          16,
+          16,
+          16,
+          candidatesSheetBottom(MediaQuery.of(context)),
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -353,6 +411,139 @@ class DirectCandidatesSheet extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Round 16b: PTU MACs in the direct flow are monospace.
+const macFont = TextStyle(
+  fontFamily: 'monospace',
+  fontFamilyFallback: ['Menlo', 'Courier'],
+);
+
+/// [text] as spans, every MAC in it ([formattedMacPattern]) in [macFont].
+TextSpan macSpan(String text, [TextStyle? style]) {
+  final children = <InlineSpan>[];
+  var at = 0;
+  for (final match in formattedMacPattern.allMatches(text)) {
+    if (match.start > at) {
+      children.add(TextSpan(text: text.substring(at, match.start)));
+    }
+    children.add(TextSpan(text: match.group(0), style: macFont));
+    at = match.end;
+  }
+  if (at < text.length) children.add(TextSpan(text: text.substring(at)));
+  return TextSpan(style: style, children: children);
+}
+
+/// Whether [span] fits on one line of [maxWidth], drawn as a [Text] here
+/// would draw it (default text style, text scale).
+bool fitsOneLine(BuildContext context, InlineSpan span, double maxWidth) {
+  if (!maxWidth.isFinite) return true;
+  final painter = TextPainter(
+    text: TextSpan(style: DefaultTextStyle.of(context).style, children: [span]),
+    textDirection: Directionality.of(context),
+    textScaler: MediaQuery.textScalerOf(context),
+    maxLines: 1,
+  )..layout();
+  final fits = painter.width <= maxWidth;
+  painter.dispose();
+  return fits;
+}
+
+/// A text naming PTU MACs: the MACs in [macFont] (a [Text], so finders and
+/// [Text.textSpan] see the whole text).
+Text macRichText(
+  String text, {
+  Key? key,
+  TextStyle? style,
+  int? maxLines,
+  TextOverflow? overflow,
+}) => Text.rich(
+  macSpan(text),
+  key: key,
+  style: style,
+  maxLines: maxLines,
+  overflow: overflow,
+);
+
+/// Round 16b: a PTU MAC in full, monospace (field round 16: 「MAC 後 4
+/// 碼」 read 「9600」 for five PTUs). Only when the full MAC does not fit
+/// on one line: the shortest run of bytes telling it apart from [others]
+/// ([distinguishingMacSegment]) — tap for the full MAC, or, with
+/// [fullBelow] (inside a tap target), the full MAC in small type below.
+class MacText extends StatefulWidget {
+  const MacText(
+    this.mac, {
+    super.key,
+    this.others = const [],
+    this.style,
+    this.fullBelow = false,
+  });
+
+  final String mac;
+  final Iterable<Object?> others;
+  final TextStyle? style;
+  final bool fullBelow;
+
+  @override
+  State<MacText> createState() => _MacTextState();
+}
+
+class _MacTextState extends State<MacText> {
+  bool _open = false;
+
+  @override
+  void didUpdateWidget(MacText old) {
+    super.didUpdateWidget(old);
+    // Another PTU (e.g. the gateway switched): short again.
+    if (!sameMac(old.mac, widget.mac)) _open = false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final style = (widget.style ?? const TextStyle()).merge(macFont);
+    final full = formatMac(widget.mac);
+    return LayoutBuilder(
+      builder: (context, box) {
+        if (_open ||
+            fitsOneLine(
+              context,
+              TextSpan(text: full, style: style),
+              box.maxWidth,
+            )) {
+          return Text(full, style: style);
+        }
+        final segment = Text(
+          distinguishingMacSegment(widget.mac, widget.others),
+          key: const Key('mac-segment'),
+          style: style,
+        );
+        if (widget.fullBelow) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              segment,
+              Text(
+                full,
+                style: Theme.of(context).textTheme.bodySmall?.merge(macFont),
+              ),
+            ],
+          );
+        }
+        return InkWell(
+          key: const Key('mac-expand'),
+          onTap: () => setState(() => _open = true),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(child: segment),
+              const Icon(Icons.unfold_more, size: 18),
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -393,9 +584,10 @@ class _WarnBox extends StatelessWidget {
 /// 「重新搜尋」 while it has none.
 ///
 /// Round 16: 「不是這台？」 sits beside 「辨識此樁」 (always on screen, also
-/// at 360 dp) and the note is one line (「已送出 · 請看樁上燈號 · …MAC 後 4
-/// 碼 · RSSI」); tapping it shows the full note. Round 15: the four-line note
-/// grew the bar over 「不是這台？」.
+/// at 360 dp) and the note is one line (「已送出 · 請看樁上燈號 · MAC ·
+/// RSSI」); tapping it shows the full note. Round 15: the four-line note
+/// grew the bar over 「不是這台？」. Round 16b: the MAC is shortened to
+/// the bytes that tell it apart only when the line does not fit.
 class DirectPickActions extends ConsumerStatefulWidget {
   const DirectPickActions({super.key});
 
@@ -427,6 +619,9 @@ class _DirectPickActionsState extends ConsumerState<DirectPickActions> {
     }
     final identifySupported = state.config['identify_supported'] == true;
     final canSwitch = state.direct?.candidates.isNotEmpty ?? false;
+    final others = [
+      for (final c in state.direct?.candidates ?? const []) c.mac,
+    ];
     final note = state.identifyNote;
     final line = note.isEmpty
         ? '按下後請看樁上 PTU 與閘道器的燈號'
@@ -475,16 +670,29 @@ class _DirectPickActionsState extends ConsumerState<DirectPickActions> {
               child: Row(
                 children: [
                   Expanded(
-                    child: Text(
-                      line,
-                      key: const Key('direct-identify-note'),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: note.isEmpty
-                            ? colors.onSurfaceVariant
-                            : colors.primary,
-                      ),
+                    // Round 16b: the full MAC when the line fits, else the
+                    // bytes telling it apart (the full note opens below).
+                    child: LayoutBuilder(
+                      builder: (context, box) {
+                        final style = TextStyle(
+                          color: note.isEmpty
+                              ? colors.onSurfaceVariant
+                              : colors.primary,
+                        );
+                        return macRichText(
+                          fitsOneLine(
+                                context,
+                                macSpan(line, style),
+                                box.maxWidth,
+                              )
+                              ? line
+                              : shortenMacIn(line, others),
+                          key: const Key('direct-identify-note'),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: style,
+                        );
+                      },
                     ),
                   ),
                   if (note.isNotEmpty && note != line)
@@ -500,7 +708,7 @@ class _DirectPickActionsState extends ConsumerState<DirectPickActions> {
         if (showDetail)
           Padding(
             padding: const EdgeInsets.only(bottom: 4),
-            child: Text(
+            child: macRichText(
               note,
               key: const Key('direct-identify-detail'),
               style: Theme.of(context).textTheme.bodySmall,

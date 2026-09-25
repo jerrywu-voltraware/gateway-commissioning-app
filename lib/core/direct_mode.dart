@@ -177,18 +177,75 @@ class DirectStatus {
 bool directIdentifyRequired(Map<String, dynamic> config) =>
     config['identify_supported'] == true && identifyPtuSupported(config);
 
-/// 「MAC 後 4 碼」: the last four hex digits, upper case.
-String macTail(Object? mac) {
+/// The six bytes of [mac] as upper-case hex pairs, or null when it is not
+/// 12 hex digits.
+List<String>? _macBytes(Object? mac) {
   final hex = (mac?.toString() ?? '').toUpperCase().replaceAll(
     RegExp('[^0-9A-F]'),
     '',
   );
-  return hex.length <= 4 ? hex : hex.substring(hex.length - 4);
+  if (hex.length != 12) return null;
+  return [for (var i = 0; i < 12; i += 2) hex.substring(i, i + 2)];
 }
 
-/// Round 16: how the direct flow names a PTU first — 「MAC 後 4 碼 XXXX」
-/// (never the old star number the PTU may still carry).
-String macTailLabel(Object? mac) => 'MAC 後 4 碼 ${macTail(mac)}';
+/// Round 16b: a PTU MAC as the direct flow shows it — upper case, colon
+/// separated (「90:5F:E8:9A:96:00」); anything else as given.
+String formatMac(Object? mac) =>
+    _macBytes(mac)?.join(':') ?? (mac?.toString().trim() ?? '');
+
+/// A MAC as [formatMac] writes it, inside a longer text.
+final formattedMacPattern = RegExp(r'(?:[0-9A-F]{2}:){5}[0-9A-F]{2}');
+
+/// Round 16b: the shortest run of whole bytes of [target] that no MAC in
+/// [others] has at the same place — what tells it apart from the current
+/// candidates when the full MAC does not fit. Ties go to the leftmost run
+/// (read order; field round 16: 「5F」「2C」「08」「3B」「74」 for
+/// 90:xx:xx:xx:96:00). Left-out bytes are marked 「…」: 「…5F…」,
+/// 「…96:00」, 「90:5F…」.
+///
+/// [others] may contain [target] itself (ignored) and entries that are not
+/// MACs (ignored). With nothing to tell apart, the last two bytes; the full
+/// MAC when [target] is not one.
+String distinguishingMacSegment(Object? target, Iterable<Object?> others) {
+  final bytes = _macBytes(target);
+  if (bytes == null) return formatMac(target);
+  bool same(List<String> a, int from, int to) {
+    for (var i = from; i < to; i++) {
+      if (a[i] != bytes[i]) return false;
+    }
+    return true;
+  }
+
+  final rest = [
+    for (final other in others)
+      if (_macBytes(other) case final b? when !same(b, 0, 6)) b,
+  ];
+  String segment(int from, int to) =>
+      '${from > 0 ? '…' : ''}'
+      '${bytes.sublist(from, to).join(':')}'
+      '${to < 6 ? '…' : ''}';
+  if (rest.isEmpty) return segment(4, 6);
+  for (var length = 1; length < 6; length++) {
+    for (var from = 0; from + length <= 6; from++) {
+      if (rest.every((b) => !same(b, from, from + length))) {
+        return segment(from, from + length);
+      }
+    }
+  }
+  return bytes.join(':');
+}
+
+/// [text] with its (first) [formatMac] MAC replaced by
+/// [distinguishingMacSegment] against [others]; unchanged without one.
+String shortenMacIn(String text, Iterable<Object?> others) {
+  final match = formattedMacPattern.firstMatch(text);
+  if (match == null) return text;
+  return text.replaceRange(
+    match.start,
+    match.end,
+    distinguishingMacSegment(match.group(0), others),
+  );
+}
 
 /// Step 7 direct flow: 「是這台」 button label until the shown PTU is
 /// identified.
@@ -199,18 +256,21 @@ const directIdentifyFirstText = '請先按「辨識此樁」確認是眼前這�
 
 /// The gateway now connects a PTU other than the one identified.
 String directSwitchedText(Object? mac) =>
-    '閘道器已切換到另一顆 PTU（MAC 後 4 碼 ${macTail(mac)}），請重新辨識';
+    '閘道器已切換到另一顆 PTU（${formatMac(mac)}），請重新辨識';
 
 /// Entering step 7: the gateway is bound to a PTU this APP never confirmed.
-String directStrayBindText(Object? mac) =>
-    '閘道器目前綁定 PTU（MAC 後 4 碼 ${macTail(mac)}）';
+String directStrayBindText(Object? mac) => '閘道器目前綁定 PTU ${formatMac(mac)}';
 
 const directStrayBindHint = '這個綁定不是在本機確認過的：保留則閘道器只連這台；解除則恢復自動選最近的 PTU。';
 
-/// 取消 / 結束 could not clear the temporary binding of 「不是這台？」.
-String directUnbindFailedText(Object? mac) =>
-    '已取消，但閘道器的暫時綁定（PTU MAC 後 4 碼 ${macTail(mac)}）未能解除；'
-    '下次進入第 7 步會再詢問是否解除。';
+/// 取消 / 結束 could not undo the temporary binding of 「不是這台？」
+/// ([mac]); [restore] is the binding it should have gone back to (null:
+/// none).
+String directUnbindFailedText(Object? mac, [Object? restore]) => restore == null
+    ? '已取消，但閘道器的暫時綁定（PTU ${formatMac(mac)}）未能解除；'
+          '下次進入第 7 步會再詢問是否解除。'
+    : '已取消，但閘道器的暫時綁定（PTU ${formatMac(mac)}）未能還原成原本的'
+          '綁定 ${formatMac(restore)}；下次進入第 7 步會再詢問。';
 
 /// Step 7 direct flow: shown when the gateway's pick is ambiguous.
 const directAmbiguousText = '附近有訊號相近的 PTU，請按「辨識此樁」確認是否為眼前這台';
@@ -222,7 +282,9 @@ const identifySentText = '已送出，請看樁上燈號';
 const identifySentLine = '已送出 · 請看樁上燈號';
 
 /// Round 16: the identify ack in one line for the bottom bar — 「已送出 ·
-/// 請看樁上燈號 · …MAC 後 4 碼 · RSSI」; [identifyNoteText] is the detail.
+/// 請看樁上燈號 · MAC · RSSI」; [identifyNoteText] is the detail.
+/// Round 16b: the full MAC (was 「…後 4 碼」, the same on a whole fleet);
+/// the bar shortens it with [shortenMacIn] only when the line does not fit.
 String identifyLineText(Map<String, dynamic> ack) {
   final ptuWrite = ack['ptu_write'];
   if (ptuWrite != null && ptuWrite != 'ok') {
@@ -233,7 +295,7 @@ String identifyLineText(Map<String, dynamic> ack) {
   final rssi = ack['rssi'];
   return [
     identifySentLine,
-    '…${macTail(mac)}',
+    formatMac(mac),
     if (rssi is num) '$rssi dBm',
   ].join(' · ');
 }
@@ -247,7 +309,7 @@ String identifyNoteText(Map<String, dynamic> ack) {
   final mac = ack['mac'];
   if (mac == null) return '$identifySentText（閘道器雙閃 6 秒）';
   final rssi = ack['rssi'];
-  return '$identifySentText（PTU $mac${rssi is num ? ' · $rssi dBm' : ''}）';
+  return '$identifySentText（PTU ${formatMac(mac)}${rssi is num ? ' · $rssi dBm' : ''}）';
 }
 
 /// identify on firmware 1.7.20+ when target=ptu itself fails outright

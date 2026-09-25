@@ -251,7 +251,7 @@ void main() {
         expect(s.selected, {_first});
         expect(s.identifiedMac, isNull);
         expect(s.directNotice, directSwitchedText(_first));
-        expect(s.directNotice, contains('MAC 後 4 碼 0001'));
+        expect(s.directNotice, contains(_first));
         expect(directConfirmReady(s), isFalse);
       },
     );
@@ -309,22 +309,23 @@ void main() {
       await tester.pump();
       await _idle(tester, container);
       await tester.pump();
-      // Round 16: one line (「已送出 · 請看樁上燈號 · …MAC 後 4 碼 · RSSI」);
-      // the full note (whole MAC) opens below it.
+      // Round 16: one line (「已送出 · 請看樁上燈號 · MAC · RSSI」); the
+      // full note opens below it. Round 16b: the whole MAC when it fits.
       final note = tester.widget<Text>(
         find.byKey(const Key('direct-identify-note')),
       );
-      expect(note.data, startsWith(identifySentLine));
-      expect(note.data, contains(macTail(_pick)));
+      expect(note.textSpan!.toPlainText(), startsWith(identifySentLine));
+      expect(note.textSpan!.toPlainText(), contains(_pick));
       expect(note.maxLines, 1);
       expect(find.byKey(const Key('direct-identify-detail')), findsNothing);
       await tester.tap(find.byKey(const Key('direct-identify-toggle')));
       await tester.pump();
-      final detail = tester.widget<Text>(
-        find.byKey(const Key('direct-identify-detail')),
-      );
-      expect(detail.data, contains(identifySentText));
-      expect(detail.data, contains(_pick));
+      final detail = tester
+          .widget<Text>(find.byKey(const Key('direct-identify-detail')))
+          .textSpan!
+          .toPlainText();
+      expect(detail, contains(identifySentText));
+      expect(detail, contains(_pick));
       expect(find.text('是這台，開始監控'), findsOneWidget);
     });
   });
@@ -740,14 +741,17 @@ void main() {
       expect(s.tempBoundMac, isNull);
     });
 
-    test('switch → 取消 with 「確認後綁定」 on: the binding is left', () async {
+    // Round 16b: also with 「確認後綁定」 on — only 是這台 makes the new MAC
+    // count (was: the binding is left).
+    test('switch → 取消 with 「確認後綁定」 on: the binding from before is put '
+        'back as well', () async {
       final fake = PickGateway();
       final (container, c) = await _toStep7(fake, bindOnConfirm: true);
       addTearDown(container.dispose);
       await c.switchDirectPick(_first);
       await c.cancel();
       expect(container.read(commissionProvider).step, 1);
-      expect(fake.config['direct_bind_mac'], _first);
+      expect(fake.config['direct_bind_mac'], '');
     });
 
     test('switch → 取消, the unbind fails: not blocked, noted in 詳細資訊', () async {
@@ -811,7 +815,7 @@ void main() {
       expect(
         find.descendant(
           of: find.byKey(const Key('direct-stray-bind')),
-          matching: find.textContaining('MAC 後 4 碼 0001'),
+          matching: find.textContaining(_first),
         ),
         findsOneWidget,
       );

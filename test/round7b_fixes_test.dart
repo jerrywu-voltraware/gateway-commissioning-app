@@ -218,7 +218,8 @@ void main() {
       selected: {'A', 'B', 'C', 'D', 'E'},
       assignedOk: {'A', 'B', 'C', 'D'},
     );
-    expect(configureLabel(s), '配置 1 台並開始監控');
+    // Round 16b: 「剩餘」 once some are done.
+    expect(configureLabel(s), '配置剩餘 1 台並開始監控');
     expect(configureTargets(s), {'E'});
   });
 

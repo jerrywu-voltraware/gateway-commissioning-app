@@ -142,7 +142,8 @@ void main() {
       expect(s.assignedOk, isNot(contains(mac)));
       expect(s.assignedOk, hasLength(2));
       expect(configureTargets(s), {mac});
-      expect(configureLabel(s), '配置 1 台並開始監控');
+      // Round 16b: 「剩餘」 once some are done.
+      expect(configureLabel(s), '配置剩餘 1 台並開始監控');
     });
   });
 

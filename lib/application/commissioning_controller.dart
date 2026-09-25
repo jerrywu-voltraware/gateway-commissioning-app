@@ -334,7 +334,21 @@ String configureLabel(CommissionState s) {
     if (s.busy || s.ptus.isEmpty) return scanningLabel;
     return s.monitoringOk ? '開始驗證' : '恢復監控';
   }
-  return '配置 $rest 台並開始監控';
+  // Round 16b: with some already done, 「剩餘」 — 「配置 1 台」 beside
+  // 「已選 5 / 5 台」 read as if only one would be set up.
+  final done = s.selected.length - rest;
+  return done > 0 ? '配置剩餘 $rest 台並開始監控' : '配置 $rest 台並開始監控';
+}
+
+/// Step 7/8 line above the configure button: 「已選 n / target 台」, or —
+/// round 16b, once some selected PTUs are done — 「已選 5 台 · 已完成 4 台 ·
+/// 將配置 1 台」 (field round 16: 「已選 5 / 5 台」 beside 「配置 1 台並開始
+/// 監控」 read as a mismatch).
+String selectionCountText(CommissionState s, int target) {
+  final rest = configureTargets(s).length;
+  final done = s.selected.length - rest;
+  if (done == 0 || rest == 0) return '已選 ${s.selected.length} / $target 台';
+  return '已選 ${s.selected.length} 台 · 已完成 $done 台 · 將配置 $rest 台';
 }
 
 /// Step 7 bottom button while a scan is still running.
@@ -415,7 +429,7 @@ int get directSwitchSeconds =>
 /// Header after [directSwitchWait] passed without the switch: the step 7
 /// refresh keeps reading the gateway and clears the error once it has.
 String directSwitchPendingText(String mac) =>
-    '閘道器仍在改連 PTU（MAC 後 4 碼 ${macTail(mac)}），連上後畫面會自動更新；也可改選其他 PTU。';
+    '閘道器仍在改連 PTU ${formatMac(mac)}，連上後畫面會自動更新；也可改選其他 PTU。';
 
 /// The gateway connected the PTU chosen under 「不是這台？」.
 String directSwitchDoneText(String mac) =>
@@ -660,6 +674,7 @@ class CommissionState {
     this.rescanNeeded = false,
     this.identifiedMac,
     this.tempBoundMac,
+    this.tempRestoreMac,
     this.strayBindMac,
     this.directNotice = '',
   });
@@ -672,8 +687,15 @@ class CommissionState {
 
   /// Round 15b: binding set by 「不是這台？」 ([CommissioningController.
   /// switchDirectPick]) and not yet confirmed. 「是這台」 makes it permanent;
-  /// cancelling (「確認後綁定 PTU」 off) clears it on the gateway.
+  /// cancelling undoes it on the gateway (round 16b: puts back
+  /// [tempRestoreMac]).
   final String? tempBoundMac;
+
+  /// Round 16b: the gateway's binding right before the first 「不是這台？」
+  /// of this temporary binding (null: none) — what 取消 / 返回 / 結束
+  /// put back (round 16 field: a binding confirmed earlier was cleared to
+  /// "" instead). Only meaningful while [tempBoundMac] is set.
+  final String? tempRestoreMac;
 
   /// Round 15b: entering step 7, the gateway was bound to this PTU with no
   /// confirmed record in this APP; the panel asks 「保留」/「解除」.
@@ -905,6 +927,7 @@ class CommissionState {
     bool? rescanNeeded,
     Object? identifiedMac = _keep,
     Object? tempBoundMac = _keep,
+    Object? tempRestoreMac = _keep,
     Object? strayBindMac = _keep,
     String? directNotice,
   }) => CommissionState(
@@ -914,6 +937,9 @@ class CommissionState {
     tempBoundMac: identical(tempBoundMac, _keep)
         ? this.tempBoundMac
         : tempBoundMac as String?,
+    tempRestoreMac: identical(tempRestoreMac, _keep)
+        ? this.tempRestoreMac
+        : tempRestoreMac as String?,
     strayBindMac: identical(strayBindMac, _keep)
         ? this.strayBindMac
         : strayBindMac as String?,
@@ -1858,6 +1884,7 @@ class CommissioningController extends Notifier<CommissionState> {
       uploadLate: false,
       identifiedMac: null,
       tempBoundMac: null,
+      tempRestoreMac: null,
       strayBindMac: null,
       directNotice: '',
       error: state.error,
@@ -3611,6 +3638,7 @@ class CommissioningController extends Notifier<CommissionState> {
         }
         state = state.copy(
           tempBoundMac: null,
+          tempRestoreMac: null,
           strayBindMac: null,
           directNotice: '',
         );
@@ -3646,6 +3674,13 @@ class CommissioningController extends Notifier<CommissionState> {
         await _startMonitoring(generation, [row], failed);
       });
 
+  /// Round 16b: the gateway's PTU binding as last read — the step 7 status
+  /// (`direct.bound_mac`, refreshed while step 7 is open), else get_config;
+  /// null when unbound.
+  String? get gatewayBindMac => state.directRaw.containsKey('bound_mac')
+      ? state.direct?.boundMac
+      : directBoundMacOf(state.config);
+
   /// Round 15 「不是這台？」 → a candidate: bind the gateway to [mac] (a
   /// temporary binding that makes it switch) and wait until it reports that
   /// PTU connected; the installer then identifies it again. The binding is
@@ -3666,11 +3701,16 @@ class CommissioningController extends Notifier<CommissionState> {
         final until = DateTime.now().add(wait);
         if (!directFlow) throw const GatewayFailure('direct_unsupported');
         // Round 15b: temporary until 「是這台」 (set before sending, so a lost
-        // ack is still cleared by a cancel).
+        // ack is still undone by a cancel). Round 16b: remember the
+        // binding from before the first switch — 取消 puts it back (a
+        // second switch keeps it: still the binding before this one).
         state = state.copy(
           identifyNote: '',
           identifiedMac: null,
           directNotice: '',
+          tempRestoreMac: state.tempBoundMac == null
+              ? gatewayBindMac
+              : state.tempRestoreMac,
           tempBoundMac: mac,
           strayBindMac: null,
         );
@@ -3706,12 +3746,12 @@ class CommissioningController extends Notifier<CommissionState> {
       _check(generation);
       if (remembered == null || !sameMac(remembered, bound)) stray = bound;
     }
-    // The temporary binding is gone (or replaced): nothing to clear later.
+    // The temporary binding is gone (or replaced): nothing to undo later.
+    final keep = temp != null && bound != null && sameMac(temp, bound);
     state = state.copy(
       strayBindMac: stray,
-      tempBoundMac: temp != null && bound != null && sameMac(temp, bound)
-          ? temp
-          : null,
+      tempBoundMac: keep ? temp : null,
+      tempRestoreMac: keep ? state.tempRestoreMac : null,
     );
   }
 
@@ -3750,28 +3790,42 @@ class CommissioningController extends Notifier<CommissionState> {
   }
 
   /// Round 15b: 取消 / 結束 / 返回 before 「是這台」 — a temporary
-  /// 「不是這台？」 binding is cleared on the gateway (「確認後綁定 PTU」
-  /// off). Never blocks: returns the failure text (for 詳細資訊), null
-  /// when there was nothing to clear or it was cleared.
+  /// 「不是這台？」 binding is undone on the gateway. Never blocks: returns
+  /// the failure text (for 詳細資訊), null when there was nothing to undo
+  /// or it was undone.
+  ///
+  /// Round 16b: undone means the binding from before the switch is put
+  /// back ([CommissionState.tempRestoreMac]): a MAC bound before is bound
+  /// again, none is cleared — never cleared regardless (round 16 field: a
+  /// binding confirmed earlier was lost). Also with 「確認後綁定 PTU」 on:
+  /// only 「是這台」 makes the new MAC count.
   Future<String?> _releaseTempBind() async {
     final mac = state.tempBoundMac;
     if (mac == null || !ref.mounted) return null;
-    if (ref.read(topologyProvider).directBindOnConfirm) {
-      state = state.copy(tempBoundMac: null, error: state.error);
+    final restore = state.tempRestoreMac;
+    if (restore != null && sameMac(restore, mac)) {
+      // Switched back to the binding from before: nothing to undo.
+      state = state.copy(
+        tempBoundMac: null,
+        tempRestoreMac: null,
+        error: state.error,
+      );
       return null;
     }
     try {
       await _link
-          .command('set_config', {'direct_bind_mac': ''})
+          .command('set_config', {'direct_bind_mac': restore ?? ''})
           .timeout(const Duration(seconds: 8));
     } catch (error) {
       return error.toString();
     }
-    await _rememberBind(null);
+    // A binding put back keeps its confirmed record (or its question).
+    if (restore == null) await _rememberBind(null);
     if (ref.mounted) {
       state = state.copy(
         tempBoundMac: null,
-        config: {...state.config, 'direct_bind_mac': ''},
+        tempRestoreMac: null,
+        config: {...state.config, 'direct_bind_mac': restore ?? ''},
         error: state.error,
       );
     }
@@ -5434,9 +5488,11 @@ class CommissioningController extends Notifier<CommissionState> {
     _grace?.cancel();
     _stopWatch(UploadWatch.idle);
     final safe = await _safeStop();
-    // Round 15b: before the link goes, clear a temporary 「不是這台？」
-    // binding; a failure only notes it (asked again at the next step 7).
+    // Round 15b: before the link goes, undo a temporary 「不是這台？」
+    // binding (round 16b: back to the binding from before); a failure only
+    // notes it (asked again at the next step 7).
     final tempBound = state.tempBoundMac;
+    final restore = state.tempRestoreMac;
     final unbindFailure = await _releaseTempBind();
     await _link.disconnect();
     if (_lease) {
@@ -5453,16 +5509,19 @@ class CommissioningController extends Notifier<CommissionState> {
         wifiGraceOver: false,
         identifiedMac: null,
         tempBoundMac: null,
+        tempRestoreMac: null,
         strayBindMac: null,
         directNotice: '',
         error: !safe
             ? '尚未確認 Gateway 已恢復監控，請重新連線核對。'
             : unbindFailure != null
-            ? directUnbindFailedText(tempBound)
+            ? directUnbindFailedText(tempBound, restore)
             : null,
         errorDetail: unbindFailure == null
             ? null
-            : '暫時綁定 $tempBound 未能解除：$unbindFailure',
+            : restore == null
+            ? '暫時綁定 $tempBound 未能解除：$unbindFailure'
+            : '暫時綁定 $tempBound 未能還原成 $restore：$unbindFailure',
         message: '已取消。請重新連線核對進度；未成功恢復的監控會話最晚於到期時恢復。',
       );
     }
