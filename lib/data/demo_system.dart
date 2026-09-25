@@ -198,32 +198,45 @@ class DemoSystem implements GatewayLink, GatewayApi {
         }
         final target = params['target'] ?? 'both';
         if (target == 'gateway') return {'duration_ms': 6000};
+        // Firmware 1.7.20: target=ptu fails outright when the PTU side
+        // can't be written (not_connected/ambiguous_target/write_failed).
+        // target=both (the default, and the only target the APP's own UI
+        // sends) never fails just because the PTU side did: it still acks
+        // ok and blinks the gateway LED, reporting the PTU outcome via
+        // `ptu_write` instead (cmd_contract.md identify: "both 只有兩者都
+        // 失敗才 fail"). `mac`/`rssi`/`device_number` are only present when
+        // the write actually succeeded.
         final linked = devices.where((d) => d['connected'] == true).toList();
+        String ptuWrite;
+        Map<String, dynamic>? ptu;
         if (linked.isEmpty) {
-          throw const GatewayFailure.gateway('not_connected');
+          ptuWrite = 'not_connected';
+        } else if (linked.length > 1 && params['mac'] == null) {
+          ptuWrite = 'ambiguous_target';
+        } else {
+          ptu = linked.firstWhere(
+            (d) => params['mac'] == null || d['mac'] == params['mac'],
+            orElse: () => throw const GatewayFailure.gateway('not_connected'),
+          );
+          ptuWrite = 'ok';
         }
-        if (linked.length > 1 && params['mac'] == null) {
-          throw const GatewayFailure.gateway('ambiguous_target');
+        if (target == 'ptu' && ptuWrite != 'ok') {
+          throw GatewayFailure.gateway(ptuWrite);
         }
-        final ptu = linked.firstWhere(
-          (d) => params['mac'] == null || d['mac'] == params['mac'],
-          orElse: () => throw const GatewayFailure.gateway('not_connected'),
-        );
         return {
-          'mac': ptu['mac'],
-          'rssi': ptu['rssi'],
-          'device_number': ptu['device_number'],
           'duration_ms': 6000,
-          'ptu_write': 'ok',
+          'ptu_write': ptuWrite,
           'ptu_confirmed': false,
+          if (ptu != null) 'mac': ptu['mac'],
+          if (ptu != null) 'rssi': ptu['rssi'],
+          if (ptu != null) 'device_number': ptu['device_number'],
         };
       case 'scan_ble_discover':
         return {'devices': devices.map(Map<String, dynamic>.of).toList()};
       case 'get_ble_devices':
-        return {
-          'devices': devices.map(Map<String, dynamic>.of).toList(),
-          'direct': ?directStatus(),
-        };
+        // Note: unlike get_status, get_ble_devices does NOT carry `direct`
+        // (cmd_contract.md identify section); only get_status does.
+        return {'devices': devices.map(Map<String, dynamic>.of).toList()};
       case 'assign_device_id':
         devices.firstWhere((d) => d['mac'] == params['mac'])['device_number'] =
             params['new_id'];

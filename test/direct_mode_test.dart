@@ -265,28 +265,70 @@ void main() {
       expect(fake.sent('identify').last, {'target': 'ptu'});
     });
 
-    test('no PTU connected: falls back to the gateway LED only', () async {
+    test(
+      'target=both, no PTU connected: gateway LED still blinks, ack ok '
+      'with ptu_write text (firmware 1.7.20 does not fail the whole ack)',
+      () async {
+        final fake = DirectGateway();
+        final (container, c) = await _connect(fake, toStep7: false);
+        addTearDown(container.dispose);
+        await c.identify();
+        // Single ack, no fallback resend: target=both never failed.
+        expect(fake.sent('identify'), [
+          {'target': 'both'},
+        ]);
+        final state = container.read(commissionProvider);
+        expect(state.error, isNull);
+        expect(state.message, identifyPtuFailedText('not_connected'));
+        expect(state.message, contains('閘道器正在閃燈'));
+        expect(state.peer, isNotNull);
+      },
+    );
+
+    test('target=ptu, no PTU connected: fails outright (no LED fallback)', () async {
       final fake = DirectGateway();
       final (container, c) = await _connect(fake, toStep7: false);
       addTearDown(container.dispose);
-      await c.identify();
+      await c.identify(target: 'ptu');
+      // A single failed ack; target=ptu does not fall back to blinking the
+      // gateway only (that fallback is target=both-specific).
       expect(fake.sent('identify'), [
-        {'target': 'both'},
-        {'target': 'gateway'},
+        {'target': 'ptu'},
       ]);
       final state = container.read(commissionProvider);
-      expect(state.error, isNull);
-      expect(state.message, identifyNoPtuText);
-      expect(state.peer, isNotNull);
-
-      await c.identify(target: 'ptu');
-      expect(container.read(commissionProvider).error, contains('尚未連上 PTU'));
+      expect(state.error, contains('尚未連上 PTU'));
       // Never mistaken for a phone link loss.
-      expect(
-        container.read(commissionProvider).uploadWatch,
-        isNot(UploadWatch.linkLost),
-      );
+      expect(state.uploadWatch, isNot(UploadWatch.linkLost));
     });
+
+    test('target=both with a connected PTU: ack ok, ptu_write ok text', () async {
+      final fake = DirectGateway();
+      final (container, c) = await _connect(fake);
+      addTearDown(container.dispose);
+      await c.configurePtus();
+      await c.identify();
+      expect(fake.sent('identify').last, {'target': 'both'});
+      final message = container.read(commissionProvider).message;
+      expect(message, contains('PTU 與閘道器正在閃燈'));
+      expect(message, contains('AA:BB:CC:00:00:01'));
+      expect(message, contains('-40 dBm'));
+    });
+
+    test(
+      'direct comes from get_status only; get_ble_devices never carries it',
+      () async {
+        final fake = DirectGateway();
+        final (container, c) = await _connect(fake);
+        addTearDown(container.dispose);
+        // get_ble_devices itself must not report `direct` (only get_status
+        // does per cmd_contract.md's identify section).
+        final devicesAck = await fake.command('get_ble_devices');
+        expect(devicesAck.containsKey('direct'), isFalse);
+        // _absorbDirect still populates it, by reading get_status instead.
+        expect(container.read(commissionProvider).direct, isNotNull);
+        expect(fake.sent('get_status'), isNotEmpty);
+      },
+    );
 
     test('older firmware: bare identify, old text', () async {
       final fake = DirectGateway(newFirmware: false);
@@ -323,6 +365,13 @@ void main() {
           contains('#1'),
           contains('需新版 PTU 韌體'),
         ),
+      );
+    });
+
+    test('ptu_write failed text names the reason, without resending', () {
+      expect(
+        identifyPtuFailedText('not_connected'),
+        allOf(contains('閘道器正在閃燈'), contains('尚未連上 PTU'), contains('not_connected')),
       );
     });
   });

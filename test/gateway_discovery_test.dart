@@ -254,7 +254,11 @@ void main() {
       await c.connect(container.read(commissionProvider).peers.single);
       await c.identify();
       expect(container.read(commissionProvider).error, isNull);
-      expect(container.read(commissionProvider).message, contains('雙閃'));
+      // No PTU connected in this demo: firmware 1.7.20 target=both still
+      // acks ok (gateway LED blinks) and reports the PTU side via
+      // ptu_write, rather than failing the whole ack.
+      expect(container.read(commissionProvider).message, contains('閃燈'));
+      expect(container.read(commissionProvider).message, contains('尚未連上 PTU'));
       expect((await RecentGateways.load(true)).single.uid, 'AABBCCDDEEFF');
       container.read(demoSystemProvider).config.remove('identify_supported');
       await c.connect(container.read(commissionProvider).peers.single);

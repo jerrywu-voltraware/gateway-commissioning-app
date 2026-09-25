@@ -112,23 +112,34 @@ class DirectStatus {
   }
 }
 
-/// identify on firmware 1.7.20+ with no PTU connected: the APP falls back
-/// to blinking the gateway only.
+/// identify on firmware 1.7.20+ when target=ptu itself fails outright
+/// (no PTU connected): the APP falls back to blinking the gateway only.
 const identifyNoPtuText = '閘道器雙閃 6 秒；閘道器尚未連上 PTU，PTU 不會閃燈。';
 
-/// identify ack → text for the installer. [ptuConfirmed] false means the
-/// PTU accepted the write but could not confirm it blinked.
+/// identify ack → text for the installer, when the PTU write itself
+/// succeeded (`ptu_write` absent — bare/gateway-only ack — or `"ok"`).
+/// [ptuConfirmed] false means the PTU accepted the write but could not
+/// confirm it blinked.
 String identifyAckText(Map<String, dynamic> ack) {
   final mac = ack['mac'];
   if (mac == null) return '請找出雙閃藍燈的閘道器，6 秒後會恢復原本燈號。';
   final rssi = ack['rssi'];
   final number = ack['device_number'];
   final seconds = ((ack['duration_ms'] as num?) ?? 6000) / 1000;
+  final confirmed = ack['ptu_confirmed'] == true;
   final parts = [
     'PTU $mac',
     if (rssi is num) '$rssi dBm',
     if (number is num && number > 0) '#$number',
   ];
-  return '已送出辨識：閘道器雙閃 ${seconds.toStringAsFixed(0)} 秒（${parts.join(' · ')}）。'
-      '${ack['ptu_confirmed'] == true ? 'PTU 已確認閃燈。' : 'PTU 燈效需新版 PTU 韌體。'}';
+  return 'PTU 與閘道器正在閃燈（${confirmed ? 'PTU 已確認閃燈' : 'PTU 燈效需新版 PTU 韌體'}），'
+      '閘道器雙閃 ${seconds.toStringAsFixed(0)} 秒（${parts.join(' · ')}）。';
 }
+
+/// identify ack (target both, firmware 1.7.20+) with the gateway LED lit
+/// but the PTU write itself unsuccessful — `ptu_write` present and not
+/// `"ok"` (e.g. `"not_connected"`, or a PTU error code). The firmware still
+/// acks `status:ok` here (§ cmd_contract.md identify: "both 只有兩者都失敗才
+/// fail"); this is not a failure the APP should resend or treat as a
+/// dropped phone↔gateway link.
+String identifyPtuFailedText(String reason) => '閘道器正在閃燈；尚未連上 PTU（$reason）。';

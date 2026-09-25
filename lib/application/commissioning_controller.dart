@@ -1422,6 +1422,18 @@ class CommissioningController extends Notifier<CommissionState> {
   /// Blinks the gateway LED; firmware 1.7.20+ (`identify_ptu_supported`)
   /// also writes the connected PTU ([target] ptu | gateway | both) and acks
   /// its MAC/RSSI. Older firmware gets the bare op, as before.
+  ///
+  /// Per cmd_contract.md's identify section: with target=ptu, no PTU
+  /// connected is a fail ack (`not_connected`) — handled below by falling
+  /// back to a gateway-only identify. With target=both (the default, and
+  /// the only target this APP's UI sends), the gateway does **not** fail
+  /// the ack just because the PTU write didn't land; it still acks ok and
+  /// blinks its own LED, reporting the PTU write outcome in `ptu_write`
+  /// (`"ok"` on success, otherwise a reason such as `"not_connected"`).
+  /// Only when *both* the gateway LED and the PTU write fail does the ack
+  /// itself fail. So for target=both a non-ok `ptu_write` is read out of a
+  /// successful ack, not caught as an exception — never resent, never
+  /// treated as a dropped phone↔gateway link.
   Future<void> identify({String target = 'both'}) =>
       _run('辨識閘道器', 12, (generation) async {
         if (state.config['identify_supported'] != true) {
@@ -1438,13 +1450,21 @@ class CommissioningController extends Notifier<CommissionState> {
         } on GatewayFailure catch (e) {
           // The gateway's own not_connected means "no PTU connected", not a
           // phone link loss: never let it trigger the relink handling.
+          // Kept for target=ptu (which does fail outright on it) and as a
+          // safety net for a future/older firmware that fails target=both
+          // too.
           if (!e.fromGateway || e.code != 'not_connected') rethrow;
           if (target != 'both') throw const GatewayFailure('identify_no_ptu');
           await _command(generation, 'identify', {'target': 'gateway'});
           state = state.copy(message: identifyNoPtuText);
           return;
         }
-        state = state.copy(message: identifyAckText(ack));
+        final ptuWrite = ack['ptu_write'];
+        state = state.copy(
+          message: ptuWrite == null || ptuWrite == 'ok'
+              ? identifyAckText(ack)
+              : identifyPtuFailedText(ptuWrite.toString()),
+        );
       });
 
   Future<void> connect(GatewayPeer peer) async {
@@ -2235,7 +2255,7 @@ class CommissioningController extends Notifier<CommissionState> {
     });
     _check(generation);
     final connected = await _command(generation, 'get_ble_devices');
-    await _absorbDirect(generation, connected);
+    await _absorbDirect(generation);
     final ptus = mergePtuInventory(
       response['devices'] as List? ?? [],
       connected['devices'] as List? ?? [],
@@ -2805,26 +2825,23 @@ class CommissioningController extends Notifier<CommissionState> {
       });
 
   /// Direct mode on firmware 1.7.20+: keeps the gateway's `direct` report
-  /// (state, threshold, bound MAC, candidates). Read from [source] (a
-  /// get_ble_devices reply) or, when it lacks one, from get_status. Never
-  /// fails the caller: the report is advisory.
-  Future<void> _absorbDirect(
-    int generation,
-    Map<String, dynamic> source,
-  ) async {
+  /// (state, threshold, bound MAC, candidates). `get_status` is the only op
+  /// that carries `direct` (get_ble_devices does not, despite once being
+  /// assumed to — cmd_contract.md's identify section clarifies this), so
+  /// this reads it directly rather than probing a get_ble_devices reply
+  /// first. Never fails the caller: the report is advisory.
+  Future<void> _absorbDirect(int generation) async {
     if (!ref.read(topologyProvider).topology.isDirect ||
         !directAutoConnectSupported(state.config)) {
       return;
     }
-    var direct = source['direct'];
-    if (DirectStatus.from(direct) == null) {
-      try {
-        direct = (await _link.command('get_status'))['direct'];
-      } catch (_) {
-        return;
-      }
-      if (!ref.mounted || generation != _generation) return;
+    Object? direct;
+    try {
+      direct = (await _link.command('get_status'))['direct'];
+    } catch (_) {
+      return;
     }
+    if (!ref.mounted || generation != _generation) return;
     if (direct is Map && DirectStatus.from(direct) != null) {
       state = state.copy(
         directRaw: Map<String, dynamic>.from(direct),
@@ -2867,7 +2884,7 @@ class CommissioningController extends Notifier<CommissionState> {
         await _command(generation, 'set_config', params);
         final config = await _command(generation, 'get_config');
         state = state.copy(config: {...state.config, ...config});
-        await _absorbDirect(generation, const {});
+        await _absorbDirect(generation);
       });
 
   /// [id] is a number this gateway assigns: #1 in direct mode, else its
@@ -3987,7 +4004,7 @@ class CommissioningController extends Notifier<CommissionState> {
         _markRssiStale();
         return;
       }
-      await _absorbDirect(generation, result);
+      await _absorbDirect(generation);
       if (!ref.mounted || generation != _generation || state.busy) return;
       final ptus = refreshPtuSignals(state.ptus, rows);
       // Round 7b: a PTU that the gateway reconnects after the scan (e.g. one
