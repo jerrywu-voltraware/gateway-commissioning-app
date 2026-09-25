@@ -16,6 +16,16 @@ abstract class GatewayLink {
   Future<void> disconnect();
 }
 
+/// Optional: the phone's Bluetooth adapter state, so a reconnect right after
+/// Bluetooth was turned back on waits until the adapter is usable.
+abstract class BluetoothReadiness {
+  /// True when the adapter is not on, or turned on less than 3 s ago.
+  Future<bool> adapterSettling();
+
+  /// Waits (at most [max]) until the adapter is on and settled.
+  Future<void> waitAdapterReady(Duration max);
+}
+
 /// Optional live scanning; callers await stopScan before connecting.
 abstract class GatewayScanner {
   Stream<List<GatewayPeer>> scanLive();

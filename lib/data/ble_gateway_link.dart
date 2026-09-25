@@ -24,7 +24,58 @@ Object normalizeBleError(Object error) {
 }
 
 class BleGatewayLink
-    implements GatewayLink, GatewaySignalSource, GatewayScanner {
+    implements
+        GatewayLink,
+        GatewaySignalSource,
+        GatewayScanner,
+        BluetoothReadiness {
+  StreamSubscription<AvailabilityState>? _availability;
+
+  /// Starts tracking when the adapter turns on (lazily: needs the plugin).
+  void _watchAdapter() {
+    if (_availability != null) return;
+    try {
+      _availability = UniversalBle.availabilityStream.listen((value) {
+        if (value == AvailabilityState.poweredOn &&
+            _adapter != null &&
+            _adapter != AvailabilityState.poweredOn) {
+          _poweredOnAt = DateTime.now();
+        }
+        _adapter = value;
+      }, onError: (_) {});
+    } catch (_) {
+      /* No plugin (tests): only the current state is checked. */
+    }
+  }
+  AvailabilityState? _adapter;
+  DateTime? _poweredOnAt;
+
+  /// A just-enabled Android BLE stack still refuses connections (seen as
+  /// "Failed to connect" right after Bluetooth came back on).
+  static const adapterSettle = Duration(seconds: 3);
+
+  @override
+  Future<bool> adapterSettling() async {
+    _watchAdapter();
+    final AvailabilityState now;
+    try {
+      now = await UniversalBle.getBluetoothAvailabilityState();
+    } catch (_) {
+      return false;
+    }
+    if (now != AvailabilityState.poweredOn) return true;
+    final since = _poweredOnAt;
+    return since != null && DateTime.now().difference(since) < adapterSettle;
+  }
+
+  @override
+  Future<void> waitAdapterReady(Duration max) async {
+    final end = DateTime.now().add(max);
+    while (DateTime.now().isBefore(end) && await adapterSettling()) {
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+    }
+  }
+
   Completer<void>? _scanStop;
   Future<void>? _scanFinished;
 
@@ -165,6 +216,7 @@ class BleGatewayLink
 
   @override
   Future<void> prepare() async {
+    _watchAdapter();
     final sdk = (await DeviceInfoPlugin().androidInfo).version.sdkInt;
     final permissions = sdk >= 31
         ? [Permission.bluetoothScan, Permission.bluetoothConnect]
