@@ -236,6 +236,10 @@ String connectFailureType(Object error) {
 /// in sync with _reconnectBudget below.
 const reconnectBudget = Duration(seconds: 80);
 
+/// Banner after 「重新連線並繼續」 gave up (round 11).
+String reconnectFailedAttemptsText(int attempts) =>
+    '重新連線失敗（已嘗試 $attempts 次），請靠近閘道器後再按一次';
+
 /// Shown while the phone's Bluetooth was just turned on (「重新連線並繼續」).
 const waitingBluetoothText = '等待藍牙就緒';
 
@@ -816,6 +820,17 @@ class CommissioningController extends Notifier<CommissionState> {
         }
       }
     });
+    // Round 11: persist on every step change (not only when a run ends), so
+    // the restore prompt names the step actually reached. A pending saved
+    // resume is not overwritten until it is consumed.
+    listenSelf((previous, next) {
+      if (previous != null &&
+          previous.step != next.step &&
+          next.step >= 1 &&
+          _saved == null) {
+        unawaited(_save());
+      }
+    });
     ref.onDispose(() {
       _generation++;
       _clock?.cancel();
@@ -1084,7 +1099,18 @@ class CommissioningController extends Notifier<CommissionState> {
               ? '${failure.toString()}\n連線失敗紀錄：${log.$2.join('、')}'
               : failure.toString(),
           reconnectFailed: failure.code == 'reconnect_failed',
-          error: linkIssue
+          // Round 11: no 「連線中（第 n 次）」 left beside the banner.
+          message: linkIssue && _resumeGeneration == generation
+              ? ''
+              : state.message,
+          error:
+              failure.code == 'reconnect_failed' &&
+                  _resumeGeneration == generation &&
+                  log != null &&
+                  log.$1 == generation &&
+                  log.$2.isNotEmpty
+              ? reconnectFailedAttemptsText(log.$2.length)
+              : linkIssue
               ? failure.message
               : !safe
               ? '尚未確認 Gateway 已恢復監控，請重新連線核對設定。'
@@ -2736,7 +2762,10 @@ class CommissioningController extends Notifier<CommissionState> {
 
   /// Re-opens the phone↔gateway BLE link within [reconnectBudget]; a
   /// failure becomes 'reconnect_failed' (retry / back to gateway search).
-  Future<void> _reconnect(int generation) async {
+  Future<void> _reconnect(
+    int generation, {
+    Future<void> Function()? after,
+  }) async {
     final peer = state.peer;
     if (peer == null) throw const GatewayFailure('reconnect_failed');
     final Object link = _link;
@@ -2747,7 +2776,7 @@ class CommissioningController extends Notifier<CommissionState> {
     }
     state = state.copy(message: reconnectingText);
     try {
-      await _relink(generation, peer).timeout(reconnectBudget);
+      await _relink(generation, peer, after: after).timeout(reconnectBudget);
     } catch (e) {
       if (e is GatewayFailure && e.code == 'cancelled') rethrow;
       _check(generation);
@@ -2763,10 +2792,17 @@ class CommissioningController extends Notifier<CommissionState> {
   /// 「重新連線並繼續」: reconnect the gateway, then assign every selected
   /// PTU not yet successfully assigned (including ones checked after the
   /// disconnect), then set_config / join_fleet.
+  /// Generation of the current 「重新連線並繼續」 run (round 11 banner).
+  int? _resumeGeneration;
+
   Future<void> resumeAssign() =>
       _run(reconnectingText, 240, (generation) async {
-        await _reconnect(generation);
-        await _reconcile(generation);
+        _resumeGeneration = generation;
+        // Round 11: the reconcile (get_ble_devices) runs inside the
+        // persistent link loop, so a link that drops right after connecting
+        // is retried for the whole [connectPersistence] instead of ending
+        // the run after one round.
+        await _reconnect(generation, after: () => _reconcile(generation));
         final chosen = state.ptus
             .where((p) => state.selected.contains(p['mac']))
             .toList();
@@ -3547,15 +3583,23 @@ class CommissioningController extends Notifier<CommissionState> {
   /// ble_gateway_link.dart); keep in sync with [reconnectBudget] above.
   /// Shows the link's connect stage as the busy text of [generation]'s run.
   void Function(String) _stageFor(int generation) => (stage) {
-    if (ref.mounted && generation == _generation) {
+    // A late stage from an abandoned connect must not outlive the run.
+    if (ref.mounted && generation == _generation && state.busy) {
       state = state.copy(message: stage, error: state.error);
     }
   };
 
-  Future<void> _relink(int generation, GatewayPeer peer) async {
+  Future<void> _relink(
+    int generation,
+    GatewayPeer peer, {
+    Future<void> Function()? after,
+  }) async {
     await _link.disconnect();
     _check(generation);
-    await _persistentLink(generation, peer, () => _command(generation, 'ping'));
+    await _persistentLink(generation, peer, () async {
+      await _command(generation, 'ping');
+      if (after != null) await after();
+    });
   }
 
   /// Failure types of the latest [_persistentLink] run (for 詳細資訊).
