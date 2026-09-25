@@ -28,7 +28,8 @@ class BleGatewayLink
         GatewayLink,
         GatewaySignalSource,
         GatewayScanner,
-        BluetoothReadiness {
+        BluetoothReadiness,
+        ConnectDiagnostics {
   StreamSubscription<AvailabilityState>? _availability;
 
   /// Starts tracking when the adapter turns on (lazily: needs the plugin).
@@ -270,7 +271,10 @@ class BleGatewayLink
   }
 
   @override
-  Future<void> connect(GatewayPeer peer, {void Function(String stage)? onStage}) async {
+  Future<void> connect(
+    GatewayPeer peer, {
+    void Function(String stage)? onStage,
+  }) async {
     await disconnect();
     final epoch = _epoch;
     try {
@@ -283,11 +287,11 @@ class BleGatewayLink
 
   // ---- Retry/timeout budget ----
   // Worst case (all attempts fail): connectTimeout * (connectRetries + 1)
-  // + (retryGap + rescanWindow) * connectRetries
-  //   = 12s * 3 + 4.5s * 2 = 45s.
+  // + quickRetryTimeout + (retryGap + rescanWindow) * connectRetries
+  //   = 12s * 3 + 6s + 4.5s * 2 = 51s.
   // The callers budget above this with headroom for the outer machinery:
-  // commissioning_controller._relink times out at 50s and the overall
-  // commissioning_controller.reconnectBudget (used by _reconnect) is 60s.
+  // commissioning_controller._relink times out at 56s and the overall
+  // commissioning_controller.reconnectBudget (used by _reconnect) is 66s.
   // Keep all three numbers in sync when tuning retry behaviour.
   /// Connect retries after the first attempt (interval [retryGap]).
   static const connectRetries = 2;
@@ -299,6 +303,17 @@ class BleGatewayLink
   static Duration retryGap = const Duration(milliseconds: 1500);
   @visibleForTesting
   static Duration rescanWindow = const Duration(seconds: 3);
+
+  /// Timeout of the immediate retry after the first failed connect.
+  @visibleForTesting
+  static Duration quickRetryTimeout = const Duration(seconds: 6);
+
+  String? _firstConnectFailure;
+
+  /// `Type: message` of the latest connect's first failure (null when the
+  /// first attempt succeeded).
+  @override
+  String? get firstConnectFailure => _firstConnectFailure;
 
   /// Disconnects a leftover GATT client for [device] (errors ignored), then
   /// gives the stack [staleSettle] to release it.
@@ -347,6 +362,7 @@ class BleGatewayLink
     // retry re-find the gateway with a short scan.
     onStage?.call('清除舊連線');
     await _dropStale(device);
+    _firstConnectFailure = null;
     for (int attempt = 0; ; attempt++) {
       if (epoch != _epoch) throw const GatewayFailure('cancelled');
       if (attempt > 0) onStage?.call('第 $attempt 次重試');
@@ -355,6 +371,17 @@ class BleGatewayLink
         await UniversalBle.connect(device, timeout: connectTimeout);
         break;
       } catch (error) {
+        if (attempt == 0) {
+          // Round 8: the first reconnect sometimes fails once and the next
+          // try works; retry at once (no gap/rescan) and keep the type.
+          _firstConnectFailure = '${error.runtimeType}: $error';
+          debugPrint('BLE first connect failed: $_firstConnectFailure');
+          if (epoch != _epoch) throw const GatewayFailure('cancelled');
+          try {
+            await UniversalBle.connect(device, timeout: quickRetryTimeout);
+            break;
+          } catch (_) {}
+        }
         if (attempt >= connectRetries) rethrow;
         onStage?.call('找不到閘道器，重新掃描中');
         await _dropStale(device);

@@ -8,11 +8,15 @@ abstract class GatewayLink {
   bool get demo;
   Future<void> prepare();
   Future<List<GatewayPeer>> scan();
+
   /// [onStage] (optional) reports human-readable progress as the link is
   /// (re)established, e.g. for a reconnect banner: "清除舊連線" →
   /// "正在連線閘道器" → (on a failed attempt) "找不到閘道器，重新掃描中" →
   /// "第 n 次重試" → "正在連線閘道器" ...
-  Future<void> connect(GatewayPeer peer, {void Function(String stage)? onStage});
+  Future<void> connect(
+    GatewayPeer peer, {
+    void Function(String stage)? onStage,
+  });
   Future<Map<String, dynamic>> command(
     String op, [
     Map<String, dynamic> params = const {},
@@ -28,6 +32,12 @@ abstract class BluetoothReadiness {
 
   /// Waits (at most [max]) until the adapter is on and settled.
   Future<void> waitAdapterReady(Duration max);
+}
+
+/// Optional connect diagnostics: the exception of the latest connect's
+/// first failed attempt (round 8: the first reconnect sometimes fails).
+abstract class ConnectDiagnostics {
+  String? get firstConnectFailure;
 }
 
 /// Optional live scanning; callers await stopScan before connecting.

@@ -63,12 +63,14 @@ void main() {
     const peer = GatewayPeer('AA:BB:CC:DD:EE:FF', 'GIOS-S1', -28);
 
     test('drops the stale client first and retries twice', () async {
-      final platform = StaleAdapterPlatform()..failConnects = 2;
+      // Round 8: the first failure is retried at once (no drop/rescan),
+      // then the rescan retries follow.
+      final platform = StaleAdapterPlatform()..failConnects = 3;
       UniversalBle.setInstance(platform);
       final link = BleGatewayLink();
       await link.connect(peer);
       expect(platform.calls.first, 'disconnect');
-      expect(platform.calls.where((c) => c == 'connect'), hasLength(3));
+      expect(platform.calls.where((c) => c == 'connect'), hasLength(4));
       // Every retry is preceded by a disconnect of the leftover client.
       expect(
         platform.calls.where((c) => c != 'connect').length,
@@ -78,14 +80,14 @@ void main() {
       await link.disconnect();
     });
 
-    test('gives up after 1 + 2 attempts', () async {
+    test('gives up after 1 + 1 immediate + 2 attempts', () async {
       final platform = StaleAdapterPlatform()..failConnects = 9;
       UniversalBle.setInstance(platform);
       final link = BleGatewayLink();
       await expectLater(link.connect(peer), throwsA(anything));
       expect(
         platform.calls.where((c) => c == 'connect'),
-        hasLength(1 + BleGatewayLink.connectRetries),
+        hasLength(2 + BleGatewayLink.connectRetries),
       );
     });
   });
