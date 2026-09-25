@@ -159,6 +159,7 @@ Future<(ProviderContainer, CommissioningController)> _connectStar(
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  linkDropMain();
 
   test(
     'suggestGateway picks the smallest free id from fleet-status with one '
@@ -458,4 +459,56 @@ class FlakyResetGateway extends StarInventoryGateway {
     }
     return super.command(op, params);
   }
+}
+
+/// 自動重置到第二台時手機↔閘道器斷線（not_connected）。
+class LinkDropResetGateway extends StarInventoryGateway {
+  LinkDropResetGateway() {
+    nearby = [
+      {'mac': 'AA:BB:CC:00:00:04', 'device_number': 6, 'rssi': -40},
+      {'mac': failingMac, 'device_number': 7, 'rssi': -42},
+      {'mac': 'AA:BB:CC:00:00:06', 'device_number': 8, 'rssi': -44},
+    ];
+  }
+  static const failingMac = 'AA:BB:CC:00:00:05';
+  bool linkDown = true;
+
+  @override
+  Future<Map<String, dynamic>> command(
+    String op, [
+    Map<String, dynamic> params = const {},
+  ]) async {
+    if (op == 'assign_device_id' && params['mac'] == failingMac && linkDown) {
+      resets.add(failingMac);
+      throw const GatewayFailure('not_connected');
+    }
+    return super.command(op, params);
+  }
+}
+
+void linkDropMain() {
+  test(
+    'star mode: phone link loss during auto-reset stops the loop at once and '
+    'offers 重新連線並繼續; earlier resets are kept',
+    () async {
+      final fake = LinkDropResetGateway();
+      final (container, controller) = await _connectStar(fake, offline: false);
+      addTearDown(container.dispose);
+      // First PTU reset, second hit the link loss once, third never tried.
+      expect(fake.resets, ['AA:BB:CC:00:00:04', 'AA:BB:CC:00:00:05']);
+      expect(fake.nearby[0]['device_number'], 255);
+      var state = container.read(commissionProvider);
+      expect(state.error, isNotNull);
+      expect(state.scanResumePending, isTrue);
+      expect(state.message, phoneLinkLostText);
+      expect(state.resetFailed, isEmpty);
+
+      fake.linkDown = false;
+      await controller.discover();
+      state = container.read(commissionProvider);
+      expect(state.error, isNull);
+      expect(state.scanResumePending, isFalse);
+      expect(fake.nearby.every((p) => p['device_number'] == 255), isTrue);
+    },
+  );
 }

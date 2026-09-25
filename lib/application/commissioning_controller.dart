@@ -232,6 +232,7 @@ class CommissionState {
     this.absentNotice = '',
     this.unassigned = const {},
     this.resumePending = false,
+    this.scanResumePending = false,
     this.reconnectFailed = false,
     this.savedResume = false,
   });
@@ -296,6 +297,9 @@ class CommissionState {
 
   /// 第 8 步被手機斷線打斷，可按「重新連線並繼續」。
   final bool resumePending;
+
+  /// 星狀自動重置殘留編號時手機↔閘道器斷線；「重新連線並繼續」會重連並重掃。
+  final bool scanResumePending;
 
   /// 最近一次重新連線閘道器逾時／失敗（顯示重試與回到找閘道器）。
   final bool reconnectFailed;
@@ -372,11 +376,13 @@ class CommissionState {
     String? absentNotice,
     Set<String>? unassigned,
     bool? resumePending,
+    bool? scanResumePending,
     bool? reconnectFailed,
     bool? savedResume,
   }) => CommissionState(
     unassigned: unassigned ?? this.unassigned,
     resumePending: resumePending ?? this.resumePending,
+    scanResumePending: scanResumePending ?? this.scanResumePending,
     reconnectFailed: reconnectFailed ?? this.reconnectFailed,
     savedResume: savedResume ?? this.savedResume,
     assignFailed: assignFailed ?? this.assignFailed,
@@ -1598,6 +1604,8 @@ class CommissioningController extends Notifier<CommissionState> {
       state = state.copy(
         message: state.reconnectFailed
             ? reconnectFailedText
+            : state.scanResumePending
+            ? phoneLinkLostText
             : state.uploadWatch == UploadWatch.linkLost
             ? 'Gateway 掃描未完成：藍牙連線已中斷。請靠近 Gateway，再按「重新連線並掃描 PTU」。'
             : 'Gateway 掃描未完成，請查看錯誤後重新掃描。',
@@ -1686,6 +1694,14 @@ class CommissioningController extends Notifier<CommissionState> {
                 // (GatewayFailure or not) just marks this one PTU as a
                 // failed reset and we move on to the next stale PTU.
                 if (e is GatewayFailure && e.code == 'cancelled') rethrow;
+                _check(generation);
+                // Phone↔gateway link down (same as step 8): stop the whole
+                // loop at once instead of timing out on every PTU; resets
+                // that already succeeded stay on the PTUs.
+                if (isPhoneLinkFailure(e)) {
+                  state = state.copy(scanResumePending: true);
+                  throw GatewayFailure('phone_link_lost', detail: e.toString());
+                }
               }
             }
             if (ok) {
@@ -1722,6 +1738,7 @@ class CommissioningController extends Notifier<CommissionState> {
       },
       unassigned: {},
       resumePending: false,
+      scanResumePending: false,
       scannedTotal: ptus.length,
       pendingNext: pending,
       resetFailed: failed,

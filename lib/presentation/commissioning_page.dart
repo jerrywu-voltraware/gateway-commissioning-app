@@ -1194,13 +1194,15 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       case 4:
       case 5:
         return [
-          if (s.resumePending && !s.busy && !s.reconnectFailed)
+          if ((s.resumePending || s.scanResumePending) &&
+              !s.busy &&
+              !s.reconnectFailed)
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: FilledButton.icon(
                 key: const Key('ptu-resume'),
                 icon: const Icon(Icons.bluetooth_searching, size: 20),
-                onPressed: c.resumeAssign,
+                onPressed: s.resumePending ? c.resumeAssign : c.discover,
                 label: const Text('重新連線並繼續'),
               ),
             ),
