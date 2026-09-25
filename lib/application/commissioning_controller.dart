@@ -9,6 +9,7 @@ import '../core/mqtt_target.dart';
 import '../core/protocol.dart';
 import '../data/ble_gateway_link.dart';
 import '../data/contracts.dart';
+import '../data/recent_gateways.dart';
 import '../data/dashboard_api.dart';
 import '../data/demo_system.dart';
 import '../data/ptu_inventory.dart';
@@ -600,6 +601,14 @@ class CommissioningController extends Notifier<CommissionState> {
       message: peers.isEmpty ? '未找到閘道器，請靠近並確認電源後重掃。' : '請選擇要開通的閘道器',
     );
   });
+  Future<void> identify() => _run('辨識閘道器', 12, (generation) async {
+    if (state.config['identify_supported'] != true) {
+      throw const GatewayFailure('identify_unsupported');
+    }
+    await _command(generation, 'identify');
+    state = state.copy(message: '請找出雙閃藍燈的閘道器，6 秒後會恢復原本燈號。');
+  });
+
   Future<void> connect(GatewayPeer peer) async {
     if (state.busy) return;
     _stopWatch(UploadWatch.idle);
@@ -654,115 +663,125 @@ class CommissioningController extends Notifier<CommissionState> {
         if (net.containsKey(key)) key: net[key],
   };
 
-  Future<void> _connect(GatewayPeer peer) =>
-      _run('連線並讀取閘道器設定', 120, (generation) async {
-        await _link.connect(peer);
-        _check(generation);
-        for (int attempt = 0; ; attempt++) {
-          try {
-            await _command(generation, 'ping');
-            break;
-          } catch (_) {
-            if (attempt == 4) rethrow;
-            await _wait(3, generation);
-          }
+  Future<void> _connect(GatewayPeer peer) => _run(
+    '正在連線 ${peer.name}，請保持靠近',
+    120,
+    (generation) async {
+      await _link.connect(peer);
+      _check(generation);
+      state = state.copy(message: '藍牙已連線，正在確認閘道器回應與設定…');
+      for (int attempt = 0; ; attempt++) {
+        try {
+          await _command(generation, 'ping');
+          break;
+        } catch (_) {
+          if (attempt == 4) rethrow;
+          await _wait(3, generation);
         }
-        final config = await _command(generation, 'get_config');
-        _check(generation);
-        // 網路體檢: the gateway's own Wi-Fi and upload state.
-        final net = await _readNet(generation, config);
-        if (config['fleet_joined'] == true) {
-          final existing = await _command(generation, 'get_ble_devices');
-          final devices = (existing['devices'] as List? ?? [])
-              .map((d) => Map<String, dynamic>.from(d as Map))
-              .toList();
-          state = state.copy(
-            step: 2,
-            peer: peer,
-            config: {..._withUpload(config, net), 'choose_station': true},
-            net: _netFields(net),
-            checkPassed: false,
-            ptus: devices,
-            selected: devices.map((d) => d['mac'].toString()).toSet(),
-            message: '已連線，此閘道器已有站點設定。先做網路體檢，再選擇沿用或設定新站。',
-            uploadNotice: '',
-          );
-          return;
-        }
-        if (config['fleet_joined'] != true) {
-          // Initial guess for a brand-new gateway: find some free site+gateway
-          // slot to prefill, through the same suggestGateway the site field
-          // uses later (one source of truth, see GatewaySuggestKind).
-          int? site;
-          int gw = 1;
-          var offline = !_loggedIn;
-          if (_loggedIn) {
-            try {
-              final discover = await _request(
-                generation,
-                'GET',
-                '/api/gateways/discover',
-              );
-              final fleet = await _request(
-                generation,
-                'GET',
-                '/api/gateways/fleet-status',
-              );
-              final occupied = <String>{};
-              for (final row in [
-                ...(discover['items'] as List? ?? []),
-                ...(fleet['gateways'] as List? ?? []),
-              ]) {
-                final uid = row['mac'] ?? row['last_seen_mac'];
-                if (uid == null || _mac(uid) != _mac(config['gateway_uid'])) {
-                  occupied.add('${row['site_id']}/${row['gateway_id']}');
-                }
-              }
-              candidate:
-              for (int s = 1; s <= 65535; s++) {
-                if (List.generate(kMaxGatewayId, (i) => i + 1).every(
-                  (g) => occupied.contains('$s/$g'),
-                )) {
-                  continue; // known fully occupied: skip without a network call
-                }
-                final (g, kind) = await suggestGateway(s);
-                _check(generation);
-                if (kind == GatewaySuggestKind.online) {
-                  site = s;
-                  gw = g;
-                  break candidate;
-                }
-                if (kind == GatewaySuggestKind.offline) {
-                  site = s;
-                  gw = g;
-                  offline = true;
-                  break candidate;
-                }
-                // full: this site has no free 1–kMaxGatewayId slot, try the next one.
-              }
-            } catch (_) {
-              offline = true;
-            }
-          }
-          if (site == null) {
-            site = 1;
-            gw = _offlineGatewaySuggestion(1);
-            offline = true;
-          }
-          config['suggested_site_id'] = site;
-          config['suggested_gateway_id'] = gw;
-          config['suggested_offline'] = offline;
-        }
+      }
+      final config = await _command(generation, 'get_config');
+      _check(generation);
+      try {
+        await RecentGateways.remember(_link.demo, peer, config['gateway_uid']);
+      } catch (_) {
+        /* Recents must not block a successful BLE connection. */
+      }
+      _check(generation);
+      // 網路體檢: the gateway's own Wi-Fi and upload state.
+      final net = await _readNet(generation, config);
+      if (config['fleet_joined'] == true) {
+        final existing = await _command(generation, 'get_ble_devices');
+        final devices = (existing['devices'] as List? ?? [])
+            .map((d) => Map<String, dynamic>.from(d as Map))
+            .toList();
         state = state.copy(
           step: 2,
           peer: peer,
-          config: _withUpload(config, net),
+          config: {..._withUpload(config, net), 'choose_station': true},
           net: _netFields(net),
           checkPassed: false,
-          message: '已連線。先做網路體檢，再設定身份與 Wi-Fi。',
+          ptus: devices,
+          selected: devices.map((d) => d['mac'].toString()).toSet(),
+          message: '已連線，此閘道器已有站點設定。先做網路體檢，再選擇沿用或設定新站。',
           uploadNotice: '',
         );
-      });
+        return;
+      }
+      if (config['fleet_joined'] != true) {
+        // Initial guess for a brand-new gateway: find some free site+gateway
+        // slot to prefill, through the same suggestGateway the site field
+        // uses later (one source of truth, see GatewaySuggestKind).
+        int? site;
+        int gw = 1;
+        var offline = !_loggedIn;
+        if (_loggedIn) {
+          try {
+            final discover = await _request(
+              generation,
+              'GET',
+              '/api/gateways/discover',
+            );
+            final fleet = await _request(
+              generation,
+              'GET',
+              '/api/gateways/fleet-status',
+            );
+            final occupied = <String>{};
+            for (final row in [
+              ...(discover['items'] as List? ?? []),
+              ...(fleet['gateways'] as List? ?? []),
+            ]) {
+              final uid = row['mac'] ?? row['last_seen_mac'];
+              if (uid == null || _mac(uid) != _mac(config['gateway_uid'])) {
+                occupied.add('${row['site_id']}/${row['gateway_id']}');
+              }
+            }
+            candidate:
+            for (int s = 1; s <= 65535; s++) {
+              if (List.generate(kMaxGatewayId, (i) => i + 1).every(
+                (g) => occupied.contains('$s/$g'),
+              )) {
+                continue; // known fully occupied: skip without a network call
+              }
+              final (g, kind) = await suggestGateway(s);
+              _check(generation);
+              if (kind == GatewaySuggestKind.online) {
+                site = s;
+                gw = g;
+                break candidate;
+              }
+              if (kind == GatewaySuggestKind.offline) {
+                site = s;
+                gw = g;
+                offline = true;
+                break candidate;
+              }
+              // full: this site has no free 1–kMaxGatewayId slot, try the next one.
+            }
+          } catch (_) {
+            offline = true;
+          }
+        }
+        if (site == null) {
+          site = 1;
+          gw = _offlineGatewaySuggestion(1);
+          offline = true;
+        }
+        config['suggested_site_id'] = site;
+        config['suggested_gateway_id'] = gw;
+        config['suggested_offline'] = offline;
+      }
+      state = state.copy(
+        step: 2,
+        peer: peer,
+        config: _withUpload(config, net),
+        net: _netFields(net),
+        checkPassed: false,
+        message: '已連線。先做網路體檢，再設定身份與 Wi-Fi。',
+        uploadNotice: '',
+      );
+    },
+  );
 
   // ---- 網路體檢 (step 2 before the station choice) ----
 

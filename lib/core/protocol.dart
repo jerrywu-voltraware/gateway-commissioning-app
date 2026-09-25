@@ -228,6 +228,8 @@ class GatewayFailure implements Exception {
     'not_ready' || 'busy' => '閘道器正在準備或處理其他操作，請稍後重試。',
     'permission' => '需要藍牙權限，請至系統設定允許後重試。',
     'bluetooth_off' => '請開啟手機藍牙後重試。',
+    'identify_unsupported' => '此韌體尚未支援辨識燈號，請先更新韌體。連線時的呼吸燈仍可協助辨識。',
+    'location_off' => '此版本 Android 搜尋藍牙需要定位服務，請開啟手機定位後重新搜尋。',
     'disconnected' || 'not_connected' => '與閘道器的連線已中斷，請靠近後重新連線。',
     'timeout' => '等待超時，請確認裝置與網路後重試。',
     'cancelled' => '操作已取消，可從最近完成的步驟重試。',

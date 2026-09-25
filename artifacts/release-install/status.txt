@@ -1,0 +1,6 @@
+﻿Release build requested for connected SM N950F; previous APK backed up before update; signature verification pending.
+Release APK built and signature verified. Installed certificate dd3866a4 differs from local bea4c874. Existing app preserved; install pending original signing key or explicit approval to uninstall and clear app data.
+User approved uninstall; old package removed successfully.
+Release APK installed successfully.
+Install command exit 0 and am start exit 0. Awaiting independent runtime verification.
+Independent verification PASS: PID 21365, MainActivity resumed, version 1.0.0, package flags have no DEBUGGABLE. Release installation and launch complete.

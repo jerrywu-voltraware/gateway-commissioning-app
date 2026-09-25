@@ -16,6 +16,12 @@ abstract class GatewayLink {
   Future<void> disconnect();
 }
 
+/// Optional live scanning; callers await stopScan before connecting.
+abstract class GatewayScanner {
+  Stream<List<GatewayPeer>> scanLive();
+  Future<void> stopScan();
+}
+
 /// Signal measured by the phone, independent of Gateway-to-PTU telemetry.
 abstract class GatewaySignalSource {
   bool get signalConnected;

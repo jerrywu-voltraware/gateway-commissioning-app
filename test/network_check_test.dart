@@ -643,7 +643,6 @@ void main() {
 
     Future<void> connect(WidgetTester tester) async {
       await tap(tester, find.text('檢查並開始'));
-      await tap(tester, find.text('搜尋閘道器'));
       await tap(tester, find.text('GIOS-S1-GW01'));
     }
 
@@ -812,6 +811,7 @@ void main() {
         120,
         scrollable: find.byType(Scrollable).first,
       );
+      await reveal(find.text('技術細節'));
       await tap(tester, find.text('技術細節'));
       expect(find.textContaining('未連線（disconnected）'), findsOneWidget);
       await reveal(find.text('✗ $_missingHomeWifi'));

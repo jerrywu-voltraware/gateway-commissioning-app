@@ -8,6 +8,7 @@ const demoProductionMqttHost = '46.250.255.172';
 class DemoSystem implements GatewayLink, GatewayApi {
   final config = <String, dynamic>{
     'fw_version': '1.7.3',
+    'identify_supported': true,
     'site_id': 1,
     'gateway_id': 1,
     'gateway_uid': 'AABBCCDDEEFF',
@@ -140,6 +141,8 @@ class DemoSystem implements GatewayLink, GatewayApi {
         return _netStatus(op);
       case 'set_mqtt_target':
         return _setMqttTarget(params);
+      case 'identify':
+        return {'duration_ms': 6000};
       case 'scan_ble_discover':
       case 'get_ble_devices':
         return {'devices': devices.map(Map<String, dynamic>.of).toList()};

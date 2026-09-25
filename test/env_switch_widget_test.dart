@@ -124,7 +124,6 @@ String _chipText(WidgetTester tester) => tester
 
 Future<void> _connectGateway(WidgetTester tester) async {
   await _tap(tester, find.text('檢查並開始'));
-  await _tap(tester, find.text('搜尋閘道器'));
   await _tap(tester, find.text('GIOS-S1-GW01'));
 }
 
@@ -333,7 +332,6 @@ void main() {
     final fake = SimGateway();
     final container = await _pumpApp(tester, fake);
     await _tap(tester, find.text('檢查並開始'));
-    await _tap(tester, find.text('搜尋閘道器'));
     fake.connectGate = Completer<void>();
     await tester.ensureVisible(find.text('GIOS-S1-GW01'));
     await tester.tap(find.text('GIOS-S1-GW01'));
@@ -344,7 +342,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.byKey(const Key('env-sheet-busy')), findsOneWidget);
-    expect(find.text('正在進行「連線並讀取閘道器設定」，完成或按「取消操作」後才能切換。'), findsOneWidget);
+    expect(find.text('正在進行「正在連線 GIOS-S1-GW01，請保持靠近」，完成或按「取消操作」後才能切換。'), findsOneWidget);
     expect(find.text('取消操作'), findsOneWidget, reason: 'the page has it');
     await tester.tap(find.byKey(const Key('env-option-local')));
     await tester.pump(const Duration(milliseconds: 500));

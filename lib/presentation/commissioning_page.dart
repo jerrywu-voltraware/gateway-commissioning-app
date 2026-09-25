@@ -17,6 +17,7 @@ import 'environment_switch.dart';
 import 'local_backend_field.dart';
 import 'ptu_selection_tile.dart';
 import 'gateway_signal.dart';
+import 'gateway_discovery.dart';
 
 class CommissioningPage extends ConsumerStatefulWidget {
   const CommissioningPage({
@@ -32,6 +33,8 @@ class CommissioningPage extends ConsumerStatefulWidget {
 
 class _CommissioningPageState extends ConsumerState<CommissioningPage>
     with WidgetsBindingObserver {
+  final _pageScroll = ScrollController();
+
   /// Mirrors the selected backend URL (editable only for 其他網址); the
   /// source of truth is [backendEnvProvider].
   final _base = TextEditingController(text: productionApiBase);
@@ -438,6 +441,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       .setForeground(state == AppLifecycleState.resumed);
   @override
   void dispose() {
+    _pageScroll.dispose();
     _baseTyping?.cancel();
     _suggestTyping?.cancel();
     WidgetsBinding.instance.removeObserver(this);
@@ -626,6 +630,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 720),
               child: ListView(
+                controller: _pageScroll,
                 padding: EdgeInsets.all(selectingPtus ? 12 : 20),
                 children: [
                   if (demo)
@@ -679,6 +684,18 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                       peer: state.peer!,
                       busy: state.busy,
                     ),
+                  if (state.peer != null && state.step >= 2)
+                    state.config['identify_supported'] == true
+                        ? OutlinedButton.icon(
+                            onPressed: state.busy
+                                ? null
+                                : ref
+                                      .read(commissionProvider.notifier)
+                                      .identify,
+                            icon: const Icon(Icons.lightbulb_outline),
+                            label: const Text('辨識這台・雙閃 6 秒'),
+                          )
+                        : const Text('連線時藍燈呼吸；更新韌體後可使用雙閃辨識。'),
                   if (state.message.isNotEmpty &&
                       (!selectingPtus ||
                           state.busy ||
@@ -887,36 +904,28 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         ];
       case 1:
         return [
-          button(s.peers.isEmpty ? '搜尋閘道器' : '重新搜尋', () => c.scan(), enabled),
-          ...s.peers.map(
-            (peer) => ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.router_outlined),
-              title: Text(peer.name),
-              subtitle: Text('${peer.id}\n訊號 ${peer.rssi} dBm'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: enabled
-                  ? () async {
-                      await c.connect(peer);
-                      if (mounted) {
-                        final next = ref.read(commissionProvider);
-                        _site.text =
-                            '${next.config['suggested_site_id'] ?? next.config['site_id'] ?? 1}';
-                        _gateway.text =
-                            '${next.config['suggested_gateway_id'] ?? next.config['gateway_id'] ?? 1}';
-                        _gatewayKind = next.config['suggested_offline'] == true
-                            ? GatewaySuggestKind.offline
-                            : GatewaySuggestKind.online;
-                        _ssid.text = next.config['wifi_ssid']?.toString() ?? '';
-                        _customWifi = false;
-                        // Remembered environment: sync the gateway to it.
-                        if (next.error == null && next.step >= 2) {
-                          await _syncGateway(explicit: false);
-                        }
-                      }
-                    }
-                  : null,
-            ),
+          GatewayDiscovery(
+            enabled: enabled,
+            onConnect: (peer) async {
+              await c.connect(peer);
+              if (mounted && _pageScroll.hasClients) _pageScroll.jumpTo(0);
+              if (mounted) {
+                final next = ref.read(commissionProvider);
+                _site.text =
+                    '${next.config['suggested_site_id'] ?? next.config['site_id'] ?? 1}';
+                _gateway.text =
+                    '${next.config['suggested_gateway_id'] ?? next.config['gateway_id'] ?? 1}';
+                _gatewayKind = next.config['suggested_offline'] == true
+                    ? GatewaySuggestKind.offline
+                    : GatewaySuggestKind.online;
+                _ssid.text = next.config['wifi_ssid']?.toString() ?? '';
+                _customWifi = false;
+                // Remembered environment: sync the gateway to it.
+                if (next.error == null && next.step >= 2) {
+                  await _syncGateway(explicit: false);
+                }
+              }
+            },
           ),
         ];
       case 2:

@@ -16,7 +16,103 @@ Object normalizeBleError(Object error) {
   return error;
 }
 
-class BleGatewayLink implements GatewayLink, GatewaySignalSource {
+class BleGatewayLink
+    implements GatewayLink, GatewaySignalSource, GatewayScanner {
+  Completer<void>? _scanStop;
+  Future<void>? _scanFinished;
+
+  @override
+  Future<void> stopScan() async {
+    final stop = _scanStop;
+    if (stop != null && !stop.isCompleted) stop.complete();
+    await _scanFinished;
+  }
+
+  @override
+  Stream<List<GatewayPeer>> scanLive() {
+    final output = StreamController<List<GatewayPeer>>();
+    final stop = Completer<void>();
+    Future<void>? finished;
+    output.onListen = () {
+      final previousStop = _scanStop;
+      final previousFinished = _scanFinished;
+      if (previousStop != null && !previousStop.isCompleted) {
+        previousStop.complete();
+      }
+      _scanStop = stop;
+      finished = _scanFinished = () async {
+        StreamSubscription<BleDevice>? sub;
+        Timer? expiry;
+        var started = false;
+        try {
+          await previousFinished;
+          if (stop.isCompleted) return;
+          await disconnect();
+          await prepare();
+          if (stop.isCompleted) return;
+          final found = <String, GatewayPeer>{};
+          final lastSeen = <String, DateTime>{};
+          expiry = Timer.periodic(const Duration(seconds: 1), (_) {
+            final now = DateTime.now();
+            final expired = lastSeen.keys
+                .where(
+                  (id) =>
+                      now.difference(lastSeen[id]!) >=
+                      const Duration(seconds: 10),
+                )
+                .toList();
+            for (final id in expired) {
+              found.remove(id);
+              lastSeen.remove(id);
+            }
+            if (expired.isNotEmpty && !stop.isCompleted) {
+              output.add(found.values.toList());
+            }
+          });
+          sub = UniversalBle.scanStream.listen(
+            (result) {
+              final name = result.name ?? '';
+              if (!name.startsWith('GIOS-S') || stop.isCompleted) return;
+              lastSeen[result.deviceId] = DateTime.now();
+              found[result.deviceId] = GatewayPeer(
+                result.deviceId,
+                name,
+                result.rssi ?? -127,
+              );
+              output.add(
+                found.values.toList()..sort((a, b) => b.rssi.compareTo(a.rssi)),
+              );
+            },
+            onError: (Object error, StackTrace stack) {
+              output.addError(error, stack);
+              if (!stop.isCompleted) stop.complete();
+            },
+          );
+          started = true;
+          await UniversalBle.startScan();
+          await stop.future;
+        } catch (error, stack) {
+          output.addError(error, stack);
+        } finally {
+          expiry?.cancel();
+          try {
+            if (started) await UniversalBle.stopScan();
+          } catch (error, stack) {
+            output.addError(error, stack);
+          }
+          await sub?.cancel();
+          if (identical(_scanStop, stop)) _scanStop = null;
+          unawaited(output.close());
+        }
+      }();
+    };
+    output.onCancel = () async {
+      if (!stop.isCompleted) stop.complete();
+      await finished;
+    };
+    return output.stream;
+  }
+
   final _signalConnections = StreamController<bool>.broadcast();
   @override
   Stream<bool> get signalConnections => _signalConnections.stream;
@@ -69,6 +165,10 @@ class BleGatewayLink implements GatewayLink, GatewaySignalSource {
     final result = await permissions.request();
     if (result.values.any((p) => !p.isGranted)) {
       throw const GatewayFailure('permission');
+    }
+    if (sdk < 31 &&
+        !await Permission.locationWhenInUse.serviceStatus.isEnabled) {
+      throw const GatewayFailure('location_off');
     }
     if (await UniversalBle.getBluetoothAvailabilityState() !=
         AvailabilityState.poweredOn) {
