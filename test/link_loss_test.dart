@@ -217,6 +217,9 @@ void main() {
     fake.dropAfterAssigns = 0;
     await c.configurePtus();
     fake.failConnect = true;
+    final keep = connectPersistence;
+    connectPersistence = const Duration(milliseconds: 50);
+    addTearDown(() => connectPersistence = keep);
     await c.discover();
     var s = container.read(commissionProvider);
     expect(s.busy, isFalse);

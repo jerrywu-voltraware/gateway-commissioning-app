@@ -198,11 +198,43 @@ String withFirstFailure(String detail, Object link) {
 /// Shown while the phone re-opens the BLE link to the gateway.
 const reconnectingText = '正在重新連線閘道器';
 
+/// Round 10: step 2 connect and reconnects keep retrying 133 / disconnected
+/// for this long before showing the error.
+Duration connectPersistence = const Duration(seconds: 60);
+
+/// Pause between two persistent connect attempts.
+Duration connectRetryGap = const Duration(milliseconds: 1500);
+
+/// Busy text of the n-th connect attempt (n >= 2).
+String connectingAttemptText(int attempt) => '連線中（第 $attempt 次）';
+
+/// Connect failures worth another attempt: GATT 133 / unknownError
+/// (ble_error), a dropped link, a timeout.
+bool isRetryableConnect(Object error) =>
+    error is TimeoutException ||
+    (error is GatewayFailure &&
+        const {
+          'disconnected',
+          'ble_error',
+          'timeout',
+          'not_connected',
+          'unexpected',
+        }.contains(error.code));
+
+/// Short type of a connect failure for 詳細資訊 (e.g. `ble_error 133`).
+String connectFailureType(Object error) {
+  if (error is GatewayFailure) {
+    final detail = error.detail ?? '';
+    return detail.startsWith('133') ? '${error.code} 133' : error.code;
+  }
+  return error.runtimeType.toString();
+}
+
 /// Overall budget for re-opening the phone↔gateway link. Must stay above
 /// [BleGatewayLink]'s own worst-case retry budget (51s, see
 /// ble_gateway_link.dart) plus headroom for _relink's own overhead; keep it
 /// in sync with _reconnectBudget below.
-const reconnectBudget = Duration(seconds: 66);
+const reconnectBudget = Duration(seconds: 80);
 
 /// Shown while the phone's Bluetooth was just turned on (「重新連線並繼續」).
 const waitingBluetoothText = '等待藍牙就緒';
@@ -1040,8 +1072,11 @@ class CommissioningController extends Notifier<CommissionState> {
             failure.code == 'phone_link_lost' ||
             failure.code == 'reconnect_failed' ||
             failure.code == 'monitor_unconfirmed';
+        final log = _connectLog;
         state = state.copy(
-          errorDetail: failure.toString(),
+          errorDetail: log != null && log.$1 == generation && log.$2.isNotEmpty
+              ? '${failure.toString()}\n連線失敗紀錄：${log.$2.join('、')}'
+              : failure.toString(),
           reconnectFailed: failure.code == 'reconnect_failed',
           error: linkIssue
               ? failure.message
@@ -1345,18 +1380,23 @@ class CommissioningController extends Notifier<CommissionState> {
   ) => _run('正在連線 ${peer.name}，請保持靠近', 120, (generation) async {
     // Stage text (清除舊連線／正在連線／第 n 次重試) on the first connect too,
     // not only on a relink (round 7b saw none here).
-    await _link.connect(peer, onStage: _stageFor(generation));
-    _check(generation);
-    state = state.copy(message: '藍牙已連線，正在確認閘道器回應與設定…');
-    for (int attempt = 0; ; attempt++) {
-      try {
-        await _command(generation, 'ping');
-        break;
-      } catch (_) {
-        if (attempt == 4) rethrow;
-        await _wait(3, generation);
+    // Round 10: 133 / disconnected is retried until [connectPersistence].
+    await _persistentLink(generation, peer, () async {
+      state = state.copy(message: '藍牙已連線，正在確認閘道器回應與設定…');
+      for (int attempt = 0; ; attempt++) {
+        try {
+          await _command(generation, 'ping');
+          break;
+        } catch (error) {
+          // A dropped link is not answered by more pings: reconnect.
+          if (error is GatewayFailure && error.code == 'disconnected') {
+            rethrow;
+          }
+          if (attempt == 4) rethrow;
+          await _wait(3, generation);
+        }
       }
-    }
+    });
     final config = await _command(generation, 'get_config');
     _check(generation);
     try {
@@ -3506,25 +3546,67 @@ class CommissioningController extends Notifier<CommissionState> {
     }
   };
 
-  static const _relinkBudget = Duration(seconds: 56);
-
   Future<void> _relink(int generation, GatewayPeer peer) async {
     await _link.disconnect();
     _check(generation);
-    try {
-      // The link itself retries (stale client drop, rescan, 3 attempts).
-      await _link
-          .connect(peer, onStage: _stageFor(generation))
-          .timeout(_relinkBudget);
-    } on GatewayFailure {
-      rethrow;
-    } catch (_) {
-      await _link.disconnect();
+    await _persistentLink(generation, peer, () => _command(generation, 'ping'));
+  }
+
+  /// Failure types of the latest [_persistentLink] run (for 詳細資訊).
+  (int, List<String>)? _connectLog;
+
+  /// Round 10: connects (the link's own retries included) and runs [after];
+  /// a retryable failure (133 / unknownError / disconnected / timeout) is
+  /// retried — disconnect, [connectRetryGap], short rescan inside the link —
+  /// until [connectPersistence] has passed, showing 「連線中（第 n 次）」.
+  Future<void> _persistentLink(
+    int generation,
+    GatewayPeer peer,
+    Future<void> Function() after,
+  ) async {
+    final watch = Stopwatch()..start();
+    final failures = <String>[];
+    _connectLog = (generation, failures);
+    for (int attempt = 1; ; attempt++) {
       _check(generation);
-      throw const GatewayFailure('disconnected');
+      final stage = _stageFor(generation);
+      if (attempt > 1) stage(connectingAttemptText(attempt));
+      try {
+        final remaining = connectPersistence - watch.elapsed;
+        await _link
+            .connect(
+              peer,
+              onStage: attempt == 1
+                  ? stage
+                  : (text) => stage('${connectingAttemptText(attempt)}：$text'),
+            )
+            .timeout(
+              remaining > const Duration(seconds: 5)
+                  ? remaining
+                  : const Duration(seconds: 5),
+            );
+        _check(generation);
+        await after();
+        return;
+      } catch (error) {
+        if (error is GatewayFailure && error.code == 'cancelled') rethrow;
+        _check(generation);
+        failures.add('第 $attempt 次：${connectFailureType(error)}');
+        final retry =
+            isRetryableConnect(error) &&
+            watch.elapsed + connectRetryGap < connectPersistence;
+        if (!retry) {
+          if (error is TimeoutException) {
+            await _link.disconnect();
+            throw const GatewayFailure('disconnected');
+          }
+          rethrow;
+        }
+        await _link.disconnect();
+        _check(generation);
+        await Future<void>.delayed(connectRetryGap);
+      }
     }
-    _check(generation);
-    await _command(generation, 'ping');
   }
 
   Future<void> _reconnectAfterReboot(

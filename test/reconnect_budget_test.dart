@@ -33,7 +33,7 @@ void main() {
       // reconnectBudget wraps _relink, which itself wraps _link.connect;
       // both outer numbers must have headroom over the link's own worst
       // case (documented in ble_gateway_link.dart).
-      expect(reconnectBudget, const Duration(seconds: 66));
+      expect(reconnectBudget, const Duration(seconds: 80));
       expect(reconnectBudget, greaterThan(const Duration(seconds: 51)));
     });
 
