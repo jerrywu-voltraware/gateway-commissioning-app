@@ -1110,6 +1110,15 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                 style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
             ),
+          if (topology.isStar && s.starNotice.isNotEmpty)
+            Padding(
+              key: const Key('star-owner-notice'),
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                s.starNotice,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ),
           ...s.ptus.map((ptu) {
             final blocked = c.ptuOutOfRange(ptu);
             return PtuSelectionTile(
@@ -1206,8 +1215,8 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           ),
           const SizedBox(height: 8),
           Text(
-            '掃到 ${s.scannedTotal} 台，本機配置 ${s.ptus.length} 台，'
-            '剩 ${s.pendingNext} 台待下一台閘道器',
+            '掃到 ${s.scannedTotal} 台，本機配置 ${s.ptus.length} 台'
+            '${s.pendingNext > 0 ? '，${s.pendingNext} 台屬於其他閘道器' : ''}',
             key: const Key('commission-summary'),
             style: Theme.of(context).textTheme.bodyMedium,
           ),
