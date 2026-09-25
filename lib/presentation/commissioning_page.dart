@@ -718,6 +718,17 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                   const SizedBox(height: 8),
+                  // Right under the title: on a phone the card below starts
+                  // after the long 連線狀態 panel, off screen.
+                  if (state.step >= 7)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Text(
+                        commissionSummaryText(state),
+                        key: const Key('commission-summary'),
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
+                    ),
                   if (!selectingPtus) StepList(current: shown),
                   SizedBox(height: selectingPtus ? 4 : 16),
                   if (state.peer != null)
@@ -1320,12 +1331,6 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           Text(
             demo ? '模擬開通完成' : '開通完成',
             style: Theme.of(context).textTheme.headlineSmall,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            commissionSummaryText(s),
-            key: const Key('commission-summary'),
-            style: Theme.of(context).textTheme.bodyMedium,
           ),
           // After a switch of environment: log in there to check the data.
           if (!s.loggedIn) ...[
