@@ -494,8 +494,13 @@ void linkDropMain() {
       final fake = LinkDropResetGateway();
       final (container, controller) = await _connectStar(fake, offline: false);
       addTearDown(container.dispose);
-      // First PTU reset, second hit the link loss once, third never tried.
-      expect(fake.resets, ['AA:BB:CC:00:00:04', 'AA:BB:CC:00:00:05']);
+      // First PTU reset, second hit the link loss once, third never tried;
+      // round 12: the automatic reconnect + rescan retried the second once.
+      expect(fake.resets, [
+        'AA:BB:CC:00:00:04',
+        'AA:BB:CC:00:00:05',
+        'AA:BB:CC:00:00:05',
+      ]);
       expect(fake.nearby[0]['device_number'], 255);
       var state = container.read(commissionProvider);
       expect(state.error, isNotNull);

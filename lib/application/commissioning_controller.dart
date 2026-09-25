@@ -14,6 +14,8 @@ import '../data/recent_gateways.dart';
 import '../data/dashboard_api.dart';
 import '../data/demo_system.dart';
 import '../data/ptu_inventory.dart';
+import 'backend_environment.dart';
+import 'network_check.dart';
 import 'topology_settings.dart';
 import 'verify_diagnosis.dart';
 
@@ -307,6 +309,11 @@ const _savedStepLabels = {
 /// assigned ones excluded so they are not re-sent).
 String configureLabel(CommissionState s) {
   final rest = configureTargets(s).length;
+  // Round 12: step 7 link loss — never 「掃描中…」 beside the banner.
+  if (s.step == 4 && (s.relinking || (s.busy && _step7Lost(s)))) {
+    return relinkingLabel;
+  }
+  if (step7LinkLost(s)) return rescanAfterLossLabel;
   // Phone link lost: the button reconnects first (same as the banner).
   if (s.resumePending) {
     return rest == 0 ? '重新連線並繼續' : '重新連線並繼續（剩 $rest 台）';
@@ -322,6 +329,20 @@ String configureLabel(CommissionState s) {
 
 /// Step 7 bottom button while a scan is still running.
 const scanningLabel = '掃描中…';
+
+/// Step 7 bottom button while the automatic reconnect runs (disabled).
+const relinkingLabel = '重新連線中…';
+
+/// Step 7 bottom button after the automatic reconnect gave up.
+const rescanAfterLossLabel = '重新連線並掃描 PTU';
+
+/// Step 7, not busy, phone↔gateway link lost (banner shown).
+bool step7LinkLost(CommissionState s) => !s.busy && _step7Lost(s);
+
+bool _step7Lost(CommissionState s) =>
+    s.step == 4 &&
+    !s.resumePending &&
+    (s.scanResumePending || s.uploadWatch == UploadWatch.linkLost);
 
 /// 「配置」按鈕的目標集合：已勾選但尚未成功指派的 PTU MAC。
 Set<String> configureTargets(CommissionState s) =>
@@ -364,8 +385,13 @@ String resumeText(
   List<int> done,
   int pending, {
   List<int> inflight = const [],
+  int? shown,
 }) {
-  final where = _savedStepLabels[step];
+  // Round 12: [shown] is the 1-based step the installer saw (steps 3–6 all
+  // live in controller step 2, which made every kill there 「第 3 步」).
+  final where = shown != null && shown >= 2 && shown <= stepLabels.length - 1
+      ? '第 $shown 步（${stepLabels[shown - 1]}）'
+      : _savedStepLabels[step];
   if (where == null) return '已保留先前進度，請重新連線以核對裝置現況。';
   String list(List<int> v) =>
       (List<int>.of(v)..sort()).map((i) => '#$i').join('、');
@@ -494,6 +520,7 @@ class CommissionState {
     this.monitoringOk = false,
     this.monitorUnconfirmed = false,
     this.scanResumePending = false,
+    this.relinking = false,
     this.reconnectFailed = false,
     this.savedResume = false,
     this.lastCompleted = false,
@@ -595,6 +622,10 @@ class CommissionState {
   /// 星狀自動重置殘留編號時手機↔閘道器斷線；「重新連線並繼續」會重連並重掃。
   final bool scanResumePending;
 
+  /// Round 12: step 7 automatic reconnect (+ rescan) after a link loss is
+  /// running; the bottom button shows [relinkingLabel], disabled.
+  final bool relinking;
+
   /// 最近一次重新連線閘道器逾時／失敗（顯示重試與回到找閘道器）。
   final bool reconnectFailed;
 
@@ -674,6 +705,7 @@ class CommissionState {
     bool? monitoringOk,
     bool? monitorUnconfirmed,
     bool? scanResumePending,
+    bool? relinking,
     bool? reconnectFailed,
     bool? savedResume,
     bool? lastCompleted,
@@ -691,6 +723,7 @@ class CommissionState {
     monitoringOk: monitoringOk ?? this.monitoringOk,
     monitorUnconfirmed: monitorUnconfirmed ?? this.monitorUnconfirmed,
     scanResumePending: scanResumePending ?? this.scanResumePending,
+    relinking: relinking ?? this.relinking,
     reconnectFailed: reconnectFailed ?? this.reconnectFailed,
     savedResume: savedResume ?? this.savedResume,
     assignFailed: assignFailed ?? this.assignFailed,
@@ -823,13 +856,18 @@ class CommissioningController extends Notifier<CommissionState> {
     // Round 11: persist on every step change (not only when a run ends), so
     // the restore prompt names the step actually reached. A pending saved
     // resume is not overwritten until it is consumed.
+    // Round 12: keyed on the step the installer sees (displayStep), so the
+    // network-check stages and the station page (all controller step 2) are
+    // saved too. A pending saved resume is superseded once a fresh run
+    // reaches the gateway (step >= 2) outside 「重新連線並繼續」.
     listenSelf((previous, next) {
-      if (previous != null &&
-          previous.step != next.step &&
-          next.step >= 1 &&
-          _saved == null) {
-        unawaited(_save());
+      if (previous == null || next.step < 1) return;
+      if (_shown(previous) == _shown(next)) return;
+      if (_saved != null) {
+        if (_resumingSaved || next.step < 2) return;
+        _saved = null;
       }
+      unawaited(_save());
     });
     ref.onDispose(() {
       _generation++;
@@ -1069,6 +1107,15 @@ class CommissioningController extends Notifier<CommissionState> {
           error = GatewayFailure('phone_link_lost', detail: error.toString());
         }
       }
+      // Round 12: step 7 (scan running) — same link-loss handling as step 8.
+      if (ref.mounted &&
+          state.step == 4 &&
+          isStep8LinkLoss(error, generation == _generation) &&
+          !(error is GatewayFailure && error.code == 'reconnect_failed')) {
+        if (!(error is GatewayFailure && error.code == 'phone_link_lost')) {
+          error = GatewayFailure('phone_link_lost', detail: error.toString());
+        }
+      }
       if (error is GatewayFailure && error.code == 'authentication') {
         _setLoggedIn(false);
       }
@@ -1131,12 +1178,21 @@ class CommissioningController extends Notifier<CommissionState> {
     }
   }
 
+  /// 1-based step number on screen (the step list / 「第 N 步」).
+  int _shown(CommissionState s) =>
+      displayStep(s, ref.read(backendEnvProvider)) + 1;
+
+  /// 「重新連線並繼續」 of a saved run is in progress.
+  bool _resumingSaved = false;
+
   Future<void> _save() async {
+    final shown = _shown(state);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
       _link.demo ? 'demo_progress' : 'progress',
       jsonEncode({
         'step': state.step,
+        'shown': shown,
         'completed': state.step == 7 && state.verified,
         'count': state.ptus.length,
         'site': site,
@@ -1202,6 +1258,7 @@ class CommissioningController extends Notifier<CommissionState> {
           done.values.toList(),
           pending,
           inflight: inflight.values.toList(),
+          shown: data['shown'] is int ? data['shown'] as int : null,
         ),
       );
     }
@@ -1265,7 +1322,12 @@ class CommissioningController extends Notifier<CommissionState> {
       );
       return;
     }
-    await _connect(peer);
+    _resumingSaved = true;
+    try {
+      await _connect(peer);
+    } finally {
+      _resumingSaved = false;
+    }
     if (!ref.mounted || state.error != null || state.step != 2) return;
     _saved = null;
     state = state.copy(
@@ -2077,6 +2139,15 @@ class CommissioningController extends Notifier<CommissionState> {
       // 殘留編號已歸零：重掃一次讓它們變成可勾選；這次不再自動重置。
       _autoResetRescan = false;
       await _discover(autoReset: false, keep: keep);
+    }
+    if (ref.mounted &&
+        !_autoRelinking &&
+        !state.reconnectFailed &&
+        step7LinkLost(state) &&
+        state.error != null) {
+      // Round 12: a drop during the scan reconnects and rescans by itself.
+      await _autoRelinkStep7(keep: keep);
+      return;
     }
     if (ref.mounted &&
         (state.step == 4 || state.step == 5) &&
@@ -3864,8 +3935,8 @@ class CommissioningController extends Notifier<CommissionState> {
     }
   }
 
-  /// Step 7 link drop seen by a background poll: banner with 「重新連線並
-  /// 繼續」 (round 8: this banner only had 「詳細資訊」).
+  /// Step 7 link drop seen by a background poll: banner, then (round 12)
+  /// the same automatic persistent reconnect + rescan as a drop mid-scan.
   void _stepSevenLinkLost(GatewayFailure error) {
     _stopWatch(UploadWatch.linkLost);
     state = state.copy(
@@ -3873,6 +3944,32 @@ class CommissioningController extends Notifier<CommissionState> {
       errorDetail: error.toString(),
       scanResumePending: state.step == 4 ? true : null,
     );
+    if (state.step == 4) {
+      final keep = Set.of(state.selected);
+      unawaited(_autoRelinkStep7(keep: keep.isEmpty ? null : keep));
+    }
+  }
+
+  bool _autoRelinking = false;
+
+  /// Round 12: step 7 link loss (scan running or idle) → reconnect for
+  /// [connectPersistence] via the discover reconnect ([_persistentLink]),
+  /// then rescan; no tap needed. One automatic round per loss: if it gives
+  /// up, the banner keeps 「重新連線並掃描 PTU」 for a manual retry.
+  Future<void> _autoRelinkStep7({Set<String>? keep}) async {
+    if (_autoRelinking || !ref.mounted || state.step != 4 || state.busy) {
+      return;
+    }
+    _autoRelinking = true;
+    state = state.copy(relinking: true, error: state.error);
+    try {
+      await discover(keep: keep);
+    } finally {
+      _autoRelinking = false;
+      if (ref.mounted) {
+        state = state.copy(relinking: false, error: state.error);
+      }
+    }
   }
 
   void setForeground(bool value) {

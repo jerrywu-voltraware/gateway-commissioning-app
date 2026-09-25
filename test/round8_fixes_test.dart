@@ -181,18 +181,26 @@ void main() {
       addTearDown(container.dispose);
       fake.down = true;
       await c.refreshPtuRssi();
+      // Round 12: the reconnect starts by itself (no tap).
       final s = container.read(commissionProvider);
-      expect(s.error, isNotNull);
-      expect(s.scanResumePending, isTrue);
-      expect(s.uploadWatch, UploadWatch.linkLost);
-      await c.discover();
+      expect(s.relinking, isTrue);
+      expect(configureLabel(s), relinkingLabel);
+      while (container.read(commissionProvider).relinking) {
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+      }
       expect(container.read(commissionProvider).error, isNull);
+      expect(container.read(commissionProvider).scanResumePending, isFalse);
     });
 
     testWidgets('step 7 drop banner has a reconnect button', (tester) async {
       final fake = DroppingLink();
       final (_, c) = await atStep7(tester, fake);
+      // Round 12: the automatic reconnect gives up first (connect fails).
+      final keep = connectPersistence;
+      connectPersistence = Duration.zero;
+      addTearDown(() => connectPersistence = keep);
       fake.down = true;
+      fake.failConnect = true;
       await c.refreshPtuRssi();
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('error-banner')), findsOneWidget);

@@ -231,17 +231,12 @@ class BleGatewayLink
         !await Permission.locationWhenInUse.serviceStatus.isEnabled) {
       throw const GatewayFailure('location_off');
     }
+    // Round 12: never switch the phone Bluetooth (the old enable call
+    // fired the system enable-request intent and could race a disable
+    // request). Bluetooth off is reported; the user turns it on.
     if (await UniversalBle.getBluetoothAvailabilityState() !=
         AvailabilityState.poweredOn) {
-      try {
-        if (!await UniversalBle.enableBluetooth(
-          timeout: const Duration(seconds: 15),
-        )) {
-          throw const GatewayFailure('bluetooth_off');
-        }
-      } catch (_) {
-        throw const GatewayFailure('bluetooth_off');
-      }
+      throw const GatewayFailure('bluetooth_off');
     }
   }
 

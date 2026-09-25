@@ -694,11 +694,12 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                         ],
                         FilledButton(
                           key: const Key('ptu-configure'),
-                          onPressed:
-                              !state.busy &&
-                                  configureLabel(state) != scanningLabel &&
-                                  (state.resumePending ||
-                                      state.selected.isNotEmpty)
+                          onPressed: step7LinkLost(state)
+                              ? () => controller.discover()
+                              : !state.busy &&
+                                    configureLabel(state) != scanningLabel &&
+                                    (state.resumePending ||
+                                        state.selected.isNotEmpty)
                               ? () {
                                   if (!state.resumePending &&
                                       configureTargets(state).isEmpty) {

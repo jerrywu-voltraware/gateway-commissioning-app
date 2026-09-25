@@ -215,13 +215,16 @@ void main() {
       expect(find.text('Gateway 正在掃描周邊 PTU，請稍候'), findsNothing);
       expect(find.textContaining('手機與 Gateway 都已連上'), findsNothing);
       expect(find.textContaining('藍牙已中斷，上傳狀態待確認'), findsOneWidget);
-      final retry = find.text('重新連線並掃描 PTU');
+      // Round 12: the automatic reconnect + rescan already ran (and failed
+      // again); the banner and the bottom button both offer the retry.
+      expect(fake.connects, 2);
+      final retry = find.text('重新連線並掃描 PTU').first;
       await tester.ensureVisible(retry);
       fake.failScan = false;
       await tester.tap(retry);
       await tester.pumpAndSettle();
       expect(container.read(commissionProvider).error, isNull);
-      expect(fake.connects, 2);
+      expect(fake.connects, 3);
       expect(find.text('AA:BB:CC:00:00:01'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
