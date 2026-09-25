@@ -94,6 +94,12 @@ final uploadWatchTimingProvider = Provider<UploadWatchTiming>(
   (ref) => const UploadWatchTiming(),
 );
 
+/// Gateway 'busy' (firmware cmd_worker queue full): retry every
+/// [busyRetryDelay], at most [busyRetryLimit] times (20 s in total).
+const busyRetryDelay = Duration(seconds: 2);
+const busyRetryLimit = 10;
+const gatewayBusyText = '閘道器忙碌中，等待…';
+
 /// Step 7 idle keep-alive ping interval (no RSSI traffic meanwhile).
 const keepAliveInterval = Duration(seconds: 15);
 
@@ -269,7 +275,8 @@ String configureLabel(CommissionState s) {
   if (s.resumePending) {
     return rest == 0 ? '重新連線並繼續' : '重新連線並繼續（剩 $rest 台）';
   }
-  if (rest == 0) return '全部已配置';
+  // Round 9: everything assigned is not a dead end any more.
+  if (rest == 0) return s.monitoringOk ? '開始驗證' : '恢復監控';
   return '配置 $rest 台並開始監控';
 }
 
@@ -442,6 +449,7 @@ class CommissionState {
     this.unassigned = const {},
     this.assignedOk = const {},
     this.resumePending = false,
+    this.monitoringOk = false,
     this.monitorUnconfirmed = false,
     this.scanResumePending = false,
     this.reconnectFailed = false,
@@ -533,6 +541,11 @@ class CommissionState {
   /// 第 8 步被手機斷線打斷，可按「重新連線並繼續」。
   final bool resumePending;
 
+  /// Step 7 reconcile: every selected PTU is assigned, connected, and the
+  /// gateway is monitoring (BLE on, upload not paused, limit set). With
+  /// nothing left to assign the button reads 「開始驗證」, else 「恢復監控」.
+  final bool monitoringOk;
+
   /// Resume at step 8: the gateway did not confirm monitoring within 30 s;
   /// the page offers 「重試」 (resumeAssign) and 「略過」 (skipMonitorConfirm).
   final bool monitorUnconfirmed;
@@ -616,6 +629,7 @@ class CommissionState {
     Set<String>? unassigned,
     Set<String>? assignedOk,
     bool? resumePending,
+    bool? monitoringOk,
     bool? monitorUnconfirmed,
     bool? scanResumePending,
     bool? reconnectFailed,
@@ -632,6 +646,7 @@ class CommissionState {
     unassigned: unassigned ?? this.unassigned,
     assignedOk: assignedOk ?? this.assignedOk,
     resumePending: resumePending ?? this.resumePending,
+    monitoringOk: monitoringOk ?? this.monitoringOk,
     monitorUnconfirmed: monitorUnconfirmed ?? this.monitorUnconfirmed,
     scanResumePending: scanResumePending ?? this.scanResumePending,
     reconnectFailed: reconnectFailed ?? this.reconnectFailed,
@@ -867,9 +882,32 @@ class CommissioningController extends Notifier<CommissionState> {
     if (sensitiveOps.contains(op) && state.config['otp_enabled'] == true) {
       throw const GatewayFailure('otp_enabled');
     }
-    final result = await _link.command(op, params);
-    _check(generation);
-    return result;
+    // Round 9: the firmware's single cmd_worker queue answers 'busy' while
+    // it finishes earlier work (e.g. assigns left over from a killed run).
+    // That is transient for every op: wait and retry before giving up.
+    String? before;
+    try {
+      for (int attempt = 0; ; attempt++) {
+        try {
+          final result = await _link.command(op, params);
+          _check(generation);
+          return result;
+        } on GatewayFailure catch (error) {
+          if (error.code != 'busy' || attempt >= busyRetryLimit) rethrow;
+          _check(generation);
+          before ??= state.message;
+          state = state.copy(message: gatewayBusyText, error: state.error);
+          await Future<void>.delayed(
+            _link.demo ? const Duration(milliseconds: 1) : busyRetryDelay,
+          );
+          _check(generation);
+        }
+      }
+    } finally {
+      if (before != null && ref.mounted && state.message == gatewayBusyText) {
+        state = state.copy(message: before, error: state.error);
+      }
+    }
   }
 
   Future<Map<String, dynamic>> _request(
@@ -1185,6 +1223,13 @@ class CommissioningController extends Notifier<CommissionState> {
       if (row['connected'] == true) merged.add(mac);
     }
     state = state.copy(selected: merged);
+    // Round 9: saved 'done' the gateway now contradicts (re-deployed site,
+    // number reset) no longer counts as configured.
+    final staleDone = _staleAssigned(done, state.ptus);
+    done.removeAll(staleDone);
+    for (final mac in staleDone) {
+      _doneAssign.remove(mac);
+    }
     // The gateway may have taken assignments the APP never saw acked (killed
     // mid-step): what it reports connected with a matching number counts.
     // The prompt counts what the gateway reports, not the saved file.
@@ -1198,7 +1243,14 @@ class CommissioningController extends Notifier<CommissionState> {
     state = state.copy(
       message: resumeText(5, ids, merged.difference(done).length),
     );
-    if (merged.every(done.contains)) return;
+    if (merged.every(done.contains)) {
+      // Nothing left to assign: decide 「開始驗證」 vs 「恢復監控」.
+      final generation = _generation;
+      try {
+        await _computeMonitoringOk(generation, state.ptus);
+      } catch (_) {}
+      return;
+    }
     await configurePtus(skip: done.intersection(merged));
   }
 
@@ -1939,18 +1991,20 @@ class CommissioningController extends Notifier<CommissionState> {
     await discover();
   }
 
-  Future<void> discover() async {
+  /// [keep]: a selection to carry over (step 9 「返回選擇 PTU」) instead of
+  /// the default preselection; connected in-range PTUs still fill it up.
+  Future<void> discover({Set<String>? keep}) async {
     _rssiTimer ??= Timer.periodic(ref.read(ptuSignalIntervalProvider), (_) {
       unawaited(refreshPtuRssi());
       unawaited(keepAlive());
     });
     _autoResetRescan = false;
     final before = Set<String>.of(state.selected);
-    await _discover();
+    await _discover(keep: keep);
     if (ref.mounted && _autoResetRescan && state.error == null) {
       // 殘留編號已歸零：重掃一次讓它們變成可勾選；這次不再自動重置。
       _autoResetRescan = false;
-      await _discover(autoReset: false);
+      await _discover(autoReset: false, keep: keep);
     }
     if (ref.mounted &&
         (state.step == 4 || state.step == 5) &&
@@ -1978,6 +2032,7 @@ class CommissioningController extends Notifier<CommissionState> {
 
   Future<void> _discover({
     bool autoReset = true,
+    Set<String>? keep,
   }) => _run('Gateway 正在掃描周邊 PTU，請稍候', 75, (generation) async {
     if (state.uploadWatch == UploadWatch.linkLost || state.resumePending) {
       await _reconnect(generation);
@@ -2066,7 +2121,17 @@ class CommissioningController extends Notifier<CommissionState> {
     }
     // Connected in-range PTUs are always preselected first (round 7: a
     // connected #1 was left unticked); the order shown stays [ptus].
-    final selected = _preselect(ptus, target);
+    var selected = _preselect(ptus, target);
+    if (keep != null) {
+      final seen = ptus.map((p) => p['mac'].toString()).toSet();
+      final merged = keep.where(seen.contains).toSet();
+      for (final mac in selected) {
+        if (merged.length >= target) break;
+        final row = ptus.firstWhere((p) => p['mac'] == mac);
+        if (row['connected'] == true) merged.add(mac);
+      }
+      selected = merged;
+    }
     _selectionTouched = false;
     final failed = isStar
         ? ptus
@@ -2099,7 +2164,102 @@ class CommissioningController extends Notifier<CommissionState> {
           ? const GatewayFailure('no_devices').message
           : 'Gateway 已回傳 ${ptus.length} 台 PTU，請選擇要監控的裝置，最多 $target 台',
     );
+    await _reconcileAssigned(generation, ptus);
   });
+
+  /// Round 9: after every scan (entering step 7, resume, rescan) drop
+  /// assignedOk entries the gateway contradicts, then work out whether the
+  /// gateway already monitors the whole selection ([monitoringOk]).
+  Future<void> _reconcileAssigned(
+    int generation,
+    List<Map<String, dynamic>> ptus,
+  ) async {
+    final stale = _staleAssigned(state.assignedOk, ptus);
+    for (final mac in stale) {
+      _doneAssign.remove(mac);
+      _inflightAssign.remove(mac);
+    }
+    state = state.copy(
+      assignedOk: state.assignedOk.difference(stale),
+      results: {
+        for (final e in state.results.entries)
+          if (!stale.contains(e.key)) e.key: e.value,
+      },
+      monitoringOk: false,
+    );
+    if (stale.isNotEmpty) await _save();
+    await _computeMonitoringOk(generation, ptus);
+  }
+
+  Future<void> _computeMonitoringOk(
+    int generation,
+    List<Map<String, dynamic>> ptus,
+  ) async {
+    final selected = state.selected;
+    if (selected.isEmpty || !state.assignedOk.containsAll(selected)) return;
+    final allConnected = selected.every(
+      (m) => ptus.any((p) => sameMac(p['mac'], m) && p['connected'] == true),
+    );
+    if (!allConnected) return;
+    try {
+      final config = await _command(generation, 'get_config');
+      final limit = monitorLimit(ref.read(topologyProvider).topology.isStar);
+      state = state.copy(
+        monitoringOk:
+            config['upload_paused'] != true &&
+            config['ble_enabled'] != false &&
+            config['max_connections'] == limit,
+      );
+    } catch (e) {
+      if (e is GatewayFailure && e.code == 'cancelled') rethrow;
+      _check(generation);
+    }
+  }
+
+  /// assignedOk / saved-done MACs the scan [rows] contradict: listed with a
+  /// device_number other than the one the APP assigned (or, when that is
+  /// unknown, outside this gateway's range).
+  Set<String> _staleAssigned(
+    Iterable<String> macs,
+    List<Map<String, dynamic>> rows,
+  ) {
+    final first = (gateway - 1) * 5 + 1;
+    final stale = <String>{};
+    for (final mac in macs) {
+      final found = rows.where((p) => sameMac(p['mac'], mac));
+      if (found.isEmpty) continue;
+      final id = (found.first['device_number'] as num?)?.toInt() ?? 0;
+      final expected = _doneAssign[mac] ?? _inflightAssign[mac];
+      final bad = expected != null
+          ? id != expected
+          : !(id >= first && id < first + 5);
+      if (bad) stale.add(mac);
+    }
+    return stale;
+  }
+
+  /// Step 7 with every selected PTU already assigned (round 9 dead end):
+  /// 「開始驗證」 goes straight to step 9 when the gateway already monitors
+  /// them; otherwise 「恢復監控」 sends join_fleet first. Never re-assigns.
+  Future<void> finishConfigured() =>
+      _run('正在確認 Gateway 監控狀態', 90, (generation) async {
+        final chosen = state.ptus
+            .where((p) => state.selected.contains(p['mac']))
+            .toList();
+        if (chosen.isEmpty) throw const GatewayFailure('no_devices');
+        state = state.copy(step: 5);
+        if (await _alreadyMonitoring(generation, chosen)) return;
+        _provisioningMayBeActive = true;
+        final isStar = ref.read(topologyProvider).topology.isStar;
+        final config = await _command(generation, 'get_config');
+        if (config['max_connections'] != monitorLimit(isStar)) {
+          await _command(generation, 'set_config', {
+            'max_connections': monitorLimit(isStar),
+          });
+        }
+        await _command(generation, 'join_fleet');
+        await _waitConnected(generation, chosen, limitSec: 30);
+      });
 
   /// Default selection: in-range PTUs, connected first, then RSSI; capped.
   Set<String> _preselect(List<Map<String, dynamic>> ptus, int target) {
@@ -2457,6 +2617,7 @@ class CommissioningController extends Notifier<CommissionState> {
           unassigned: {},
           assignedOk: skip,
           resumePending: false,
+          monitoringOk: false,
         );
         final targets = chosen.where((p) => !skip.contains(p['mac'])).toList();
         final failed = await _assignAll(generation, targets);
@@ -3705,6 +3866,12 @@ class CommissioningController extends Notifier<CommissionState> {
         await _api.request('PATCH', '$_path/bot-monitor', {'enabled': true});
         _lease = false;
       } catch (_) {}
+    }
+    // Round 9: the gateway may have connected more PTUs meanwhile (a 5th
+    // missing until a manual rescan): rescan once, keeping the selection
+    // and assignedOk.
+    if (ref.mounted && state.step == 4) {
+      await discover(keep: Set.of(state.selected));
     }
   }
 

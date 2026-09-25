@@ -697,8 +697,15 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                           onPressed:
                               !state.busy &&
                                   (state.resumePending ||
-                                      configureTargets(state).isNotEmpty)
+                                      state.selected.isNotEmpty)
                               ? () {
+                                  if (!state.resumePending &&
+                                      configureTargets(state).isEmpty) {
+                                    // Round 9: all assigned → 開始驗證 /
+                                    // 恢復監控, never a disabled dead end.
+                                    controller.finishConfigured();
+                                    return;
+                                  }
                                   final warning = controller.starFullWarning;
                                   if (warning != null) {
                                     _snack(warning);
