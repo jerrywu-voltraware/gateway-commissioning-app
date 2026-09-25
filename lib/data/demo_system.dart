@@ -21,7 +21,52 @@ class DemoSystem implements GatewayLink, GatewayApi {
     'mqtt_host': demoProductionMqttHost,
     'mqtt_port': defaultMqttPort,
     'wifi_ssid': 'Demo-2.4G',
+    // Firmware 1.7.20 direct mode + PTU identify (remove to simulate older).
+    'direct_autoconnect_supported': true,
+    'identify_ptu_supported': true,
+    'auto_connect_min_rssi': -55,
+    'direct_bind_mac': '',
   };
+
+  /// Identify requests received (params as sent).
+  final identifyRequests = <Map<String, dynamic>>[];
+
+  /// `direct` object as firmware 1.7.20 reports it; null for older firmware
+  /// (no `direct_autoconnect_supported`).
+  Map<String, dynamic>? directStatus() {
+    if (config['direct_autoconnect_supported'] != true) return null;
+    final min = (config['auto_connect_min_rssi'] as num?)?.toInt() ?? -55;
+    final bound = config['direct_bind_mac']?.toString() ?? '';
+    final connected = devices.where((d) => d['connected'] == true).firstOrNull;
+    final candidates = devices.where((d) => (d['rssi'] as num) >= -100).toList()
+      ..sort((a, b) => (b['rssi'] as num).compareTo(a['rssi'] as num));
+    final String state;
+    if (connected != null) {
+      state = 'connected';
+    } else if (bound.isNotEmpty) {
+      state = devices.any((d) => d['mac'] == bound)
+          ? 'scanning'
+          : 'bound_missing';
+    } else {
+      state = candidates.any((d) => (d['rssi'] as num) >= min)
+          ? 'scanning'
+          : 'no_candidate';
+    }
+    return {
+      'state': state,
+      'min_rssi': min,
+      'bound_mac': bound,
+      'candidates': [
+        for (final d in candidates.take(5))
+          {
+            'mac': d['mac'],
+            'rssi_peak': d['rssi'],
+            'device_number': d['device_number'],
+          },
+      ],
+    };
+  }
+
   final devices = List.generate(
     3,
     (i) => <String, dynamic>{
@@ -82,7 +127,10 @@ class DemoSystem implements GatewayLink, GatewayApi {
     const GatewayPeer('demo-gateway', 'GIOS-S1-GW01', -42),
   ];
   @override
-  Future<void> connect(GatewayPeer peer, {void Function(String stage)? onStage}) async {
+  Future<void> connect(
+    GatewayPeer peer, {
+    void Function(String stage)? onStage,
+  }) async {
     onStage?.call('正在連線閘道器');
     connects++;
     if (rebooting) {
@@ -138,15 +186,44 @@ class DemoSystem implements GatewayLink, GatewayApi {
         }
         return {'message': 'wifi switching to ${params['ssid']}'};
       case 'get_status':
+        return {..._netStatus(op), 'direct': ?directStatus()};
       case 'get_net_status':
         return _netStatus(op);
       case 'set_mqtt_target':
         return _setMqttTarget(params);
       case 'identify':
-        return {'duration_ms': 6000};
+        identifyRequests.add(Map.of(params));
+        if (config['identify_ptu_supported'] != true) {
+          return {'duration_ms': 6000};
+        }
+        final target = params['target'] ?? 'both';
+        if (target == 'gateway') return {'duration_ms': 6000};
+        final linked = devices.where((d) => d['connected'] == true).toList();
+        if (linked.isEmpty) {
+          throw const GatewayFailure.gateway('not_connected');
+        }
+        if (linked.length > 1 && params['mac'] == null) {
+          throw const GatewayFailure.gateway('ambiguous_target');
+        }
+        final ptu = linked.firstWhere(
+          (d) => params['mac'] == null || d['mac'] == params['mac'],
+          orElse: () => throw const GatewayFailure.gateway('not_connected'),
+        );
+        return {
+          'mac': ptu['mac'],
+          'rssi': ptu['rssi'],
+          'device_number': ptu['device_number'],
+          'duration_ms': 6000,
+          'ptu_write': 'ok',
+          'ptu_confirmed': false,
+        };
       case 'scan_ble_discover':
-      case 'get_ble_devices':
         return {'devices': devices.map(Map<String, dynamic>.of).toList()};
+      case 'get_ble_devices':
+        return {
+          'devices': devices.map(Map<String, dynamic>.of).toList(),
+          'direct': ?directStatus(),
+        };
       case 'assign_device_id':
         devices.firstWhere((d) => d['mac'] == params['mac'])['device_number'] =
             params['new_id'];

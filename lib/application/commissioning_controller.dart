@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../core/direct_mode.dart';
 import '../core/gateway_net.dart';
 import '../core/gateway_topology.dart';
 import '../core/ptu_rssi.dart';
@@ -527,7 +528,15 @@ class CommissionState {
     this.verifyCounts = const {},
     this.verifyWaiting = const {},
     this.verifySkipped = const {},
+    this.directRaw = const {},
   });
+
+  /// Last `direct` object the gateway reported (firmware 1.7.20+ in direct
+  /// mode); empty for older firmware or before the first read.
+  final Map<String, dynamic> directRaw;
+
+  /// Parsed [directRaw]; null when the firmware does not report it.
+  DirectStatus? get direct => DirectStatus.from(directRaw);
 
   /// Step 9: fresh-data rounds seen per PTU number (0..3).
   final Map<int, int> verifyCounts;
@@ -712,7 +721,9 @@ class CommissionState {
     Map<int, int>? verifyCounts,
     Set<int>? verifyWaiting,
     Set<int>? verifySkipped,
+    Map<String, dynamic>? directRaw,
   }) => CommissionState(
+    directRaw: directRaw ?? this.directRaw,
     lastCompleted: lastCompleted ?? this.lastCompleted,
     verifyCounts: verifyCounts ?? this.verifyCounts,
     verifyWaiting: verifyWaiting ?? this.verifyWaiting,
@@ -1407,19 +1418,41 @@ class CommissioningController extends Notifier<CommissionState> {
       message: peers.isEmpty ? '未找到閘道器，請靠近並確認電源後重掃。' : '請選擇要開通的閘道器',
     );
   });
-  Future<void> identify() => _run('辨識閘道器', 12, (generation) async {
-    if (state.config['identify_supported'] != true) {
-      throw const GatewayFailure('identify_unsupported');
-    }
-    await _command(generation, 'identify');
-    state = state.copy(message: '請找出雙閃藍燈的閘道器，6 秒後會恢復原本燈號。');
-  });
+
+  /// Blinks the gateway LED; firmware 1.7.20+ (`identify_ptu_supported`)
+  /// also writes the connected PTU ([target] ptu | gateway | both) and acks
+  /// its MAC/RSSI. Older firmware gets the bare op, as before.
+  Future<void> identify({String target = 'both'}) =>
+      _run('辨識閘道器', 12, (generation) async {
+        if (state.config['identify_supported'] != true) {
+          throw const GatewayFailure('identify_unsupported');
+        }
+        if (!identifyPtuSupported(state.config)) {
+          await _command(generation, 'identify');
+          state = state.copy(message: '請找出雙閃藍燈的閘道器，6 秒後會恢復原本燈號。');
+          return;
+        }
+        Map<String, dynamic> ack;
+        try {
+          ack = await _command(generation, 'identify', {'target': target});
+        } on GatewayFailure catch (e) {
+          // The gateway's own not_connected means "no PTU connected", not a
+          // phone link loss: never let it trigger the relink handling.
+          if (!e.fromGateway || e.code != 'not_connected') rethrow;
+          if (target != 'both') throw const GatewayFailure('identify_no_ptu');
+          await _command(generation, 'identify', {'target': 'gateway'});
+          state = state.copy(message: identifyNoPtuText);
+          return;
+        }
+        state = state.copy(message: identifyAckText(ack));
+      });
 
   Future<void> connect(GatewayPeer peer) async {
     if (state.busy) return;
     _stopWatch(UploadWatch.idle);
     state = state.copy(
       net: const {},
+      directRaw: const {},
       checkPassed: false,
       uploadLate: false,
       error: state.error,
@@ -2202,6 +2235,7 @@ class CommissioningController extends Notifier<CommissionState> {
     });
     _check(generation);
     final connected = await _command(generation, 'get_ble_devices');
+    await _absorbDirect(generation, connected);
     final ptus = mergePtuInventory(
       response['devices'] as List? ?? [],
       connected['devices'] as List? ?? [],
@@ -2373,9 +2407,7 @@ class CommissioningController extends Notifier<CommissionState> {
       if (found.isEmpty) continue;
       final id = (found.first['device_number'] as num?)?.toInt() ?? 0;
       final expected = _doneAssign[mac] ?? _inflightAssign[mac];
-      final bad = expected != null
-          ? id != expected
-          : !(id >= first && id < first + 5);
+      final bad = expected != null ? id != expected : !_ownsNumber(id, first);
       if (bad) stale.add(mac);
     }
     return stale;
@@ -2597,11 +2629,16 @@ class CommissioningController extends Notifier<CommissionState> {
         .toSet();
     final failed = <String, String>{};
     final first = (gateway - 1) * 5 + 1;
+    final direct = _directFixedId;
     for (final (index, p) in targets.indexed) {
       _check(generation);
       final mac = p['mac'].toString();
       final old = (p['device_number'] as num?)?.toInt() ?? 0;
-      final id = old >= first && old < first + 5 && !used.contains(old)
+      // Direct mode: always #1 (the firmware ignores the number there and
+      // picks the PTU by distance / bound MAC).
+      final id = direct
+          ? directPtuId
+          : old >= first && old < first + 5 && !used.contains(old)
           ? old
           : List.generate(5, (i) => first + i).firstWhere(
               (id) => !used.contains(id),
@@ -2767,6 +2804,84 @@ class CommissioningController extends Notifier<CommissionState> {
         await _startMonitoring(generation, chosen, failed);
       });
 
+  /// Direct mode on firmware 1.7.20+: keeps the gateway's `direct` report
+  /// (state, threshold, bound MAC, candidates). Read from [source] (a
+  /// get_ble_devices reply) or, when it lacks one, from get_status. Never
+  /// fails the caller: the report is advisory.
+  Future<void> _absorbDirect(
+    int generation,
+    Map<String, dynamic> source,
+  ) async {
+    if (!ref.read(topologyProvider).topology.isDirect ||
+        !directAutoConnectSupported(state.config)) {
+      return;
+    }
+    var direct = source['direct'];
+    if (DirectStatus.from(direct) == null) {
+      try {
+        direct = (await _link.command('get_status'))['direct'];
+      } catch (_) {
+        return;
+      }
+      if (!ref.mounted || generation != _generation) return;
+    }
+    if (direct is Map && DirectStatus.from(direct) != null) {
+      state = state.copy(
+        directRaw: Map<String, dynamic>.from(direct),
+        error: state.error,
+      );
+    }
+  }
+
+  /// Direct mode: sets the gateway's auto-connect threshold
+  /// (`auto_connect_min_rssi`, dBm) and reads the config back.
+  Future<void> setDirectMinRssi(int dbm) => _directConfig({
+    'auto_connect_min_rssi': dbm.clamp(minDirectRssi, maxDirectRssi),
+  });
+
+  /// Direct mode: binds the gateway to the PTU it is connected to now
+  /// ([bind] true) or clears the binding (`direct_bind_mac: ""`).
+  Future<void> setDirectBind(bool bind) async {
+    if (!bind) return _directConfig({'direct_bind_mac': ''});
+    final mac = directConnectedMac;
+    if (mac == null) {
+      state = state.copy(error: const GatewayFailure('direct_no_ptu').message);
+      return;
+    }
+    return _directConfig({'direct_bind_mac': mac});
+  }
+
+  /// MAC of the PTU the gateway is connected to (direct mode), if any.
+  String? get directConnectedMac {
+    final row = state.ptus
+        .where((p) => p['connected'] == true && p['mac'] != null)
+        .firstOrNull;
+    return row?['mac'].toString();
+  }
+
+  Future<void> _directConfig(Map<String, dynamic> params) =>
+      _sideTask('正在更新直連設定', 20, (generation) async {
+        if (!directAutoConnectSupported(state.config)) {
+          throw const GatewayFailure('direct_unsupported');
+        }
+        await _command(generation, 'set_config', params);
+        final config = await _command(generation, 'get_config');
+        state = state.copy(config: {...state.config, ...config});
+        await _absorbDirect(generation, const {});
+      });
+
+  /// [id] is a number this gateway assigns: #1 in direct mode, else its
+  /// five-number range starting at [first].
+  bool _ownsNumber(int id, int first) =>
+      _directFixedId ? id == directPtuId : id >= first && id < first + 5;
+
+  /// Direct mode on firmware that picks the PTU itself (1.7.20+): every PTU
+  /// is #1. Older firmware only accepts its group's first number, so it
+  /// keeps the range numbering.
+  bool get _directFixedId =>
+      ref.read(topologyProvider).topology.isDirect &&
+      directAutoConnectSupported(state.config);
+
   /// Selected PTUs that [devices] (get_ble_devices rows) show connected with
   /// the number the APP assigned, or, when the ack was lost, with a unique
   /// number inside this gateway's range. Marks them assigned (「已連線 #n」).
@@ -2783,7 +2898,7 @@ class CommissioningController extends Notifier<CommissionState> {
       if (found.isEmpty) continue;
       final id = (found.first['device_number'] as num?)?.toInt() ?? 0;
       final expected = _doneAssign[mac] ?? _inflightAssign[mac];
-      final inRange = id >= first && id < first + 5;
+      final inRange = _ownsNumber(id, first);
       final unique =
           rows
               .where((d) => (d['device_number'] as num?)?.toInt() == id)
@@ -3090,7 +3205,7 @@ class CommissioningController extends Notifier<CommissionState> {
           if (p['connected'] != true) return false;
           if (state.selected.any((m) => sameMac(m, p['mac']))) return false;
           final id = (p['device_number'] as num?)?.toInt() ?? 0;
-          return id >= first && id < first + 5;
+          return _ownsNumber(id, first);
         })
         .map((p) => p['mac'].toString())
         .toSet();
@@ -3872,6 +3987,8 @@ class CommissioningController extends Notifier<CommissionState> {
         _markRssiStale();
         return;
       }
+      await _absorbDirect(generation, result);
+      if (!ref.mounted || generation != _generation || state.busy) return;
       final ptus = refreshPtuSignals(state.ptus, rows);
       // Round 7b: a PTU that the gateway reconnects after the scan (e.g. one
       // it had already taken) must still be preselected, unless the user

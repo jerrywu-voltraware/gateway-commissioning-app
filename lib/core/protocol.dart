@@ -236,6 +236,8 @@ class GatewayFailure implements Exception {
     'not_ready',
     'busy',
     'timeout',
+    'ambiguous_target',
+    'write_failed',
   };
 
   String get _baseMessage => switch (code) {
@@ -248,6 +250,11 @@ class GatewayFailure implements Exception {
     'not_ready' || 'busy' => '閘道器正在準備或處理其他操作，請稍後重試。',
     'permission' => '需要藍牙權限，請至系統設定允許後重試。',
     'bluetooth_off' => '請開啟手機藍牙後重試。',
+    'ambiguous_target' => '閘道器同時連著多台 PTU，無法判斷要辨識哪一台，請指定 PTU 後重試。',
+    'write_failed' => '寫入 PTU 失敗（閘道器未能送出辨識指令），請確認 PTU 電源與距離後重試。',
+    'identify_no_ptu' => '閘道器尚未連上 PTU，無法讓 PTU 閃燈。請確認同樁 PTU 已上電並靠近後重試。',
+    'direct_no_ptu' => '閘道器目前沒有連上 PTU，無法綁定。請等 PTU 連上後再試。',
+    'direct_unsupported' => '此韌體尚未支援直連門檻與綁定，請先更新韌體（1.7.20 起）。',
     'identify_unsupported' => '此韌體尚未支援辨識燈號，請先更新韌體。連線時的呼吸燈仍可協助辨識。',
     'location_off' => '此版本 Android 搜尋藍牙需要定位服務，請開啟手機定位後重新搜尋。',
     'disconnected' || 'not_connected' => '與閘道器的連線已中斷，請靠近後重新連線。',
