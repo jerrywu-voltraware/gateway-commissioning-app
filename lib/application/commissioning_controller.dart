@@ -124,6 +124,9 @@ String commissionSummaryText(CommissionState s) =>
     '${s.pendingNext > 0 ? '，${s.pendingNext} 台屬於其他閘道器' : ''}'
     '${s.resetFailed.isNotEmpty ? '，${s.resetFailed.length} 台重置失敗' : ''}';
 
+/// Saved resume: the user cancelled the backend login.
+const resumeWithoutLoginText = '未登入時無法自動收編殘留編號，將以手動模式繼續';
+
 /// Step 8: automatic retries per PTU after a failed assign_device_id.
 const assignRetries = 2;
 
@@ -797,6 +800,15 @@ class CommissioningController extends Notifier<CommissionState> {
         message: resumeText(step, done.values.toList(), pending),
       );
     }
+  }
+
+  /// Saved resume skips the login of steps 5/6: ask for it first when star
+  /// auto-reset or later steps (step 9 verify) need the backend.
+  bool get savedResumeNeedsLogin {
+    final data = _saved;
+    if (data == null || _loggedIn) return false;
+    final step = data['step'] as int? ?? 0;
+    return ref.read(topologyProvider).topology.isStar || step >= 4;
   }
 
   /// 「重新連線並繼續」 after a restart: reconnect the saved gateway, jump
@@ -1967,9 +1979,7 @@ class CommissioningController extends Notifier<CommissionState> {
           unassigned: {},
           resumePending: false,
         );
-        final targets = chosen
-            .where((p) => !skip.contains(p['mac']))
-            .toList();
+        final targets = chosen.where((p) => !skip.contains(p['mac'])).toList();
         final failed = await _assignAll(generation, targets);
         await _startMonitoring(generation, chosen, failed);
       });

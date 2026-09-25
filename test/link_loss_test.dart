@@ -111,17 +111,22 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   test('phone link loss is not a PTU failure', () {
-    expect(ptuFailureText(const GatewayFailure('not_connected')),
-        notAssignedLinkText);
-    expect(ptuFailureText(const GatewayFailure('disconnected')),
-        notAssignedLinkText);
+    expect(
+      ptuFailureText(const GatewayFailure('not_connected')),
+      notAssignedLinkText,
+    );
+    expect(
+      ptuFailureText(const GatewayFailure('disconnected')),
+      notAssignedLinkText,
+    );
     expect(const GatewayFailure('phone_link_lost').message, phoneLinkLostText);
-    expect(isPhoneLinkFailure(gatewayAckFailure('{"error":"status 133"}')),
-        isFalse);
+    expect(
+      isPhoneLinkFailure(gatewayAckFailure('{"error":"status 133"}')),
+      isFalse,
+    );
   });
 
-  test('step 8 stops at a phone link loss and resumes only the rest',
-      () async {
+  test('step 8 stops at a phone link loss and resumes only the rest', () async {
     final fake = DroppingLink();
     final (container, c) = await ready(fake);
     addTearDown(container.dispose);
@@ -374,9 +379,84 @@ void main() {
       () => container.read(commissionProvider.notifier).restore(),
     );
     await tester.pumpAndSettle();
-    expect(find.textContaining('上次中斷於第 8 步（開始監控），已完成 2 台（#1、#2），尚有 1 台未配置'),
-        findsOneWidget);
+    expect(
+      find.textContaining('上次中斷於第 8 步（開始監控），已完成 2 台（#1、#2），尚有 1 台未配置'),
+      findsOneWidget,
+    );
     expect(find.byKey(const Key('saved-resume')), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  Future<ProviderContainer> savedApp(
+    WidgetTester tester,
+    DemoSystem fake,
+  ) async {
+    final container = await pumpApp(
+      tester,
+      fake,
+      prefs: {
+        'demo_progress': jsonEncode({
+          'step': 5,
+          'site': 1,
+          'gateway': 1,
+          'peer': 'demo-gateway',
+          'peer_name': 'GIOS-S1-GW01',
+          'selected': ['A', 'B', 'C'],
+          'done': {'A': 1, 'B': 2},
+          'assignments': [],
+        }),
+      },
+    );
+    await tester.runAsync(
+      () => container.read(commissionProvider.notifier).restore(),
+    );
+    await tester.pumpAndSettle();
+    return container;
+  }
+
+  testWidgets('saved resume without login asks to log in first', (
+    tester,
+  ) async {
+    final container = await savedApp(tester, DroppingLink());
+    expect(container.read(commissionProvider).loggedIn, isFalse);
+    await tester.tap(find.byKey(const Key('saved-resume')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('resume-login')), findsOneWidget);
+    await tester.enterText(
+      find.descendant(
+        of: find.byKey(const Key('resume-login')),
+        matching: find.byType(TextField),
+      ),
+      'secret',
+    );
+    await tester.tap(find.byKey(const Key('resume-login-ok')));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(seconds: 1)),
+    );
+    await tester.pumpAndSettle();
+    final s = container.read(commissionProvider);
+    expect(s.loggedIn, isTrue);
+    expect(s.savedResume, isFalse);
+    expect(find.text(resumeWithoutLoginText), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('saved resume: cancelling login continues in manual mode', (
+    tester,
+  ) async {
+    final container = await savedApp(tester, DroppingLink());
+    await tester.tap(find.byKey(const Key('saved-resume')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('resume-login-cancel')));
+    await tester.pump();
+    expect(find.text(resumeWithoutLoginText), findsOneWidget);
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(seconds: 1)),
+    );
+    await tester.pumpAndSettle();
+    final s = container.read(commissionProvider);
+    expect(s.loggedIn, isFalse);
+    expect(s.savedResume, isFalse);
     await tester.pumpWidget(const SizedBox());
   });
 }

@@ -911,6 +911,46 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     );
   }
 
+  /// Saved resume skips steps 5/6, so log in first when the rest needs the
+  /// backend (star auto-reset, step 9 verify); cancel continues manually.
+  Future<void> _resumeSaved(CommissioningController c) async {
+    if (c.savedResumeNeedsLogin) {
+      final env = ref.read(backendEnvProvider);
+      final password = await showDialog<String>(
+        context: context,
+        builder: (context) => AlertDialog(
+          key: const Key('resume-login'),
+          title: const Text('登入後端'),
+          content: field(_login, '${env.label}的登入密碼', secret: true),
+          actions: [
+            TextButton(
+              key: const Key('resume-login-cancel'),
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              key: const Key('resume-login-ok'),
+              onPressed: () => Navigator.pop(context, _login.text),
+              child: const Text('登入'),
+            ),
+          ],
+        ),
+      );
+      if (!mounted) return;
+      if (password == null) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text(resumeWithoutLoginText)));
+      } else {
+        await c.login(env.base, password);
+        if (!mounted) return;
+        if (!ref.read(commissionProvider).loggedIn) return;
+        _login.clear();
+      }
+    }
+    await c.resumeSaved();
+  }
+
   /// 「重新連線並繼續」 for progress saved before the APP was closed.
   List<Widget> _savedResume(
     CommissionState s,
@@ -921,7 +961,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       FilledButton.icon(
         key: const Key('saved-resume'),
         icon: const Icon(Icons.bluetooth_searching, size: 20),
-        onPressed: enabled ? c.resumeSaved : null,
+        onPressed: enabled ? () => _resumeSaved(c) : null,
         label: const Text('重新連線並繼續'),
       ),
       const SizedBox(height: 16),
