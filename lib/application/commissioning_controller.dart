@@ -372,17 +372,22 @@ void verifyTally({
   }
 }
 
-/// Step 9 busy text: 「#1 2/3、#2 1/3」 plus 「PTU #n 尚無資料」 lines.
+/// Step 9 busy text: 「#1 2/3、#2 1/3」 plus 「PTU #n 尚無資料」 lines and, for
+/// any skipped PTU, 「PTU #n 未驗證（已略過）」 instead.
 String verifyProgressText(
   Iterable<int> ids,
   Map<int, int> counts,
-  Set<int> waiting,
-) {
+  Set<int> waiting, [
+  Set<int> skipped = const {},
+]) {
   final sorted = List.of(ids)..sort();
   final line = sorted.map((id) => '#$id ${counts[id] ?? 0}/3').join('、');
   final idle = [
     for (final id in sorted)
-      if (waiting.contains(id)) 'PTU #$id 尚無資料',
+      if (skipped.contains(id))
+        'PTU #$id 未驗證（已略過）'
+      else if (waiting.contains(id))
+        'PTU #$id 尚無資料',
   ];
   return ['資料驗證 $line', ...idle].join('\n');
 }
@@ -444,6 +449,7 @@ class CommissionState {
     this.lastCompleted = false,
     this.verifyCounts = const {},
     this.verifyWaiting = const {},
+    this.verifySkipped = const {},
   });
 
   /// Step 9: fresh-data rounds seen per PTU number (0..3).
@@ -451,6 +457,12 @@ class CommissionState {
 
   /// Step 9: PTU numbers with no new data for [verifyIdleLimit].
   final Set<int> verifyWaiting;
+
+  /// Step 9: PTU numbers the installer skipped after staying idle
+  /// ([verifyIdleLimit]) — marked 「未驗證（已略過）」; the pass/fail
+  /// judgement and the install report both exclude them from the count and
+  /// list them separately.
+  final Set<int> verifySkipped;
   final int step, seconds;
   final bool busy, verified, online;
   final String message, report;
@@ -611,10 +623,12 @@ class CommissionState {
     bool? lastCompleted,
     Map<int, int>? verifyCounts,
     Set<int>? verifyWaiting,
+    Set<int>? verifySkipped,
   }) => CommissionState(
     lastCompleted: lastCompleted ?? this.lastCompleted,
     verifyCounts: verifyCounts ?? this.verifyCounts,
     verifyWaiting: verifyWaiting ?? this.verifyWaiting,
+    verifySkipped: verifySkipped ?? this.verifySkipped,
     unassigned: unassigned ?? this.unassigned,
     assignedOk: assignedOk ?? this.assignedOk,
     resumePending: resumePending ?? this.resumePending,
@@ -2615,6 +2629,15 @@ class CommissioningController extends Notifier<CommissionState> {
     return true;
   }
 
+  /// Step 9 「略過此台」: an idle PTU ([CommissionState.verifyWaiting]) no
+  /// longer blocks the rest of verification — marked 「未驗證（已略過）」, the
+  /// overall pass/fail judgement and the install report both exclude it.
+  void skipVerifyPtu(int id) {
+    if (state.step != 6 || !state.verifyWaiting.contains(id)) return;
+    if (state.verifySkipped.contains(id)) return;
+    state = state.copy(verifySkipped: {...state.verifySkipped, id});
+  }
+
   /// 「略過」 after [CommissionState.monitorUnconfirmed]: go on to data
   /// verification with the chosen PTUs; verification shows what is missing.
   void skipMonitorConfirm() {
@@ -2678,6 +2701,16 @@ class CommissioningController extends Notifier<CommissionState> {
         message:
             '${failed.length} 台都指派失敗，Gateway 設定未變更；請確認 PTU 後按「重試這 ${failed.length} 台」。',
       );
+      return;
+    }
+    // Round 9: back at step 4 (「返回選擇 PTU」) and 「配置」 pressed again
+    // without new failures — if the gateway already reports every chosen
+    // PTU connected with the right max_connections (join_fleet done, per
+    // the existing _alreadyMonitoring check), skip re-sending
+    // set_config/join_fleet and go straight to step 9; only PTUs newly
+    // assigned this round (not yet reflected there) fall through to the
+    // full flow below.
+    if (failed.isEmpty && await _alreadyMonitoring(generation, chosen)) {
       return;
     }
     final isStar = ref.read(topologyProvider).topology.isStar;
@@ -2897,6 +2930,7 @@ class CommissioningController extends Notifier<CommissionState> {
     state = state.copy(
       verifyCounts: {for (final id in ids) id: 0},
       verifyWaiting: {},
+      verifySkipped: {},
     );
     for (int elapsed = 0; elapsed < 180; elapsed += verifyPollSeconds) {
       final fleet = await _fleet(generation);
@@ -2933,8 +2967,27 @@ class CommissioningController extends Notifier<CommissionState> {
         for (final id in ids)
           if (elapsed - (lastNew[id] ?? 0) >= verifyIdleLimit) id,
       };
-      final consecutive = ids.map((id) => counts[id] ?? 0).reduce(min);
-      final good = install['all_ok'] == true && consecutive >= 3;
+      // Round 9: a PTU the installer skipped (after staying idle) no longer
+      // blocks the rest — judge pass/fail on the remaining, active PTUs only.
+      final skipped = state.verifySkipped;
+      final active = ids.where((id) => !skipped.contains(id)).toList();
+      final installDevices = (install['devices'] as List? ?? [])
+          .whereType<Map>()
+          .map((p) => Map<String, dynamic>.from(p))
+          .toList();
+      // No per-device breakdown (older backend, or the demo stub): fall
+      // back to the overall flag for every active PTU.
+      final allOkActive = active.every(
+        (id) => installDevices.isEmpty
+            ? install['all_ok'] == true
+            : installDevices.any(
+                (d) => d['device_id'] == id && d['data_ok'] == true,
+              ),
+      );
+      final consecutive = active.isEmpty
+          ? 0
+          : active.map((id) => counts[id] ?? 0).reduce(min);
+      final good = active.isNotEmpty && allOkActive && consecutive >= 3;
       _diagnosis = (
         generation,
         verifyDiagnosis(
@@ -2951,7 +3004,7 @@ class CommissioningController extends Notifier<CommissionState> {
         ),
       );
       state = state.copy(
-        message: verifyProgressText(ids, counts, waiting),
+        message: verifyProgressText(ids, counts, waiting, skipped),
         verifyCounts: Map.of(counts),
         verifyWaiting: waiting,
       );
@@ -2960,8 +3013,13 @@ class CommissioningController extends Notifier<CommissionState> {
           'enabled': true,
         });
         _lease = false;
+        final skippedIds = ids.where(skipped.contains).toList()..sort();
+        final skippedNote = skippedIds.isEmpty
+            ? ''
+            : '\n未驗證（已略過）：${skippedIds.map((id) => "#$id").join('、')}，'
+                  '請現場確認 ${skippedIds.map((id) => "PTU #$id").join('、')} 電源與位置';
         _reportBody =
-            '${_link.demo ? "模擬安裝報告（非實機驗證）" : "安裝報告"}\n站點 $site / 閘道器 $gateway\n${byDeviceNumber(state.ptus).map((p) => "#${p['device_number']}  ${p['mac']}").join('\n')}\n驗證時間：${DateTime.now().toIso8601String()}\n驗證後端：$_backend\n每台連續三次資料更新通過';
+            '${_link.demo ? "模擬安裝報告（非實機驗證）" : "安裝報告"}\n站點 $site / 閘道器 $gateway\n${byDeviceNumber(state.ptus).map((p) => "#${p['device_number']}  ${p['mac']}").join('\n')}\n驗證時間：${DateTime.now().toIso8601String()}\n驗證後端：$_backend\n每台連續三次資料更新通過$skippedNote';
         state = state.copy(
           step: 7,
           verified: true,
@@ -3639,6 +3697,7 @@ class CommissioningController extends Notifier<CommissionState> {
       report: '',
       verifyCounts: const {},
       verifyWaiting: const {},
+      verifySkipped: const {},
       message: wasBusy ? '已停止驗證，可調整勾選後重新配置。' : '',
     );
     if (_lease) {

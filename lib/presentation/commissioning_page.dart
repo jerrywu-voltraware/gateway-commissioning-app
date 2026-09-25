@@ -1531,9 +1531,25 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               subtitle: Text(ptu['mac'].toString()),
               trailing: count == null
                   ? null
-                  : Text(
-                      s.verifyWaiting.contains(id) ? '尚無資料' : '$count/3',
-                      key: Key('verify-count-$id'),
+                  : Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          s.verifySkipped.contains(id)
+                              ? '未驗證（已略過）'
+                              : s.verifyWaiting.contains(id)
+                              ? '尚無資料'
+                              : '$count/3',
+                          key: Key('verify-count-$id'),
+                        ),
+                        if (s.verifyWaiting.contains(id) &&
+                            !s.verifySkipped.contains(id))
+                          TextButton(
+                            key: Key('verify-skip-$id'),
+                            onPressed: () => c.skipVerifyPtu(id),
+                            child: const Text('略過此台'),
+                          ),
+                      ],
                     ),
             );
           }),
