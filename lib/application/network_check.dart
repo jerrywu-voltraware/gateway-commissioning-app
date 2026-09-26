@@ -51,8 +51,14 @@ class NetworkCheck {
     required this.syncTarget,
     required this.uploadHint,
     required this.canSkip,
+    this.wifiWeak,
   });
   final CheckLine wifi, target, upload;
+
+  /// Joined, but the signal is below [weakWifiRssiDbm]: the red warning with
+  /// advice ([weakWifiText]); null otherwise. Advice only — it does not
+  /// block the check.
+  final String? wifiWeak;
   final WifiVerdict wifiVerdict;
   final bool wifiOk, targetOk, uploadOk;
 
@@ -127,7 +133,7 @@ NetworkCheck networkCheck({
       ),
       WifiVerdict.failed || WifiVerdict.notConfigured => CheckLine(
         '✗',
-        wifiProblemText(ssid),
+        wifiProblemText(ssid, reason: wifiDiscReasonOf(state.net)),
         StatusTone.bad,
       ),
       WifiVerdict.unknown =>
@@ -259,6 +265,7 @@ NetworkCheck networkCheck({
     syncTarget: syncTarget,
     uploadHint: hint,
     canSkip: !ready && (state.offline || !pending),
+    wifiWeak: supported && wifiOk ? weakWifiWarning(state.net) : null,
   );
 }
 

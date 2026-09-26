@@ -7,6 +7,7 @@ import '../core/assign_progress.dart';
 import '../core/direct_calibration.dart';
 import '../core/direct_mode.dart';
 import '../core/gateway_net.dart';
+import '../core/gateway_reboot.dart';
 import '../core/gateway_topology.dart';
 import '../core/ptu_rssi.dart';
 import '../core/mqtt_target.dart';
@@ -132,7 +133,19 @@ bool isStep8LinkLoss(Object? error, bool current) =>
         (error.code == 'bluetooth_off' ||
             (current && error.code == 'cancelled')));
 
-const gatewayNetKeys = ['wifi_state', 'ip', 'ssid', 'rssi', 'uptime_sec'];
+const gatewayNetKeys = [
+  'wifi_state',
+  'ip',
+  'ssid',
+  'rssi',
+  'uptime_sec',
+  // Firmware 1.7.32: why the Wi-Fi last dropped / failed.
+  'wifi_last_disc_reason',
+  'wifi_last_disc_age_s',
+  // Firmware 1.7.6: restarts ([GatewayReboot]).
+  'boot_count',
+  'reset_reason',
+];
 
 /// 「沿用目前站點」 refused because the gateway cannot upload yet.
 const reuseBlockedText =
@@ -161,6 +174,28 @@ String commissionSummaryText(CommissionState s) =>
 
 /// Saved resume: the user cancelled the backend login.
 const resumeWithoutLoginText = '未登入時無法自動收編殘留編號，將以手動模式繼續';
+
+/// 'wifi_failed' after set_wifi, carrying the firmware reason (1.7.32,
+/// [wifiDiscReasonOf]) only when it belongs to this attempt: reported no
+/// earlier than [sinceSent] ago, and — once the gateway went back to its old
+/// network ([ssid] no longer reported) — only if it joined that one again
+/// (failing to rejoin an old network says nothing about the new one).
+GatewayFailure wifiFailedFrom(
+  Map<String, dynamic> net, {
+  required String ssid,
+  required Duration sinceSent,
+}) {
+  final reason = wifiDiscReasonOf(
+    net,
+    notOlderThan: sinceSent + const Duration(seconds: 5),
+  );
+  final reported = net['ssid'];
+  final reverted = reported is String && reported != ssid;
+  if (reason == null || (reverted && net['wifi_state'] != 'got_ip')) {
+    return const GatewayFailure('wifi_failed');
+  }
+  return GatewayFailure('wifi_failed', detail: wifiFailedDetail(reason));
+}
 
 /// Step 8: automatic retries per PTU after a failed assign_device_id.
 const assignRetries = 2;
@@ -927,7 +962,13 @@ class CommissionState {
     this.relinkStage = RelinkStage.reconnecting,
     this.relistReason = '',
     this.assignRunning = false,
+    this.gatewayReboot,
   });
+
+  /// The gateway restarted without being asked to (its boot_count went up
+  /// between two reads, e.g. across a command timeout or a Bluetooth
+  /// reconnect): the page shows [gatewayRebootText] until 「知道了」.
+  final GatewayReboot? gatewayReboot;
 
   /// Round 23 (field round 23: a busy retry at 「0/5 完成，PTU #1 自動重試中」
   /// kept a grey 「配置 5 台並開始監控」 at the bottom, read as not started):
@@ -1231,7 +1272,11 @@ class CommissionState {
     RelinkStage? relinkStage,
     String? relistReason,
     bool? assignRunning,
+    Object? gatewayReboot = _keep,
   }) => CommissionState(
+    gatewayReboot: identical(gatewayReboot, _keep)
+        ? this.gatewayReboot
+        : gatewayReboot as GatewayReboot?,
     relistReason: relistReason ?? this.relistReason,
     assignRunning: assignRunning ?? this.assignRunning,
     remoteIdentifyHead: remoteIdentifyHead ?? this.remoteIdentifyHead,
@@ -1400,6 +1445,11 @@ class CommissioningController extends Notifier<CommissionState> {
 
   /// Base URL of the backend the login (if any) belongs to.
   String? _loginBase;
+
+  /// Last boot_count read from a gateway (keyed by its peer id); null after
+  /// a command that restarts it on purpose ([_expectReboot]). Saved with
+  /// the progress, so a restart while the APP was closed is seen as well.
+  ({String peer, int count})? _boot;
 
   @override
   CommissionState build() {
@@ -1847,6 +1897,13 @@ class CommissioningController extends Notifier<CommissionState> {
           diagnosis.$1 == generation &&
           ((failure.code == 'timeout' && timedOut) ||
               failure.code == 'incomplete');
+      // A plain timeout may be the gateway restarting: say so instead of
+      // 「等待超時」 (the notice names the reason).
+      final rebooted =
+          failure.code == 'timeout' &&
+          !detailed &&
+          ref.mounted &&
+          await _rebootedAfterTimeout();
       if (ref.mounted) {
         final linkIssue =
             failure.code == 'phone_link_lost' ||
@@ -1871,6 +1928,8 @@ class CommissioningController extends Notifier<CommissionState> {
               ? reconnectFailedAttemptsText(log.$2.length)
               : linkIssue
               ? failure.message
+              : rebooted
+              ? gatewayRebootRetryText
               : !safe
               ? '尚未確認 Gateway 已恢復監控，請重新連線核對設定。'
               : detailed
@@ -1953,6 +2012,8 @@ class CommissioningController extends Notifier<CommissionState> {
         'gateway': gateway,
         'peer': state.peer?.id,
         'peer_name': state.peer?.name,
+        if (_boot != null && _boot!.peer == state.peer?.id)
+          'boot_count': _boot!.count,
         'selected': state.selected.toList(),
         'done': _doneAssign,
         'inflight': _inflightAssign,
@@ -1987,6 +2048,13 @@ class CommissioningController extends Notifier<CommissionState> {
         return;
       }
       _saved = data;
+      // Compared on 「重新連線並繼續」: restarted while the APP was closed?
+      if (data['peer'] is String && data['boot_count'] is int) {
+        _boot = (
+          peer: data['peer'] as String,
+          count: data['boot_count'] as int,
+        );
+      }
       final step = data['step'] is int ? data['step'] as int : 0;
       final done = <String, int>{
         for (final e in ((data['done'] as Map?) ?? const {}).entries)
@@ -2325,6 +2393,8 @@ class CommissioningController extends Notifier<CommissionState> {
     _settleTimer?.cancel();
     state = state.copy(
       net: const {},
+      // A notice from before is not repeated; [_connect] compares again.
+      gatewayReboot: null,
       directRaw: const {},
       directSettling: false,
       checkPassed: false,
@@ -2414,6 +2484,8 @@ class CommissioningController extends Notifier<CommissionState> {
         }
         config = await _command(generation, 'get_config');
         _check(generation);
+        // Restarted since the last read (link drop, timeout, APP closed)?
+        _noteBoot(config, peerId: peer.id);
         try {
           await RecentGateways.remember(
             _link.demo,
@@ -2425,7 +2497,9 @@ class CommissioningController extends Notifier<CommissionState> {
         }
         _check(generation);
         // 網路體檢: the gateway's own Wi-Fi and upload state.
-        net = await _readNet(generation, config);
+        final read = await _readNet(generation, config);
+        net = read;
+        if (read != null) _noteBoot(read, peerId: peer.id);
         if (config['fleet_joined'] == true) {
           final existing = await _command(generation, 'get_ble_devices');
           devices = (existing['devices'] as List? ?? [])
@@ -2868,6 +2942,7 @@ class CommissioningController extends Notifier<CommissionState> {
     }
     if (newSite != site || newGateway != gateway) {
       try {
+        _expectReboot();
         await _command(generation, 'set_site_identity', {
           'site_id': newSite,
           'gateway_id': newGateway,
@@ -2929,7 +3004,7 @@ class CommissioningController extends Notifier<CommissionState> {
       _absorbTarget(net);
       if (current) _absorbNet(net);
       if ((net['last_wifi_error']?.toString() ?? '').isNotEmpty) {
-        throw const GatewayFailure('wifi_failed');
+        throw wifiFailedFrom(net, ssid: ssid, sinceSent: wifiDeadline.elapsed);
       }
       if (current
           ? net['wifi_state'] == 'got_ip' &&
@@ -2955,7 +3030,13 @@ class CommissioningController extends Notifier<CommissionState> {
         break;
       }
     }
-    if (!connected) throw const GatewayFailure('wifi_failed');
+    if (!connected) {
+      throw wifiFailedFrom(
+        state.net,
+        ssid: ssid,
+        sinceSent: wifiDeadline.elapsed,
+      );
+    }
     // The MQTT client reconnects over the new Wi-Fi: an earlier
     // mqtt_connected no longer applies until it is read again.
     state = state.copy(
@@ -4827,6 +4908,8 @@ class CommissioningController extends Notifier<CommissionState> {
               relinkStage: RelinkStage.reloading,
               error: state.error,
             );
+            // A gateway restart (not the PTUs) may have cut the link.
+            await _checkBoot(generation);
             await _reconcile(generation);
           },
         );
@@ -5613,14 +5696,100 @@ class CommissioningController extends Notifier<CommissionState> {
     }
   }
 
-  /// Copies the gateway's own network fields (get_net_status only).
-  void _absorbNet(Map<String, dynamic> source) {
+  /// Copies the gateway's own network fields (get_net_status only); true
+  /// when its boot_count shows a restart not seen before ([_noteBoot]).
+  bool _absorbNet(Map<String, dynamic> source) {
     final update = {
       for (final key in gatewayNetKeys)
         if (source.containsKey(key)) key: source[key],
     };
-    if (update.isEmpty) return;
+    if (update.isEmpty) return false;
     state = state.copy(net: {...state.net, ...update}, error: state.error);
+    return _noteBoot(source);
+  }
+
+  // ---- Gateway restarts (boot_count, docs/cmd_contract.md §4.1) ----
+
+  /// Compares the boot_count of [source] (get_config / get_net_status of the
+  /// gateway [peerId], default the connected one) with the last one read
+  /// from it: a higher count means it restarted in between, shown as
+  /// [CommissionState.gatewayReboot]. True when this read found it.
+  bool _noteBoot(Map<String, dynamic> source, {String? peerId}) {
+    final key = peerId ?? state.peer?.id;
+    final count = bootCountOf(source);
+    if (key == null || count == null || !ref.mounted) return false;
+    final raw = source['reset_reason'];
+    final reason = raw is String && raw.isNotEmpty ? raw : null;
+    final last = _boot;
+    _boot = (peer: key, count: count);
+    final shown = state.gatewayReboot;
+    if (last != null && last.peer == key && count > last.count) {
+      state = state.copy(
+        gatewayReboot: GatewayReboot(
+          // Not acknowledged yet: one notice counts every restart since.
+          from: shown != null && shown.to == last.count
+              ? shown.from
+              : last.count,
+          to: count,
+          reason: reason,
+        ),
+        error: state.error,
+      );
+      return true;
+    }
+    // get_config told of the restart; get_net_status right after says why.
+    if (shown != null &&
+        shown.to == count &&
+        shown.reason == null &&
+        reason != null) {
+      state = state.copy(
+        gatewayReboot: shown.withReason(reason),
+        error: state.error,
+      );
+    }
+    return false;
+  }
+
+  /// Before a command that restarts the gateway on purpose
+  /// (set_site_identity, set_mqtt_target, reconnect_ble): the next read
+  /// starts a new baseline instead of reporting that restart.
+  void _expectReboot() => _boot = null;
+
+  /// 「知道了」 on the restart notice.
+  void dismissGatewayReboot() {
+    if (state.gatewayReboot == null) return;
+    state = state.copy(gatewayReboot: null, error: state.error);
+  }
+
+  /// Right after a reconnect that reads nothing else from the gateway
+  /// (step 8 resume): get_net_status, to see whether it restarted. A dropped
+  /// link goes to the caller's reconnect; anything else skips the check.
+  Future<void> _checkBoot(int generation) async {
+    if (_boot == null || !state.netCheckSupported) return;
+    try {
+      _absorbNet(await _command(generation, 'get_net_status'));
+    } catch (error) {
+      if (error is GatewayFailure && error.code == 'cancelled') rethrow;
+      if (isLinkDrop(error)) rethrow;
+      _check(generation);
+    }
+  }
+
+  /// A command timed out: did the gateway restart meanwhile? One bounded
+  /// get_net_status on the link as it is (a dead link just gives no answer;
+  /// the reconnect later compares again).
+  Future<bool> _rebootedAfterTimeout() async {
+    if (_boot == null || state.peer == null || !state.netCheckSupported) {
+      return false;
+    }
+    try {
+      final net = await _link
+          .command('get_net_status')
+          .timeout(const Duration(seconds: 6));
+      return ref.mounted && _absorbNet(net);
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Install report text (set on step 7); empty before the first pass.
@@ -5698,6 +5867,7 @@ class CommissioningController extends Notifier<CommissionState> {
       );
     }
     SetTargetAck? ack;
+    _expectReboot();
     for (int attempt = 0; ; attempt++) {
       try {
         ack = parseSetTargetAck(
@@ -6297,6 +6467,7 @@ class CommissioningController extends Notifier<CommissionState> {
     // After an environment switch the old login must not reach the new
     // site.
     if (!_loggedIn) throw const GatewayFailure('authentication');
+    _expectReboot();
     await _request(generation, 'POST', '$_path/commands', {
       'op': 'reconnect_ble',
       'params': {'target_mac': state.config['gateway_uid']},

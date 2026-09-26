@@ -5,6 +5,7 @@
 library;
 
 import '../core/gateway_net.dart';
+import '../core/gateway_reboot.dart';
 import '../core/mqtt_target.dart';
 import '../data/local_backend_probe.dart';
 import 'backend_environment.dart';
@@ -48,8 +49,14 @@ class ConnectionStatus {
     required this.shipWarning,
     required this.summary,
     required this.details,
+    this.wifiWeak,
   });
   final StatusRow phone, gateway;
+
+  /// The gateway's Wi-Fi works but is weak ([weakWifiWarning]), shown red
+  /// under the gateway row; null otherwise, and while the network check
+  /// (step 2) shows the same warning itself.
+  final String? wifiWeak;
 
   /// The one plain actionable hint, or null when nothing needs doing.
   final String? hint;
@@ -113,6 +120,7 @@ String uploadCheckHint(MqttTarget current) => current.isLocal
 /// get back to 「重設 Wi-Fi」 (after reconnecting Bluetooth if it dropped).
 String wifiProblemHint(CommissionState state) {
   final ssid = gatewaySsid(state.net, state.config['wifi_ssid']);
+  final reason = wifiDiscReasonOf(state.net);
   final action = ssid?.isEmpty == true ? '設定 Wi-Fi' : '重設 Wi-Fi';
   final next = state.uploadWatch == UploadWatch.linkLost && state.relinking
       ? '手機和 Gateway 的藍牙也斷了，$autoRelinkingText'
@@ -122,7 +130,7 @@ String wifiProblemHint(CommissionState state) {
       : state.step == 2
       ? '請按「$action」，改成現場的 2.4 GHz Wi-Fi。'
       : '請按「結束並重新選擇閘道器」重新連線，在網路體檢按「$action」。';
-  return '${wifiProblemText(ssid)}\n$next';
+  return '${wifiProblemText(ssid, reason: reason)}\n$next';
 }
 
 /// 「連線狀態」 hint while the phone↔gateway Bluetooth is down. Round 13:
@@ -329,13 +337,20 @@ ConnectionStatus connectionStatus({
   }
 
   final shipWarning = state.step >= 7 && current?.isLocal == true;
+  // The network check (step 2, not passed yet) shows it in its Wi-Fi item.
+  final wifiWeak = state.step == 2 && !state.checkPassed
+      ? null
+      : weakWifiWarning(net);
   final summary =
       phone.tone == StatusTone.ok &&
           gateway.tone == StatusTone.ok &&
           hint == null &&
+          wifiWeak == null &&
           !shipWarning
       ? '✓ ${env.label}：手機與 Gateway 都已連上'
       : null;
+  final disc = wifi == WifiVerdict.ok ? null : wifiDiscDetail(net);
+  final bootCount = bootCountOf(net);
 
   final details = <String>[
     '手機連線的後端：${env.base.isEmpty ? '（未設定）' : env.base}',
@@ -355,8 +370,12 @@ ConnectionStatus connectionStatus({
     if (net.isNotEmpty || config['wifi_ssid'] != null)
       'Gateway 網路：Wi-Fi「${net['ssid'] ?? config['wifi_ssid'] ?? ''}」'
           '${gatewayIp.isEmpty ? '' : ' · IP $gatewayIp'}'
-          '${net['rssi'] is num && net['rssi'] != 0 ? ' · 訊號 ${net['rssi']} dBm' : ''}'
+          '${net['rssi'] is num && net['rssi'] != 0 ? ' · 訊號 ${net['rssi']} dBm${isWeakWifiRssi(net['rssi']) ? '（偏弱）' : ''}' : ''}'
           '${net['wifi_state'] == null ? '' : ' · ${wifiStateText(net['wifi_state'])}'}',
+    ?disc,
+    if (bootCount != null)
+      'Gateway 開機次數：$bootCount'
+          '${net['reset_reason'] is String ? '（上次開機原因：${resetReasonText(net['reset_reason'])}）' : ''}',
     '韌體版本：${config['fw_version'] ?? '未知'}',
     if (current?.isLocal == true)
       '本地 MQTT 連不上時請確認：電腦防火牆已開放 TCP ${current!.port}、'
@@ -373,5 +392,6 @@ ConnectionStatus connectionStatus({
     shipWarning: shipWarning,
     summary: summary,
     details: details,
+    wifiWeak: wifiWeak,
   );
 }

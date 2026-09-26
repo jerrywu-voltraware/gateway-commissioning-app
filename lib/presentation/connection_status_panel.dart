@@ -147,6 +147,15 @@ class _ConnectionStatusPanelState extends ConsumerState<ConnectionStatusPanel> {
       ),
       row('手機 → 後端', status.phone),
       row('Gateway → 資料上傳', status.gateway),
+      if (status.wifiWeak != null)
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Text(
+            status.wifiWeak!,
+            key: const Key('status-wifi-weak'),
+            style: TextStyle(color: toneColor(context, StatusTone.bad)),
+          ),
+        ),
     ];
     if (status.hint != null) {
       children.add(

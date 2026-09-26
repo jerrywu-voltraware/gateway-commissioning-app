@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'gateway_net.dart';
 import 'mqtt_target.dart';
 
 const nusService = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
@@ -272,7 +273,8 @@ class GatewayFailure implements Exception {
     'replace_unsupported' => '後端版本不支援取代舊機，請改用下一個編號。裝置設定未變更。',
     'replace_pending' => '後台已登記為新機，但寫入裝置失敗。請重新執行配置，系統會沿用取代設定。',
     'new_site_required' => '請輸入與目前站點不同的新站點 ID。',
-    'wifi_failed' => '新 WiFi 連線未成功，請檢查密碼與訊號後重試。',
+    // Firmware 1.7.32 tells why (wifi_last_disc_reason, see [wifiFailedDetail]).
+    'wifi_failed' => wifiSetFailedText(wifiFailedReason(detail)),
     'no_devices' => '未找到 PTU。請確認已上電並靠近閘道器後重掃。',
     'gateway_full' => '本機已滿，請連另一台閘道器。',
     'incomplete' => '仍有 PTU 未連線或資料未到達，請查看各台狀態後重試。',

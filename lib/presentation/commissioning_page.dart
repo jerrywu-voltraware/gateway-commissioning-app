@@ -11,6 +11,7 @@ import '../core/assign_progress.dart';
 import '../core/direct_calibration.dart';
 import '../core/direct_mode.dart';
 import '../core/gateway_net.dart';
+import '../core/gateway_reboot.dart';
 import '../core/gateway_topology.dart';
 import '../core/local_backend_address.dart';
 import '../core/mqtt_target.dart';
@@ -1038,6 +1039,32 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       child: Text(state.message),
+                    ),
+                  // The gateway restarted on its own: why, in plain words,
+                  // and that it is not a PTU fault (kept until 「知道了」).
+                  if (state.gatewayReboot != null)
+                    Container(
+                      key: const Key('gateway-reboot'),
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.fromLTRB(16, 12, 8, 0),
+                      color: colors.tertiaryContainer,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text(
+                            gatewayRebootText(state.gatewayReboot!),
+                            style: TextStyle(color: colors.onTertiaryContainer),
+                          ),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton(
+                              key: const Key('gateway-reboot-ok'),
+                              onPressed: controller.dismissGatewayReboot,
+                              child: const Text('知道了'),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   if (state.error != null)
                     Material(
@@ -2155,6 +2182,16 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         style: muted,
       ),
       item('Gateway 的 Wi-Fi', check.wifi, 'check-wifi'),
+      // Joined but weak: red, with what to do (advice, not a blocker).
+      if (check.wifiWeak != null)
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Text(
+            check.wifiWeak!,
+            key: const Key('check-wifi-weak'),
+            style: TextStyle(color: toneColor(context, StatusTone.bad)),
+          ),
+        ),
       if (check.wifiProblem) ...[
         button(wifiAction, _fixWifi, enabled),
         if (check.need == SyncNeed.sync)

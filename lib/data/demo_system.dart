@@ -269,6 +269,21 @@ class DemoSystem implements GatewayLink, GatewayApi, ForeignAcks {
   final unreachableSsids = <String>{};
   String lastWifiError = '';
 
+  /// NVS boot counter (firmware 1.7.6 `boot_count`, get_config and
+  /// get_net_status); null leaves it out, as older firmware does.
+  int? bootCount;
+
+  /// get_net_status `reset_reason` of the current boot (with [bootCount]).
+  String resetReason = 'poweron';
+
+  /// The gateway restarts on its own ([reason], e.g. `ble_stack_stuck`):
+  /// counted, uptime from zero. The link drop itself is up to the caller.
+  void simulateRestart(String reason) {
+    bootCount = (bootCount ?? 0) + 1;
+    resetReason = reason;
+    uptimeSec = 5;
+  }
+
   /// Simulates the Wi-Fi the gateway finds after a (re)boot.
   void simulateWifi(String state) {
     wifiState = state;
@@ -302,6 +317,10 @@ class DemoSystem implements GatewayLink, GatewayApi, ForeignAcks {
       // Booted again: the Wi-Fi is joined from scratch.
       uptimeSec = 5;
       lastWifiError = '';
+      if (bootCount != null) {
+        bootCount = bootCount! + 1;
+        resetReason = 'sw';
+      }
     }
     rebooting = false;
   }
@@ -323,6 +342,10 @@ class DemoSystem implements GatewayLink, GatewayApi, ForeignAcks {
       if (op == 'get_net_status')
         for (final key in ['mqtt_target', 'mqtt_host', 'mqtt_port'])
           if (config.containsKey(key)) key: config[key],
+      if (op == 'get_net_status' && bootCount != null) ...{
+        'boot_count': bootCount,
+        'reset_reason': resetReason,
+      },
     };
   }
 
@@ -336,7 +359,7 @@ class DemoSystem implements GatewayLink, GatewayApi, ForeignAcks {
     if (rebooting) throw const GatewayFailure('disconnected');
     switch (op) {
       case 'get_config':
-        return Map.of(config);
+        return {...config, 'boot_count': ?bootCount};
       case 'set_site_identity':
         config.addAll(params);
         return {'message': 'rebooting'};
