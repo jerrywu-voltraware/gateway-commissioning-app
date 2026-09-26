@@ -10,6 +10,8 @@
 // 2. identify ack (firmware 1.7.25): `ptu_confirmed:true` → 「PTU 已確認
 //    亮燈」; `ptu_confirm:"timeout"` → 「閘道器已送出；PTU 未回應確認（PTU
 //    韌體尚未支援），請看樁上燈號」; no such field → the texts from before.
+// Round 19: the suggestion follows the firmware's pick / drop rules
+// (round19_fixes_test.dart); the expectations here were updated to it.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -79,25 +81,6 @@ Future<(ProviderContainer, CommissioningController)> _connect(
   return (container, c);
 }
 
-/// A get_status `direct` object: [linked] connected at [rssi], and
-/// [candidates] as (MAC, peak).
-Map<String, dynamic> _direct(
-  String? linked,
-  int? rssi,
-  List<(String, int)> candidates,
-) => {
-  'state': linked == null ? 'scanning' : 'connected',
-  'min_rssi': -55,
-  'bound_mac': '',
-  'select_reason': 'ok',
-  'ptu_mac': ?linked,
-  'ptu_rssi': ?rssi,
-  'candidates': [
-    for (final (mac, peak) in candidates)
-      {'mac': mac, 'rssi_peak': peak, 'rssi_last': peak, 'count': 3},
-  ],
-};
-
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -108,109 +91,8 @@ void main() {
     directCalibrationInterval = interval;
   });
 
-  group('suggestDirectThreshold', () {
-    test('midpoint of this pile\'s median and the strongest neighbour', () {
-      // Median -45, weakest -48; neighbours -75 / -80: midpoint -60, within
-      // both margins (≤ -54, ≥ -72).
-      final s = suggestDirectThreshold([-44, -45, -48, -43, -46], [-80, -75]);
-      expect(s.verdict, DirectThresholdVerdict.suggested);
-      expect(s.ownMedian, -45);
-      expect(s.ownWeakest, -48);
-      expect(s.ownCount, 5);
-      expect(s.neighborStrongest, -75);
-      expect(s.threshold, -60);
-    });
-
-    test('kept 6 dB under this pile\'s weakest reading', () {
-      // Median -48, weakest -52, neighbour -66: midpoint -57 → -58.
-      final s = suggestDirectThreshold([-45, -48, -50, -47, -52], [-66, -70]);
-      expect(s.threshold, -58);
-      expect(s.threshold, lessThanOrEqualTo(s.ownWeakest! - 6));
-      expect(s.threshold, greaterThanOrEqualTo(s.neighborStrongest! + 3));
-    });
-
-    test('gap of exactly 9 dB: suggested at both margins', () {
-      final s = suggestDirectThreshold([-50], [-59]);
-      expect(s.verdict, DirectThresholdVerdict.suggested);
-      expect(s.gap, 9);
-      expect(s.threshold, -56);
-    });
-
-    test('gap under 9 dB: too close, no suggestion', () {
-      final s = suggestDirectThreshold([-48, -50, -45], [-58, -62]);
-      expect(s.verdict, DirectThresholdVerdict.tooClose);
-      expect(s.gap, 8);
-      expect(s.threshold, isNull);
-      expect(s.ownMedian, -48);
-      expect(s.neighborStrongest, -58);
-      // A neighbour stronger than this pile: too close too.
-      expect(
-        suggestDirectThreshold([-60], [-50]).verdict,
-        DirectThresholdVerdict.tooClose,
-      );
-    });
-
-    test('no neighbour: weakest − 10, not below -90', () {
-      var s = suggestDirectThreshold([-50, -60, -55], const []);
-      expect(s.verdict, DirectThresholdVerdict.noNeighbors);
-      expect(s.threshold, -70);
-      s = suggestDirectThreshold([-78, -85], const []);
-      expect(s.threshold, -90);
-      s = suggestDirectThreshold([-80], const []);
-      expect(s.threshold, -90);
-    });
-
-    test('no reading of this pile: no suggestion', () {
-      final s = suggestDirectThreshold(const [], [-70]);
-      expect(s.verdict, DirectThresholdVerdict.noOwnSignal);
-      expect(s.threshold, isNull);
-      expect(s.neighborStrongest, -70);
-    });
-
-    test('0 (not read yet) and out-of-range readings are ignored', () {
-      final s = suggestDirectThreshold([0, -50, -130], [0, 5]);
-      expect(s.ownCount, 1);
-      expect(s.neighborStrongest, isNull);
-      expect(s.threshold, -60);
-    });
-
-    test('even count: median between the middle two, rounded down', () {
-      final s = suggestDirectThreshold([-50, -47], [-80]);
-      expect(s.ownMedian, -49);
-      // Midpoint (-49 − 80) / 2 = -64.5 → -65.
-      expect(s.threshold, -65);
-    });
-
-    test('never above -20', () {
-      expect(suggestDirectThreshold([-5], const []).threshold, -20);
-      final s = suggestDirectThreshold([-12], [-24]);
-      expect(s.threshold, -20);
-      // The clamp would break the neighbour margin: too close.
-      expect(
-        suggestDirectThreshold([-8], [-21]).verdict,
-        DirectThresholdVerdict.tooClose,
-      );
-    });
-  });
-
-  group('calibration samples', () {
-    test('own link RSSI only while connected; neighbours by peak', () {
-      final samples = DirectCalibrationSamples('aa:bb:cc:00:00:01');
-      samples.add(_direct(_own, -44, [(_own, -40), (_near, -70)]));
-      samples.add(_direct(_own, 0, [(_near, -66), ('AA:BB:CC:00:00:03', -80)]));
-      samples.add(_direct(_near, -50, [(_near, -68)]));
-      samples.add(_direct(null, null, const []));
-      samples.add(null);
-      samples.miss();
-      expect(samples.own, [-44]);
-      expect(samples.neighbors, {_near: -66, 'AA:BB:CC:00:00:03': -80});
-      expect(samples.strongestNeighborMac, _near);
-      expect(samples.reads, 6);
-      expect(samples.missed, 2);
-      // Gap 22: midpoint (-44 − 66) / 2 = -55.
-      expect(samples.suggestion.threshold, -55);
-    });
-  });
+  // Round 19: the suggestion (firmware pick / drop rules) and the samples
+  // are tested in round19_fixes_test.dart.
 
   group('calibration flow', () {
     test('samples for the set time, reads only, writes nothing', () async {
@@ -233,11 +115,12 @@ void main() {
       expect(fake.sent('set_config'), hasLength(writes));
       expect(container.read(commissionProvider).busy, isFalse);
       final s = last.suggestion;
-      expect(s.ownMedian, -40);
-      expect(s.ownWeakest, -40);
+      expect(s.ownLinkMedian, -40);
+      expect(s.ownLinkWeakest, -40);
       expect(s.neighborStrongest, -49);
-      // Gap 9: midpoint -44.5 → -45, kept 6 dB under -40 → -46.
-      expect(s.threshold, -46);
+      // Round 19 (firmware without self_adv_rssi_med): upper -40 + 3 = -37,
+      // lower -49 + 1 = -48, midpoint -42.5 → -43.
+      expect(s.threshold, -43);
     });
 
     test('write: set_config, then get_config reads the value back', () async {
@@ -335,17 +218,22 @@ void main() {
       );
       await sampleAll(tester);
       expect(find.textContaining('取樣完成'), findsOneWidget);
-      expect(find.textContaining('中位數 -40 dBm · 最弱 -40 dBm'), findsOneWidget);
-      expect(find.textContaining('-49 dBm（$_near）'), findsOneWidget);
-      expect(find.textContaining('建議門檻：-46 dBm（目前 -55 dBm）'), findsOneWidget);
+      expect(
+        find.textContaining('中位數 ${dbm(-40)} · 最弱 ${dbm(-40)}'),
+        findsOneWidget,
+      );
+      expect(find.text('峰值 ${dbm(-49)}'), findsOneWidget);
+      expect(find.text(_near), findsOneWidget);
+      expect(find.text(calibrationReferenceLegacyText), findsOneWidget);
+      expect(find.textContaining('建議門檻：-43 dBm（目前 -55 dBm）'), findsOneWidget);
       final writes = fake.sent('set_config').length;
       await tester.tap(find.byKey(const Key('calibration-write')));
       await tester.pumpAndSettle();
       expect(fake.sent('set_config'), hasLength(writes + 1));
-      expect(fake.sent('set_config').last, {'auto_connect_min_rssi': -46});
+      expect(fake.sent('set_config').last, {'auto_connect_min_rssi': -43});
       expect(find.textContaining(calibrationSavedText), findsOneWidget);
       expect(find.text('完成'), findsOneWidget);
-      expect(directMinRssiOf(container.read(commissionProvider).config), -46);
+      expect(directMinRssiOf(container.read(commissionProvider).config), -43);
     });
 
     testWidgets('取消 closes the sheet and writes nothing', (tester) async {
@@ -377,11 +265,21 @@ void main() {
     testWidgets('signals too close: yellow warning, nothing to write', (
       tester,
     ) async {
-      // The neighbour 5 dB under this pile.
-      await open(tester, setUp: (fake) => fake.devices[1]['rssi'] = -45);
+      // Round 19 (firmware 1.7.27): this pile advertises at -45, the
+      // neighbour peaks at -45 too.
+      await open(
+        tester,
+        setUp: (fake) {
+          fake
+            ..directNeighborsReport = true
+            ..selfAdvOffset = -5;
+          fake.devices[1]['rssi'] = -45;
+        },
+      );
       await sampleAll(tester);
       expect(find.byKey(const Key('calibration-too-close')), findsOneWidget);
       expect(find.textContaining(calibrationTooCloseText), findsOneWidget);
+      expect(find.textContaining('和本樁一樣強'), findsOneWidget);
       expect(find.byKey(const Key('calibration-suggestion')), findsNothing);
       expect(
         tester

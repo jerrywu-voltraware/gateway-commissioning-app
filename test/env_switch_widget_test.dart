@@ -566,6 +566,14 @@ void main() {
     await _pumpApp(tester, fake, prefs: _localPrefs, policy: _release);
     expect(_chipText(tester), '本地測試');
     await _connectGateway(tester);
+    // The page list builds lazily: at 1.5x text the status panel starts
+    // below the built area (the steps above it grew since this test was
+    // written), so scroll it in before looking.
+    await tester.scrollUntilVisible(
+      find.text('⚠ 送到別處'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.text('⚠ 送到別處'), findsOneWidget);
     await _tap(tester, find.text('技術細節'));
     expect(find.textContaining('46.250.255.172:8883'), findsOneWidget);
