@@ -112,6 +112,9 @@ Future<(ProviderContainer, CommissioningController)> _toStep7(
   await c.scan();
   await c.connect(container.read(commissionProvider).peers.single);
   await c.chooseStation(newStation: false);
+  // Round 26: the demo reports a gateway in service as uploading; these
+  // tests keep the paused upload of before, so 是這台 ends with join_fleet.
+  fake.config.putIfAbsent('upload_paused', () => true);
   return (container, c);
 }
 

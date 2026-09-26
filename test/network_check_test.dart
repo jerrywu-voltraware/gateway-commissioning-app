@@ -282,6 +282,13 @@ void main() {
         await _sleep(60);
         expect(_check(container).ready, isTrue);
         await c.passNetworkCheck();
+        // Round 26: the station is chosen again after the Wi-Fi reset.
+        s = container.read(commissionProvider);
+        expect(s.error, isNull);
+        expect(s.step, 2);
+        expect(s.config['choose_station'], isTrue);
+        expect(s.message, wifiUpdatedChooseStationText);
+        await c.chooseStation(newStation: false);
         s = container.read(commissionProvider);
         expect(s.error, isNull);
         expect(s.step, 4);

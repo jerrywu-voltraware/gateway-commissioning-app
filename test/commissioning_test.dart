@@ -39,6 +39,14 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 20));
     expect(container.read(commissionProvider).config['mqtt_connected'], isTrue);
     await c.passNetworkCheck();
+    // Round 26: after the Wi-Fi works the station is chosen again (field:
+    // another site's gateway went straight to the PTU scan).
+    state = container.read(commissionProvider);
+    expect(state.step, 2);
+    expect(state.checkPassed, isTrue);
+    expect(state.config['choose_station'], isTrue);
+    expect(state.config['wifi_only'], isFalse);
+    await c.chooseStation(newStation: false);
     state = container.read(commissionProvider);
     expect(state.step, 4);
     expect(state.config['wifi_ssid'], 'new-network');
