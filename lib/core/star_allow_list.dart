@@ -6,7 +6,17 @@ import 'protocol.dart';
 /// matched numbers only and took a neighbouring PTU still carrying an old
 /// number. Firmware 1.7.37: until the list is set the gateway keeps the
 /// number-only rule and `assign_device_id` does not create it, so the APP
-/// writes it when a star commissioning is verified.
+/// sets it itself.
+///
+/// Round 27: the list goes to the gateway before step 8's first assign
+/// ([starTargetList]: the chosen PTUs plus the ones configured earlier and
+/// left untouched) — with foreign PTUs holding all five connections and no
+/// list yet, every assign would fail with `No free slot` and the
+/// verification that used to write the list could never be reached. The
+/// verified list ([starAllowList], without failed or unverified PTUs) is
+/// written again when the data verification passes. Firmware 1.7.36 (list
+/// kept up by assigns, 「auto-collect」) and 1.7.37 (only an explicit list
+/// counts) get the same writes.
 
 /// `star_macs` holds at most this many MACs (`GIOS_MAX_CONNECTIONS`).
 const starAllowListMax = 5;
@@ -47,6 +57,9 @@ int _number(Map<String, dynamic> row) =>
 ///    carries — the gateway took them earlier by number (the APP's usual
 ///    rule for owned PTUs, and the firmware's own first-entry rule).
 ///
+/// Round 27: [exclude] (PTUs whose assignment failed, or skipped at the
+/// data verification) never make the list, whichever rule would take them.
+///
 /// Sorted by number; empty when nothing qualifies (never sent: an empty
 /// list would clear it).
 List<({int id, String mac})> starAllowList({
@@ -55,9 +68,11 @@ List<({int id, String mac})> starAllowList({
   required int first,
   bool enforced = false,
   List<Map<String, dynamic>> known = const [],
+  Iterable<String> exclude = const [],
 }) {
   bool inRange(int id) => id >= first && id < first + starAllowListMax;
-  final ownKeys = {for (final m in own) ?starMac(m)};
+  final excluded = {for (final m in exclude) ?starMac(m)};
+  final ownKeys = {for (final m in own) ?starMac(m)}.difference(excluded);
   final linked = [
     for (final row in rows)
       if (row['connected'] == true &&
@@ -75,6 +90,7 @@ List<({int id, String mac})> starAllowList({
     final key = starMac(row['mac']);
     final id = _number(row);
     if (key == null ||
+        excluded.contains(key) ||
         !inRange(id) ||
         picked.containsKey(id) ||
         picked.containsValue(key) ||
@@ -104,6 +120,105 @@ List<({int id, String mac})> starAllowList({
   ];
 }
 
+/// Round 27: the allow list sent before step 8's first assign — the MACs
+/// this gateway is meant to keep, from the step 7 list [rows] (nearby and
+/// connected PTUs, `star_listed` where the gateway reported it):
+/// 1. every [chosen] PTU (this run's selection, whatever number it carries
+///    now — the assign gives it one of this gateway's numbers);
+/// 2. PTUs configured here earlier and left untouched: not chosen, a number
+///    in this gateway's range ([first] .. [first] + 4) that no chosen PTU
+///    carries, and either already on the gateway's list (`star_listed`,
+///    or named in [listed]: the list as get_config / the APP's last write
+///    reported it — `star_listed` of the step 7 scan may predate a write)
+///    or — only while no list is set ([listSet] false) — connected with a
+///    number no other PTU of [rows] carries (the gateway took it earlier
+///    by number; of two PTUs with one number the APP cannot tell which one
+///    is ours, so neither is listed).
+///
+/// [dropped]: PTUs chosen by an earlier run of this commissioning that the
+/// installer has left out since — never 「untouched」, so never kept.
+///
+/// At most [starAllowListMax], chosen first, then by number. `id` is the
+/// number the PTU carries now (0 when none / out of range). The firmware
+/// drops connected PTUs missing from the list within a second, which frees
+/// the connections foreign PTUs held.
+List<({String mac, int id})> starTargetList({
+  required List<Map<String, dynamic>> rows,
+  required Iterable<String> chosen,
+  required int first,
+  bool listSet = false,
+  Iterable<String> listed = const [],
+  Iterable<String> dropped = const [],
+}) {
+  bool inRange(int id) => id >= first && id < first + starAllowListMax;
+  final listedKeys = {for (final m in listed) ?starMac(m)};
+  final droppedKeys = {for (final m in dropped) ?starMac(m)};
+  final out = <({String mac, int id})>[];
+  final keys = <String>{};
+  int numberOf(String key) {
+    for (final row in rows) {
+      if (starMac(row['mac']) == key) {
+        final id = _number(row);
+        return inRange(id) ? id : 0;
+      }
+    }
+    return 0;
+  }
+
+  for (final mac in chosen) {
+    final key = starMac(mac);
+    if (key == null || keys.contains(key)) continue;
+    if (out.length >= starAllowListMax) break;
+    keys.add(key);
+    out.add((mac: key, id: numberOf(key)));
+  }
+  final chosenKeys = {...keys};
+  final taken = {
+    for (final row in rows)
+      if (chosenKeys.contains(starMac(row['mac'])) && inRange(_number(row)))
+        _number(row),
+  };
+  final others = [
+    for (final row in rows)
+      if (starMac(row['mac']) case final key?)
+        if (!chosenKeys.contains(key) &&
+            !droppedKeys.contains(key) &&
+            inRange(_number(row)) &&
+            !taken.contains(_number(row)))
+          row,
+  ]..sort((a, b) => _number(a).compareTo(_number(b)));
+  final perNumber = <int, int>{};
+  for (final row in others) {
+    perNumber.update(_number(row), (n) => n + 1, ifAbsent: () => 1);
+  }
+  void take(Map<String, dynamic> row) {
+    final key = starMac(row['mac'])!;
+    final id = _number(row);
+    if (keys.contains(key) ||
+        out.any((e) => e.id == id) ||
+        out.length >= starAllowListMax) {
+      return;
+    }
+    keys.add(key);
+    out.add((mac: key, id: id));
+  }
+
+  for (final row in others) {
+    if (row['star_listed'] == true ||
+        listedKeys.contains(starMac(row['mac']))) {
+      take(row);
+    }
+  }
+  if (!listSet) {
+    for (final row in others) {
+      if (row['connected'] == true && perNumber[_number(row)] == 1) take(row);
+    }
+  }
+  final kept = out.skip(chosenKeys.length).toList()
+    ..sort((a, b) => a.id.compareTo(b.id));
+  return [...out.take(chosenKeys.length), ...kept];
+}
+
 /// get_ble_devices [response]: connected PTUs not on the allow list while
 /// it is enforced (`star_enforced`; the gateway drops them within a
 /// second). 0 when the list is not enforced — every PTU is unlisted then.
@@ -124,6 +239,18 @@ Set<String>? starMacSet(Object? value) =>
 /// (invalid)` (always status ok): true when a key was refused.
 bool setConfigRejected(Map<String, dynamic> ack) =>
     RegExp(r'[1-9]\d*\s+rejected').hasMatch(ack['message']?.toString() ?? '');
+
+/// Which write [StarListStatus] is about.
+enum StarListStage {
+  /// Round 27: step 8, before the first assign ([starTargetList]).
+  beforeAssign,
+
+  /// Step 8, right after a direct gateway was switched back to star.
+  afterSwitch,
+
+  /// After the star verification passed (completion page).
+  verified,
+}
 
 /// Where the allow list stands for the installer.
 enum StarListStatus {
@@ -154,6 +281,12 @@ const starListRetryLabel = '重試寫入綁定名單';
 /// Step 8, direct → star: the list sent right after the switch failed; the
 /// verified list is written again when the data verification passes.
 const starListSwitchFailedText = '切回星狀後 PTU 綁定名單未寫入，資料驗證完成後會再寫一次。';
+
+/// Round 27: step 8, the list sent before the first assign failed after
+/// its retries; the assignment goes on (never blocked by it).
+const starListBeforeFailedText =
+    'PTU 綁定名單未寫入，繼續配置。'
+    '若附近有編號相同的其他 PTU 佔住連線，部分 PTU 可能指派失敗；資料驗證完成後會再寫一次。';
 
 /// Completion page after a successful write ([ids]: the listed numbers).
 String starListWrittenText(List<int> ids) =>

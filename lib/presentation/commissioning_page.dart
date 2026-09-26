@@ -1855,6 +1855,19 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                 style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
             ),
+          // Round 27: the list sent before the first assign did not go
+          // through; the assignment went on anyway.
+          if (topology.isStar &&
+              s.starListStage == StarListStage.beforeAssign &&
+              s.starList == StarListStatus.failed)
+            Padding(
+              key: const Key('star-list-before-failed'),
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                starListBeforeFailedText,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ),
           if (!directStep7)
             ...s.ptus.map((ptu) {
               final blocked = c.ptuOutOfRange(ptu);
@@ -2071,7 +2084,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           // Round 26: the star allow list written after verification; a
           // failure keeps the completion, with 「重試寫入綁定名單」.
           if (topology.isStar &&
-              !s.starListSwitch &&
+              s.starListStage == StarListStage.verified &&
               s.starList != StarListStatus.none)
             Padding(
               key: const Key('star-list-status'),

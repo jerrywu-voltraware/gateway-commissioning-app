@@ -57,8 +57,9 @@ Wi-Fi 名稱下方可掃描手機周邊的 2.4 GHz 網路，依訊號排序，�
 
 修第 25 輪 P0「星狀連錯樁」（閘道器只看編號，把附近帶舊編號的外來 PTU 當成自己的連走）。韌體契約見 `ble_multi_wifi_gateway/docs/cmd_contract.md` §3B（`star_macs`）。韌體 1.7.37 起名單未設定時只看編號、`assign_device_id` 不會建立名單，所以由 APP 寫入：
 
-- **寫入時機**：星狀第 9 步資料驗證通過、完成頁出現後，APP 以 `get_ble_devices` 回讀本機範圍內（#起始～+4）的 PTU，送 `set_config {"star_macs":[…]}`（覆寫整份），再用 `get_config` 讀回核對。名單＝本次勾選／指派／核對過的 PTU（含中斷後續作前已完成的）、本次未連線但 APP 已指派的本機 PTU（例如驗證時略過的）、閘道器已列入名單的，以及名單尚未生效時編號在範圍內且唯一的已連線 PTU（先前配置、這次沒動的）；一個編號只列一台，本次的優先。只在 `fw_version` ≥ 1.7.36 時送（舊韌體會把未知參數算 rejected）；直連模式不送。
+- **指派前先送（第 27 輪）**：第 7 步按「配置」後、第一個 `assign_device_id` 之前，APP 先送 `set_config {"star_macs":[…]}`＝這台閘道器的目標清單（本次勾選的 PTU＋先前已配置在本機、這次沒動的 PTU：已列入名單的，或名單尚未設定時編號在範圍內且唯一的已連線 PTU；與勾選 PTU 同編號的不列；最多 5 台），再用 `get_config` 讀回核對。閘道器會斷開不在名單的連線（APP 以 `get_ble_devices` 等最多 5 秒），外來同編號 PTU 佔滿 5 格時指派才不會 `No free slot`；名單生效後外來 PTU 的編號不再算「已被佔用」。「重新連線並繼續」「重試這 N 台」也會先送。失敗自動重試 3 次，仍失敗時第 7/8 步提示「PTU 綁定名單未寫入，繼續配置…」並照常指派（不阻塞）。
+- **驗證後送最終名單**：星狀第 9 步資料驗證通過、完成頁出現後，APP 以 `get_ble_devices` 回讀本機範圍內（#起始～+4）的 PTU，再送一次名單並讀回核對。名單＝本次勾選／指派／核對過的 PTU（含中斷後續作前已完成的）、指派前清單中沒動的 PTU（這時沒連線也保留）、閘道器已列入名單的，以及名單尚未生效時編號在範圍內且唯一的已連線 PTU；**移除指派失敗、驗證時略過（未驗證）、以及本次先勾後取消的 PTU**；一個編號只列一台，本次的優先。只在 `fw_version` ≥ 1.7.36 時送（1.7.36「自動收編」與 1.7.37「明確設定」送出內容相同；舊韌體會把未知參數算 rejected）；直連模式不送。
 - **失敗不阻塞完成**：自動重試 3 次（間隔 2 秒），仍失敗時完成頁顯示「PTU 綁定名單未寫入，請重試」與「重試寫入綁定名單」按鈕；安裝報告另有一行「PTU 綁定名單：已寫入 #…／未寫入」。
 - **直連切回星狀**：第 8 步把 `max_connections` 由 1 改成星狀時（直連期間名單不會更新，舊名單會擋掉新選的 PTU），緊接著以本次選定的 PTU 重送名單，再 `join_fleet`；失敗時第 7/8 步提示「驗證完成後會再寫一次」。
 - **外來 PTU 提示**：星狀 PTU 列表讀 `get_status.star.foreign_ptus` 與 `get_ble_devices` 的 `star_enforced`／`star_listed`，有忽略中的同編號 PTU 時顯示「附近有 N 台編號相同的其他 PTU，已被閘道器忽略（不會連線）」等人話提示，不顯示韌體代碼。
-- 程式：`lib/core/star_allow_list.dart`（名單規則與文字）、`CommissioningController.writeStarList`；測試 `test/round26_star_macs_test.dart`。
+- 程式：`lib/core/star_allow_list.dart`（`starTargetList`／`starAllowList` 規則與文字）、`CommissioningController._starListBeforeAssign`／`writeStarList`；測試 `test/round26_star_macs_test.dart`、`test/round27_star_before_assign_test.dart`。

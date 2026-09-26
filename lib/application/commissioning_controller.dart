@@ -990,23 +990,27 @@ class CommissionState {
     this.ptuListBusy = false,
     this.starList = StarListStatus.none,
     this.starListIds = const [],
-    this.starListSwitch = false,
+    this.starListStage = StarListStage.verified,
     this.foreignPtus = 0,
     this.unlistedPtus = 0,
   });
 
   /// Round 26 (P0 「星狀連錯樁」, firmware 1.7.36 `star_macs`): the allow
-  /// list this APP writes — after a star verification passes, and right
-  /// after step 8 switches a direct gateway back to star. A failure never
-  /// blocks the completion; the page offers 「重試寫入綁定名單」.
+  /// list this APP writes — before step 8's first assign (round 27), right
+  /// after step 8 switches a direct gateway back to star, and after a star
+  /// verification passes. A failure never blocks the assignment or the
+  /// completion; the completion page offers 「重試寫入綁定名單」.
   final StarListStatus starList;
 
   /// Numbers of the PTUs on the list last written (completion page).
   final List<int> starListIds;
 
+  /// Which write [starList] is about ([StarListStage]).
+  final StarListStage starListStage;
+
   /// [starList] is about the write right after the direct → star switch
   /// (step 8), not the one after verification.
-  final bool starListSwitch;
+  bool get starListSwitch => starListStage == StarListStage.afterSwitch;
 
   /// Round 26: step 7 star list — PTUs with one of this gateway's numbers
   /// but not on its allow list: heard nearby in the last 10 minutes
@@ -1333,14 +1337,14 @@ class CommissionState {
     bool? ptuListBusy,
     StarListStatus? starList,
     List<int>? starListIds,
-    bool? starListSwitch,
+    StarListStage? starListStage,
     int? foreignPtus,
     int? unlistedPtus,
   }) => CommissionState(
     ptuListBusy: ptuListBusy ?? this.ptuListBusy,
     starList: starList ?? this.starList,
     starListIds: starListIds ?? this.starListIds,
-    starListSwitch: starListSwitch ?? this.starListSwitch,
+    starListStage: starListStage ?? this.starListStage,
     foreignPtus: foreignPtus ?? this.foreignPtus,
     unlistedPtus: unlistedPtus ?? this.unlistedPtus,
     gatewayReboot: identical(gatewayReboot, _keep)
@@ -2534,6 +2538,10 @@ class CommissioningController extends Notifier<CommissionState> {
     if (state.busy) return;
     _stopWatch(UploadWatch.idle);
     _settleTimer?.cancel();
+    // Round 27: a new commissioning of this gateway starts untouched.
+    _starTouched.clear();
+    _starKeep = const [];
+    _starTargetPeer = null;
     state = state.copy(
       net: const {},
       // A notice from before is not repeated; [_connect] compares again.
@@ -4198,8 +4206,12 @@ class CommissioningController extends Notifier<CommissionState> {
   ) async {
     final results = Map<String, String>.of(state.results);
     final targetMacs = targets.map((p) => p['mac']).toSet();
+    // Round 27: with this run's list in force the gateway ignores unlisted
+    // PTUs, so a number a foreign PTU carries is free for the targets.
+    final listed = _starAssignList;
     final used = state.ptus
         .where((p) => !targetMacs.contains(p['mac']))
+        .where((p) => listed == null || listed.contains(starMac(p['mac'])))
         .map((p) => (p['device_number'] as num?)?.toInt() ?? 0)
         .where((id) => id > 0)
         .toSet();
@@ -4385,8 +4397,11 @@ class CommissioningController extends Notifier<CommissionState> {
   }
 
   /// [skip]: PTUs already assigned before the APP restarted (not re-sent).
+  ///
+  /// Round 27 (star, firmware 1.7.36+): this gateway's target list goes out
+  /// before the first assign ([_starListBeforeAssign]).
   Future<void> configurePtus({Set<String> skip = const {}}) =>
-      _step8Run('逐台編號並開始監控', 240, (generation) async {
+      _step8Run('逐台編號並開始監控', 240 + _starListRunSeconds, (generation) async {
         final chosen = state.ptus
             .where((p) => state.selected.contains(p['mac']))
             .toList();
@@ -4397,6 +4412,7 @@ class CommissioningController extends Notifier<CommissionState> {
         if (skip.isEmpty) {
           _doneAssign.clear();
           _inflightAssign.clear();
+          _starKeep = const [];
         }
         final targets = chosen.where((p) => !skip.contains(p['mac'])).toList();
         state = state.copy(
@@ -4414,6 +4430,7 @@ class CommissioningController extends Notifier<CommissionState> {
           resumePending: false,
           monitoringOk: false,
         );
+        await _starListBeforeAssign(generation, chosen, targets);
         final failed = await _assignAll(generation, targets);
         await _startMonitoring(generation, chosen, failed);
       });
@@ -5074,58 +5091,64 @@ class CommissioningController extends Notifier<CommissionState> {
   /// Generation of the current 「重新連線並繼續」 run (round 11 banner).
   int? _resumeGeneration;
 
-  Future<void> resumeAssign() =>
-      _step8Run(reconnectingText, 240, (generation) async {
-        _resumeGeneration = generation;
-        // Round 11: the reconcile (get_ble_devices) runs inside the
-        // persistent link loop, so a link that drops right after connecting
-        // is retried for the whole [connectPersistence] instead of ending
-        // the run after one round.
-        await _reconnect(
-          generation,
-          after: () async {
-            // Round 21: back; the list is read again.
-            state = state.copy(
-              relinkStage: RelinkStage.reloading,
-              error: state.error,
-            );
-            // A gateway restart (not the PTUs) may have cut the link.
-            await _checkBoot(generation);
-            await _reconcile(generation);
-          },
-        );
-        final chosen = state.ptus
-            .where((p) => state.selected.contains(p['mac']))
-            .toList();
-        final targets = chosen
-            .where((p) => !state.assignedOk.contains(p['mac']))
-            .toList();
-        state = state.copy(
-          step: 5,
-          resumePending: false,
-          monitorUnconfirmed: false,
-          relinkStage: RelinkStage.resumed,
-          assignRunning: true,
-          assignStatus: _assignStart(chosen, targets),
-          message: targets.isEmpty
-              ? '正在確認 Gateway 監控狀態'
-              : '繼續指派 ${targets.length} 台',
-        );
-        // Round 7b: everything already assigned and the gateway already
-        // monitors all of them with upload running → done, no join_fleet.
-        if (targets.isEmpty && await _alreadyMonitoring(generation, chosen)) {
-          return;
-        }
-        _provisioningMayBeActive = true;
-        final failed = await _assignAll(generation, targets);
-        state = state.copy(unassigned: {});
-        await _startMonitoring(
-          generation,
-          chosen,
-          failed,
-          resumed: targets.isEmpty,
-        );
-      });
+  Future<void> resumeAssign() => _step8Run(
+    reconnectingText,
+    240 + _starListRunSeconds,
+    (generation) async {
+      _resumeGeneration = generation;
+      // Round 11: the reconcile (get_ble_devices) runs inside the
+      // persistent link loop, so a link that drops right after connecting
+      // is retried for the whole [connectPersistence] instead of ending
+      // the run after one round.
+      await _reconnect(
+        generation,
+        after: () async {
+          // Round 21: back; the list is read again.
+          state = state.copy(
+            relinkStage: RelinkStage.reloading,
+            error: state.error,
+          );
+          // A gateway restart (not the PTUs) may have cut the link.
+          await _checkBoot(generation);
+          await _reconcile(generation);
+        },
+      );
+      final chosen = state.ptus
+          .where((p) => state.selected.contains(p['mac']))
+          .toList();
+      final targets = chosen
+          .where((p) => !state.assignedOk.contains(p['mac']))
+          .toList();
+      state = state.copy(
+        step: 5,
+        resumePending: false,
+        monitorUnconfirmed: false,
+        relinkStage: RelinkStage.resumed,
+        assignRunning: true,
+        assignStatus: _assignStart(chosen, targets),
+        message: targets.isEmpty
+            ? '正在確認 Gateway 監控狀態'
+            : '繼續指派 ${targets.length} 台',
+      );
+      // Round 7b: everything already assigned and the gateway already
+      // monitors all of them with upload running → done, no join_fleet.
+      if (targets.isEmpty && await _alreadyMonitoring(generation, chosen)) {
+        return;
+      }
+      _provisioningMayBeActive = true;
+      // Round 27: the target list again (the loss may have come before
+      // it went out).
+      await _starListBeforeAssign(generation, chosen, targets);
+      final failed = await _assignAll(generation, targets);
+      state = state.copy(unassigned: {});
+      await _startMonitoring(
+        generation,
+        chosen,
+        failed,
+        resumed: targets.isEmpty,
+      );
+    },
+  );
 
   /// After a resume with nothing left to assign: true (and step 9) when the
   /// gateway already reports every chosen PTU connected, BLE on, upload not
@@ -5198,7 +5221,7 @@ class CommissioningController extends Notifier<CommissionState> {
 
   /// 「重試這 N 台」：只對上次指派失敗的 PTU 重跑指派，再 set_config/join_fleet。
   Future<void> retryFailedAssign() =>
-      _step8Run('重試指派失敗的 PTU', 240, (generation) async {
+      _step8Run('重試指派失敗的 PTU', 240 + _starListRunSeconds, (generation) async {
         final chosen = state.ptus
             .where(
               (p) =>
@@ -5219,6 +5242,8 @@ class CommissioningController extends Notifier<CommissionState> {
           assignRunning: true,
           assignStatus: _assignStart(chosen, targets),
         );
+        // Round 27: e.g. foreign PTUs held the connections last time.
+        await _starListBeforeAssign(generation, chosen, targets);
         final failed = await _assignAll(generation, targets);
         await _startMonitoring(generation, chosen, failed);
       });
@@ -5442,6 +5467,7 @@ class CommissioningController extends Notifier<CommissionState> {
       state = state.copy(
         verifyBackendDown: false,
         starList: StarListStatus.none,
+        starListStage: StarListStage.verified,
       );
       try {
         await _verify(generation, base, password, environment);
@@ -5477,7 +5503,9 @@ class CommissioningController extends Notifier<CommissionState> {
   /// Round 26: writes this gateway's allow list — its verified PTUs, read
   /// back with get_ble_devices ([starAllowList]: this run's PTUs, also
   /// those of an interrupted earlier part, plus the ones configured before
-  /// and left untouched) — with `set_config star_macs`, retried
+  /// and left untouched; round 27: never a PTU whose assignment failed or
+  /// that was skipped at the data verification, [_starListExcluded]) —
+  /// with `set_config star_macs`, retried
   /// [starListAttempts] times and read back with get_config. Called when
   /// a star verification passes and by 「重試寫入綁定名單」; a failure only
   /// sets [StarListStatus.failed] (completion page notice), no red banner.
@@ -5486,7 +5514,7 @@ class CommissioningController extends Notifier<CommissionState> {
     await _sideTask(starListWritingText, 200, (generation) async {
       state = state.copy(
         starList: StarListStatus.writing,
-        starListSwitch: false,
+        starListStage: StarListStage.verified,
         message: starListWritingText,
       );
       try {
@@ -5495,12 +5523,27 @@ class CommissioningController extends Notifier<CommissionState> {
             .whereType<Map>()
             .map(Map<String, dynamic>.from)
             .toList();
+        // Round 27: the untouched PTUs of the list sent before the assigns
+        // stay (also when off now); failed and unverified PTUs go.
+        final keep = _starTargetPeer == state.peer?.id
+            ? _starKeep
+            : const <({String mac, int id})>[];
         final entries = starAllowList(
           rows: rows,
-          own: {...state.selected, ...state.assignedOk, ..._doneAssign.keys},
+          own: {
+            ...state.selected,
+            ...state.assignedOk,
+            ..._doneAssign.keys,
+            for (final e in keep) e.mac,
+          },
           first: (gateway - 1) * 5 + 1,
           enforced: response['star_enforced'] == true,
-          known: state.ptus,
+          known: [
+            ...state.ptus,
+            for (final e in keep)
+              if (e.id > 0) {'mac': e.mac, 'device_number': e.id},
+          ],
+          exclude: _starListExcluded(),
         );
         final ok =
             entries.isNotEmpty &&
@@ -5561,6 +5604,161 @@ class CommissioningController extends Notifier<CommissionState> {
     return false;
   }
 
+  /// Round 27: MACs the verified list leaves out — PTUs whose assignment
+  /// failed ([CommissionState.assignFailed]) and chosen PTUs skipped at the
+  /// data verification (「未驗證（已略過）」, [CommissionState.verifySkipped]).
+  Set<String> _starListExcluded() => {
+    ...state.assignFailed.keys,
+    // Chosen by an earlier run, left out since.
+    if (_starTargetPeer == state.peer?.id)
+      for (final key in _starTouched)
+        if (!state.selected.any((m) => starMac(m) == key)) key,
+    for (final p in state.ptus)
+      if (state.selected.contains(p['mac']) &&
+          state.verifySkipped.contains((p['device_number'] as num?)?.toInt()))
+        p['mac'].toString(),
+  };
+
+  /// Round 27: the PTUs configured earlier and left untouched that the list
+  /// sent before the assigns kept ([starTargetList] minus the chosen ones,
+  /// with the number they carried), and the gateway it went to.
+  List<({String mac, int id})> _starKeep = const [];
+  String? _starTargetPeer;
+
+  /// Round 27: every PTU a step 8 run of this commissioning chose (list
+  /// spelling), for [_starTargetPeer]; one the installer leaves out later
+  /// is not 「untouched」 and leaves the list. Cleared by [connect].
+  final Set<String> _starTouched = {};
+
+  /// Round 27: the list the current step 8 run wrote before its first
+  /// assign (read back); null when none was written. [_assignAll] then
+  /// counts only listed PTUs' numbers as taken.
+  Set<String>? _starAssignList;
+
+  /// Extra seconds a step 8 run gets for the list sent before its first
+  /// assign (three attempts of set_config + get_config at most).
+  int get _starListRunSeconds => _starListApplies ? 80 : 0;
+
+  /// The gateway already has an allow list: the step 7 [rows] carry a
+  /// listed PTU, or its get_config named one.
+  bool _starListSet(List<Map<String, dynamic>> rows) {
+    final listed = state.config['star_macs'];
+    return rows.any((r) => r['star_listed'] == true) ||
+        (listed is List && listed.isNotEmpty) ||
+        state.config['star_macs_set'] == true;
+  }
+
+  /// Round 27: before the first assign of a step 8 run over [chosen]
+  /// ([targets]: the PTUs about to be assigned), sends this gateway's
+  /// target list ([starTargetList]: the chosen PTUs plus the ones
+  /// configured earlier and left untouched, at most 5) with `set_config
+  /// star_macs` (star, firmware 1.7.36+). The gateway drops connected PTUs
+  /// missing from it — foreign ones carrying this gateway's numbers may
+  /// hold every connection, and each assign would fail with `No free
+  /// slot` — so the assigns find a free one. Retried [starListAttempts]
+  /// times; a failure only shows [starListBeforeFailedText] and the
+  /// assignment goes on. A phone↔gateway link loss stops the run as one
+  /// during an assign does.
+  Future<void> _starListBeforeAssign(
+    int generation,
+    List<Map<String, dynamic>> chosen,
+    List<Map<String, dynamic>> targets,
+  ) async {
+    _starAssignList = null;
+    if (targets.isEmpty || !_starListApplies) return;
+    if (_starTargetPeer != state.peer?.id) {
+      _starTouched.clear();
+      _starKeep = const [];
+      _starTargetPeer = state.peer?.id;
+    }
+    final rows = state.ptus;
+    final picked = [for (final p in chosen) p['mac'].toString()];
+    final listed = state.config['star_macs'];
+    final target = starTargetList(
+      rows: rows,
+      chosen: picked,
+      first: (gateway - 1) * 5 + 1,
+      listSet: _starListSet(rows),
+      listed: [
+        if (listed is List)
+          for (final m in listed) '$m',
+      ],
+      dropped: _starTouched,
+    );
+    if (target.isEmpty) return;
+    final chosenKeys = {for (final m in picked) ?starMac(m)};
+    _starKeep = [
+      for (final e in target)
+        if (!chosenKeys.contains(e.mac)) e,
+    ];
+    _starTouched.addAll(chosenKeys);
+    final macs = [for (final e in target) e.mac];
+    final message = state.message;
+    state = state.copy(
+      starList: StarListStatus.writing,
+      starListStage: StarListStage.beforeAssign,
+      message: starListWritingText,
+    );
+    final bool ok;
+    try {
+      ok = await _sendStarList(generation, macs);
+      if (ok) await _awaitStarDrops(generation, macs);
+    } catch (e) {
+      if (ref.mounted) {
+        state = state.copy(starList: StarListStatus.none, error: state.error);
+      }
+      if (!ref.mounted || !isStep8LinkLoss(e, generation == _generation)) {
+        rethrow;
+      }
+      // Nothing assigned yet in this run: every target waits for 「重新連線
+      // 並繼續」.
+      final rest = {for (final p in targets) p['mac'].toString()};
+      state = state.copy(
+        results: {
+          ...state.results,
+          for (final m in rest) m: notAssignedLinkText,
+        },
+        unassigned: rest,
+        resumePending: true,
+      );
+      await _save();
+      throw GatewayFailure('phone_link_lost', detail: e.toString());
+    }
+    if (ok) _starAssignList = macs.toSet();
+    state = state.copy(
+      starList: ok ? StarListStatus.written : StarListStatus.failed,
+      starListStage: StarListStage.beforeAssign,
+      message: message,
+    );
+  }
+
+  /// Round 27: the target list [macs] was just written to a star gateway:
+  /// waits (at most 5 x 1 s) until it has dropped the connected PTUs not
+  /// on it — an assign started earlier would still find no free slot.
+  /// Skipped when no such PTU was connected at step 7 or the gateway is
+  /// direct (the list takes effect with the switch). Never fails the run.
+  Future<void> _awaitStarDrops(int generation, List<String> macs) async {
+    if (((state.config['max_connections'] as num?) ?? 1) <= 1) return;
+    bool stray(Iterable<Map> rows) => rows.any(
+      (r) => r['connected'] == true && !macs.contains(starMac(r['mac'])),
+    );
+    if (!stray(state.ptus)) return;
+    for (var i = 0; i < 5; i++) {
+      await _wait(1, generation);
+      try {
+        final response = await _command(generation, 'get_ble_devices');
+        if (!stray((response['devices'] as List? ?? const []).whereType())) {
+          return;
+        }
+      } catch (e) {
+        if (e is GatewayFailure && e.code == 'cancelled') rethrow;
+        _check(generation);
+        if (isPhoneLinkFailure(e)) rethrow;
+        return;
+      }
+    }
+  }
+
   /// Round 26: peer id of a gateway step 8 switched from direct
   /// (max_connections 1) to star whose allow list is not sent yet (e.g.
   /// the link dropped right after the switch); the next step 8 sends it.
@@ -5607,7 +5805,10 @@ class CommissioningController extends Notifier<CommissionState> {
       for (final p in chosen) ?starMac(p['mac']),
     }.take(starAllowListMax).toList();
     if (macs.isEmpty) return;
-    state = state.copy(starList: StarListStatus.writing, starListSwitch: true);
+    state = state.copy(
+      starList: StarListStatus.writing,
+      starListStage: StarListStage.afterSwitch,
+    );
     final bool ok;
     try {
       ok = await _sendStarList(generation, macs);
@@ -5619,7 +5820,7 @@ class CommissioningController extends Notifier<CommissionState> {
     _starSwitchPeer = null;
     state = state.copy(
       starList: ok ? StarListStatus.written : StarListStatus.failed,
-      starListSwitch: true,
+      starListStage: StarListStage.afterSwitch,
       starListIds: ok
           ? [for (final p in chosen) ?(p['device_number'] as num?)?.toInt()]
           : null,

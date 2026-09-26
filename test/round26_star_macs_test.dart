@@ -12,7 +12,10 @@ import 'package:gateway_commissioning/data/demo_system.dart';
 import 'package:gateway_commissioning/gateway_app.dart';
 
 /// Round 26 (P0 「星狀連錯樁」): the star-mode MAC allow list of firmware
-/// 1.7.36 (`set_config star_macs`, cmd_contract.md §3B).
+/// 1.7.36 (`set_config star_macs`, cmd_contract.md §3B). Round 27: the
+/// list goes out before step 8's first assign too
+/// (round27_star_before_assign_test.dart), so every run writes it there
+/// first; these tests count that write.
 
 const _old = 'AA:BB:CC:00:00:04';
 
@@ -22,6 +25,11 @@ const _old = 'AA:BB:CC:00:00:04';
 /// `star_listed`, get_status `star.foreign_ptus`; join_fleet connects only
 /// listed PTUs while the list is enforced (star). A fourth PTU [_old] is
 /// already #4 and connected (configured on an earlier visit).
+///
+/// Round 27: a star gateway (max_connections > 1) drops the connected PTUs
+/// a new list leaves out at the next get_ble_devices read (the firmware
+/// drops them within a second), and refuses an assign with `No free slot`
+/// while all its connections are taken by other PTUs.
 class StarListLink extends DemoSystem {
   StarListLink({String fw = '1.7.36', bool oldPtu = true}) {
     config.addAll({
@@ -56,6 +64,17 @@ class StarListLink extends DemoSystem {
 
   /// The next N star writes time out.
   int failStarWrites = 0;
+
+  /// Round 27: star writes time out while this says so.
+  bool Function()? failStarIf;
+
+  /// Round 27: assigns of these MACs fail.
+  final failAssign = <String>{};
+
+  /// Round 27: a list was written; unlisted PTUs drop at the next read.
+  bool dropPending = false;
+
+  bool get starMode => ((config['max_connections'] as num?) ?? 1) > 1;
 
   /// Star writes answered `1 rejected (invalid)`.
   bool rejectStar = false;
@@ -107,8 +126,8 @@ class StarListLink extends DemoSystem {
     log.add(star ? 'set_config:star' : op);
     if (star) {
       starWrites.add([for (final m in params['star_macs'] as List) '$m']);
-      if (failStarWrites > 0) {
-        failStarWrites--;
+      if (failStarWrites > 0 || (failStarIf?.call() ?? false)) {
+        if (failStarWrites > 0) failStarWrites--;
         throw const GatewayFailure('timeout');
       }
       if (rejectStar) {
@@ -117,6 +136,7 @@ class StarListLink extends DemoSystem {
         };
       }
       starMacs = [for (final m in params['star_macs'] as List) starMac(m)!];
+      dropPending = starMode;
       return {'message': 'config updated: 1 params changed'};
     }
     if (op == 'assign_device_id' && dropAfterAssigns != null) {
@@ -126,6 +146,25 @@ class StarListLink extends DemoSystem {
         throw const GatewayFailure('not_connected');
       }
       assigns.add(params['mac'].toString());
+    }
+    if (op == 'assign_device_id') {
+      final mac = params['mac'];
+      final linked = devices.where((d) => d['connected'] == true);
+      final full =
+          starMode &&
+          linked.length >= (config['max_connections'] as num) &&
+          !linked.any((d) => d['mac'] == mac);
+      if (failAssign.contains(mac) || full) {
+        return {'success': false, 'error': 'No free slot'};
+      }
+    }
+    if (op == 'get_ble_devices' && dropPending) {
+      dropPending = false;
+      if (enforced) {
+        for (final d in devices) {
+          if (!listed(d['mac'])) d['connected'] = false;
+        }
+      }
     }
     final result = await super.command(op, params);
     switch (op) {
@@ -166,7 +205,7 @@ class StarListLink extends DemoSystem {
   }
 }
 
-Future<(ProviderContainer, CommissioningController)> _starStep7(
+Future<(ProviderContainer, CommissioningController)> starStep7(
   StarListLink fake, {
   GatewayTopology topology = GatewayTopology.star,
 }) async {
@@ -188,7 +227,7 @@ Future<(ProviderContainer, CommissioningController)> _starStep7(
   return (container, c);
 }
 
-List<String> _macs(DemoSystem fake) => [
+List<String> ptuMacs(DemoSystem fake) => [
   for (final d in fake.devices) d['mac'].toString(),
 ];
 
@@ -303,13 +342,14 @@ void main() {
     });
   });
 
-  group('1. the list is written once the star verification passed', () {
-    test('after verification (not before), own + earlier-configured PTUs, '
-        'read back', () async {
+  group('1. the verified list is written once the star verification '
+      'passed', () {
+    test('after verification (again, after the list sent before the '
+        'assigns), own + earlier-configured PTUs, read back', () async {
       final fake = StarListLink();
-      final (container, c) = await _starStep7(fake);
+      final (container, c) = await starStep7(fake);
       addTearDown(container.dispose);
-      final macs = _macs(fake);
+      final macs = ptuMacs(fake);
       var s = container.read(commissionProvider);
       expect(s.step, 4);
       // The PTU configured on an earlier visit is left untouched.
@@ -317,18 +357,20 @@ void main() {
       await c.configurePtus();
       s = container.read(commissionProvider);
       expect(s.step, 6);
-      expect(fake.starWrites, isEmpty, reason: 'never before step 9 passes');
+      // Round 27: the target list went out before the assigns.
+      expect(fake.starWrites, hasLength(1));
+      expect(s.starListStage, StarListStage.beforeAssign);
 
       await c.verify('https://example.invalid', 'pw');
       s = container.read(commissionProvider);
       expect(s.error, isNull);
       expect(s.step, 7);
       expect(s.verified, isTrue);
-      expect(fake.starWrites, hasLength(1));
-      expect(fake.starWrites.single.toSet(), macs.toSet());
+      expect(fake.starWrites, hasLength(2));
+      expect(fake.starWrites.last.toSet(), macs.toSet());
       expect(fake.starMacs!.toSet(), macs.toSet());
       // Written after the backend confirmed the data, then read back.
-      final write = fake.log.indexOf('set_config:star');
+      final write = fake.log.lastIndexOf('set_config:star');
       expect(
         write,
         greaterThan(fake.log.lastIndexOf('PATCH bot-monitor true')),
@@ -336,6 +378,7 @@ void main() {
       expect(fake.log.sublist(write), contains('get_config'));
       expect(s.starList, StarListStatus.written);
       expect(s.starListSwitch, isFalse);
+      expect(s.starListStage, StarListStage.verified);
       expect(s.starListIds, [1, 2, 3, 4]);
       expect(s.report, contains('PTU 綁定名單：已寫入 #1、#2、#3、#4'));
       expect(s.busy, isFalse);
@@ -347,35 +390,39 @@ void main() {
       autoRelinkRounds = 0;
       addTearDown(() => autoRelinkRounds = keep);
       final fake = StarListLink();
-      final (container, c) = await _starStep7(fake);
+      final (container, c) = await starStep7(fake);
       addTearDown(container.dispose);
-      final macs = _macs(fake);
+      final macs = ptuMacs(fake);
       c.select(_old, false);
       fake.dropAfterAssigns = 1;
       await c.configurePtus();
       var s = container.read(commissionProvider);
       expect(s.resumePending, isTrue);
       expect(s.assignedOk, {macs[0]});
-      expect(fake.starWrites, isEmpty);
+      expect(fake.starWrites, hasLength(1), reason: 'before the assigns');
 
       await c.resumeAssign();
       s = container.read(commissionProvider);
       expect(s.error, isNull);
       expect(s.step, 6);
+      // Round 27: sent again before the resumed assigns.
+      expect(fake.starWrites, hasLength(2));
       await c.verify('https://example.invalid', 'pw');
       s = container.read(commissionProvider);
       expect(s.step, 7);
-      expect(fake.starWrites, hasLength(1));
-      expect(fake.starWrites.single.toSet(), macs.toSet());
+      expect(fake.starWrites, hasLength(3));
+      for (final write in fake.starWrites) {
+        expect(write.toSet(), macs.toSet());
+      }
       expect(s.starList, StarListStatus.written);
     });
 
     test('an own PTU gone at the end (skipped / off) keeps its place on the '
         'list; a stranger never takes its number', () async {
       final fake = StarListLink(oldPtu: false);
-      final (container, c) = await _starStep7(fake);
+      final (container, c) = await starStep7(fake);
       addTearDown(container.dispose);
-      final macs = _macs(fake);
+      final macs = ptuMacs(fake);
       await c.configurePtus();
       await c.verify('https://example.invalid', 'pw');
       expect(
@@ -396,7 +443,7 @@ void main() {
 
     test('firmware before 1.7.36: never sent, nothing shown', () async {
       final fake = StarListLink(fw: '1.7.35');
-      final (container, c) = await _starStep7(fake);
+      final (container, c) = await starStep7(fake);
       addTearDown(container.dispose);
       await c.configurePtus();
       await c.verify('https://example.invalid', 'pw');
@@ -413,7 +460,7 @@ void main() {
 
     test('direct mode: never sent', () async {
       final fake = StarListLink(oldPtu: false);
-      final (container, _) = await _starStep7(
+      final (container, _) = await starStep7(
         fake,
         topology: GatewayTopology.direct,
       );
@@ -425,10 +472,11 @@ void main() {
   group('failures: retried, shown, never block the completion', () {
     test('three timeouts: completion kept, notice + retry writes it', () async {
       final fake = StarListLink();
-      final (container, c) = await _starStep7(fake);
+      final (container, c) = await starStep7(fake);
       addTearDown(container.dispose);
-      fake.failStarWrites = 3;
       await c.configurePtus();
+      expect(fake.starWrites, hasLength(1), reason: 'before the assigns');
+      fake.failStarWrites = 3;
       await c.verify('https://example.invalid', 'pw');
       var s = container.read(commissionProvider);
       expect(s.step, 7);
@@ -436,14 +484,14 @@ void main() {
       expect(s.error, isNull, reason: 'no red banner');
       expect(
         fake.starWrites,
-        hasLength(CommissioningController.starListAttempts),
+        hasLength(1 + CommissioningController.starListAttempts),
       );
       expect(s.starList, StarListStatus.failed);
       expect(s.report, contains('PTU 綁定名單：未寫入'));
 
       await c.writeStarList();
       s = container.read(commissionProvider);
-      expect(fake.starWrites, hasLength(4));
+      expect(fake.starWrites, hasLength(5));
       expect(s.starList, StarListStatus.written);
       expect(s.report, contains('PTU 綁定名單：已寫入'));
       expect(s.step, 7);
@@ -451,26 +499,33 @@ void main() {
 
     test('a rejected list (read back differs) counts as not written', () async {
       final fake = StarListLink();
-      final (container, c) = await _starStep7(fake);
+      final (container, c) = await starStep7(fake);
       addTearDown(container.dispose);
       fake.rejectStar = true;
       await c.configurePtus();
-      await c.verify('https://example.invalid', 'pw');
-      final s = container.read(commissionProvider);
-      expect(s.step, 7);
+      var s = container.read(commissionProvider);
+      expect(s.step, 6, reason: 'a refused list never blocks the assigns');
       expect(fake.starWrites, hasLength(3));
       expect(fake.starMacs, isNull);
       expect(s.starList, StarListStatus.failed);
+      expect(s.starListStage, StarListStage.beforeAssign);
+      await c.verify('https://example.invalid', 'pw');
+      s = container.read(commissionProvider);
+      expect(s.step, 7);
+      expect(fake.starWrites, hasLength(6));
+      expect(fake.starMacs, isNull);
+      expect(s.starList, StarListStatus.failed);
+      expect(s.starListStage, StarListStage.verified);
     });
 
     test('one timeout, then written on the automatic retry', () async {
       final fake = StarListLink();
-      final (container, c) = await _starStep7(fake);
+      final (container, c) = await starStep7(fake);
       addTearDown(container.dispose);
-      fake.failStarWrites = 1;
       await c.configurePtus();
+      fake.failStarWrites = 1;
       await c.verify('https://example.invalid', 'pw');
-      expect(fake.starWrites, hasLength(2));
+      expect(fake.starWrites, hasLength(3));
       expect(
         container.read(commissionProvider).starList,
         StarListStatus.written,
@@ -480,28 +535,34 @@ void main() {
 
   group('2. direct → star sends the list again with the switch', () {
     test('a stale list from before direct mode would refuse the chosen PTUs: '
-        'sent right after max_connections, before join_fleet', () async {
+        'sent before the assigns and again right after max_connections, '
+        'before join_fleet', () async {
       final fake = StarListLink(oldPtu: false);
       fake.config['max_connections'] = 1; // direct mode until step 8
       fake.starMacs = ['11:22:33:44:55:66']; // before direct mode
-      final (container, c) = await _starStep7(fake);
+      final (container, c) = await starStep7(fake);
       addTearDown(container.dispose);
-      final macs = _macs(fake);
+      final macs = ptuMacs(fake);
       await c.configurePtus();
       var s = container.read(commissionProvider);
       expect(s.error, isNull);
       expect(s.step, 6, reason: 'the chosen PTUs connected');
       final max = fake.log.indexOf('set_config');
-      final star = fake.log.indexOf('set_config:star');
+      final before = fake.log.indexOf('set_config:star');
+      final star = fake.log.lastIndexOf('set_config:star');
+      expect(before, lessThan(fake.log.indexOf('assign_device_id')));
       expect(star, greaterThan(max));
       expect(star, lessThan(fake.log.indexOf('join_fleet')));
-      expect(fake.starWrites.single.toSet(), macs.toSet());
+      expect(fake.starWrites, hasLength(2));
+      for (final write in fake.starWrites) {
+        expect(write.toSet(), macs.toSet());
+      }
       expect(s.starList, StarListStatus.written);
       expect(s.starListSwitch, isTrue);
 
       await c.verify('https://example.invalid', 'pw');
       s = container.read(commissionProvider);
-      expect(fake.starWrites, hasLength(2));
+      expect(fake.starWrites, hasLength(3));
       expect(s.starList, StarListStatus.written);
       expect(s.starListSwitch, isFalse);
     });
@@ -512,7 +573,7 @@ void main() {
       addTearDown(() => directPollInterval = keep);
       final fake = StarListLink(oldPtu: false);
       fake.starMacs = ['11:22:33:44:55:66'];
-      final (container, c) = await _starStep7(
+      final (container, c) = await starStep7(
         fake,
         topology: GatewayTopology.direct,
       );
@@ -524,35 +585,44 @@ void main() {
       final s = container.read(commissionProvider);
       expect(s.error, isNull);
       expect(s.step, 6);
-      expect(fake.starWrites.single.toSet(), _macs(fake).toSet());
+      expect(fake.starWrites, hasLength(2), reason: 'before assign + switch');
+      for (final write in fake.starWrites) {
+        expect(write.toSet(), ptuMacs(fake).toSet());
+      }
     });
 
-    test('star → star (no switch): nothing sent at step 8', () async {
+    test('star → star (no switch): only the list before the assigns', () async {
       final fake = StarListLink(oldPtu: false);
-      final (container, c) = await _starStep7(fake);
+      final (container, c) = await starStep7(fake);
       addTearDown(container.dispose);
       await c.configurePtus();
-      expect(container.read(commissionProvider).step, 6);
-      expect(fake.starWrites, isEmpty);
+      final s = container.read(commissionProvider);
+      expect(s.step, 6);
+      expect(fake.starWrites, hasLength(1));
+      expect(s.starListSwitch, isFalse);
+      expect(s.starListStage, StarListStage.beforeAssign);
     });
 
     test('switch write fails: step 8 goes on and says so; old firmware never '
         'sends it', () async {
       final fake = StarListLink(oldPtu: false);
       fake.config['max_connections'] = 1;
-      fake.failStarWrites = 3;
-      final (container, c) = await _starStep7(fake);
+      // Only the write after the switch fails (the one before the assigns
+      // goes to the still direct gateway).
+      fake.failStarIf = () => fake.starMode;
+      final (container, c) = await starStep7(fake);
       addTearDown(container.dispose);
       await c.configurePtus();
       final s = container.read(commissionProvider);
       expect(s.step, 6);
       expect(s.starList, StarListStatus.failed);
       expect(s.starListSwitch, isTrue);
+      expect(fake.starWrites, hasLength(1 + 3));
       expect(fake.log, contains('join_fleet'));
 
       final legacy = StarListLink(fw: '1.7.35', oldPtu: false);
       legacy.config['max_connections'] = 1;
-      final (container2, c2) = await _starStep7(legacy);
+      final (container2, c2) = await starStep7(legacy);
       addTearDown(container2.dispose);
       await c2.configurePtus();
       expect(container2.read(commissionProvider).step, 6);
@@ -565,7 +635,7 @@ void main() {
         'get_ble_devices', () async {
       final fake = StarListLink(oldPtu: false);
       fake.foreignPtus = 2;
-      final (container, c) = await _starStep7(fake);
+      final (container, c) = await starStep7(fake);
       addTearDown(container.dispose);
       var s = container.read(commissionProvider);
       expect(s.foreignPtus, 2);
@@ -573,7 +643,7 @@ void main() {
 
       // Enforced list without the connected #4 of an earlier visit.
       fake.foreignPtus = 0;
-      fake.starMacs = [_macs(fake).first];
+      fake.starMacs = [ptuMacs(fake).first];
       fake.devices.add({
         'mac': _old,
         'rssi': -70,
@@ -596,7 +666,7 @@ void main() {
     test('old firmware: no star status read, no notice', () async {
       final fake = StarListLink(fw: '1.7.35', oldPtu: false);
       fake.foreignPtus = 2;
-      final (container, _) = await _starStep7(fake);
+      final (container, _) = await starStep7(fake);
       addTearDown(container.dispose);
       final s = container.read(commissionProvider);
       expect(s.foreignPtus, 0);
@@ -657,11 +727,12 @@ void main() {
     testWidgets('completion page: not written → notice and 重試寫入綁定名單', (
       tester,
     ) async {
-      final fake = StarListLink(oldPtu: false)..failStarWrites = 3;
+      final fake = StarListLink(oldPtu: false);
       final (container, _) = await pump(tester, fake);
       await tester.runAsync(() async {
         final c = container.read(commissionProvider.notifier);
         await c.configurePtus();
+        fake.failStarWrites = 3;
         await c.verify('https://example.invalid', 'pw');
       });
       await tester.pump();
@@ -682,7 +753,7 @@ void main() {
         }
       });
       await tester.pump();
-      expect(fake.starWrites, hasLength(4));
+      expect(fake.starWrites, hasLength(5));
       expect(find.byKey(const Key('star-list-retry')), findsNothing);
       expect(find.text(starListWrittenText([1, 2, 3])), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
