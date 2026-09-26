@@ -430,7 +430,7 @@ String identifyLineText(Map<String, dynamic> ack) {
 String identifyNoteText(Map<String, dynamic> ack) {
   final ptuWrite = ack['ptu_write'];
   if (ptuWrite != null && ptuWrite != 'ok') {
-    return '已送出：只有閘道器在閃燈，PTU 未收到（$ptuWrite）';
+    return '已送出：只有閘道器在閃燈，PTU 未收到（${ptuWriteReasonText(ptuWrite)}）';
   }
   final mac = ack['mac'];
   if (mac == null) return '$identifySentText（閘道器雙閃 6 秒）';
@@ -446,12 +446,24 @@ String identifyNoteText(Map<String, dynamic> ack) {
   return '$head（$ptu）';
 }
 
+/// Round 24: a firmware `ptu_write` reason in words — the raw code
+/// (`ambiguous_target`, `not_connected`…) never reaches the screen (field
+/// round 24: 「PTU 未收到（ambiguous_target）」).
+String ptuWriteReasonText(Object? reason) => switch (reason) {
+  'not_connected' => '閘道器尚未連上 PTU',
+  'ambiguous_target' => '閘道器連著多台 PTU，沒有指定哪一台',
+  'write_failed' => '閘道器寫入 PTU 失敗',
+  _ => 'PTU 沒有收到指令',
+};
+
 /// Round 19: the result of an identify ack in a few words (「PTU 已確認亮燈」,
 /// 「PTU 未回應確認」…); null when the ack says nothing about the PTU.
+/// Round 24: a PTU that was not written reads 「只有閘道器閃燈」 with the
+/// reason in words ([ptuWriteReasonText]).
 String? identifyResultText(Map<String, dynamic> ack) {
   final ptuWrite = ack['ptu_write'];
   if (ptuWrite != null && ptuWrite != 'ok') {
-    return '只有閘道器閃燈，PTU 未收到（$ptuWrite）';
+    return '只有閘道器閃燈（${ptuWriteReasonText(ptuWrite)}）';
   }
   return switch (identifyConfirmOf(ack)) {
     IdentifyConfirm.confirmed => identifyConfirmedText,
@@ -460,6 +472,53 @@ String? identifyResultText(Map<String, dynamic> ack) {
     IdentifyConfirm.legacy => ptuWrite == 'ok' ? 'PTU 已收到閃燈指令' : null,
   };
 }
+
+/// Round 24: the identify ack says a PTU was written — `ptu_write:"ok"`, a
+/// PTU confirmation, or (no `ptu_write` at all) the PTU's MAC. Otherwise
+/// only the gateway blinked (`ptu_write` not ok, or a gateway-only ack).
+bool identifyWrotePtu(Map<String, dynamic> ack) {
+  final ptuWrite = ack['ptu_write'];
+  if (ptuWrite != null) return ptuWrite == 'ok';
+  return ack.containsKey('ptu_confirm') ||
+      ack.containsKey('ptu_confirmed') ||
+      ack['mac'] != null;
+}
+
+/// Round 24: the PTU an identify ack names, as the installer can find it:
+/// 「#3」 (the ack's `device_number`, else the number of the listed PTU
+/// with that MAC), else the part of its MAC that tells it apart from the
+/// other listed PTUs ([distinguishingMacSegment]; the whole MAC when no
+/// other PTU is listed). Null when the ack names no PTU.
+String? identifyPtuLabel(
+  Map<String, dynamic> ack, {
+  List<Map<String, dynamic>> ptus = const [],
+}) {
+  int? valid(Object? n) =>
+      n is num && n.toInt() >= 1 && n.toInt() <= 250 ? n.toInt() : null;
+  final number = valid(ack['device_number']);
+  if (number != null) return '#$number';
+  final mac = ack['mac'];
+  final bytes = _macBytes(mac);
+  if (mac == null) return null;
+  if (bytes == null) return formatMac(mac);
+  final key = bytes.join();
+  for (final p in ptus) {
+    if (_macBytes(p['mac'])?.join() == key) {
+      final listed = valid(p['device_number']);
+      if (listed != null) return '#$listed';
+    }
+  }
+  final others = [
+    for (final p in ptus)
+      if (_macBytes(p['mac']) case final b? when b.join() != key) p['mac'],
+  ];
+  return others.isEmpty
+      ? formatMac(mac)
+      : distinguishingMacSegment(mac, others);
+}
+
+/// Round 24: [remoteIdentifyText] when only the gateway blinked.
+const remoteIdentifyGatewayText = '後台讓閘道器閃燈（請看閘道器上的燈）';
 
 /// Round 19: an identify ack the gateway relayed to the phone that answers
 /// no request of this APP — the back office made the pile blink (backend
@@ -473,17 +532,29 @@ bool isIdentifyAck(Map<String, dynamic> ack) =>
     ack.containsKey('gateway_led');
 
 /// Round 19: the non-blocking notice for [isIdentifyAck] acks the back
-/// office sent: 「後台剛讓這台樁閃燈（請看樁上燈號）」 with the PTU's
-/// answer, its MAC and RSSI when given.
-String remoteIdentifyText(Map<String, dynamic> ack) {
-  final result = identifyResultText(ack);
-  final mac = ack['mac'];
+/// office sent.
+///
+/// Round 24 (field round 24: in star mode the back office's identify came
+/// back `ptu_write:"ambiguous_target"` — only the gateway blinked — and the
+/// notice read 「後台剛讓這台樁閃燈（請看樁上燈號） · 只有閘道器閃燈，PTU 未
+/// 收到（ambiguous_target）」): what actually blinked, in words.
+/// - No PTU written ([identifyWrotePtu] false): [remoteIdentifyGatewayText].
+/// - A PTU written: 「後台讓 PTU #3 閃燈（請看樁上燈號）」 — its number, or
+///   the distinguishing part of its MAC among [ptus] ([identifyPtuLabel]) —
+///   then its confirmation as before (「PTU 已確認亮燈」／「PTU 未回應確認
+///   （PTU 韌體尚未支援）」…) and its RSSI.
+String remoteIdentifyText(
+  Map<String, dynamic> ack, {
+  List<Map<String, dynamic>> ptus = const [],
+}) {
+  if (!identifyWrotePtu(ack)) return remoteIdentifyGatewayText;
+  final label = identifyPtuLabel(ack, ptus: ptus);
   final rssi = ack['rssi'];
-  final ptu = [
-    if (mac != null) 'PTU ${formatMac(mac)}',
-    if (rssi is num) rssiLabel(rssi),
+  return [
+    '後台讓 PTU${label == null ? '' : ' $label'} 閃燈（請看樁上燈號）',
+    ?identifyResultText(ack),
+    if (rssi is num && rssi < 0) rssiLabel(rssi),
   ].join(' · ');
-  return ['後台剛讓這台樁閃燈（請看樁上燈號）', ?result, if (ptu.isNotEmpty) ptu].join(' · ');
 }
 
 /// Round 21 (field round 21: the bar's one line was cut after
@@ -575,4 +646,7 @@ String identifyAckText(Map<String, dynamic> ack) {
 /// acks `status:ok` here (§ cmd_contract.md identify: "both 只有兩者都失敗才
 /// fail"); this is not a failure the APP should resend or treat as a
 /// dropped phone↔gateway link.
-String identifyPtuFailedText(String reason) => '閘道器正在閃燈；尚未連上 PTU（$reason）。';
+///
+/// Round 24: [reason] in words ([ptuWriteReasonText]), never the raw code.
+String identifyPtuFailedText(String reason) =>
+    '閘道器正在閃燈；PTU 沒有閃（${ptuWriteReasonText(reason)}）。';

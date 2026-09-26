@@ -25,6 +25,7 @@ import '../core/mqtt_target.dart';
 import '../core/protocol.dart';
 import '../core/rescue_code.dart';
 import '../data/contracts.dart';
+import '../data/network_watch.dart';
 import 'backend_environment.dart';
 import 'commissioning_controller.dart';
 import 'field_journal.dart';
@@ -96,6 +97,22 @@ const diagThrottle = Duration(seconds: 10);
 /// Reports per session per minute above which status events are merged.
 const statusBurstLimit = 20;
 
+/// Round 24: a gateway restart found at most this long after a failure
+/// explains it ([FieldReporter.onGatewayReboot]).
+const rebootAmendWindow = Duration(minutes: 3);
+
+/// Round 24: the codes a gateway restart found afterwards re-classifies as
+/// [RescueCode.gwRebooted] — what a restart looks like from the phone
+/// before it reconnects (the link drops, commands time out or are refused
+/// while the gateway starts, monitoring cannot be confirmed).
+const rebootExplainedCodes = {
+  RescueCode.bleLinkDrop,
+  RescueCode.bleReconnectFail,
+  RescueCode.cmdTimeout,
+  RescueCode.monitorUnconfirmed,
+  RescueCode.gwBusy,
+};
+
 /// Timers of the reporter; injectable in tests.
 class FieldReporterConfig {
   const FieldReporterConfig({
@@ -108,7 +125,13 @@ class FieldReporterConfig {
     this.now,
     this.phoneInfo,
     this.random,
+    this.networkEvents,
   });
+
+  /// Round 24: the phone's network changes ([phoneNetworkEvents] when
+  /// null); a network coming back sends the outbox at once
+  /// ([FieldReporter.onNetworkBack]).
+  final Stream<String> Function()? networkEvents;
 
   final Duration heartbeat, stuckAfter, retryEvery;
 
@@ -328,6 +351,7 @@ Map<String, dynamic> buildSessionReport({
   Map<String, dynamic> phone = const {},
   Map<String, dynamic>? lastCommand,
   Iterable<String> secrets = const [],
+  String? errorMessage,
 }) {
   final s = input.state;
   final step = fieldStep(input);
@@ -349,7 +373,7 @@ Map<String, dynamic> buildSessionReport({
     'busy_label': s.busy ? _cut(s.message, 120) : null,
     'error_code': code?.wire,
     'fail_code': _cut(failure?.code, 48),
-    'error_message': _cut(s.error, 500),
+    'error_message': _cut(errorMessage ?? s.error, 500),
     'progress': fieldProgress(input),
     'last_command': lastCommand,
   };
@@ -498,7 +522,17 @@ class FieldFailure {
     this.safe,
     this.runLabel,
     this.errorText,
+    this.at,
+    this.note,
   });
+
+  /// Round 24: when it was classified.
+  final DateTime? at;
+
+  /// Round 24: the text for the package's `error.message` when no red box
+  /// is on screen any more (the restart notice of [FieldReporter.
+  /// onGatewayReboot]).
+  final String? note;
 
   /// Null: the installer cancelled (rule 27) — nothing to report.
   final RescueCode? code;
@@ -551,7 +585,7 @@ Map<String, dynamic> buildDiagnostics({
       'from_gateway': f?.fromGateway ?? false,
       'http_status': f?.status,
       'endpoint': _cut(f?.endpoint?.split('?').first, 96),
-      'message': _cut(s.error, 500),
+      'message': _cut(s.error ?? failure?.note, 500),
       'detail': _cut(s.errorDetail, 2000),
       'rebooted': failure?.rebooted ?? false,
       'safe_stop': failure?.safe,
@@ -630,6 +664,10 @@ Map<String, dynamic> fitDiagnostics(Map<String, dynamic> d) {
 
 /// 「請唸給後台」 lines of the help sheet (shown whether or not the upload
 /// worked).
+///
+/// Round 24 (field round 24: 「狀況代碼：HELP_ONLY」 on the sheet): the
+/// code is said in words ([RescueCode.label]); [errorCode] (its wire name)
+/// only shows in the sheet's details ([fieldHelpDetailLines]).
 List<String> fieldHelpLines(FieldInput i, {String? errorCode}) {
   final s = i.state;
   final id = fieldIdentity(i);
@@ -648,11 +686,11 @@ List<String> fieldHelpLines(FieldInput i, {String? errorCode}) {
   }
   final step = fieldStep(i);
   lines.add('目前第 $step 步：${stepLabels[step - 1]}');
+  final code = RescueCode.ofWire(errorCode);
   if (s.error != null) {
-    final first = s.error!.split('\n').first;
-    lines.add('錯誤：$first${errorCode == null ? '' : '（$errorCode）'}');
-  } else if (errorCode != null) {
-    lines.add('狀況代碼：$errorCode');
+    lines.add('錯誤：${s.error!.split('\n').first}');
+  } else if (code != null) {
+    lines.add('狀況：${code.label}');
   }
   if (s.peer != null) {
     final fw = id['fw_version'] ?? '未知';
@@ -660,6 +698,13 @@ List<String> fieldHelpLines(FieldInput i, {String? errorCode}) {
   }
   return lines;
 }
+
+/// Round 24: the help sheet's 「詳細資訊」 — the code's wire name for the
+/// back office (read out when the upload did not go through); empty
+/// without one.
+List<String> fieldHelpDetailLines({String? errorCode}) => [
+  if (errorCode != null && errorCode.isNotEmpty) '狀況代碼：$errorCode',
+];
 
 // ---- Session and outbox ----
 
@@ -941,8 +986,20 @@ class FieldReporter {
        _random = config.random ?? _secureRandom(),
        journal = CommandJournal(now: config.now) {
     _loaded = _enabled ? _load() : Future<void>.value();
-    if (_enabled) unawaited(_loadPhone());
+    if (_enabled) {
+      unawaited(_loadPhone());
+      try {
+        _networkSub = (config.networkEvents ?? phoneNetworkEvents)().listen((
+          event,
+        ) {
+          if (isNetworkBackEvent(event)) onNetworkBack();
+        }, onError: (Object _) {});
+      } catch (_) {}
+    }
   }
+
+  /// Round 24: [FieldReporterConfig.networkEvents].
+  StreamSubscription<String>? _networkSub;
 
   final GatewayApi _api;
   final bool _enabled;
@@ -975,6 +1032,9 @@ class FieldReporter {
   final List<DateTime> _recent = [];
   DateTime? _lastDiagAt;
   (String, RescueCode, FieldFailure?)? _pendingDiag;
+
+  /// Round 24: boot_count of the last restart [onGatewayReboot] handled.
+  int? _rebootSeen;
 
   Timer? _heartbeatTimer, _retryTimer, _stuckTimer, _throttleTimer;
   Timer? _diagTimer, _wakeTimer;
@@ -1027,6 +1087,8 @@ class FieldReporter {
     _retryTimer?.cancel();
     _wakeTimer?.cancel();
     _retryTimer = _wakeTimer = null;
+    unawaited(_networkSub?.cancel());
+    _networkSub = null;
   }
 
   FieldInput? _read() {
@@ -1136,6 +1198,7 @@ class FieldReporter {
   void _open(FieldSession session) {
     _session = session;
     _last = null;
+    _rebootSeen = null;
     _lastBusy = false;
     _checkFailed = false;
     _assignFailed = false;
@@ -1343,12 +1406,18 @@ class FieldReporter {
     return false;
   }
 
+  /// [failure] / [message]: the failure and text of a report about a red
+  /// box no longer on screen ([onGatewayReboot]). [remember] false keeps
+  /// [_last] (the next report is decided as if this one was not sent).
   void _report(
     FieldSession session,
     String event,
     FieldInput i, {
     required String status,
     RescueCode? code,
+    GatewayFailure? failure,
+    String? message,
+    bool remember = true,
   }) {
     final now = _now();
     session.seq++;
@@ -1361,13 +1430,14 @@ class FieldReporter {
       input: i,
       status: status,
       code: code,
-      failure: _failureFor(i)?.failure,
+      failure: failure ?? _failureFor(i)?.failure,
       app: _app(i),
       phone: _phone,
       lastCommand: journal.lastCommand(now),
       secrets: journal.secrets,
+      errorMessage: message,
     );
-    _last = _Reported(fieldStep(i), status, code?.wire);
+    if (remember) _last = _Reported(fieldStep(i), status, code?.wire);
     _recent.add(now);
     _saveLive();
     _enqueue(
@@ -1474,6 +1544,7 @@ class FieldReporter {
       safe: safe,
       runLabel: runLabel,
       errorText: i.state.error,
+      at: _now(),
     );
     _failure = record;
     _evaluate();
@@ -1490,8 +1561,66 @@ class FieldReporter {
   void noteErrorCode(RescueCode code) => _guard(() {
     if (!_enabled) return;
     final i = _read();
-    _failure = FieldFailure(code: code, errorText: i?.state.error);
+    _failure = FieldFailure(code: code, errorText: i?.state.error, at: _now());
     onState();
+  });
+
+  /// Round 24 (field round 24: a gateway restart during 「配置」 was
+  /// recorded as BLE_LINK_DROP): the controller found a restart
+  /// (boot_count [to] is higher than before) outside a failure it is
+  /// classifying — usually only once the phone has reconnected, after the
+  /// link drop the restart caused was reported. Adds to the timeline:
+  /// - a failure of [rebootExplainedCodes] classified within
+  ///   [rebootAmendWindow] is re-classified GW_REBOOTED (its red box, if
+  ///   still on screen, reports GW_REBOOTED from now on);
+  /// - an `error` report with error_code GW_REBOOTED (the session's latest
+  ///   code; fail_code stays the failure's own, error_message is [text],
+  ///   the restart notice) and a package with `error.rebooted: true`.
+  /// A restart without such a failure is reported the same way.
+  void onGatewayReboot({required int to, String? text}) => _guard(() {
+    final session = _session;
+    if (!_enabled || session == null || _rebootSeen == to) return;
+    _rebootSeen = to;
+    final i = _read();
+    if (i == null) return;
+    final now = _now();
+    final last = _failure;
+    final at = last?.at;
+    final amend =
+        last != null &&
+        rebootExplainedCodes.contains(last.code) &&
+        at != null &&
+        now.difference(at) <= rebootAmendWindow;
+    final record = FieldFailure(
+      code: RescueCode.gwRebooted,
+      failure: amend ? last.failure : null,
+      rebooted: true,
+      safe: amend ? last.safe : null,
+      runLabel: amend ? last.runLabel : null,
+      errorText: amend ? last.errorText : null,
+      at: amend ? at : now,
+      note: text,
+    );
+    if (amend) _failure = record;
+    final step = fieldStep(i);
+    if (session.step != step) _enterStep(session, step);
+    if (amend && _failureFor(i) != null) {
+      // Its red box is still up: the usual report says GW_REBOOTED now.
+      _evaluate();
+    } else {
+      final cur = _current(i, step);
+      _report(
+        session,
+        'error',
+        i,
+        status: _status(i, cur.help),
+        code: RescueCode.gwRebooted,
+        failure: record.failure,
+        message: text,
+        remember: false,
+      );
+    }
+    _diagnose('error', i, RescueCode.gwRebooted, failure: record);
   });
 
   // ---- timers ----
@@ -1560,6 +1689,24 @@ class FieldReporter {
       _heartbeatTimer?.cancel();
       _heartbeatTimer = null;
     }
+  });
+
+  /// Round 24 (field round 24: a help queued offline reached the backend
+  /// 54.5 s after the network came back — the back-off had grown to 60 s):
+  /// the phone's network is back ([FieldReporterConfig.networkEvents]).
+  /// The back-off is dropped and what is queued goes out at once; the timed
+  /// retry ([FieldReporterConfig.retryEvery]) stays as the fallback. A try
+  /// that still fails (the network is not routable yet) backs off from the
+  /// first step again (5 s), and Android's `validated` event right after
+  /// sends it again.
+  void onNetworkBack() => _guard(() {
+    if (!_enabled || _disposed) return;
+    _backoffUntil = null;
+    _backoffStep = 0;
+    _wakeTimer?.cancel();
+    _wakeTimer = null;
+    if (_items.isEmpty && _early.isEmpty) return;
+    unawaited(flush());
   });
 
   /// Another backend was selected: what was queued for the old one is

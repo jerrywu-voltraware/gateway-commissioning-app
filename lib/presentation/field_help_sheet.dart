@@ -48,6 +48,7 @@ class FieldHelpSheet extends ConsumerWidget {
       ),
       errorCode: help.errorCode,
     );
+    final details = fieldHelpDetailLines(errorCode: help.errorCode);
     final (statusText, statusColor) = switch (help.phase) {
       FieldHelpPhase.sent => ('✓ 已把目前狀況送給後台，打電話時先唸求助碼。', colors.primary),
       FieldHelpPhase.queued => (
@@ -122,7 +123,28 @@ class FieldHelpSheet extends ConsumerWidget {
               padding: const EdgeInsets.only(top: 2),
               child: Text('・$line'),
             ),
-          const SizedBox(height: 12),
+          // Round 24: the code's wire name only here, folded (the lines
+          // above say it in words).
+          if (details.isNotEmpty)
+            Theme(
+              data: theme.copyWith(dividerColor: Colors.transparent),
+              child: ExpansionTile(
+                key: const Key('field-help-details'),
+                tilePadding: EdgeInsets.zero,
+                childrenPadding: const EdgeInsets.only(bottom: 4),
+                expandedAlignment: Alignment.centerLeft,
+                title: Text('詳細資訊', style: theme.textTheme.bodyMedium),
+                children: [
+                  for (final line in details)
+                    SelectableText(
+                      line,
+                      style: TextStyle(color: colors.onSurfaceVariant),
+                    ),
+                ],
+              ),
+            )
+          else
+            const SizedBox(height: 12),
           Row(
             children: [
               Expanded(

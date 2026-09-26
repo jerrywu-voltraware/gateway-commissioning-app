@@ -279,6 +279,13 @@ bool isLinkDrop(Object error) =>
     !error.fromGateway &&
     (error.code == 'disconnected' || error.code == 'not_connected');
 
+/// Round 24: the gateway refused a command because it is busy (after the
+/// automatic retries) or not ready yet — field rescue GW_BUSY; nothing was
+/// changed on the gateway side.
+bool isGatewayBusyFailure(Object error) =>
+    error is GatewayFailure &&
+    (error.code == 'busy' || error.code == 'not_ready');
+
 /// Connect failures worth another attempt: GATT 133 / unknownError
 /// (ble_error), a dropped link, a timeout.
 bool isRetryableConnect(Object error) =>
@@ -447,6 +454,8 @@ String selectionCountText(CommissionState s, int target) {
     return topologyRelistText(s.relistReason, reading: s.busy || s.relinking);
   }
   if (ptuListLoading(s)) return ptuListLoadingText(target);
+  // Round 24: nothing to count after a read refused as busy.
+  if (s.step == 4 && s.ptus.isEmpty && s.ptuListBusy) return ptuListBusyText;
   final rest = configureTargets(s).length;
   final done = s.selected.length - rest;
   if (done == 0 || rest == 0) return '已選 ${s.selected.length} / $target 台';
@@ -468,14 +477,26 @@ String ptuListLoadingText(int target) => '讀取中…（目標 $target 台）';
 /// during the re-read after a topology switch read as nothing found);
 /// after a topology switch whose read has not started,
 /// [ptuCountUnreadText].
+///
+/// Round 24: after a list read refused as busy ([CommissionState.
+/// ptuListBusy]) 「閘道器忙碌，列表暫時無法更新」 — with the kept list's
+/// counts when there is one — never a bare 「0 台」.
 String ptuCountText(CommissionState s) {
   if (s.ptus.isEmpty && (s.step == 4 || s.step == 5)) {
     if (s.busy || s.relinking) return ptuCountReadingText;
     if (s.relistReason.isNotEmpty) return ptuCountUnreadText;
+    if (s.ptuListBusy) return ptuListBusyText;
   }
   final connected = s.ptus.where((p) => p['connected'] == true).length;
-  return '已連線 $connected 台／周邊未連線 ${s.ptus.length - connected} 台';
+  final counts = '已連線 $connected 台／周邊未連線 ${s.ptus.length - connected} 台';
+  if (s.ptuListBusy && s.step == 4 && !s.busy) {
+    return '$ptuListBusyText（下面是上一次的列表：$counts）';
+  }
+  return counts;
 }
+
+/// Round 24: the count lines after a list read refused as busy.
+const ptuListBusyText = '閘道器忙碌，列表暫時無法更新';
 
 /// Round 23: [ptuCountText] while the PTU list is read.
 const ptuCountReadingText = '讀取中…';
@@ -965,7 +986,16 @@ class CommissionState {
     this.relistReason = '',
     this.assignRunning = false,
     this.gatewayReboot,
+    this.ptuListBusy = false,
   });
+
+  /// Round 24 (field round 24: a rescan refused as busy left 「已連線 0 台
+  /// ／周邊未連線 0 台 · 已選 0 / 5 台」, read as nothing found): the last
+  /// step 7 list read was refused because the gateway was busy. The list
+  /// before it is kept ([ptus] may be that list, or empty on a first read)
+  /// and the count lines say the list could not be updated
+  /// ([ptuListBusyText]). Cleared by the next list read.
+  final bool ptuListBusy;
 
   /// The gateway restarted without being asked to (its boot_count went up
   /// between two reads, e.g. across a command timeout or a Bluetooth
@@ -1275,7 +1305,9 @@ class CommissionState {
     String? relistReason,
     bool? assignRunning,
     Object? gatewayReboot = _keep,
+    bool? ptuListBusy,
   }) => CommissionState(
+    ptuListBusy: ptuListBusy ?? this.ptuListBusy,
     gatewayReboot: identical(gatewayReboot, _keep)
         ? this.gatewayReboot
         : gatewayReboot as GatewayReboot?,
@@ -1459,6 +1491,10 @@ class CommissioningController extends Notifier<CommissionState> {
   /// a command that restarts it on purpose ([_expectReboot]). Saved with
   /// the progress, so a restart while the APP was closed is seen as well.
   ({String peer, int count})? _boot;
+
+  /// Round 24: [_run] is classifying a failure (a restart found meanwhile
+  /// is part of it — field rescue rule 1 — not a separate report).
+  bool _classifyingFailure = false;
 
   @override
   CommissionState build() {
@@ -1934,6 +1970,7 @@ class CommissioningController extends Notifier<CommissionState> {
               error.code == 'phone_link_lost')) {
         _stopWatch(UploadWatch.linkLost);
       }
+      _classifyingFailure = true;
       final safe = await _safeStop();
       final failure = error is GatewayFailure
           ? error
@@ -1998,6 +2035,7 @@ class CommissioningController extends Notifier<CommissionState> {
         );
       }
     } finally {
+      _classifyingFailure = false;
       _clock?.cancel();
       if (ref.mounted) {
         // Round 13: the automatic reconnect follows at once — relinking is
@@ -2363,12 +2401,15 @@ class CommissioningController extends Notifier<CommissionState> {
   /// gateway is connected, becomes [CommissionState.remoteIdentifyNote] —
   /// nothing else (step, busy, error, identification) changes. Other
   /// foreign acks are ignored.
+  ///
+  /// Round 24: the note names what blinked — the gateway only, or 「PTU #3」
+  /// found in the list on screen ([remoteIdentifyText]).
   void _onForeignAck(Map<String, dynamic> ack) {
     if (!ref.mounted || state.peer == null) return;
     if (ack['status'] != 'ok' || !isIdentifyAck(ack)) return;
     state = state.copy(
       error: state.error,
-      remoteIdentifyNote: remoteIdentifyText(ack),
+      remoteIdentifyNote: remoteIdentifyText(ack, ptus: state.ptus),
       remoteIdentifyHead: remoteIdentifyHeadText(ack),
       remoteIdentifyPtu: remoteIdentifyPtuText(ack),
       remoteIdentifyCount: state.remoteIdentifyCount + 1,
@@ -3595,6 +3636,16 @@ class CommissioningController extends Notifier<CommissionState> {
       await _releaseTempBind();
       _check(generation);
     }
+    // Round 24: the list on screen, put back when the gateway refuses the
+    // read as busy (nothing changed on the gateway side).
+    final before = (
+      ptus: state.ptus,
+      selected: state.selected,
+      results: state.results,
+      assignStatus: state.assignStatus,
+      missing: state.missing,
+      starNotice: state.starNotice,
+    );
     state = state.copy(
       message: relink ? relinkReloadText : 'Gateway 正在掃描周邊 PTU，請稍候',
       ptus: [],
@@ -3603,12 +3654,32 @@ class CommissioningController extends Notifier<CommissionState> {
       assignStatus: {},
       missing: [],
       starNotice: '',
+      ptuListBusy: false,
     );
-    final response = await _command(generation, 'scan_ble_discover', {
-      'duration': 10,
-    });
-    _check(generation);
-    final connected = await _command(generation, 'get_ble_devices');
+    final Map<String, dynamic> response, connected;
+    try {
+      response = await _command(generation, 'scan_ble_discover', {
+        'duration': 10,
+      });
+      _check(generation);
+      connected = await _command(generation, 'get_ble_devices');
+    } on GatewayFailure catch (error) {
+      if (ref.mounted &&
+          generation == _generation &&
+          isGatewayBusyFailure(error)) {
+        state = state.copy(
+          ptus: before.ptus,
+          selected: before.selected,
+          results: before.results,
+          assignStatus: before.assignStatus,
+          missing: before.missing,
+          starNotice: before.starNotice,
+          ptuListBusy: true,
+          error: state.error,
+        );
+      }
+      rethrow;
+    }
     await _absorbDirect(generation);
     final ptus = mergePtuInventory(
       response['devices'] as List? ?? [],
@@ -5798,17 +5869,20 @@ class CommissioningController extends Notifier<CommissionState> {
     _boot = (peer: key, count: count);
     final shown = state.gatewayReboot;
     if (last != null && last.peer == key && count > last.count) {
-      state = state.copy(
-        gatewayReboot: GatewayReboot(
-          // Not acknowledged yet: one notice counts every restart since.
-          from: shown != null && shown.to == last.count
-              ? shown.from
-              : last.count,
-          to: count,
-          reason: reason,
-        ),
-        error: state.error,
+      final reboot = GatewayReboot(
+        // Not acknowledged yet: one notice counts every restart since.
+        from: shown != null && shown.to == last.count ? shown.from : last.count,
+        to: count,
+        reason: reason,
       );
+      state = state.copy(gatewayReboot: reboot, error: state.error);
+      // Round 24: found after the failure it caused was reported (e.g. the
+      // link drop, seen only on reconnect): re-classified GW_REBOOTED. A
+      // failure being classified right now gets GW_REBOOTED by itself
+      // (§3.1 rule 1).
+      if (!_classifyingFailure) {
+        _field.onGatewayReboot(to: count, text: gatewayRebootText(reboot));
+      }
       return true;
     }
     // get_config told of the restart; get_net_status right after says why.

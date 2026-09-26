@@ -2,6 +2,7 @@ package com.voltraware.gateway_commissioning
 
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 import android.content.Intent
 import android.content.BroadcastReceiver
@@ -12,6 +13,9 @@ import android.os.Handler
 import android.os.Looper
 import android.os.Build
 import android.location.LocationManager
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 
 class MainActivity : FlutterActivity() {
     private var scanReceiver: BroadcastReceiver? = null
@@ -53,8 +57,48 @@ class MainActivity : FlutterActivity() {
             if (!wifi.startScan()) finishScan("throttled")
         } catch (_: SecurityException) { finishScan("permission") }
     }
+    // Round 24: the default network for the field rescue outbox
+    // (lib/data/network_watch.dart): "available", "validated" (once per
+    // network), "lost".
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private fun stopNetworkWatch() {
+        val callback = networkCallback ?: return
+        networkCallback = null
+        try {
+            (getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager)
+                .unregisterNetworkCallback(callback)
+        } catch (_: Exception) {}
+    }
+    private fun startNetworkWatch(events: EventChannel.EventSink) {
+        stopNetworkWatch()
+        val main = Handler(Looper.getMainLooper())
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            private var validated: Network? = null
+            override fun onAvailable(network: Network) {
+                main.post { events.success("available") }
+            }
+            override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
+                if (!caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)) return
+                if (network == validated) return
+                validated = network
+                main.post { events.success("validated") }
+            }
+            override fun onLost(network: Network) {
+                if (network == validated) validated = null
+                main.post { events.success("lost") }
+            }
+        }
+        try {
+            (getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager)
+                .registerDefaultNetworkCallback(callback)
+            networkCallback = callback
+        } catch (e: Exception) {
+            events.error("unavailable", e.message, null)
+        }
+    }
     override fun onDestroy() {
         finishScan("cancelled")
+        stopNetworkWatch()
         super.onDestroy()
     }
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -63,6 +107,15 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 if (call.method == "scan") scanWifi(result) else result.notImplemented()
             }
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, "voltraware/network")
+            .setStreamHandler(object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink) {
+                    startNetworkWatch(events)
+                }
+                override fun onCancel(arguments: Any?) {
+                    stopNetworkWatch()
+                }
+            })
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "voltraware/report")
             .setMethodCallHandler { call, result ->
                 if (call.method != "share") {
