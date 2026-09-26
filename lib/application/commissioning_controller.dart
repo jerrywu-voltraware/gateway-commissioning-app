@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../core/direct_calibration.dart';
 import '../core/direct_mode.dart';
 import '../core/gateway_net.dart';
 import '../core/gateway_topology.dart';
@@ -3604,6 +3605,86 @@ class CommissioningController extends Notifier<CommissionState> {
   Future<void> setDirectMinRssi(int dbm) => _directConfig({
     'auto_connect_min_rssi': dbm.clamp(minDirectRssi, maxDirectRssi),
   });
+
+  /// Round 18 「校正門檻」: this pile's confirmed PTU — the one the
+  /// installer identified (「辨識此樁」 made it blink), else the one
+  /// 「是這台」 assigned, else the gateway's binding; null while none is
+  /// known (the calibration then asks to identify it first).
+  String? get calibrationOwnMac {
+    final identified = state.identifiedMac;
+    if (identified != null) return identified;
+    if (directFlow && state.assignedOk.length == 1) {
+      return state.assignedOk.single;
+    }
+    return gatewayBindMac;
+  }
+
+  /// Round 18 「校正門檻」: reads `get_status.direct` every
+  /// [directCalibrationInterval] for [directCalibrationDuration] and yields
+  /// the samples of [ownMac] (link RSSI) and its neighbours (candidate
+  /// peaks) after each read; the last one is [DirectCalibrationSamples.done].
+  /// Cancelling the subscription stops it. Reads only — nothing is written
+  /// and the page is not marked busy; a failed read is skipped.
+  ///
+  /// Time sampled: the wall clock, or the pauses waited when more (the
+  /// same in the field; under a fake test clock only the pauses advance).
+  Stream<DirectCalibrationSamples> sampleDirectCalibration(
+    String ownMac,
+  ) async* {
+    final samples = DirectCalibrationSamples(ownMac);
+    final clock = Stopwatch()..start();
+    var waited = Duration.zero;
+    while (ref.mounted) {
+      try {
+        samples.add((await _link.command('get_status'))['direct']);
+      } catch (_) {
+        samples.miss();
+      }
+      if (!ref.mounted) return;
+      final elapsed = clock.elapsed > waited ? clock.elapsed : waited;
+      samples.elapsed = elapsed;
+      samples.done = elapsed >= directCalibrationDuration;
+      yield samples;
+      if (samples.done) return;
+      final left = directCalibrationDuration - elapsed;
+      final pause = left < directCalibrationInterval
+          ? left
+          : directCalibrationInterval;
+      await Future<void>.delayed(pause);
+      waited += pause;
+    }
+  }
+
+  /// Round 18 「校正門檻」 → 「寫入閘道器」: sends `auto_connect_min_rssi`
+  /// [dbm] and reads get_config back; true only when the gateway reports
+  /// that value (it keeps it in flash). Otherwise false with the error
+  /// shown (a read-back with another value: `direct_threshold_not_saved`).
+  Future<bool> saveDirectThreshold(int dbm) async {
+    if (state.busy) return false;
+    final wanted = dbm.clamp(minDirectRssi, maxDirectRssi);
+    var saved = false;
+    await _sideTask('正在寫入門檻 $wanted dBm', 20, (generation) async {
+      if (!directAutoConnectSupported(state.config)) {
+        throw const GatewayFailure('direct_unsupported');
+      }
+      await _command(generation, 'set_config', {
+        'auto_connect_min_rssi': wanted,
+      });
+      final config = await _command(generation, 'get_config');
+      state = state.copy(config: {...state.config, ...config});
+      final readBack = config['auto_connect_min_rssi'];
+      if (readBack is! num || readBack.toInt() != wanted) {
+        throw GatewayFailure(
+          'direct_threshold_not_saved',
+          detail: '寫入 $wanted，回讀 ${readBack ?? '（無）'}',
+        );
+      }
+      saved = true;
+      await _absorbDirect(generation);
+      _syncDirectPick();
+    });
+    return saved && ref.mounted && state.error == null;
+  }
 
   /// Direct mode: binds the gateway to the PTU it is connected to now
   /// ([bind] true) or clears the binding (`direct_bind_mac: ""`).

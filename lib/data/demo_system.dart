@@ -31,6 +31,10 @@ class DemoSystem implements GatewayLink, GatewayApi {
   /// Identify requests received (params as sent).
   final identifyRequests = <Map<String, dynamic>>[];
 
+  /// Round 18: firmware 1.7.25's `ptu_confirm` for a PTU identify (`ok`,
+  /// `unsupported_pattern`, `timeout`); null simulates older firmware.
+  String? identifyPtuConfirm;
+
   /// Firmware 1.7.20 direct mode: `max_connections` 1 on a firmware that
   /// picks the PTU itself (cmd_contract.md §3A).
   bool get directMode =>
@@ -315,7 +319,11 @@ class DemoSystem implements GatewayLink, GatewayApi {
         return {
           'duration_ms': 6000,
           'ptu_write': ptuWrite,
-          'ptu_confirmed': false,
+          'ptu_confirmed': ptu != null && identifyPtuConfirm == 'ok',
+          if (ptu != null && identifyPtuConfirm != null) ...{
+            'ptu_confirm': identifyPtuConfirm,
+            'ptu_confirm_ms': identifyPtuConfirm == 'ok' ? 180 : 1500,
+          },
           if (ptu != null) 'mac': ptu['mac'],
           if (ptu != null) 'rssi': ptu['rssi'],
           if (ptu != null) 'device_number': ptu['device_number'],

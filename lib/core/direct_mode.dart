@@ -302,6 +302,41 @@ const identifySentText = '已送出，請看樁上燈號';
 /// Round 16: [identifySentText] as the one-line bottom bar form.
 const identifySentLine = '已送出 · 請看樁上燈號';
 
+/// Round 18: firmware 1.7.25+ says whether the PTU confirmed the blink
+/// (`ptu_confirmed`, `ptu_confirm` ok | unsupported_pattern | timeout,
+/// `ptu_confirm_ms`); older firmware sends neither (`ptu_confirmed` there
+/// is always false): [IdentifyConfirm.legacy], the texts from before.
+enum IdentifyConfirm { confirmed, timeout, unsupportedPattern, legacy }
+
+IdentifyConfirm identifyConfirmOf(Map<String, dynamic> ack) {
+  if (ack['ptu_confirmed'] == true || ack['ptu_confirm'] == 'ok') {
+    return IdentifyConfirm.confirmed;
+  }
+  return switch (ack['ptu_confirm']) {
+    'timeout' => IdentifyConfirm.timeout,
+    'unsupported_pattern' => IdentifyConfirm.unsupportedPattern,
+    _ => IdentifyConfirm.legacy,
+  };
+}
+
+/// Round 18: `ptu_confirmed:true`.
+const identifyConfirmedText = 'PTU 已確認亮燈';
+
+/// Round 18: `ptu_confirm:"timeout"` — the PTU firmware does not answer yet.
+const identifyConfirmTimeoutText = '閘道器已送出；PTU 未回應確認（PTU 韌體尚未支援），請看樁上燈號';
+
+/// Round 18: `ptu_confirm:"unsupported_pattern"`.
+const identifyUnsupportedPatternText = '閘道器已送出；PTU 不支援此燈效，請看樁上燈號';
+
+/// Round 18: the head of the one-line bottom bar form per [IdentifyConfirm].
+String _identifyLineHead(Map<String, dynamic> ack) =>
+    switch (identifyConfirmOf(ack)) {
+      IdentifyConfirm.confirmed => identifyConfirmedText,
+      IdentifyConfirm.timeout => '已送出 · PTU 未回應確認 · 請看樁上燈號',
+      IdentifyConfirm.unsupportedPattern => '已送出 · PTU 不支援此燈效 · 請看樁上燈號',
+      IdentifyConfirm.legacy => identifySentLine,
+    };
+
 /// Round 16: the identify ack in one line for the bottom bar — 「已送出 ·
 /// 請看樁上燈號 · MAC · RSSI」; [identifyNoteText] is the detail.
 /// Round 16b: the full MAC (was 「…後 4 碼」, the same on a whole fleet);
@@ -315,7 +350,7 @@ String identifyLineText(Map<String, dynamic> ack) {
   if (mac == null) return '$identifySentLine · 閘道器雙閃 6 秒';
   final rssi = ack['rssi'];
   return [
-    identifySentLine,
+    _identifyLineHead(ack),
     formatMac(mac),
     if (rssi is num) rssiLabel(rssi),
   ].join(' · ');
@@ -330,7 +365,15 @@ String identifyNoteText(Map<String, dynamic> ack) {
   final mac = ack['mac'];
   if (mac == null) return '$identifySentText（閘道器雙閃 6 秒）';
   final rssi = ack['rssi'];
-  return '$identifySentText（PTU ${formatMac(mac)}${rssi is num ? ' · ${rssiLabel(rssi)}' : ''}）';
+  final ptu =
+      'PTU ${formatMac(mac)}${rssi is num ? ' · ${rssiLabel(rssi)}' : ''}';
+  final head = switch (identifyConfirmOf(ack)) {
+    IdentifyConfirm.confirmed => identifyConfirmedText,
+    IdentifyConfirm.timeout => identifyConfirmTimeoutText,
+    IdentifyConfirm.unsupportedPattern => identifyUnsupportedPatternText,
+    IdentifyConfirm.legacy => identifySentText,
+  };
+  return '$head（$ptu）';
 }
 
 /// Round 17: 「辨識此樁」 while the gateway's link to the PTU it just
@@ -349,22 +392,28 @@ const identifyNoPtuText = '閘道器雙閃 6 秒；閘道器尚未連上 PTU，P
 
 /// identify ack → text for the installer, when the PTU write itself
 /// succeeded (`ptu_write` absent — bare/gateway-only ack — or `"ok"`).
-/// [ptuConfirmed] false means the PTU accepted the write but could not
-/// confirm it blinked.
+/// Older firmware (no `ptu_confirm`): the PTU accepted the write but could
+/// not confirm it blinked. Round 18: firmware 1.7.25+ says so
+/// ([identifyConfirmOf]).
 String identifyAckText(Map<String, dynamic> ack) {
   final mac = ack['mac'];
   if (mac == null) return '請找出雙閃藍燈的閘道器，6 秒後會恢復原本燈號。';
   final rssi = ack['rssi'];
   final number = ack['device_number'];
   final seconds = ((ack['duration_ms'] as num?) ?? 6000) / 1000;
-  final confirmed = ack['ptu_confirmed'] == true;
   final parts = [
     'PTU $mac',
     if (rssi is num) rssiLabel(rssi),
     if (number is num && number > 0) '#$number',
   ];
-  return 'PTU 與閘道器正在閃燈（${confirmed ? 'PTU 已確認閃燈' : 'PTU 燈效需新版 PTU 韌體'}），'
-      '閘道器雙閃 ${seconds.toStringAsFixed(0)} 秒（${parts.join(' · ')}）。';
+  final tail = '閘道器雙閃 ${seconds.toStringAsFixed(0)} 秒（${parts.join(' · ')}）。';
+  return switch (identifyConfirmOf(ack)) {
+    IdentifyConfirm.confirmed => '$identifyConfirmedText；$tail',
+    IdentifyConfirm.timeout => '$identifyConfirmTimeoutText；$tail',
+    IdentifyConfirm.unsupportedPattern =>
+      '$identifyUnsupportedPatternText；$tail',
+    IdentifyConfirm.legacy => 'PTU 與閘道器正在閃燈（PTU 燈效需新版 PTU 韌體），$tail',
+  };
 }
 
 /// identify ack (target both, firmware 1.7.20+) with the gateway LED lit

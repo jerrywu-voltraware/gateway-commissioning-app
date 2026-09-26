@@ -5,8 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../application/commissioning_controller.dart';
 import '../application/topology_settings.dart';
+import '../core/direct_calibration.dart';
 import '../core/direct_mode.dart';
 import '../core/ptu_rssi.dart';
+import 'direct_calibration_sheet.dart';
 
 /// Step 7 (direct mode, firmware 1.7.20+): the PTU the gateway itself
 /// picked — MAC, RSSI and why (`select_reason`). Round 15: no list to tick;
@@ -829,7 +831,8 @@ class _DirectPickActionsState extends ConsumerState<DirectPickActions> {
 
 /// Advanced direct-mode settings (next to the topology menu): the gateway's
 /// auto-connect threshold and binding to the PTU connected now. Each change
-/// is sent with set_config at once.
+/// is sent with set_config at once. Round 18: 「校正門檻」 measures the site
+/// and suggests the threshold ([DirectCalibrationSheet]).
 class DirectSettingsSheet extends ConsumerStatefulWidget {
   const DirectSettingsSheet({super.key});
 
@@ -849,6 +852,7 @@ class _DirectSettingsSheetState extends ConsumerState<DirectSettingsSheet> {
     final value = _dragging ?? saved.toDouble();
     final bound = directBoundMacOf(state.config) ?? state.direct?.boundMac;
     final linkedMac = controller.directConnectedMac;
+    final ownMac = controller.calibrationOwnMac;
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
@@ -880,6 +884,30 @@ class _DirectSettingsSheetState extends ConsumerState<DirectSettingsSheet> {
                     },
             ),
             const Text('閘道器只自動連線訊號強於門檻的 PTU；數值越大（越接近 -20）要越靠近。'),
+            // Round 18: the right threshold depends on the site (piles side
+            // by side, the actual housing): measure it here.
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: OutlinedButton.icon(
+                  key: const Key('direct-calibrate'),
+                  icon: const Icon(Icons.tune, size: 20),
+                  onPressed: state.busy || ownMac == null
+                      ? null
+                      : () => openDirectCalibration(context),
+                  label: Text(
+                    '$calibrationTitle（現場取樣 '
+                    '${directCalibrationDuration.inSeconds} 秒）',
+                  ),
+                ),
+              ),
+            ),
+            if (ownMac == null)
+              Text(
+                calibrationNeedsOwnText,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
             SwitchListTile(
               key: const Key('direct-bind'),
               contentPadding: EdgeInsets.zero,

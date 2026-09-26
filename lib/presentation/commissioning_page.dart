@@ -7,6 +7,7 @@ import '../application/commissioning_controller.dart';
 import '../application/connection_status.dart';
 import '../application/network_check.dart';
 import '../application/topology_settings.dart';
+import '../core/direct_calibration.dart';
 import '../core/direct_mode.dart';
 import '../core/gateway_net.dart';
 import '../core/gateway_topology.dart';
@@ -15,6 +16,7 @@ import '../core/mqtt_target.dart';
 import '../data/contracts.dart';
 import '../data/wifi_scan.dart';
 import 'connection_status_panel.dart';
+import 'direct_calibration_sheet.dart';
 import 'direct_mode_panel.dart';
 import 'environment_switch.dart';
 import 'local_backend_field.dart';
@@ -1861,6 +1863,21 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               key: const Key('direct-bound-note'),
               padding: const EdgeInsets.only(top: 8),
               child: Text(directBoundNote(s)!),
+            ),
+          // Round 18: measure the site and write the threshold back.
+          if (topology.isDirect &&
+              s.peer != null &&
+              directAutoConnectSupported(s.config))
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: OutlinedButton.icon(
+                key: const Key('done-calibrate'),
+                icon: const Icon(Icons.tune, size: 20),
+                onPressed: enabled && c.calibrationOwnMac != null
+                    ? () => openDirectCalibration(context)
+                    : null,
+                label: const Text(calibrationTitle),
+              ),
             ),
           // After a switch of environment: log in there to check the data.
           if (!s.loggedIn) ...[
