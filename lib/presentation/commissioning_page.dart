@@ -1181,7 +1181,12 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         builder: (context) => AlertDialog(
           key: const Key('end-confirm'),
           title: const Text(endFlowConfirmTitle),
-          content: Text(endFlowConfirmText(s.assignedOk.length)),
+          content: Text(
+            endFlowConfirmText(
+              s.assignedOk.length,
+              restoresBind: endFlowRestoresBind(s),
+            ),
+          ),
           actions: [
             TextButton(
               key: const Key('end-confirm-continue'),

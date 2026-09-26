@@ -202,6 +202,10 @@ String withFirstFailure(String detail, Object link) {
 /// Shown while the phone re-opens the BLE link to the gateway.
 const reconnectingText = '正在重新連線閘道器';
 
+/// Step 2 busy text once the BLE link is up and the gateway's first replies
+/// (ping, get_config, get_net_status, get_ble_devices) are being read.
+const linkConfirmingText = '藍牙已連線，正在確認閘道器回應與設定…';
+
 /// Round 10: step 2 connect and reconnects keep retrying 133 / disconnected
 /// for this long before showing the error.
 Duration connectPersistence = const Duration(seconds: 60);
@@ -211,6 +215,12 @@ Duration connectRetryGap = const Duration(milliseconds: 1500);
 
 /// Busy text of the n-th connect attempt (n >= 2).
 String connectingAttemptText(int attempt) => '連線中（第 $attempt 次）';
+
+/// Round 18: the phone↔gateway link itself is gone (not a gateway reply).
+bool isLinkDrop(Object error) =>
+    error is GatewayFailure &&
+    !error.fromGateway &&
+    (error.code == 'disconnected' || error.code == 'not_connected');
 
 /// Connect failures worth another attempt: GATT 133 / unknownError
 /// (ble_error), a dropped link, a timeout.
@@ -458,8 +468,28 @@ const directFreshWindowText = '閘道器正在重新收集附近的 PTU，請稍
 const endFlowConfirmTitle = '結束目前配置？';
 
 /// Body of the [endFlowConfirmTitle] dialog; [done] = PTUs configured.
-String endFlowConfirmText(int done) =>
-    done > 0 ? '已完成的 $done 台會保留在閘道器。' : '目前尚未完成任何 PTU；閘道器維持現有設定。';
+///
+/// Round 18: [restoresBind] ([endFlowRestoresBind]) — 結束 puts the binding
+/// from before 「不是這台？」 back (field round 18: the text said the gateway
+/// keeps its settings while 結束 sent set_config direct_bind_mac).
+String endFlowConfirmText(int done, {bool restoresBind = false}) {
+  if (restoresBind) {
+    return done > 0
+        ? '結束後會把閘道器的 PTU 綁定還原為改選前的狀態；已完成的 $done 台保留。'
+        : '結束後會把閘道器的 PTU 綁定還原為改選前的狀態；目前尚未完成任何 PTU。';
+  }
+  return done > 0 ? '已完成的 $done 台會保留在閘道器。' : '目前尚未完成任何 PTU。';
+}
+
+/// Round 18: 結束 now would undo a temporary 「不是這台？」 binding
+/// (the same test as `_releaseTempBind`: switched back to the binding from
+/// before leaves nothing to undo).
+bool endFlowRestoresBind(CommissionState s) {
+  final temp = s.tempBoundMac;
+  if (temp == null) return false;
+  final restore = s.tempRestoreMac;
+  return restore == null || !sameMac(restore, temp);
+}
 
 /// Round 15: done page / install report line when the direct-mode gateway
 /// is bound to a PTU MAC (「確認後綁定 PTU」, or kept from 「不是這台？」).
@@ -1967,7 +1997,10 @@ class CommissioningController extends Notifier<CommissionState> {
     }
     try {
       return await _command(generation, 'get_net_status');
-    } catch (_) {
+    } catch (error) {
+      // Round 18: a dropped link is not "cannot answer": the persistent
+      // connect ([_connect]) reconnects and reads it again.
+      if (isLinkDrop(error)) rethrow;
       _check(generation);
       return null;
     }
@@ -1996,37 +2029,58 @@ class CommissioningController extends Notifier<CommissionState> {
     // Stage text (清除舊連線／正在連線／第 n 次重試) on the first connect too,
     // not only on a relink (round 7b saw none here).
     // Round 10: 133 / disconnected is retried until [connectPersistence].
-    await _persistentLink(generation, peer, () async {
-      state = state.copy(message: '藍牙已連線，正在確認閘道器回應與設定…');
-      for (int attempt = 0; ; attempt++) {
-        try {
-          await _command(generation, 'ping');
-          break;
-        } catch (error) {
-          // A dropped link is not answered by more pings: reconnect.
-          if (error is GatewayFailure && error.code == 'disconnected') {
-            rethrow;
-          }
-          if (attempt == 4) rethrow;
-          await _wait(3, generation);
-        }
-      }
-    });
-    final config = await _command(generation, 'get_config');
-    _check(generation);
+    // Round 18: the reads right after the link came up (get_config,
+    // get_net_status, get_ble_devices) are part of that persistent connect
+    // (field round 18: the link dropped 5 s after connecting, right after
+    // the get_config ACK, and step 2 stopped until the gateway was picked
+    // again). A reconnect shows 「連線中（第 n 次）」 and reads them again.
+    late Map<String, dynamic> config;
+    Map<String, dynamic>? net;
+    List<Map<String, dynamic>> devices = const [];
     try {
-      await RecentGateways.remember(_link.demo, peer, config['gateway_uid']);
+      await _persistentLink(generation, peer, () async {
+        state = state.copy(message: linkConfirmingText);
+        for (int attempt = 0; ; attempt++) {
+          try {
+            await _command(generation, 'ping');
+            break;
+          } catch (error) {
+            // A dropped link is not answered by more pings: reconnect.
+            if (isLinkDrop(error)) rethrow;
+            if (attempt == 4) rethrow;
+            await _wait(3, generation);
+          }
+        }
+        config = await _command(generation, 'get_config');
+        _check(generation);
+        try {
+          await RecentGateways.remember(
+            _link.demo,
+            peer,
+            config['gateway_uid'],
+          );
+        } catch (_) {
+          /* Recents must not block a successful BLE connection. */
+        }
+        _check(generation);
+        // 網路體檢: the gateway's own Wi-Fi and upload state.
+        net = await _readNet(generation, config);
+        if (config['fleet_joined'] == true) {
+          final existing = await _command(generation, 'get_ble_devices');
+          devices = (existing['devices'] as List? ?? [])
+              .map((d) => Map<String, dynamic>.from(d as Map))
+              .toList();
+        }
+      });
     } catch (_) {
-      /* Recents must not block a successful BLE connection. */
+      // Round 18: 「藍牙已連線，正在確認…」 (or 「連線中（第 n 次）」) must not
+      // stay beside the error once the connect has given up.
+      if (ref.mounted && generation == _generation) {
+        state = state.copy(message: '', error: state.error);
+      }
+      rethrow;
     }
-    _check(generation);
-    // 網路體檢: the gateway's own Wi-Fi and upload state.
-    final net = await _readNet(generation, config);
     if (config['fleet_joined'] == true) {
-      final existing = await _command(generation, 'get_ble_devices');
-      final devices = (existing['devices'] as List? ?? [])
-          .map((d) => Map<String, dynamic>.from(d as Map))
-          .toList();
       state = state.copy(
         step: 2,
         peer: peer,

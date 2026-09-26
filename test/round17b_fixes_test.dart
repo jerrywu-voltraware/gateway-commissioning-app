@@ -445,7 +445,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('end-confirm')), findsOneWidget);
       expect(find.text(endFlowConfirmTitle), findsOneWidget);
-      expect(find.text(endFlowConfirmText(0)), findsOneWidget);
+      expect(
+        find.text(endFlowConfirmText(0, restoresBind: true)),
+        findsOneWidget,
+      );
       await tester.tap(find.byKey(const Key('end-confirm-continue')));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('end-confirm')), findsNothing);
