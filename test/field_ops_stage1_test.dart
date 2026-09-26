@@ -332,13 +332,14 @@ void main() {
 
   group('Wi-Fi failure in three causes', () {
     test('IDF 5.4.1 wifi_err_reason_t values sort into the three causes', () {
-      for (final r in [2, 14, 15, 23, 202, 204]) {
+      for (final r in [14, 15, 23, 202, 204]) {
         expect(wifiFailKindOf(r), WifiFailKind.password, reason: '$r');
       }
       for (final r in [201, 210, 211]) {
         expect(wifiFailKindOf(r), WifiFailKind.notFound, reason: '$r');
       }
-      for (final r in [1, 39, 200, 203, 205, 212]) {
+      // AUTH_EXPIRE 2 is not a wrong password (firmware review).
+      for (final r in [1, 2, 39, 200, 203, 205, 212]) {
         expect(wifiFailKindOf(r), WifiFailKind.weakOrOther, reason: '$r');
       }
       expect(wifiFailKindOf(null), isNull);
