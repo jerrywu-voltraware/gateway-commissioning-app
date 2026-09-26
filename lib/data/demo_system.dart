@@ -44,6 +44,19 @@ class DemoSystem implements GatewayLink, GatewayApi {
   /// `select_reason` of the latest simulated collection window.
   String directReason = '';
 
+  /// Round 19: firmware 1.7.27's `self_adv_rssi_med` / `self_adv_age_s`
+  /// and `neighbors[]` in the direct report (false: older firmware).
+  bool directNeighborsReport = false;
+
+  /// Round 19: `self_adv_rssi_med` = the connected PTU's rssi + this (null:
+  /// not heard, reported as null).
+  int? selfAdvOffset = 0;
+
+  /// Round 19: every neighbour's `samples` / `age_s` (MAC → value;
+  /// default 8 readings, heard 2 s ago).
+  final neighborSamples = <String, int>{};
+  final neighborAges = <String, num>{};
+
   /// Round 17: get_status reads left that report `scanning` (no pick)
   /// after a `disconnect_device` — the new collection window is still
   /// open (firmware: CLOSE_EVT resumes the scan, the window takes ≥ 3 s).
@@ -147,6 +160,25 @@ class DemoSystem implements GatewayLink, GatewayApi {
       if (linked != null) 'ptu_mac': linked['mac'],
       if (linked != null) 'ptu_rssi': linked['rssi'],
       if (linked != null) 'ptu_device_number': linked['device_number'],
+      if (directNeighborsReport) ...{
+        'self_adv_rssi_med': linked == null || selfAdvOffset == null
+            ? null
+            : (linked['rssi'] as num) + selfAdvOffset!,
+        'self_adv_age_s': linked == null ? null : 1,
+        'neighbors': [
+          if (linked != null)
+            for (final d in candidates)
+              if (d != linked)
+                {
+                  'mac': d['mac'],
+                  'rssi_peak': d['rssi'],
+                  'rssi_last': (d['rssi'] as num) - 2,
+                  'rssi_med': (d['rssi'] as num) - 3,
+                  'samples': neighborSamples[d['mac']] ?? 8,
+                  'age_s': neighborAges[d['mac']] ?? 2,
+                },
+        ],
+      },
       'candidates': [
         for (final d in candidates.take(5))
           {

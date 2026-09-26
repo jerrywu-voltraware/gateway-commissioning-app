@@ -17,11 +17,13 @@ Future<void> openDirectCalibration(BuildContext context) =>
 
 /// Round 18 「校正門檻」 (direct mode): samples the gateway for
 /// [directCalibrationDuration] as soon as it opens — this pile's confirmed
-/// PTU (median and weakest link RSSI) against the strongest neighbour —
-/// then suggests a threshold ([suggestDirectThreshold]). 「寫入閘道器」
-/// sends it and reads it back; 「取消」 (or closing the sheet) writes
-/// nothing. Signals too close for any threshold: a yellow warning and no
-/// suggestion.
+/// PTU (link RSSI; round 19: also its advertising median, firmware
+/// 1.7.27) against the strongest neighbour's peak — then suggests a
+/// threshold ([suggestDirectThreshold]). 「寫入閘道器」 sends it and reads
+/// it back; 「取消」 (or closing the sheet) writes nothing. Signals too
+/// close for any threshold: a yellow warning and no suggestion. Round 19:
+/// 「參考值（閘道器韌體較舊）」 without firmware 1.7.27's fields; stale
+/// neighbours are left out and 「重新取樣」 reads 「重新掃描鄰近」.
 class DirectCalibrationSheet extends ConsumerStatefulWidget {
   const DirectCalibrationSheet({super.key});
 
@@ -109,6 +111,17 @@ class _DirectCalibrationSheetState
     final elapsed = samples?.elapsed.inMilliseconds ?? 0;
     final progress = total <= 0 ? 1.0 : (elapsed / total).clamp(0.0, 1.0);
     final left = ((total - elapsed) / 1000).ceil().clamp(0, seconds);
+    final neighborMac = samples?.strongestNeighborMac;
+    // Round 19: what the figures are built on; a reference value unless the
+    // firmware reports everything its rules use (1.7.27).
+    final basis = (samples?.reads ?? 0) == 0 ? null : samples!.basis;
+    final reference =
+        done &&
+            suggestion != null &&
+            suggestion.verdict != DirectThresholdVerdict.noOwnSignal
+        ? basis?.referenceText
+        : null;
+    const bold = TextStyle(fontWeight: FontWeight.w600);
 
     Widget figure(String label, String value, Key key) => Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
@@ -166,27 +179,88 @@ class _DirectCalibrationSheetState
               ),
               const SizedBox(height: 8),
               figure(
-                '本樁 PTU 訊號',
-                suggestion?.ownWeakest == null
+                '本樁連線訊號',
+                suggestion?.ownLinkWeakest == null
                     ? '尚未讀到'
-                    : '中位數 ${suggestion!.ownMedian} dBm · '
-                          '最弱 ${suggestion.ownWeakest} dBm'
-                          '（${suggestion.ownCount} 筆）',
+                    : '中位數 ${dbm(suggestion!.ownLinkMedian!)} · '
+                          '最弱 ${dbm(suggestion.ownLinkWeakest!)}'
+                          '（${suggestion.ownLinkCount} 筆）',
                 const Key('calibration-own'),
               ),
-              figure(
-                '最強鄰近訊號',
-                suggestion?.neighborStrongest == null
-                    ? '未聽到鄰近 PTU'
-                    : '${suggestion!.neighborStrongest} dBm'
-                          '（${formatMac(samples!.strongestNeighborMac)}）',
-                const Key('calibration-neighbor'),
+              // Round 19: firmware 1.7.27's advertising median (the gateway
+              // picks by advertising).
+              figure('本樁廣播訊號', switch (basis) {
+                null => '尚未讀到',
+                CalibrationBasis.legacy => '閘道器韌體較舊，未回報',
+                CalibrationBasis.noOwnAdvertising => '閘道器未回報',
+                CalibrationBasis.current =>
+                  '中位數 ${dbm(samples!.ownAdvertising!)}',
+              }, const Key('calibration-own-adv')),
+              // Round 19: the value on one line, the MAC on its own (field
+              // round 19: 「）」 wrapped onto a line of its own).
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(width: 104, child: Text('最強鄰近訊號')),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            neighborMac == null
+                                ? '未聽到鄰近 PTU'
+                                : '峰值 ${dbm(suggestion!.neighborStrongest!)}',
+                            key: const Key('calibration-neighbor'),
+                            style: bold,
+                          ),
+                          if (neighborMac != null)
+                            MacText(
+                              neighborMac,
+                              key: const Key('calibration-neighbor-mac'),
+                              others: [own, ...samples!.neighborMacs],
+                              style: bold,
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
               Text(
-                '鄰近訊號取自閘道器最近一次選台聽到的其他 PTU（峰值）。',
+                basis == CalibrationBasis.legacy
+                    ? '鄰近訊號取自閘道器最近一次選台聽到的其他 PTU（峰值），'
+                          '連線後不再更新。'
+                    : '鄰近訊號為閘道器連線中持續聽到的其他 PTU（峰值；'
+                          '$calibrationNeighborMaxAge 秒內、'
+                          '至少 $calibrationMinNeighborSamples 筆才列入）。',
                 style: text.bodySmall?.copyWith(color: colors.onSurfaceVariant),
               ),
+              if (samples?.staleNeighborAge case final age?)
+                Text(
+                  calibrationStaleText(age),
+                  key: const Key('calibration-stale'),
+                  style: text.bodySmall?.copyWith(color: warnFg),
+                ),
+              if ((samples?.fewSampleNeighbors ?? 0) > 0)
+                Text(
+                  calibrationFewSamplesText(samples!.fewSampleNeighbors),
+                  key: const Key('calibration-few-samples'),
+                  style: text.bodySmall?.copyWith(
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
               const SizedBox(height: 8),
+              if (reference != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(
+                    reference,
+                    key: const Key('calibration-reference'),
+                    style: text.labelLarge?.copyWith(color: warnFg),
+                  ),
+                ),
               if (done &&
                   suggestion!.verdict == DirectThresholdVerdict.tooClose)
                 Container(
@@ -207,9 +281,9 @@ class _DirectCalibrationSheetState
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
-                          '$calibrationTooCloseText'
-                          '（本樁最弱與鄰近最強相差 ${suggestion.gap} dB，'
-                          '至少需 $calibrationMinGap dB）',
+                          // Round 19: in the installer's words (was 「相差
+                          // -2 dB，至少需 9 dB」).
+                          '${calibrationGapText(suggestion.gap!, distinguishingMacSegment(neighborMac, [own, ...samples!.neighborMacs]))}。$calibrationTooCloseText。',
                           style: TextStyle(color: warnFg),
                         ),
                       ),
@@ -229,8 +303,25 @@ class _DirectCalibrationSheetState
                   key: const Key('calibration-suggestion'),
                   style: text.titleMedium,
                 ),
-                if (suggestion!.verdict == DirectThresholdVerdict.noNeighbors)
+                if (suggestion!.lower != null)
+                  Text(
+                    '可用範圍 ${dbm(suggestion.lower!)} ～ '
+                    '${dbm(suggestion.upper!)}：本樁選得到、連上後不會被踢，'
+                    '本樁關機時也不會連到鄰近樁。',
+                    key: const Key('calibration-range'),
+                    style: text.bodySmall,
+                  ),
+                if (suggestion.verdict == DirectThresholdVerdict.noNeighbors)
                   Text(calibrationNoNeighborText, style: text.bodySmall),
+                if (suggestion.mayBeAmbiguous)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      calibrationAmbiguousText,
+                      key: const Key('calibration-ambiguous'),
+                      style: text.bodySmall?.copyWith(color: warnFg),
+                    ),
+                  ),
               ],
               if (_saved != null)
                 Padding(
@@ -282,7 +373,11 @@ class _DirectCalibrationSheetState
                   onPressed: own != null && done && !_saving
                       ? () => setState(_start)
                       : null,
-                  label: const Text('重新取樣'),
+                  label: Text(
+                    samples?.staleNeighborAge != null
+                        ? calibrationRescanLabel
+                        : '重新取樣',
+                  ),
                 ),
                 const Spacer(),
                 TextButton(

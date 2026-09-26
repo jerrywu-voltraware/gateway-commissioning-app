@@ -47,6 +47,30 @@ class DirectCandidate {
       rssiPeak == null || rssiPeak! >= 0 ? 'RSSI —' : '峰值 $rssiPeak dBm';
 }
 
+/// Round 19 (firmware 1.7.27): another PTU the gateway hears while it is
+/// connected in direct mode (`direct.neighbors[]`, background scan; the
+/// table drops a PTU not heard for 60 s): its advertising peak / latest /
+/// median over [samples] readings, last heard [ageS] seconds ago. The
+/// calibration uses the peak (the gateway picks by peak).
+class DirectNeighbor {
+  const DirectNeighbor(
+    this.mac, {
+    this.rssiMed,
+    this.samples,
+    this.rssiPeak,
+    this.rssiLast,
+    this.ageS,
+  });
+  final String mac;
+  final int? rssiMed;
+  final int? samples;
+  final int? rssiPeak;
+  final int? rssiLast;
+
+  /// Seconds since the gateway last heard it.
+  final num? ageS;
+}
+
 /// Round 17: a gateway RSSI as the direct flow shows it — 「-48 dBm」, or
 /// 「RSSI —」 for none / 0 (field round 17: 「0 dBm」 right after a connect,
 /// before the gateway had read the link's RSSI).
@@ -101,6 +125,10 @@ class DirectStatus {
     this.ptuRssi,
     this.ptuDeviceNumber,
     this.candidates = const [],
+    this.selfAdvReported = false,
+    this.selfAdvRssiMed,
+    this.selfAdvAgeS,
+    this.neighbors,
   });
   final DirectState state;
   final int? minRssi;
@@ -120,6 +148,18 @@ class DirectStatus {
 
   /// At most 5, as the firmware sends them (strongest first).
   final List<DirectCandidate> candidates;
+
+  /// Round 19 (firmware 1.7.27): `self_adv_rssi_med` was in the report
+  /// (null or not) — the firmware can report this pile's advertising
+  /// median; [selfAdvRssiMed] is it (null: not heard), [selfAdvAgeS] its
+  /// age in seconds.
+  final bool selfAdvReported;
+  final int? selfAdvRssiMed;
+  final num? selfAdvAgeS;
+
+  /// Round 19 (firmware 1.7.27): `neighbors[]`; null when the report has
+  /// no such list (older firmware).
+  final List<DirectNeighbor>? neighbors;
 
   /// The gateway's own pick: connected and naming the PTU.
   String? get pickedMac =>
@@ -154,7 +194,9 @@ class DirectStatus {
     final state = DirectState.parse(source['state']);
     if (state == null) return null;
     final rows = source['candidates'];
+    final near = source['neighbors'];
     final ptuMac = source['ptu_mac'];
+    int? whole(Object? value) => value is num ? value.toInt() : null;
     return DirectStatus(
       state: state,
       minRssi: (source['min_rssi'] as num?)?.toInt(),
@@ -171,10 +213,29 @@ class DirectStatus {
             if (row['mac'] != null)
               DirectCandidate(
                 row['mac'].toString(),
-                (row['rssi_peak'] as num?)?.toInt(),
-                (row['device_number'] as num?)?.toInt(),
+                whole(row['rssi_peak']),
+                whole(row['device_number']),
               ),
       ],
+      selfAdvReported: source.containsKey('self_adv_rssi_med'),
+      selfAdvRssiMed: whole(source['self_adv_rssi_med']),
+      selfAdvAgeS: source['self_adv_age_s'] is num
+          ? source['self_adv_age_s'] as num
+          : null,
+      neighbors: near is! List
+          ? null
+          : [
+              for (final row in near.whereType<Map>())
+                if (row['mac'] != null)
+                  DirectNeighbor(
+                    row['mac'].toString(),
+                    rssiMed: whole(row['rssi_med']),
+                    samples: whole(row['samples']),
+                    rssiPeak: whole(row['rssi_peak']),
+                    rssiLast: whole(row['rssi_last']),
+                    ageS: row['age_s'] is num ? row['age_s'] as num : null,
+                  ),
+            ],
     );
   }
 }
