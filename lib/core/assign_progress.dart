@@ -93,17 +93,51 @@ String assignStatusText(
 
 /// The whole run in one line: 「3/5 完成，1 台自動重試中」 (plus 「n 台
 /// 失敗需處理」); null without an assignment to report.
-String? assignProgressText(Map<String, AssignStatus> statuses) {
+///
+/// Round 22 (field round 22: the retrying row was often below the fold and
+/// 「1 台自動重試中」 did not say which): with [name] (MAC → the PTU as its
+/// row shows it) the retrying PTUs are named — 「4/5 完成，PTU #5 自動重試中
+/// （1/2）」, 「3/5 完成，PTU #4、PTU …74… 自動重試中」, from three on
+/// 「PTU #1、PTU #2 等 3 台自動重試中」.
+String? assignProgressText(
+  Map<String, AssignStatus> statuses, {
+  String Function(String mac)? name,
+}) {
   if (statuses.isEmpty) return null;
   final all = statuses.values;
   final done = all.where((s) => s.phase == AssignPhase.done).length;
-  final retrying = all.where((s) => s.retrying).length;
+  final retrying = [
+    for (final e in statuses.entries)
+      if (e.value.retrying) e,
+  ];
   final failed = all.where((s) => s.phase == AssignPhase.failed).length;
   return [
     '$done/${statuses.length} 完成',
-    if (retrying > 0) '$retrying 台自動重試中',
+    if (retrying.isNotEmpty)
+      name == null
+          ? '${retrying.length} 台自動重試中'
+          : _retryingNamed(retrying, name),
     if (failed > 0) '$failed 台失敗需處理',
   ].join('，');
+}
+
+String _retryingNamed(
+  List<MapEntry<String, AssignStatus>> retrying,
+  String Function(String mac) name,
+) {
+  if (retrying.length == 1) {
+    final status = retrying.single.value;
+    // A busy gateway is sent again without counting a retry (its row says
+    // 「閘道器忙碌，稍後重試」).
+    final count = status.phase != AssignPhase.busy && status.retries > 0
+        ? '（${status.retry}/${status.retries}）'
+        : '';
+    return '${name(retrying.single.key)} 自動重試中$count';
+  }
+  final names = retrying.take(2).map((e) => name(e.key)).join('、');
+  return retrying.length == 2
+      ? '$names 自動重試中'
+      : '$names 等 ${retrying.length} 台自動重試中';
 }
 
 /// Done share of [statuses] for a progress bar (0 when empty).

@@ -745,7 +745,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                   final t = GatewayTopology.values.firstWhere(
                     (t) => t.name == value.substring('topology:'.length),
                   );
-                  ref.read(topologyProvider.notifier).setTopology(t);
+                  // Round 22: at step 7 the old mode's list is dropped and
+                  // read again (field: direct → star kept 「配置 1 台」).
+                  controller.switchTopology(t);
                 } else if (value == 'starcount') {
                   _pickStarCount();
                 } else if (value == 'direct:settings') {
@@ -1651,7 +1653,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             ),
           // Round 21: the assignment run in one line above the rows.
           if (!directStep7 && (s.step == 5 || s.assignStatus.isNotEmpty))
-            if (assignProgressText(s.assignStatus) case final progress?)
+            if (assignProgressLine(s) case final progress?)
               AssignProgressHeader(
                 text: progress,
                 value: assignProgressValue(s.assignStatus),
@@ -1667,7 +1669,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               label: Text(
                 s.relinking && s.relinkStage == RelinkStage.reloading
                     ? relinkReloadText
-                    : s.relinking
+                    : relinkShown(s)
                     ? autoRelinkingText
                     : s.uploadWatch == UploadWatch.linkLost || s.resumePending
                     ? rescanAfterLossLabel
@@ -1688,6 +1690,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           if (topology.isDirect &&
               !c.directFlow &&
               s.ptus.isEmpty &&
+              s.relistReason.isEmpty &&
               !s.busy &&
               s.error == null)
             Padding(

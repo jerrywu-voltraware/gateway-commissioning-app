@@ -130,6 +130,8 @@ String wifiProblemHint(CommissionState state) {
 /// so instead of asking for a tap; afterwards it names the button actually
 /// shown (steps 7 / 8).
 String linkLostHint(CommissionState state) {
+  // Round 22: back already (the list is read again) — not 「已中斷」 any more.
+  if (relinkBack(state)) return '手機已重新連上 Gateway，$relinkReloadText';
   if (state.relinking) return '手機和 Gateway 的藍牙已中斷，$autoRelinkingText';
   final action = switch (state.step) {
     4 when !state.resumePending => '請按「$rescanAfterLossLabel」。',
@@ -302,7 +304,11 @@ ConnectionStatus connectionStatus({
   if (need == SyncNeed.invalid) hint = app.error;
   if (state.uploadWatch == UploadWatch.linkLost) {
     if (!noWifi) {
-      gateway = StatusRow(gateway.where, '？ 藍牙已中斷，上傳狀態待確認', StatusTone.warn);
+      gateway = StatusRow(
+        gateway.where,
+        relinkBack(state) ? '？ 上傳狀態待確認' : '？ 藍牙已中斷，上傳狀態待確認',
+        StatusTone.warn,
+      );
     }
     hint = wifi == WifiVerdict.failed || wifi == WifiVerdict.notConfigured
         ? wifiProblemHint(state)

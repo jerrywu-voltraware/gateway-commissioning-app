@@ -404,7 +404,12 @@ void main() {
         expect(screen.contains(rect.topLeft), isTrue);
         expect(rect.bottom, lessThanOrEqualTo(bar.top));
       }
-      expect(_plain(_text(tester, 'assign-progress-text')), '3/5 完成，1 台自動重試中');
+      // Round 22: the retrying PTU by its row (unnumbered: its MAC bytes).
+      final retrying = fake.order[3];
+      expect(
+        _plain(_text(tester, 'assign-progress-text')),
+        '3/5 完成，PTU …${retrying.substring(retrying.length - 2)} 自動重試中（1/2）',
+      );
       expect(_plain(_text(tester, 'assign-progress-hint')), assignAutoHint);
       expect(
         tester.getRect(header).bottom,

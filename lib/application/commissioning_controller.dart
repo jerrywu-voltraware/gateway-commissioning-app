@@ -348,7 +348,10 @@ String configureLabel(CommissionState s) {
   if (s.relinking && s.relinkStage == RelinkStage.reloading) {
     return relistingLabel;
   }
-  if (s.relinking ||
+  // Round 22: once step 8 assigns again ([RelinkStage.resumed]) the button
+  // is the run's own (field round 22: 「重新連線中…」 stayed while progress
+  // went 2/5 → 5/5).
+  if (relinkShown(s) ||
       (s.busy &&
           ((s.step == 4 && _step7Lost(s)) ||
               ((s.step == 4 || s.step == 5) && s.resumePending)))) {
@@ -358,6 +361,11 @@ String configureLabel(CommissionState s) {
   // Phone link lost: the button reconnects first (same as the banner).
   if (s.resumePending) {
     return rest == 0 ? '重新連線並繼續' : '重新連線並繼續（剩 $rest 台）';
+  }
+  // Round 22: after a topology switch at step 7 the old mode's list is gone
+  // — nothing to configure until the list is read again.
+  if (s.relistReason.isNotEmpty && s.step == 4) {
+    return s.busy ? relistingLabel : rescanLabel;
   }
   // Round 15: a step 7 scan that failed, timed out or found nothing is
   // over — 「重新掃描」, never a stuck 「掃描中…」.
@@ -379,11 +387,37 @@ String configureLabel(CommissionState s) {
 /// 將配置 1 台」 (field round 16: 「已選 5 / 5 台」 beside 「配置 1 台並開始
 /// 監控」 read as a mismatch).
 String selectionCountText(CommissionState s, int target) {
+  // Round 22: while the list is read there is nothing to count (field
+  // round 22: 「已選 0 / 5 台」 flashed during 「重新讀取 PTU 列表…」).
+  if (s.relistReason.isNotEmpty && s.step == 4) {
+    return topologyRelistText(s.relistReason, reading: s.busy || s.relinking);
+  }
+  if (ptuListLoading(s)) return ptuListLoadingText(target);
   final rest = configureTargets(s).length;
   final done = s.selected.length - rest;
   if (done == 0 || rest == 0) return '已選 ${s.selected.length} / $target 台';
   return '已選 ${s.selected.length} 台 · 已完成 $done 台 · 將配置 $rest 台';
 }
+
+/// Round 22: step 7 while the PTU list is (re)read — the list is empty
+/// until the gateway answers ([selectionCountText] says so instead of
+/// 「已選 0 / 5 台」).
+bool ptuListLoading(CommissionState s) =>
+    s.step == 4 && s.ptus.isEmpty && (s.busy || s.relinking);
+
+/// Round 22: the count line while [ptuListLoading].
+String ptuListLoadingText(int target) => '讀取中…（目標 $target 台）';
+
+/// Round 22: the count line after a topology switch at step 7
+/// ([CommissionState.relistReason], e.g. 「已切換為星狀模式」): the old
+/// mode's list is dropped and read again ([reading]); until a read starts
+/// (a switch while a step ran) it only says the list needs reading.
+String topologyRelistText(String reason, {required bool reading}) =>
+    reading ? '$reason，重新讀取 PTU 列表…' : '$reason，PTU 列表需重新讀取';
+
+/// Round 22: [CommissionState.relistReason] for a switch to [topology].
+String topologySwitchedText(GatewayTopology topology) =>
+    '已切換為${topology.shortLabel}';
 
 /// Step 7 bottom button while a scan is still running.
 const scanningLabel = '掃描中…';
@@ -418,6 +452,18 @@ const relinkReconnectText = '手機與閘道器重新連線中…';
 /// Round 21: bottom bar status once reconnected, while the list is read
 /// again (field round 21: the list came 20 s after the reconnect).
 const relinkReloadText = '重新讀取 PTU 列表…';
+
+/// Round 22: the automatic reconnect's own texts (「重新連線中…」,
+/// 「正在自動重新連線…」) only while it reconnects or reads the list again —
+/// once step 8 assigns again ([RelinkStage.resumed]) the screen shows that
+/// run (field round 22: both stayed while progress went 2/5 → 5/5).
+bool relinkShown(CommissionState s) =>
+    s.relinking && s.relinkStage != RelinkStage.resumed;
+
+/// Round 22: the automatic reconnect got the phone back (it reads the list
+/// again, or step 8 assigns again) — nothing may say 「已中斷」 any more.
+bool relinkBack(CommissionState s) =>
+    s.relinking && s.relinkStage != RelinkStage.reconnecting;
 
 /// Round 21: the bottom bar's status line while [CommissionState.relinking]
 /// (null otherwise, and once step 8 goes on assigning).
@@ -592,6 +638,21 @@ bool _step7Lost(CommissionState s) =>
     s.step == 4 &&
     !s.resumePending &&
     (s.scanResumePending || s.uploadWatch == UploadWatch.linkLost);
+
+/// Round 22: a PTU in the step 8 progress line ([assignProgressText]) as
+/// its row shows it — the row's number (「PTU #5」), or, unnumbered (row
+/// 「未指派 PTU」), the MAC bytes that tell it apart from the listed ones
+/// (「PTU …74…」 for 90:74:E8:9A:96:00 on the field bench).
+String assignPtuName(CommissionState s, String mac) {
+  final row = s.ptus.where((p) => sameMac(p['mac'], mac)).firstOrNull;
+  final id = (row?['device_number'] as num?)?.toInt() ?? 0;
+  if (id > 0 && id != 255) return 'PTU #$id';
+  return 'PTU ${distinguishingMacSegment(mac, s.ptus.map((p) => p['mac']))}';
+}
+
+/// Round 22: the step 8 progress line with the retrying PTUs named.
+String? assignProgressLine(CommissionState s) =>
+    assignProgressText(s.assignStatus, name: (mac) => assignPtuName(s, mac));
 
 /// 「配置」按鈕的目標集合：已勾選但尚未成功指派的 PTU MAC。
 Set<String> configureTargets(CommissionState s) =>
@@ -808,7 +869,14 @@ class CommissionState {
     this.remoteIdentifyPtu = '',
     this.assignStatus = const {},
     this.relinkStage = RelinkStage.reconnecting,
+    this.relistReason = '',
   });
+
+  /// Round 22 (field round 22: switched direct → star at step 7, the star
+  /// list kept the direct pick — 1 PTU and 「配置 1 台並開始監控」): why the
+  /// step 7 list was dropped (「已切換為星狀模式」) until it is read again;
+  /// '' otherwise. The configure button waits for the new list.
+  final String relistReason;
 
   /// Round 21 (field round 21: the one-line notice was cut after
   /// 「後台剛讓這台樁閃燈（請看樁上燈…」): the notice's short first sentence
@@ -1097,7 +1165,9 @@ class CommissionState {
     String? remoteIdentifyPtu,
     Map<String, AssignStatus>? assignStatus,
     RelinkStage? relinkStage,
+    String? relistReason,
   }) => CommissionState(
+    relistReason: relistReason ?? this.relistReason,
     remoteIdentifyHead: remoteIdentifyHead ?? this.remoteIdentifyHead,
     remoteIdentifyPtu: remoteIdentifyPtu ?? this.remoteIdentifyPtu,
     assignStatus: assignStatus ?? this.assignStatus,
@@ -1185,6 +1255,8 @@ class CommissioningController extends Notifier<CommissionState> {
   int _generation = 0;
   // Topology changed while a step was running; applied when it ends.
   bool _topologyDeferred = false;
+  // Round 22: that change switched direct ↔ star (not only the count).
+  bool _topologySwitchDeferred = false;
   bool _provisioningMayBeActive = false;
   Future<bool>? _stopping;
 
@@ -1275,11 +1347,13 @@ class CommissioningController extends Notifier<CommissionState> {
     ref.listen(topologyProvider, (previous, next) {
       if (previous?.targetCount != next.targetCount ||
           previous?.topology != next.topology) {
+        final switched = previous != null && previous.topology != next.topology;
         // 自動收編（重置迴圈＋重掃）進行中不在中途重算：延後到該步驟結束再套用。
         if (state.busy) {
           _topologyDeferred = true;
+          _topologySwitchDeferred |= switched;
         } else {
-          _onTopologyChanged(next);
+          _onTopologyChanged(next, switched: switched);
         }
       }
     });
@@ -1322,8 +1396,16 @@ class CommissioningController extends Notifier<CommissionState> {
   /// 拓撲（直連／星狀）或目標台數變動時：先用既有 ptus 清單，套用跟
   /// [_discover] 相同的範圍過濾（星狀模式下範圍外 PTU 不能選）重算
   /// pendingNext，並把已勾選中變成範圍外的部分丟掉；再裁到新的目標台數。
-  void _onTopologyChanged(TopologySettingsState next) {
+  ///
+  /// Round 22: a switch direct ↔ star ([switched]) at step 7 drops the old
+  /// mode's list, selection and pick instead ([_dropListForTopology]); the
+  /// list is read again by [switchTopology] (or 「重新掃描」).
+  void _onTopologyChanged(TopologySettingsState next, {bool switched = false}) {
     if (!ref.mounted) return;
+    if (switched && state.step == 4) {
+      _dropListForTopology(next.topology);
+      return;
+    }
     final isStar = next.topology.isStar;
     final pending = isStar
         ? state.ptus
@@ -1346,6 +1428,64 @@ class CommissioningController extends Notifier<CommissionState> {
       state = state.copy(selected: selected, pendingNext: pending);
     }
     _trimSelectionToTarget(next.targetCount);
+  }
+
+  /// Round 22 (field round 22: direct → star at step 7 left the direct
+  /// pick as a star list of 1 with 「配置 1 台並開始監控」): the previous
+  /// mode's step 7 list, selection, results, pick and notices are dropped;
+  /// [CommissionState.relistReason] keeps the configure button waiting for
+  /// the new list. A temporary 「不是這台？」 binding is undone by the star
+  /// scan itself ([_listDiscover]).
+  void _dropListForTopology(GatewayTopology topology) {
+    state = state.copy(
+      relistReason: topologySwitchedText(topology),
+      ptus: [],
+      selected: {},
+      results: {},
+      assignStatus: {},
+      assignFailed: {},
+      unassigned: {},
+      missing: [],
+      scannedTotal: 0,
+      pendingNext: 0,
+      resetFailed: {},
+      starNotice: '',
+      absentNotice: '',
+      rescanNeeded: false,
+      monitoringOk: false,
+      directRaw: {},
+      identifyNote: '',
+      identifyLine: '',
+      identifiedMac: null,
+      directNotice: '',
+      remoteIdentifyNote: '',
+      remoteIdentifyHead: '',
+      remoteIdentifyPtu: '',
+      message: topologySwitchedText(topology),
+      error: state.error,
+    );
+    _selectionTouched = false;
+  }
+
+  /// Round 22: the topology menu. At step 7 the switch drops the old mode's
+  /// list ([_dropListForTopology]) and reads it again at once — the
+  /// configure button stays disabled with the reason until the new list is
+  /// in. Elsewhere it only changes the setting.
+  Future<void> switchTopology(GatewayTopology topology) async {
+    final settings = ref.read(topologyProvider.notifier);
+    if (ref.read(topologyProvider).topology == topology) return;
+    // The listener drops the list synchronously; the scan starts in the
+    // same frame (never a tappable button in between).
+    final saved = settings.setTopology(topology);
+    if (ref.mounted &&
+        state.step == 4 &&
+        state.relistReason.isNotEmpty &&
+        !state.busy &&
+        !state.relinking &&
+        !step7LinkLost(state)) {
+      await discover();
+    }
+    await saved;
   }
 
   /// Keeps [target] selected PTUs (connected first, then strongest RSSI),
@@ -1678,21 +1818,25 @@ class CommissioningController extends Notifier<CommissionState> {
         // Round 13: the automatic reconnect follows at once — relinking is
         // set with busy:false in one update, so the button never flashes
         // 「重新連線並繼續」 during the hand-over.
-        final follows =
-            relinkStep != null &&
-            autoRelinkRounds > 0 &&
-            !_autoRelinking &&
-            _linkLostAt(relinkStep, running: true);
+        final lost =
+            relinkStep != null && _linkLostAt(relinkStep, running: true);
+        final follows = lost && autoRelinkRounds > 0 && !_autoRelinking;
         state = state.copy(
           busy: false,
           seconds: 0,
           error: state.error,
           relinking: follows ? true : null,
-          relinkStage: follows ? RelinkStage.reconnecting : null,
+          // Round 22: a new loss inside the automatic reconnect's round
+          // (e.g. while step 8 assigned again) is 「重新連線中」 again at once.
+          relinkStage: follows || (lost && state.relinking)
+              ? RelinkStage.reconnecting
+              : null,
         );
         if (_topologyDeferred) {
+          final switched = _topologySwitchDeferred;
           _topologyDeferred = false;
-          _onTopologyChanged(ref.read(topologyProvider));
+          _topologySwitchDeferred = false;
+          _onTopologyChanged(ref.read(topologyProvider), switched: switched);
         }
       }
     }
@@ -2880,6 +3024,18 @@ class CommissioningController extends Notifier<CommissionState> {
   /// [keep]: a selection to carry over (step 9 「返回選擇 PTU」) instead of
   /// the default preselection; connected in-range PTUs still fill it up.
   Future<void> discover({Set<String>? keep}) async {
+    try {
+      await _discoverFlow(keep);
+    } finally {
+      // Round 22: the list was read again (or failed with its own error):
+      // a topology switch's reason is over.
+      if (ref.mounted && state.relistReason.isNotEmpty) {
+        state = state.copy(relistReason: '', error: state.error);
+      }
+    }
+  }
+
+  Future<void> _discoverFlow(Set<String>? keep) async {
     _rssiTimer ??= Timer.periodic(ref.read(ptuSignalIntervalProvider), (_) {
       unawaited(refreshPtuRssi());
       unawaited(keepAlive());
@@ -2895,13 +3051,17 @@ class CommissioningController extends Notifier<CommissionState> {
       _autoResetRescan = false;
       await _discover(autoReset: false, keep: keep);
     }
-    if (ref.mounted && !_autoRelinking) {
-      if (_linkLostAt(4)) {
+    if (ref.mounted) {
+      final lost = _linkLostAt(4);
+      if (lost && !_autoRelinking) {
         // Round 12: a drop during the scan reconnects and rescans by itself.
         await _autoRelink(4, keep: keep);
         return;
       }
-      if (state.relinking) {
+      // Round 22: the list is read — the reconnect's texts end here, also
+      // inside the automatic reconnect (a new loss keeps them for its retry
+      // wait), so an empty list still turns into 「重新掃描」 below.
+      if (!lost && state.relinking) {
         state = state.copy(relinking: false, error: state.error);
       }
     }
@@ -3212,6 +3372,14 @@ class CommissioningController extends Notifier<CommissionState> {
       _absorbTarget(net);
       _absorbNet(net);
       _stopWatch(UploadWatch.idle);
+    }
+    // Round 22: a temporary 「不是這台？」 binding of the direct flow
+    // (switched to star at step 7) is undone before the star list, as
+    // 「取消」 would; a failure keeps it recorded for the next undo.
+    if (state.tempBoundMac != null &&
+        ref.read(topologyProvider).topology.isStar) {
+      await _releaseTempBind();
+      _check(generation);
     }
     state = state.copy(
       message: relink ? relinkReloadText : 'Gateway 正在掃描周邊 PTU，請稍候',
