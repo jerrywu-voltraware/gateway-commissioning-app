@@ -573,8 +573,11 @@ void main() {
         expect(head.length, lessThanOrEqualTo(remoteIdentifyHeadMax));
         expect(head, isNot(contains(RegExp(r'\d'))));
       }
-      // The full text (details, snack bar) is unchanged.
-      expect(remoteIdentifyText(ack), startsWith('後台剛讓這台樁閃燈（請看樁上燈號）'));
+      // The full text (details, snack bar) names the PTU (round 24).
+      expect(
+        remoteIdentifyText(ack),
+        startsWith('後台讓 PTU AA:BB:CC:00:00:01 閃燈（請看樁上燈號）'),
+      );
     });
 
     Future<PickGateway> pumpDirect(WidgetTester tester, Size size) async {

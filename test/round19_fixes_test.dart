@@ -800,10 +800,11 @@ void main() {
         'rssi': -46,
       };
       expect(isIdentifyAck(ack), isTrue);
+      // Round 24: the PTU that blinked is named (no list: its MAC).
       expect(
         remoteIdentifyText(ack),
-        '後台剛讓這台樁閃燈（請看樁上燈號） · PTU 未回應確認（PTU 韌體尚未支援）'
-        ' · PTU $_own · -46 dBm',
+        '後台讓 PTU $_own 閃燈（請看樁上燈號） · PTU 未回應確認（PTU 韌體尚未支援）'
+        ' · -46 dBm',
       );
       expect(
         remoteIdentifyText({
@@ -813,9 +814,10 @@ void main() {
         }),
         contains(identifyConfirmedText),
       );
+      // Round 24: only the gateway blinked — said so, no raw code.
       expect(
         remoteIdentifyText(const {'ptu_write': 'not_connected'}),
-        '後台剛讓這台樁閃燈（請看樁上燈號） · 只有閘道器閃燈，PTU 未收到（not_connected）',
+        '後台讓閘道器閃燈（請看閘道器上的燈）',
       );
       expect(isIdentifyAck(const {'free_heap': 1}), isFalse);
     });
@@ -846,9 +848,9 @@ void main() {
       await Future<void>.delayed(Duration.zero);
       final after = container.read(commissionProvider);
       expect(after.remoteIdentifyCount, 1);
-      expect(after.remoteIdentifyNote, startsWith('後台剛讓這台樁閃燈（請看樁上燈號）'));
+      expect(after.remoteIdentifyNote, startsWith('後台讓 PTU '));
+      expect(after.remoteIdentifyNote, contains('閃燈（請看樁上燈號）'));
       expect(after.remoteIdentifyNote, contains('PTU 未回應確認'));
-      expect(after.remoteIdentifyNote, contains(_near));
       expect(after.step, before.step);
       expect(after.busy, before.busy);
       expect(after.error, before.error);

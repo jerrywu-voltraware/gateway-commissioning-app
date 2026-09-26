@@ -176,7 +176,14 @@ void main() {
     expect(find.text('請唸給後台：'), findsOneWidget);
     final step = fake.diags.last['step'];
     expect(find.textContaining('目前第 $step 步：'), findsOneWidget);
-    expect(find.textContaining('（CMD_TIMEOUT）'), findsOneWidget);
+    // Round 24: the error line in words only; the code is in 詳細資訊.
+    expect(
+      find.text('・錯誤：等待超時，請確認裝置與網路後重試。'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('CMD_TIMEOUT'), findsNothing);
+    await _tap(tester, find.byKey(const Key('field-help-details')));
+    expect(find.text('狀況代碼：CMD_TIMEOUT'), findsOneWidget);
     expect(find.text('不會傳送 Wi-Fi 密碼。'), findsOneWidget);
     // The code on screen is the one the back office got.
     final diag = fake.diags.last;
@@ -216,8 +223,11 @@ void main() {
     await _wait(tester);
     final code = _shownCode(tester);
     expect(code, matches(_code));
-    expect(find.textContaining('狀況代碼：HELP_ONLY'), findsOneWidget);
+    // Round 24 (field round 24: 「狀況代碼：HELP_ONLY」 on the sheet).
+    expect(find.text('・狀況：畫面沒有錯誤，現場主動求助'), findsOneWidget);
+    expect(find.textContaining('HELP_ONLY'), findsNothing);
     expect(fake.diags.last['trigger'], 'help');
+    expect((fake.diags.last['error'] as Map)['code'], 'HELP_ONLY');
     expect(tester.takeException(), isNull);
 
     await _tap(tester, find.byKey(const Key('field-help-close')));

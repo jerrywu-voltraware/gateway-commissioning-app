@@ -364,7 +364,9 @@ void main() {
         'ptu_confirmed': false,
         'ptu_confirm': 'timeout',
       };
-      expect(identifyNoteText(a), contains('PTU 未收到（not_connected）'));
+      // Round 24: the reason in words, never the raw code.
+      expect(identifyNoteText(a), contains('PTU 未收到（閘道器尚未連上 PTU）'));
+      expect(identifyNoteText(a), isNot(contains('not_connected')));
       expect(identifyLineText(a), '已送出 · 只有閘道器閃燈，PTU 未收到');
     });
 

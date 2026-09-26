@@ -376,9 +376,14 @@ void main() {
     });
 
     test('ptu_write failed text names the reason, without resending', () {
+      // Round 24: the reason in words, never the raw code.
       expect(
         identifyPtuFailedText('not_connected'),
-        allOf(contains('閘道器正在閃燈'), contains('尚未連上 PTU'), contains('not_connected')),
+        allOf(
+          contains('閘道器正在閃燈'),
+          contains('尚未連上 PTU'),
+          isNot(contains('not_connected')),
+        ),
       );
     });
   });
