@@ -347,8 +347,8 @@ void main() {
       expect(samples.staleNeighborAge, isNull);
     });
 
-    test('1.7.27: stale (> 60 s) and thin (< 3 samples) neighbours left '
-        'out', () {
+    test('1.7.27: stale (> 60 s) left out; thin (< 3 samples) still '
+        'counted toward the lower bound (round 19 fix)', () {
       final samples = DirectCalibrationSamples(_own)
         ..add(
           _report(
@@ -356,11 +356,20 @@ void main() {
             neighbors: [(_near, -44, 8, 75), (_far, -50, 2, 1)],
           ),
         );
-      expect(samples.neighbors, isEmpty);
+      // _near is stale (75 s > 60 s): left out. _far has only 2 samples
+      // but is heard recently: still counted (round 19 fix — excluding a
+      // thin-but-strong neighbour used to let the suggestion come out
+      // under that neighbour's own peak, so this pile could pick it up
+      // while off).
+      expect(samples.neighbors, {_far: -50});
       expect(samples.staleNeighborAge, 75);
       expect(samples.fewSampleNeighbors, 1);
-      expect(samples.suggestion.verdict, DirectThresholdVerdict.noNeighbors);
-      // Heard again recently (and enough): counted.
+      // upper = min(-45, -47 + 3 = -44) = -45; lower = -50 + 1 = -49.
+      expect(samples.suggestion.lower, -49);
+      expect(samples.suggestion.verdict, DirectThresholdVerdict.suggested);
+      expect(samples.suggestion.threshold, -47);
+      expect(samples.suggestion.threshold!, greaterThan(-50));
+      // Heard again recently (and enough): both count either way.
       samples.add(
         _report(
           selfAdv: -45,
@@ -371,6 +380,22 @@ void main() {
       expect(samples.neighbors, {_near: -44, _far: -50});
       expect(samples.suggestion.verdict, DirectThresholdVerdict.tooClose);
       expect(calibrationStaleText(75), contains('請按「$calibrationRescanLabel」'));
+    });
+
+    test('round 19 fix: only a thin (< 3 samples) neighbour — the '
+        'suggestion still clears its peak', () {
+      final samples = DirectCalibrationSamples(_own)
+        ..add(_report(selfAdv: -40, neighbors: [(_near, -55, 1, 5)]));
+      // A single reading, well within age: still counted.
+      expect(samples.neighbors, {_near: -55});
+      expect(samples.fewSampleNeighbors, 1);
+      final s = samples.suggestion;
+      expect(s.verdict, DirectThresholdVerdict.suggested);
+      expect(s.threshold, isNotNull);
+      // Before the fix this neighbour was excluded outright, so with no
+      // other neighbour counted the suggestion could land at or under
+      // its peak (upper - calibrationLoneMargin) instead of clearing it.
+      expect(s.threshold!, greaterThan(-55));
     });
 
     test('1.7.27 without this pile\'s advertising: link only, a reference '
@@ -431,6 +456,37 @@ void main() {
       // The segment is joined: no break inside it.
       expect(noBreak('…2C…'), '…\u20602\u2060C\u2060…');
       expect(dbm(-48), '-48\u00A0dBm');
+    });
+
+    test('round 19 fix: the -100\u2026-20 clamp gets its own wording, not the '
+        '(here self-contradictory) gap text', () {
+      // Margin genuinely too small: the gap wording fits.
+      final small = suggestDirectThreshold(
+        ownLink: [-47, -48, -47],
+        ownAdvertising: -47,
+        neighborPeaks: [-46],
+      );
+      expect(small.verdict, DirectThresholdVerdict.tooClose);
+      expect(small.outOfRange, isFalse);
+      expect(
+        calibrationTooCloseReason(small, '\u20262C\u2026'),
+        calibrationGapText(small.gap!, '\u20262C\u2026'),
+      );
+
+      // Field bug: a fine 16 dB gap, but the natural midpoint (-10)
+      // clamps to -20 and lands under lower (-17) \u2014 \u300C\u53EA\u6BD4\u672C\u6A01\u5F31 16
+      // dB\uFF0C\u9918\u88D5\u4E0D\u8DB3\uFF08\u81F3\u5C11\u8981\u5F31 3 dB\uFF09\u300D would contradict itself here.
+      final clamped = suggestDirectThreshold(
+        ownLink: [-5],
+        neighborPeaks: [-18],
+      );
+      expect(clamped.verdict, DirectThresholdVerdict.tooClose);
+      expect(clamped.outOfRange, isTrue);
+      expect(clamped.gap, greaterThanOrEqualTo(calibrationMinGap));
+      final text = calibrationTooCloseReason(clamped, '\u20262C\u2026');
+      expect(text, calibrationOutOfRangeText);
+      expect(text, isNot(contains('\u9918\u88D5\u4E0D\u8DB3')));
+      expect(text, isNot(contains('\u6BD4\u672C\u6A01')));
     });
 
     Future<ProviderContainer> openSheet(
@@ -631,6 +687,79 @@ void main() {
       await tester.pumpAndSettle();
       expect(container.read(commissionProvider).step, 4);
     });
+
+    Future<ProviderContainer> pumpStep7(
+      WidgetTester tester, {
+      required double textScale,
+    }) async {
+      _phone(tester, size: const Size(360, 640));
+      tester.platformDispatcher.textScaleFactorTestValue = textScale;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      SharedPreferences.setMockInitialValues({});
+      final fake = PickGateway(rssi: [-40, -49, -58]);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            linkProvider.overrideWithValue(fake),
+            apiProvider.overrideWithValue(fake),
+            localBackendProberProvider.overrideWithValue(_Prober()),
+          ],
+          child: const GatewayApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(GatewayApp)),
+      );
+      final c = container.read(commissionProvider.notifier);
+      await tester.runAsync(() async {
+        final topo = container.read(topologyProvider.notifier);
+        await topo.ready;
+        await topo.setTopology(GatewayTopology.direct);
+        await c.prepare('https://example.invalid', '', offline: true);
+        await c.scan();
+        await c.connect(container.read(commissionProvider).peers.single);
+        await c.chooseStation(newStation: false);
+      });
+      await tester.pump();
+      return container;
+    }
+
+    for (final scale in [1.0, 1.3]) {
+      testWidgets(
+        '360x640 at text scale $scale: the end button stays on screen, '
+        'clear of the bar\'s other buttons',
+        (tester) async {
+          await pumpStep7(tester, textScale: scale);
+          // No overflow (a row too wide for the phone, or the bar
+          // clipped off the bottom) went unnoticed.
+          expect(tester.takeException(), isNull);
+          final end = find.byKey(const Key('page-cancel'));
+          expect(end, findsOneWidget);
+          const screen = Rect.fromLTWH(0, 0, 360, 640);
+          final endRect = tester.getRect(end);
+          expect(screen.contains(endRect.topLeft), isTrue);
+          expect(screen.contains(endRect.bottomRight), isTrue);
+          for (final key in const [
+            'direct-identify',
+            'direct-not-this',
+            'direct-others-bottom',
+            'direct-confirm',
+            'direct-wait',
+            'direct-rescan-bottom',
+            'direct-stop',
+          ]) {
+            final finder = find.byKey(Key(key));
+            if (finder.evaluate().isEmpty) continue;
+            expect(
+              endRect.overlaps(tester.getRect(finder)),
+              isFalse,
+              reason: '$key overlaps the end button at text scale $scale',
+            );
+          }
+        },
+      );
+    }
   });
 
   group('4. the back office\'s identify', () {

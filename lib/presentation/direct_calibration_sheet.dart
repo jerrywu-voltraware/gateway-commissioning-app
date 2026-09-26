@@ -233,8 +233,7 @@ class _DirectCalibrationSheetState
                     ? '鄰近訊號取自閘道器最近一次選台聽到的其他 PTU（峰值），'
                           '連線後不再更新。'
                     : '鄰近訊號為閘道器連線中持續聽到的其他 PTU（峰值；'
-                          '$calibrationNeighborMaxAge 秒內、'
-                          '至少 $calibrationMinNeighborSamples 筆才列入）。',
+                          '$calibrationNeighborMaxAge 秒內都列入計算）。',
                 style: text.bodySmall?.copyWith(color: colors.onSurfaceVariant),
               ),
               if (samples?.staleNeighborAge case final age?)
@@ -282,8 +281,12 @@ class _DirectCalibrationSheetState
                       Expanded(
                         child: Text(
                           // Round 19: in the installer's words (was 「相差
-                          // -2 dB，至少需 9 dB」).
-                          '${calibrationGapText(suggestion.gap!, distinguishingMacSegment(neighborMac, [own, ...samples!.neighborMacs]))}。$calibrationTooCloseText。',
+                          // -2 dB，至少需 9 dB」). Round 19 fix: the
+                          // -100…-20 write-range clamp can also force
+                          // 太接近 with a perfectly fine gap —
+                          // calibrationTooCloseReason picks
+                          // non-contradictory wording then.
+                          '${calibrationTooCloseReason(suggestion, distinguishingMacSegment(neighborMac, [own, ...samples!.neighborMacs]))}。$calibrationTooCloseText。',
                           style: TextStyle(color: warnFg),
                         ),
                       ),

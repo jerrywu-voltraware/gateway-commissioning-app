@@ -57,7 +57,10 @@ const calibrationLoneMargin = 10;
 /// …but never below this.
 const calibrationLoneFloor = -90;
 
-/// Neighbours count only with at least this many readings (`samples`)…
+/// Fewer readings (`samples`) than this still count toward
+/// [DirectThresholdSuggestion.lower] (round 19 fix: the bound must stay
+/// conservative even off a single reading) — only the rescan hint
+/// ([calibrationFewSamplesText]) is shown.
 const calibrationMinNeighborSamples = 3;
 
 /// …heard within this many seconds (`age_s`); older: 「重新掃描鄰近」.
@@ -67,6 +70,13 @@ const calibrationTitle = '校正門檻';
 
 /// Signals too close for any threshold (yellow).
 const calibrationTooCloseText = '鄰近樁訊號太強，無法只靠門檻區分，請在確認後綁定此 PTU';
+
+/// Round 19 fix: [DirectThresholdVerdict.tooClose] only because the
+/// gateway's -100…-20 write range clamped the natural midpoint outside
+/// [DirectThresholdSuggestion.lower] / [DirectThresholdSuggestion.upper]
+/// — the gap wording ([calibrationGapText]) would contradict itself here
+/// (e.g. a 16 dB gap called 「餘裕不足」).
+const calibrationOutOfRangeText = '本樁讀數已超出閘道器可用範圍（-100～-20 dBm），請重新取樣';
 
 /// This pile's advertising and the strongest neighbour's peak are closer
 /// than [calibrationAmbiguousDb] (firmware 1.7.27 only).
@@ -113,15 +123,31 @@ String calibrationGapText(int gap, String neighbor) {
   return '$who只比本樁弱 $gap dB，餘裕不足（至少要弱 $calibrationMinGap dB）';
 }
 
+/// Round 19 fix: the too-close reason in the installer's words — the gap
+/// wording ([calibrationGapText]) only when the margin itself is what's
+/// too small; the -100…-20 write-range clamp can also force
+/// [DirectThresholdVerdict.tooClose] with a perfectly good gap
+/// ([DirectThresholdSuggestion.outOfRange]), which needs its own,
+/// non-contradictory wording instead.
+String calibrationTooCloseReason(
+  DirectThresholdSuggestion suggestion,
+  String neighbor,
+) => suggestion.outOfRange
+    ? calibrationOutOfRangeText
+    : calibrationGapText(suggestion.gap!, neighbor);
+
 /// Round 19: neighbours left out for being heard too long ago ([ageS]: the
 /// oldest, seconds).
 String calibrationStaleText(int ageS) =>
     '鄰近資料已 $ageS 秒未更新（超過 $calibrationNeighborMaxAge 秒，未列入計算），'
     '請按「$calibrationRescanLabel」再取樣一次。';
 
-/// Round 19: neighbours left out for too few readings.
+/// Round 19 fix: neighbours counted toward the lower bound despite too
+/// few readings — a rescan hint, not an exclusion (excluding them here
+/// used to let the suggestion come out under that neighbour's own peak).
 String calibrationFewSamplesText(int count) =>
-    '另有 $count 台鄰近 PTU 讀數不足 $calibrationMinNeighborSamples 筆，未列入計算。';
+    '有 $count 台鄰近 PTU 讀數較少（不足 $calibrationMinNeighborSamples 筆），'
+    '已計入下限但可能不穩定，請按「$calibrationRescanLabel」再取樣一次。';
 
 enum DirectThresholdVerdict {
   /// Midpoint of [DirectThresholdSuggestion.lower] and
@@ -131,7 +157,11 @@ enum DirectThresholdVerdict {
   /// No neighbour counted: upper − 10 dB (floor -90).
   noNeighbors,
 
-  /// Upper − lower under [calibrationMinRange]: no suggestion.
+  /// No suggestion: upper − lower under [calibrationMinRange], or the
+  /// -100…-20 write range clamped the midpoint outside
+  /// [DirectThresholdSuggestion.lower] / [DirectThresholdSuggestion.upper]
+  /// ([DirectThresholdSuggestion.outOfRange] — the gap itself may be
+  /// fine then).
   tooClose,
 
   /// No link reading of this pile's PTU: no suggestion.
@@ -152,6 +182,7 @@ class DirectThresholdSuggestion {
     this.upper,
     this.lower,
     this.threshold,
+    this.outOfRange = false,
   });
 
   final DirectThresholdVerdict verdict;
@@ -172,6 +203,13 @@ class DirectThresholdSuggestion {
   final int? upper;
   final int? lower;
   final int? threshold;
+
+  /// [verdict] is [DirectThresholdVerdict.tooClose] only because the
+  /// gateway's -100…-20 write range clamped the natural midpoint outside
+  /// [lower] / [upper] — not because the margin ([gap]) was itself too
+  /// small, so [calibrationGapText] would not fit
+  /// ([calibrationTooCloseReason] picks the right wording).
+  final bool outOfRange;
 
   /// [upper] minus the strongest neighbour's peak.
   int? get gap => upper == null || neighborStrongest == null
@@ -212,8 +250,10 @@ int _median(List<int> values) {
 /// - No neighbour: upper − [calibrationLoneMargin], not below
 ///   [calibrationLoneFloor] (nor above upper).
 /// - No link reading: [DirectThresholdVerdict.noOwnSignal].
-/// - Always within the gateway's -100…-20 (a clamp that leaves the range:
-///   too close).
+/// - Always within the gateway's -100…-20 (a clamp that leaves
+///   [lower, upper]: [DirectThresholdVerdict.tooClose] with
+///   [DirectThresholdSuggestion.outOfRange] — the gap itself may be
+///   fine).
 DirectThresholdSuggestion suggestDirectThreshold({
   required Iterable<int> ownLink,
   int? ownAdvertising,
@@ -242,18 +282,22 @@ DirectThresholdSuggestion suggestDirectThreshold({
   final lower = strongest == null
       ? null
       : strongest + calibrationNeighborMargin;
-  DirectThresholdSuggestion result(DirectThresholdVerdict verdict, [int? t]) =>
-      DirectThresholdSuggestion(
-        verdict: verdict,
-        ownLinkMedian: _median(link),
-        ownLinkWeakest: weakest,
-        ownLinkCount: link.length,
-        ownAdvertising: adv,
-        neighborStrongest: strongest,
-        upper: upper,
-        lower: lower,
-        threshold: t,
-      );
+  DirectThresholdSuggestion result(
+    DirectThresholdVerdict verdict, [
+    int? t,
+    bool outOfRange = false,
+  ]) => DirectThresholdSuggestion(
+    verdict: verdict,
+    ownLinkMedian: _median(link),
+    ownLinkWeakest: weakest,
+    ownLinkCount: link.length,
+    ownAdvertising: adv,
+    neighborStrongest: strongest,
+    upper: upper,
+    lower: lower,
+    threshold: t,
+    outOfRange: outOfRange,
+  );
   if (lower == null) {
     return result(
       DirectThresholdVerdict.noNeighbors,
@@ -272,9 +316,11 @@ DirectThresholdSuggestion suggestDirectThreshold({
     minDirectRssi,
     maxDirectRssi,
   );
-  // Only the -100…-20 clamp can leave the range (signals near -20 dBm).
+  // Only the -100…-20 clamp can leave the range (signals near -20 dBm) —
+  // the gap itself can still be fine, so this gets its own outOfRange
+  // flag rather than the (otherwise self-contradictory) gap wording.
   if (threshold > upper || threshold < lower) {
-    return result(DirectThresholdVerdict.tooClose);
+    return result(DirectThresholdVerdict.tooClose, null, true);
   }
   return result(DirectThresholdVerdict.suggested, threshold);
 }
@@ -327,17 +373,23 @@ class _Neighbor {
   bool get fewSamples =>
       samples != null && samples! < calibrationMinNeighborSamples;
 
-  /// Counted: a peak, heard recently enough, often enough.
-  bool get counts => peak != null && !stale && !fewSamples;
+  /// Counted: a peak, heard recently enough. Round 19 fix: `samples` no
+  /// longer excludes a neighbour here — the lower bound must stay
+  /// conservative even off a single reading (excluding a thin-but-strong
+  /// neighbour let the suggested threshold come out under that
+  /// neighbour's own peak, so this pile could pick it up while off).
+  bool get counts => peak != null && !stale;
 }
 
 /// What the calibration has read so far for the PTU [ownMac].
 ///
 /// Round 19: this pile's link readings and, firmware 1.7.27, its
 /// advertising medians (`self_adv_rssi_med`); the neighbours from
-/// `neighbors[]` (firmware 1.7.27, kept up to date while connected; only
-/// those with ≥ [calibrationMinNeighborSamples] readings heard within
-/// [calibrationNeighborMaxAge] s count, by their latest listing) or else
+/// `neighbors[]` (firmware 1.7.27, kept up to date while connected;
+/// heard within [calibrationNeighborMaxAge] s count regardless of
+/// `samples`, by their latest listing — round 19 fix, the lower bound
+/// must stay conservative even off a single reading; fewer than
+/// [calibrationMinNeighborSamples] only adds a rescan hint) or else
 /// `candidates[]` (the last selection window), each by its advertising
 /// peak.
 class DirectCalibrationSamples {
@@ -448,7 +500,8 @@ class DirectCalibrationSamples {
     return old.isEmpty ? null : old.reduce(math.max).round();
   }
 
-  /// Round 19: neighbours left out for too few readings (not stale).
+  /// Round 19 fix: neighbours counted toward the lower bound (not stale)
+  /// despite too few readings — a rescan hint, not an exclusion.
   int get fewSampleNeighbors => _neighbors.values
       .where((n) => n.peak != null && !n.stale && n.fewSamples)
       .length;
