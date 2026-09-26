@@ -775,14 +775,10 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        // Round 17: 「取消操作」 is part of the bar's fixed
+                        // layout (disabled while idle).
                         if (directPicking) ...[
                           const DirectPickActions(),
-                          if (state.busy)
-                            TextButton(
-                              key: const Key('ptu-stop'),
-                              onPressed: controller.stopStep8,
-                              child: const Text('取消操作'),
-                            ),
                         ] else ...[
                           Text(
                             selectionCountText(state, targetPtuCount),
@@ -1099,15 +1095,26 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                       ),
                     ),
                   ),
-                  if (state.step > 0 && !(selectingPtus && state.busy))
+                  // Round 17: at direct step 7 it stays in place while
+                  // busy (disabled), so it never appears under a finger
+                  // the moment a switch finishes; after step 3 it asks
+                  // first (field round 17: a late tap ended the flow).
+                  if (state.step > 0 &&
+                      (!(selectingPtus && state.busy) || directPicking))
                     TextButton(
                       key: const Key('page-cancel'),
                       // Step 9: back to step 7 keeping the progress (round
                       // 8: a cancel here dropped back to step 2).
-                      onPressed: state.step == 6 && state.busy
+                      onPressed: directPicking && state.busy
+                          ? null
+                          : state.step == 6 && state.busy
                           ? controller.backToSelection
-                          : () => controller.cancel(),
-                      child: Text(state.busy ? '取消操作' : '結束並重新選擇閘道器'),
+                          : state.busy
+                          ? () => controller.cancel()
+                          : () => _endFlow(controller),
+                      child: Text(
+                        state.busy && !directPicking ? '取消操作' : '結束並重新選擇閘道器',
+                      ),
                     ),
                   if (state.step == 0)
                     SwitchListTile(
@@ -1162,11 +1169,56 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     );
   }
 
+  /// Round 17: 「結束並重新選擇閘道器」 after step 3 asks first — 「結束目前
+  /// 配置？已完成的 N 台會保留在閘道器」 [繼續配置] [結束].
+  Future<void> _endFlow(CommissioningController c) async {
+    final s = ref.read(commissionProvider);
+    if (displayStep(s, ref.read(backendEnvProvider)) >= 3) {
+      final end = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          key: const Key('end-confirm'),
+          title: const Text(endFlowConfirmTitle),
+          content: Text(endFlowConfirmText(s.assignedOk.length)),
+          actions: [
+            TextButton(
+              key: const Key('end-confirm-continue'),
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('繼續配置'),
+            ),
+            FilledButton(
+              key: const Key('end-confirm-end'),
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('結束'),
+            ),
+          ],
+        ),
+      );
+      if (end != true || !mounted) return;
+    }
+    await c.cancel();
+  }
+
   /// Saved resume skips steps 5/6, so log in first when the rest needs the
   /// backend (star auto-reset, step 9 verify); cancel continues manually.
+  ///
+  /// Round 17: the session token saved by the last login is used first;
+  /// the password is asked only without one (the local test host keeps
+  /// its known password prefilled, and renews a refused token with it).
   Future<void> _resumeSaved(CommissioningController c) async {
     if (c.savedResumeNeedsLogin) {
       final env = ref.read(backendEnvProvider);
+      final restored = await c.restoreSession(
+        env.base,
+        fallbackPassword: env.environment == BackendEnv.local
+            ? _login.text
+            : null,
+      );
+      if (!mounted) return;
+      if (restored) {
+        await c.resumeSaved();
+        return;
+      }
       final password = await showDialog<String>(
         context: context,
         builder: (context) => AlertDialog(
@@ -1554,7 +1606,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               ),
             ),
           ],
-          if (directStep7) const DirectStatusPanel(),
+          if (directStep7) const DirectStatusPanel(actionsInBar: true),
           // Old firmware direct list only; a failed scan has its own error
           // (round 14: 「未掃到 PTU」 beside a get_ble_devices timeout).
           if (topology.isDirect &&

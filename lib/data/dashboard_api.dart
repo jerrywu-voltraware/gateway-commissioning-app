@@ -17,23 +17,42 @@ bool isLocalApiHost(String host) {
       (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31);
 }
 
-class DashboardApi implements GatewayApi {
+/// Round 17: how long a stored session token is used after its login
+/// (the backend's key itself does not expire; this bounds how long a
+/// phone keeps working without the password).
+const sessionTokenTtl = Duration(hours: 12);
+
+/// Secure-storage key of the session of [base] (its origin).
+String sessionStorageKey(Uri base) => 'session:${base.origin}';
+
+/// [base] when the APP may send a password / key to it: https, or plain
+/// http to a local host in debug and LOCAL_DEVELOPMENT builds.
+Uri? _apiBase(String base) {
+  final uri = Uri.tryParse(base.trim());
+  if (uri == null ||
+      !uri.hasAuthority ||
+      uri.userInfo.isNotEmpty ||
+      (uri.scheme != 'https' &&
+          !((kDebugMode || const bool.fromEnvironment('LOCAL_DEVELOPMENT')) &&
+              uri.scheme == 'http' &&
+              isLocalApiHost(uri.host)))) {
+    return null;
+  }
+  return uri;
+}
+
+class DashboardApi implements GatewayApi, SessionStore {
+  DashboardApi({DateTime Function()? now}) : _now = now ?? DateTime.now;
+
+  final DateTime Function() _now;
   final _storage = const FlutterSecureStorage();
   final _http = HttpClient()..connectionTimeout = const Duration(seconds: 10);
   Uri? _base;
   String? _key;
   @override
   Future<void> login(String base, String password) async {
-    final uri = Uri.tryParse(base);
-    if (uri == null ||
-        !uri.hasAuthority ||
-        uri.userInfo.isNotEmpty ||
-        (uri.scheme != 'https' &&
-            !((kDebugMode || const bool.fromEnvironment('LOCAL_DEVELOPMENT')) &&
-                uri.scheme == 'http' &&
-                isLocalApiHost(uri.host)))) {
-      throw const GatewayFailure('https_required');
-    }
+    final uri = _apiBase(base);
+    if (uri == null) throw const GatewayFailure('https_required');
     _key = null;
     _base = uri;
     final result = await request('POST', '/api/auth/login', {
@@ -43,7 +62,46 @@ class DashboardApi implements GatewayApi {
     if (_key == null || _key!.isEmpty) {
       throw const GatewayFailure('authentication');
     }
-    await _storage.write(key: 'api:${uri.origin}', value: _key);
+    // Round 17: the token (not the password) with its expiry, so 「重新連線
+    // 並繼續」 after the APP was killed needs no login. A storage failure
+    // never fails the login itself.
+    try {
+      await _storage.write(
+        key: sessionStorageKey(uri),
+        value: jsonEncode({
+          'token': _key,
+          'expires': _now().add(sessionTokenTtl).millisecondsSinceEpoch,
+        }),
+      );
+      await _storage.delete(key: 'api:${uri.origin}');
+    } catch (_) {}
+  }
+
+  /// Round 17: the session the last login to [base] saved, while it has
+  /// not expired; an expired or unreadable one is dropped.
+  @override
+  Future<bool> restoreSession(String base) async {
+    final uri = _apiBase(base);
+    if (uri == null) return false;
+    try {
+      final raw = await _storage.read(key: sessionStorageKey(uri));
+      if (raw == null) return false;
+      final data = jsonDecode(raw);
+      final token = data is Map ? data['token'] : null;
+      final expires = data is Map ? data['expires'] : null;
+      if (token is! String ||
+          token.isEmpty ||
+          expires is! int ||
+          !_now().isBefore(DateTime.fromMillisecondsSinceEpoch(expires))) {
+        await _storage.delete(key: sessionStorageKey(uri));
+        return false;
+      }
+      _base = uri;
+      _key = token;
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   @override
@@ -86,6 +144,13 @@ class DashboardApi implements GatewayApi {
       );
     }
     if (res.statusCode == 401) {
+      // Round 17: a refused (saved) token is not tried again; a refused
+      // password (no key sent) leaves the stored session alone.
+      if (_key != null) {
+        try {
+          await _storage.delete(key: sessionStorageKey(base));
+        } catch (_) {}
+      }
       _key = null;
       throw const GatewayFailure('authentication');
     }

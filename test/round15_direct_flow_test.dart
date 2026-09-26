@@ -298,7 +298,8 @@ void main() {
       await tester.pumpWidget(_panel(container));
       expect(find.byKey(const Key('direct-linked')), findsOneWidget);
       expect(find.text(_pick), findsOneWidget);
-      expect(find.textContaining('門檻內訊號明顯最強'), findsOneWidget);
+      // Round 17: the text follows select_reason ('ok').
+      expect(find.textContaining('選台依據：訊號最強且明確'), findsOneWidget);
       expect(find.byKey(const Key('direct-ambiguous')), findsNothing);
       // No list to tick: candidates only under 「不是這台？」.
       expect(

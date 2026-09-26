@@ -438,6 +438,28 @@ String directSwitchDoneText(String mac) =>
 /// Step 7 direct flow busy text while the gateway picks its PTU.
 const directPickingText = '閘道器正在選擇最近的 PTU，請稍候';
 
+/// Round 17: a new connected pick with no RSSI read yet (0 / null) keeps
+/// 「辨識此樁」 at 「連線建立中…」 this long (field round 17: an identify
+/// 0.9 s after the connect never reached the PTU). Tests shorten it.
+Duration directSettleWindow = const Duration(seconds: 2);
+
+/// Round 17: an identify whose PTU write came back `not_connected` in the
+/// direct flow is sent once more after this long. Tests shorten it.
+Duration identifyRetryDelay = const Duration(milliseconds: 1500);
+
+/// Round 17: busy text while the gateway runs a new collection window
+/// (「不是這台？」 without candidates, 「重新搜尋」 with a pick).
+const directFreshWindowText = '閘道器正在重新收集附近的 PTU，請稍候';
+
+/// Round 17: 「結束並重新選擇閘道器」 after step 3 asks first (field round
+/// 17: a late tap meant for 「改選其他 PTU」 landed on it once the layout
+/// moved, and ended the whole flow).
+const endFlowConfirmTitle = '結束目前配置？';
+
+/// Body of the [endFlowConfirmTitle] dialog; [done] = PTUs configured.
+String endFlowConfirmText(int done) =>
+    done > 0 ? '已完成的 $done 台會保留在閘道器。' : '目前尚未完成任何 PTU；閘道器維持現有設定。';
+
 /// Round 15: done page / install report line when the direct-mode gateway
 /// is bound to a PTU MAC (「確認後綁定 PTU」, or kept from 「不是這台？」).
 String? directBoundNote(CommissionState s) {
@@ -677,7 +699,13 @@ class CommissionState {
     this.tempRestoreMac,
     this.strayBindMac,
     this.directNotice = '',
+    this.directSettling = false,
   });
+
+  /// Round 17: the gateway reported its pick connected less than
+  /// [directSettleWindow] ago and no RSSI yet (0 / null) — 「辨識此樁」
+  /// reads 「連線建立中…」, disabled.
+  final bool directSettling;
 
   /// Round 15b: MAC of the PTU the installer identified — the MAC the last
   /// 「辨識此樁」 ack named. 「是這台，開始監控」 only numbers the gateway's
@@ -930,7 +958,9 @@ class CommissionState {
     Object? tempRestoreMac = _keep,
     Object? strayBindMac = _keep,
     String? directNotice,
+    bool? directSettling,
   }) => CommissionState(
+    directSettling: directSettling ?? this.directSettling,
     identifiedMac: identical(identifiedMac, _keep)
         ? this.identifiedMac
         : identifiedMac as String?,
@@ -1132,6 +1162,7 @@ class CommissioningController extends Notifier<CommissionState> {
       _poll?.cancel();
       _grace?.cancel();
       _rssiTimer?.cancel();
+      _settleTimer?.cancel();
       unawaited(_link.disconnect());
     });
     return const CommissionState();
@@ -1788,24 +1819,36 @@ class CommissioningController extends Notifier<CommissionState> {
   /// Round 15: [CommissionState.identifyNote] (beside the button) reads
   /// 「已送出，請看樁上燈號」 as soon as it is tapped, then the acked PTU;
   /// cleared again when the identify fails.
-  Future<void> identify({String target = 'both'}) =>
-      _run('辨識閘道器', 12, (generation) async {
-        if (state.config['identify_supported'] != true) {
-          throw const GatewayFailure('identify_unsupported');
+  ///
+  /// Round 17: at step 7 a phone↔gateway link loss here reconnects by
+  /// itself like any other step 7 loss (field round 17: the identify was
+  /// the first command after ~11 s idle, the link had dropped with 0x08 and
+  /// the red box waited for a tap); the identification made before stands.
+  Future<void> identify({String target = 'both'}) async {
+    await _run('辨識閘道器', 12, relinkStep: 4, (generation) async {
+      if (state.config['identify_supported'] != true) {
+        throw const GatewayFailure('identify_unsupported');
+      }
+      final note = state.identifyNote, line = state.identifyLine;
+      state = state.copy(
+        identifyNote: identifySentText,
+        identifyLine: identifySentLine,
+      );
+      try {
+        await _identify(generation, target);
+      } catch (error) {
+        if (ref.mounted) {
+          state = isStep8LinkLoss(error, true)
+              ? state.copy(identifyNote: note, identifyLine: line)
+              : state.copy(identifyNote: '', identifiedMac: null);
         }
-        state = state.copy(
-          identifyNote: identifySentText,
-          identifyLine: identifySentLine,
-        );
-        try {
-          await _identify(generation, target);
-        } catch (_) {
-          if (ref.mounted) {
-            state = state.copy(identifyNote: '', identifiedMac: null);
-          }
-          rethrow;
-        }
-      });
+        rethrow;
+      }
+    });
+    if (ref.mounted && !_autoRelinking && _linkLostAt(4)) {
+      await _autoRelink(4);
+    }
+  }
 
   Future<void> _identify(int generation, String target) async {
     if (!identifyPtuSupported(state.config)) {
@@ -1820,6 +1863,16 @@ class CommissioningController extends Notifier<CommissionState> {
     Map<String, dynamic> ack;
     try {
       ack = await _command(generation, 'identify', {'target': target});
+      // Round 17: right after a (re)connect the PTU write can come back
+      // not_connected (the gateway's GATT link is not ready yet): once
+      // more after [identifyRetryDelay], then show whatever that says.
+      if (directFlow &&
+          state.step == 4 &&
+          ack['ptu_write'] == 'not_connected') {
+        await Future<void>.delayed(identifyRetryDelay);
+        _check(generation);
+        ack = await _command(generation, 'identify', {'target': target});
+      }
     } on GatewayFailure catch (e) {
       // The gateway's own not_connected means "no PTU connected", not a
       // phone link loss: never let it trigger the relink handling.
@@ -1877,9 +1930,11 @@ class CommissioningController extends Notifier<CommissionState> {
   Future<void> connect(GatewayPeer peer) async {
     if (state.busy) return;
     _stopWatch(UploadWatch.idle);
+    _settleTimer?.cancel();
     state = state.copy(
       net: const {},
       directRaw: const {},
+      directSettling: false,
       checkPassed: false,
       uploadLate: false,
       identifiedMac: null,
@@ -2699,9 +2754,16 @@ class CommissioningController extends Notifier<CommissionState> {
   /// its pick ([directPollInterval] × [directPollLimit], ~20 s) instead of a
   /// list the APP preselects (round 14: the APP ticked one PTU, the gateway
   /// connected another and both ended up #1).
+  ///
+  /// Round 17: after a phone↔gateway link loss (automatic or 「重新連線並
+  /// 繼續」) the PTU shown and the installer's identification are kept;
+  /// the fresh get_status only clears the identification when the gateway
+  /// now connects another PTU ([_syncDirectPick]).
   Future<void> _directDiscover() =>
       _run(relinkStep: 4, directPickingText, 45, (generation) async {
-        if (state.uploadWatch == UploadWatch.linkLost || state.resumePending) {
+        final relink =
+            state.uploadWatch == UploadWatch.linkLost || state.resumePending;
+        if (relink) {
           await _reconnect(generation);
           final net = await _command(
             generation,
@@ -2713,14 +2775,14 @@ class CommissioningController extends Notifier<CommissionState> {
         }
         state = state.copy(
           message: directPickingText,
-          ptus: [],
-          selected: {},
+          ptus: relink ? null : [],
+          selected: relink ? null : {},
           results: {},
           missing: [],
           starNotice: '',
-          identifyNote: '',
-          identifiedMac: null,
-          directNotice: '',
+          identifyNote: relink ? null : '',
+          identifiedMac: relink ? state.identifiedMac : null,
+          directNotice: relink ? null : '',
         );
         final config = await _command(generation, 'get_config');
         state = state.copy(
@@ -2812,10 +2874,35 @@ class CommissioningController extends Notifier<CommissionState> {
     }
   }
 
+  /// Round 17: [CommissionState.directSettling] timer.
+  Timer? _settleTimer;
+
+  /// Keeps a `direct` report. Round 17: a pick newly reported connected
+  /// with no RSSI yet (0 / null) starts [directSettleWindow] of
+  /// 「連線建立中…」; an RSSI reading, another pick or none ends it.
   void _takeDirect(Object? direct) {
     if (!ref.mounted || direct is! Map) return;
+    final raw = Map<String, dynamic>.from(direct);
+    final before = state.direct?.pickedMac;
+    final next = DirectStatus.from(raw);
+    final picked = next?.pickedMac;
+    final rssi = next?.ptuRssi;
+    var settling = state.directSettling;
+    if (picked == null || (rssi != null && rssi < 0)) {
+      settling = false;
+      _settleTimer?.cancel();
+    } else if (before == null || !sameMac(before, picked)) {
+      settling = true;
+      _settleTimer?.cancel();
+      _settleTimer = Timer(directSettleWindow, () {
+        if (ref.mounted && state.directSettling) {
+          state = state.copy(directSettling: false, error: state.error);
+        }
+      });
+    }
     state = state.copy(
-      directRaw: Map<String, dynamic>.from(direct),
+      directRaw: raw,
+      directSettling: settling,
       error: state.error,
     );
   }
@@ -3508,10 +3595,7 @@ class CommissioningController extends Notifier<CommissionState> {
     }
     if (!ref.mounted || generation != _generation) return;
     if (direct is Map && DirectStatus.from(direct) != null) {
-      state = state.copy(
-        directRaw: Map<String, dynamic>.from(direct),
-        error: state.error,
-      );
+      _takeDirect(direct);
     }
   }
 
@@ -3727,6 +3811,79 @@ class CommissioningController extends Notifier<CommissionState> {
     );
     if (ref.mounted && !_autoRelinking && _linkLostAt(4)) {
       await _autoRelink(4);
+    }
+  }
+
+  /// Round 17: 「重新搜尋」 in the direct flow — with a pick the gateway runs
+  /// a new collection window ([freshDirectWindow]); without one, the usual
+  /// [discover].
+  Future<void> rescanDirect() async {
+    if (state.busy) return;
+    if (!directFlow || state.direct?.pickedMac == null) return discover();
+    await freshDirectWindow();
+  }
+
+  /// Round 17: 「不是這台？」 with no candidates, or 「重新搜尋」 with a pick.
+  /// Field round 17: after a binding was undone the gateway kept its PTU
+  /// (re-evaluate "keep"), reported `candidates: []` and ran no further
+  /// collection window (none runs while connected), so step 7 had no way
+  /// to pick another PTU. Disconnecting the connected PTU makes the
+  /// gateway resume scanning and pick again by its own rules
+  /// (cmd_contract.md §3A); this polls until that window's candidates are
+  /// reported. The identification stays when the same PTU comes back.
+  Future<void> freshDirectWindow() async {
+    await _run(relinkStep: 4, directFreshWindowText, 45, (generation) async {
+      if (!directFlow) throw const GatewayFailure('direct_unsupported');
+      final before = state.direct;
+      final picked = before?.pickedMac;
+      if (picked != null) {
+        try {
+          await _command(generation, 'disconnect_device', {
+            'mac': formatMac(picked),
+          });
+        } on GatewayFailure catch (e) {
+          // Already gone (dropped meanwhile): the scan runs anyway.
+          if (!e.fromGateway) rethrow;
+        }
+      }
+      await _pollFreshWindow(generation, before);
+      _syncDirectPick();
+      state = state.copy(message: directPickMessage(state.direct));
+    });
+    if (ref.mounted && !_autoRelinking && _linkLostAt(4)) {
+      await _autoRelink(4);
+    }
+  }
+
+  /// Polls get_status until a collection window newer than [before] has
+  /// reported its candidates and the gateway decided (connected, or none /
+  /// bound missing) — at most [directPollLimit] reads. Newer: the pick
+  /// went away (or changed) at least once, or candidates appeared where
+  /// [before] had none.
+  Future<void> _pollFreshWindow(int generation, DirectStatus? before) async {
+    final was = before?.pickedMac;
+    var gap = was == null;
+    for (var i = 0; ; i++) {
+      if (i > 0) {
+        await Future<void>.delayed(directPollInterval);
+        _check(generation);
+      }
+      final status = await _command(generation, 'get_status');
+      _check(generation);
+      _takeDirect(status['direct']);
+      final direct = state.direct;
+      final picked = direct?.pickedMac;
+      final candidates = direct?.candidates ?? const [];
+      if (picked == null || !sameMac(picked, was)) gap = true;
+      final fresh =
+          gap ||
+          ((before?.candidates.isEmpty ?? true) && candidates.isNotEmpty);
+      final decided =
+          picked != null ||
+          direct?.state == DirectState.noCandidate ||
+          direct?.state == DirectState.boundMissing;
+      if (fresh && decided && candidates.isNotEmpty) return;
+      if (i + 1 >= directPollLimit) return;
     }
   }
 
@@ -4643,6 +4800,32 @@ class CommissioningController extends Notifier<CommissionState> {
         verifyBackendDown: false,
       );
     }
+  }
+
+  /// Round 17: 「重新連線並繼續」 after the APP was killed uses the session
+  /// token the last login to [base] saved (never the password) before
+  /// asking for the password (field round 17: a login dialog on every
+  /// resume). A 401 later ends it like any expired session — renewed with
+  /// [fallbackPassword] when given (the local test host's known password),
+  /// else the installer is asked again. False when there is none.
+  Future<bool> restoreSession(String base, {String? fallbackPassword}) async {
+    final trimmed = base.trim();
+    if (_loggedIn && _loginBase == trimmed) return true;
+    final api = _api;
+    if (api is! SessionStore) return false;
+    bool ok;
+    try {
+      ok = await (api as SessionStore).restoreSession(trimmed);
+    } catch (_) {
+      ok = false;
+    }
+    if (!ok || !ref.mounted) return false;
+    _backend = describeBackend(Uri.tryParse(trimmed));
+    _setLoggedIn(true, trimmed);
+    if ((fallbackPassword ?? '').isNotEmpty) {
+      _credentials = (trimmed, fallbackPassword!);
+    }
+    return true;
   }
 
   /// Logs in to [base] outside a step (after switching environments).

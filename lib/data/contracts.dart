@@ -53,6 +53,15 @@ abstract class GatewaySignalSource {
   Future<int> readSignal();
 }
 
+/// Optional (round 17): a backend session that survives an APP restart —
+/// the token the last login returned (never the password) and when this
+/// APP stops using it.
+abstract class SessionStore {
+  /// Uses the stored, unexpired session of [base]; true when one was
+  /// loaded (requests are then authenticated without a login).
+  Future<bool> restoreSession(String base);
+}
+
 abstract class GatewayApi {
   Future<void> login(String base, String password);
   Future<Map<String, dynamic>> request(

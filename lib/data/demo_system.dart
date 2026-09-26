@@ -40,6 +40,11 @@ class DemoSystem implements GatewayLink, GatewayApi {
   /// `select_reason` of the latest simulated collection window.
   String directReason = '';
 
+  /// Round 17: get_status reads left that report `scanning` (no pick)
+  /// after a `disconnect_device` — the new collection window is still
+  /// open (firmware: CLOSE_EVT resumes the scan, the window takes ≥ 3 s).
+  int directGapReads = 0;
+
   static String _macKey(Object? mac) =>
       (mac?.toString() ?? '').toLowerCase().replaceAll(RegExp('[^0-9a-f]'), '');
 
@@ -95,6 +100,17 @@ class DemoSystem implements GatewayLink, GatewayApi {
         'min_rssi': min,
         'bound_mac': bound,
         'select_reason': '',
+        'candidates': const [],
+      };
+    }
+    if (directGapReads > 0) {
+      directGapReads--;
+      return {
+        'active': true,
+        'state': 'scanning',
+        'min_rssi': min,
+        'bound_mac': bound,
+        'select_reason': directReason,
         'candidates': const [],
       };
     }
@@ -350,6 +366,22 @@ class DemoSystem implements GatewayLink, GatewayApi {
       case 'set_ble_enabled':
         config['ble_enabled'] = params['enabled'];
         return {};
+      case 'disconnect_device':
+        final target = devices
+            .where(
+              (d) =>
+                  d['connected'] == true &&
+                  _macKey(d['mac']) == _macKey(params['mac']),
+            )
+            .firstOrNull;
+        if (target == null) {
+          throw const GatewayFailure.gateway('device not connected');
+        }
+        target['connected'] = false;
+        target['notify_enabled'] = false;
+        // Direct mode: the scan resumes and a new window picks again.
+        if (directMode) directGapReads = 1;
+        return {'mac': params['mac'], 'success': true};
       case 'set_data_upload':
         config['upload_paused'] = params['enabled'] != true;
         return {};

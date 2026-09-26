@@ -42,8 +42,16 @@ class DirectCandidate {
   final int? rssiPeak;
   final int? deviceNumber;
 
-  String get rssiText => rssiPeak == null ? 'RSSI —' : '峰值 $rssiPeak dBm';
+  /// Round 17: 0 (not read yet) is no reading either.
+  String get rssiText =>
+      rssiPeak == null || rssiPeak! >= 0 ? 'RSSI —' : '峰值 $rssiPeak dBm';
 }
+
+/// Round 17: a gateway RSSI as the direct flow shows it — 「-48 dBm」, or
+/// 「RSSI —」 for none / 0 (field round 17: 「0 dBm」 right after a connect,
+/// before the gateway had read the link's RSSI).
+String rssiLabel(Object? rssi) =>
+    rssi is num && rssi < 0 && rssi >= -127 ? '$rssi dBm' : 'RSSI —';
 
 enum DirectState {
   connected,
@@ -129,16 +137,16 @@ class DirectStatus {
 
   /// Why the gateway picked [pickedMac], for the installer; null when there
   /// is nothing useful to say.
+  ///
+  /// Round 17: always the gateway's own `select_reason` (field round 17:
+  /// 「門檻內訊號明顯最強」 for a PTU kept after a binding was undone — it
+  /// was not the strongest; the reason came from an older window).
   String? get reasonText {
     if (pickedMac == null) return null;
     if (boundMac != null && _same(boundMac!, pickedMac!)) {
-      return '已綁定這台，閘道器只連它';
+      return directReasonText('bound');
     }
-    return switch (selectReason) {
-      'ok' => '門檻內訊號明顯最強',
-      'ambiguous' => '附近訊號相近，閘道器暫選最強的一台',
-      _ => null,
-    };
+    return directReasonText(selectReason);
   }
 
   static DirectStatus? from(Object? source) {
@@ -170,6 +178,19 @@ class DirectStatus {
     );
   }
 }
+
+/// Round 17: `select_reason` → 「選台依據」 text; null for `""` (no window
+/// yet) and unknown values. `bound` is the APP's own key for a pick equal
+/// to the bound MAC.
+String? directReasonText(String reason) => switch (reason) {
+  'ok' => '訊號最強且明確',
+  'ambiguous' => '附近訊號相近，閘道器暫選最強的一台',
+  'bound' => '已綁定這台，閘道器只連它',
+  'resume' => '延續既有連線',
+  'none' => '找不到夠近的 PTU',
+  'bound_missing' => '已綁定的 PTU 不在場',
+  _ => null,
+};
 
 /// 「是這台，開始監控」 needs the PTU the installer identified (the MAC of
 /// the last identify ack) — whenever the gateway can blink the PTU at all.
@@ -296,7 +317,7 @@ String identifyLineText(Map<String, dynamic> ack) {
   return [
     identifySentLine,
     formatMac(mac),
-    if (rssi is num) '$rssi dBm',
+    if (rssi is num) rssiLabel(rssi),
   ].join(' · ');
 }
 
@@ -309,8 +330,18 @@ String identifyNoteText(Map<String, dynamic> ack) {
   final mac = ack['mac'];
   if (mac == null) return '$identifySentText（閘道器雙閃 6 秒）';
   final rssi = ack['rssi'];
-  return '$identifySentText（PTU ${formatMac(mac)}${rssi is num ? ' · $rssi dBm' : ''}）';
+  return '$identifySentText（PTU ${formatMac(mac)}${rssi is num ? ' · ${rssiLabel(rssi)}' : ''}）';
 }
+
+/// Round 17: 「辨識此樁」 while the gateway's link to the PTU it just
+/// connected is still being set up (field round 17: an identify 0.9 s
+/// after the connect came back `ptu_write:not_connected`, one 2.7 s after
+/// it read 0 dBm).
+const directSettlingLabel = '連線建立中…';
+
+/// Round 17: the bottom bar's main button while the gateway has no pick
+/// (e.g. while it switches to the PTU chosen under 「不是這台？」).
+const directWaitingLabel = '等待閘道器連上 PTU';
 
 /// identify on firmware 1.7.20+ when target=ptu itself fails outright
 /// (no PTU connected): the APP falls back to blinking the gateway only.
@@ -329,7 +360,7 @@ String identifyAckText(Map<String, dynamic> ack) {
   final confirmed = ack['ptu_confirmed'] == true;
   final parts = [
     'PTU $mac',
-    if (rssi is num) '$rssi dBm',
+    if (rssi is num) rssiLabel(rssi),
     if (number is num && number > 0) '#$number',
   ];
   return 'PTU 與閘道器正在閃燈（${confirmed ? 'PTU 已確認閃燈' : 'PTU 燈效需新版 PTU 韌體'}），'

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -21,8 +22,17 @@ import '../core/ptu_rssi.dart';
 ///
 /// Round 16b: the full MAC in monospace ([MacText]) — 「MAC 後 4 碼」 read
 /// 「9600」 for a whole fleet of 90:xx:xx:xx:96:00 PTUs.
+///
+/// Round 17: with [actionsInBar] (the page, whose bottom bar
+/// [DirectPickActions] always offers 「重新搜尋」 and 「不是這台？」) the card
+/// has no buttons of its own for them — field round 17: its 「改選其他
+/// PTU」 vanished the moment a switch finished and a late tap landed on
+/// 「結束並重新選擇閘道器」 that moved up into its place.
 class DirectStatusPanel extends ConsumerStatefulWidget {
-  const DirectStatusPanel({super.key});
+  const DirectStatusPanel({super.key, this.actionsInBar = false});
+
+  /// 「重新搜尋」/「改選其他 PTU」 live in the bottom bar, not in the card.
+  final bool actionsInBar;
 
   @override
   ConsumerState<DirectStatusPanel> createState() => _DirectStatusPanelState();
@@ -81,11 +91,7 @@ class _DirectStatusPanelState extends ConsumerState<DirectStatusPanel> {
                     ),
                   ),
                   Text(
-                    row != null
-                        ? ptuRssiText(row)
-                        : direct.ptuRssi != null && direct.ptuRssi! < 0
-                        ? '${direct.ptuRssi} dBm'
-                        : 'RSSI —',
+                    row != null ? ptuRssiText(row) : rssiLabel(direct.ptuRssi),
                     key: const Key('direct-rssi'),
                     style: text.titleMedium,
                   ),
@@ -214,7 +220,7 @@ class _DirectStatusPanelState extends ConsumerState<DirectStatusPanel> {
                   child: const Text('解除綁定'),
                 ),
               ),
-            if (picked == null)
+            if (picked == null && !widget.actionsInBar)
               Padding(
                 padding: const EdgeInsets.only(top: 6),
                 child: FilledButton.tonalIcon(
@@ -228,6 +234,7 @@ class _DirectStatusPanelState extends ConsumerState<DirectStatusPanel> {
               ),
             // With a pick, 「不是這台？」 is in the bottom bar (round 16).
             if (picked == null &&
+                !widget.actionsInBar &&
                 direct != null &&
                 direct.candidates.isNotEmpty) ...[
               Align(
@@ -364,6 +371,23 @@ Future<void> showDirectCandidates(BuildContext context) =>
       builder: (_) => const DirectCandidatesSheet(),
     );
 
+/// Round 17: the sheet while a new collection window runs.
+const directCandidatesCollectingText = '閘道器正在重新收集附近的 PTU，約需 5–10 秒…';
+
+/// Round 17: 「不是這台？」 / 「改選其他 PTU」. With no candidates reported
+/// (field round 17: the gateway kept its PTU after a binding was undone
+/// and reported none) the gateway first runs a new collection window
+/// ([CommissioningController.freshDirectWindow]); the sheet opens at once
+/// and fills when the window reports.
+void openDirectCandidates(BuildContext context, WidgetRef ref) {
+  final state = ref.read(commissionProvider);
+  if (state.busy || state.relinking) return;
+  if (state.direct?.candidates.isEmpty ?? true) {
+    unawaited(ref.read(commissionProvider.notifier).freshDirectWindow());
+  }
+  showDirectCandidates(context);
+}
+
 /// Round 16b: room below the last candidate — the largest of the system
 /// bar and the gesture area, plus a margin — so the last row never sits
 /// on the navigation / gesture bar.
@@ -429,8 +453,11 @@ class DirectCandidatesSheet extends ConsumerWidget {
               ),
             Text(
               candidates.isEmpty
-                  ? '閘道器目前沒有回報附近候選，請稍後再試。'
+                  ? state.busy
+                        ? directCandidatesCollectingText
+                        : '閘道器目前沒有回報附近候選，請按「重新搜尋」或稍後再試。'
                   : directCandidatesHint(candidates.length),
+              key: const Key('direct-candidates-hint'),
               style: text.bodySmall,
             ),
             Flexible(
@@ -617,14 +644,25 @@ class _WarnBox extends StatelessWidget {
 }
 
 /// Round 15: direct flow bottom bar actions at step 7 — 「辨識此樁」 with its
-/// note, then 「是這台，開始監控」 for the PTU the gateway picked;
-/// 「重新搜尋」 while it has none.
+/// note, then 「是這台，開始監控」 for the PTU the gateway picked.
 ///
 /// Round 16: 「不是這台？」 sits beside 「辨識此樁」 (always on screen, also
 /// at 360 dp) and the note is one line (「已送出 · 請看樁上燈號 · MAC ·
 /// RSSI」); tapping it shows the full note. Round 15: the four-line note
 /// grew the bar over 「不是這台？」. Round 16b: the MAC is shortened to
 /// the bytes that tell it apart only when the line does not fit.
+///
+/// Round 17: one fixed layout in every state (field round 17: while the
+/// gateway switched PTU the bar held 「重新搜尋」 + 「取消操作」, and when
+/// the switch finished other buttons took their places under the finger).
+/// Every button keeps its place and is disabled rather than removed or
+/// replaced:
+///   1. 「辨識此樁」（「連線建立中…」 right after a connect） · 「不是這台？」
+///      (with no candidates the gateway first collects a new window)
+///   2. the identify note, one line
+///   3. 「是這台，開始監控」（「請先按「辨識此樁」確認」 / 「等待閘道器連上
+///      PTU」）
+///   4. 「重新搜尋」 · 「取消操作」（only while something runs）
 class DirectPickActions extends ConsumerStatefulWidget {
   const DirectPickActions({super.key});
 
@@ -644,58 +682,59 @@ class _DirectPickActionsState extends ConsumerState<DirectPickActions> {
     final shown = state.selected.firstOrNull;
     final ready = picked != null && shown != null && sameMac(picked, shown);
     final enabled = !state.busy && !state.relinking;
+    // Round 17: the gateway's link to this PTU is still being set up.
+    final settling = ready && state.directSettling;
     // Round 15b: 是這台 only for the PTU the installer identified.
-    final confirmable = directConfirmReady(state);
-    if (!ready) {
-      return FilledButton.icon(
-        key: const Key('direct-rescan-bottom'),
-        icon: const Icon(Icons.refresh, size: 20),
-        onPressed: enabled ? controller.discover : null,
-        label: const Text('重新搜尋'),
-      );
-    }
+    final confirmable = ready && directConfirmReady(state);
     final identifySupported = state.config['identify_supported'] == true;
-    final canSwitch = state.direct?.candidates.isNotEmpty ?? false;
     final others = [
       for (final c in state.direct?.candidates ?? const []) c.mac,
     ];
-    final note = state.identifyNote;
-    final line = note.isEmpty
+    final note = ready ? state.identifyNote : '';
+    final line = !ready
+        ? state.busy
+              ? '閘道器處理中，請稍候…'
+              : '閘道器尚未連上 PTU'
+        : note.isEmpty
         ? '按下後請看樁上 PTU 與閘道器的燈號'
         : state.identifyLine.isEmpty
         ? note
         : state.identifyLine;
     final showDetail = _detail && note.isNotEmpty && note != line;
     return Column(
+      key: const Key('direct-pick-actions'),
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (identifySupported || canSwitch)
-          Row(
-            children: [
-              if (identifySupported)
-                FilledButton.tonalIcon(
-                  key: const Key('direct-identify'),
-                  icon: const Icon(Icons.lightbulb_outline, size: 20),
-                  onPressed: enabled ? controller.identify : null,
-                  label: const Text('辨識此樁'),
-                ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Align(
-                  alignment: Alignment.centerRight,
-                  child: canSwitch
-                      ? TextButton.icon(
-                          key: const Key('direct-not-this'),
-                          icon: const Icon(Icons.swap_horiz, size: 20),
-                          onPressed: () => showDirectCandidates(context),
-                          label: const Text('不是這台？'),
-                        )
+        Row(
+          children: [
+            if (identifySupported)
+              FilledButton.tonalIcon(
+                key: const Key('direct-identify'),
+                icon: const Icon(Icons.lightbulb_outline, size: 20),
+                onPressed: enabled && ready && !settling
+                    ? controller.identify
+                    : null,
+                label: Text(settling ? directSettlingLabel : '辨識此樁'),
+              ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  key: Key(ready ? 'direct-not-this' : 'direct-others-bottom'),
+                  icon: const Icon(Icons.swap_horiz, size: 20),
+                  onPressed: enabled && state.direct != null
+                      ? () => openDirectCandidates(context, ref)
                       : null,
+                  // Same label with or without a pick: same size, same
+                  // place (the sheet lists the nearby candidates).
+                  label: const Text('不是這台？'),
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
+        ),
         if (identifySupported)
           InkWell(
             key: const Key('direct-identify-toggle'),
@@ -753,11 +792,35 @@ class _DirectPickActionsState extends ConsumerState<DirectPickActions> {
           ),
         const SizedBox(height: 4),
         FilledButton(
-          key: const Key('direct-confirm'),
+          key: Key(ready ? 'direct-confirm' : 'direct-wait'),
           onPressed: enabled && confirmable
               ? controller.confirmDirectPick
               : null,
-          child: Text(confirmable ? '是這台，開始監控' : directIdentifyFirstLabel),
+          child: Text(
+            !ready
+                ? directWaitingLabel
+                : confirmable
+                ? '是這台，開始監控'
+                : directIdentifyFirstLabel,
+          ),
+        ),
+        Row(
+          children: [
+            TextButton.icon(
+              key: const Key('direct-rescan-bottom'),
+              icon: const Icon(Icons.refresh, size: 20),
+              onPressed: enabled ? controller.rescanDirect : null,
+              label: const Text('重新搜尋'),
+            ),
+            const Spacer(),
+            TextButton(
+              key: const Key('direct-stop'),
+              // Step 7: ends the run like 「結束並重新選擇閘道器」 (a
+              // temporary binding is put back).
+              onPressed: state.busy ? controller.stopStep8 : null,
+              child: const Text('取消操作'),
+            ),
+          ],
         ),
       ],
     );
