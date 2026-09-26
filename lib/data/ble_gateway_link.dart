@@ -23,13 +23,40 @@ Object normalizeBleError(Object error) {
   return error;
 }
 
+/// Round 19: an ack frame no pending request took, as [ForeignAcks]
+/// passes it on — its parsed `result` with `req_id` / `status` — or null
+/// when it is not foreign: no string req_id, or one starting with
+/// [ownPrefix] (this link's own requests, e.g. a late ack after a
+/// timeout).
+Map<String, dynamic>? foreignAckOf(
+  Map<String, dynamic> frame,
+  String ownPrefix,
+) {
+  final id = frame['req_id'];
+  if (id is! String || id.startsWith(ownPrefix)) return null;
+  var payload = frame['result'];
+  if (payload is String) {
+    try {
+      payload = jsonDecode(payload);
+    } on FormatException {
+      payload = {'message': payload};
+    }
+  }
+  return {
+    if (payload is Map) ...Map<String, dynamic>.from(payload),
+    'req_id': id,
+    'status': frame['status'],
+  };
+}
+
 class BleGatewayLink
     implements
         GatewayLink,
         GatewaySignalSource,
         GatewayScanner,
         BluetoothReadiness,
-        ConnectDiagnostics {
+        ConnectDiagnostics,
+        ForeignAcks {
   StreamSubscription<AvailabilityState>? _availability;
 
   /// Starts tracking when the adapter turns on (lazily: needs the plugin).
@@ -212,6 +239,19 @@ class BleGatewayLink
   StreamSubscription<bool>? _connection;
   final _frames = JsonFrames();
   final _pending = <String, Completer<Map<String, dynamic>>>{};
+  final _foreign = StreamController<Map<String, dynamic>>.broadcast();
+
+  /// Round 19: the ack of a command this APP did not send (its req_id is
+  /// not one of this link's `app-<session>-n`): the back office's, relayed
+  /// by the gateway. Late acks of this APP's own timed-out commands are not.
+  @override
+  Stream<Map<String, dynamic>> get foreignAcks => _foreign.stream;
+
+  void _foreignAck(Map<String, dynamic> frame) {
+    final ack = foreignAckOf(frame, 'app-$_session-');
+    if (ack != null) _foreign.add(ack);
+  }
+
   Future<void> _tail = Future.value();
   int _epoch = 0, _sequence = 0;
   final String _session = Random.secure().nextInt(0x7fffffff).toRadixString(16);
@@ -397,7 +437,8 @@ class BleGatewayLink
             ready = true;
             break;
           } catch (retryError) {
-            if (retryError is GatewayFailure && retryError.code == 'cancelled') {
+            if (retryError is GatewayFailure &&
+                retryError.code == 'cancelled') {
               rethrow;
             }
             await _tearDownSetup();
@@ -448,7 +489,11 @@ class BleGatewayLink
       try {
         for (final frame in _frames.add(bytes)) {
           final pending = _pending.remove(frame['req_id']);
-          if (pending != null && !pending.isCompleted) pending.complete(frame);
+          if (pending != null && !pending.isCompleted) {
+            pending.complete(frame);
+          } else if (pending == null) {
+            _foreignAck(frame);
+          }
         }
       } catch (_) {
         _frames.clear();

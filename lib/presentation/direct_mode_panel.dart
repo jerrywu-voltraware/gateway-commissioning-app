@@ -665,8 +665,20 @@ class _WarnBox extends StatelessWidget {
 ///   3. 「是這台，開始監控」（「請先按「辨識此樁」確認」 / 「等待閘道器連上
 ///      PTU」）
 ///   4. 「重新搜尋」 · 「取消操作」（only while something runs）
+///   5. 「結束並重新選擇閘道器」 ([onEnd]; disabled while something runs)
+///
+/// Round 19: row 5 moved here from below the page's card (field round 19:
+/// the card grew when its RSSI went 「RSSI —」 → 「-49 dBm」 and the button
+/// slid away from under a tap; the ambiguous / notice boxes appearing and
+/// vanishing move it further). The bar is anchored to the bottom of the
+/// screen and this is its last row, so nothing above it can move it. The
+/// note while an identify waits for its ack: [identifyPendingText] with a
+/// spinner.
 class DirectPickActions extends ConsumerStatefulWidget {
-  const DirectPickActions({super.key});
+  const DirectPickActions({super.key, this.onEnd});
+
+  /// 「結束並重新選擇閘道器」 (asks first); no row 5 when null.
+  final VoidCallback? onEnd;
 
   @override
   ConsumerState<DirectPickActions> createState() => _DirectPickActionsState();
@@ -703,6 +715,10 @@ class _DirectPickActionsState extends ConsumerState<DirectPickActions> {
         ? note
         : state.identifyLine;
     final showDetail = _detail && note.isNotEmpty && note != line;
+    // Round 19: sent, the ack not back yet.
+    final pending =
+        state.busy &&
+        (line == identifyPendingText || line == identifyPendingGatewayText);
     return Column(
       key: const Key('direct-pick-actions'),
       mainAxisSize: MainAxisSize.min,
@@ -747,6 +763,19 @@ class _DirectPickActionsState extends ConsumerState<DirectPickActions> {
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: Row(
                 children: [
+                  if (pending)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: SizedBox(
+                        key: const Key('direct-identify-pending'),
+                        width: 12,
+                        height: 12,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: colors.primary,
+                        ),
+                      ),
+                    ),
                   Expanded(
                     // Round 16b: the full MAC when the line fits, else the
                     // bytes telling it apart (the full note opens below).
@@ -824,6 +853,13 @@ class _DirectPickActionsState extends ConsumerState<DirectPickActions> {
             ),
           ],
         ),
+        if (widget.onEnd != null)
+          TextButton(
+            key: const Key('page-cancel'),
+            // Disabled (not removed) while something runs (round 17).
+            onPressed: enabled ? widget.onEnd : null,
+            child: const Text(endFlowLabel),
+          ),
       ],
     );
   }

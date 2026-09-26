@@ -462,6 +462,9 @@ Duration identifyRetryDelay = const Duration(milliseconds: 1500);
 /// (「不是這台？」 without candidates, 「重新搜尋」 with a pick).
 const directFreshWindowText = '閘道器正在重新收集附近的 PTU，請稍候';
 
+/// The page's button that ends the run and goes back to the gateway list.
+const endFlowLabel = '結束並重新選擇閘道器';
+
 /// Round 17: 「結束並重新選擇閘道器」 after step 3 asks first (field round
 /// 17: a late tap meant for 「改選其他 PTU」 landed on it once the layout
 /// moved, and ended the whole flow).
@@ -731,7 +734,16 @@ class CommissionState {
     this.strayBindMac,
     this.directNotice = '',
     this.directSettling = false,
+    this.remoteIdentifyNote = '',
+    this.remoteIdentifyCount = 0,
   });
+
+  /// Round 19: the back office made the connected pile blink (its identify
+  /// ack, relayed by the gateway, answers no request of this APP) — shown
+  /// as a passing notice, nothing else changes. [remoteIdentifyCount]
+  /// counts them, so the page shows each one once.
+  final String remoteIdentifyNote;
+  final int remoteIdentifyCount;
 
   /// Round 17: the gateway reported its pick connected less than
   /// [directSettleWindow] ago and no RSSI yet (0 / null) — 「辨識此樁」
@@ -990,7 +1002,11 @@ class CommissionState {
     Object? strayBindMac = _keep,
     String? directNotice,
     bool? directSettling,
+    String? remoteIdentifyNote,
+    int? remoteIdentifyCount,
   }) => CommissionState(
+    remoteIdentifyNote: remoteIdentifyNote ?? this.remoteIdentifyNote,
+    remoteIdentifyCount: remoteIdentifyCount ?? this.remoteIdentifyCount,
     directSettling: directSettling ?? this.directSettling,
     identifiedMac: identical(identifiedMac, _keep)
         ? this.identifiedMac
@@ -1186,6 +1202,13 @@ class CommissioningController extends Notifier<CommissionState> {
       }
       unawaited(_save());
     });
+    // Round 19: the back office's identify during commissioning (backend
+    // D5) — the gateway relays its ack to the phone.
+    final link = _link;
+    if (link is ForeignAcks) {
+      final foreign = (link as ForeignAcks).foreignAcks.listen(_onForeignAck);
+      ref.onDispose(foreign.cancel);
+    }
     ref.onDispose(() {
       _generation++;
       _clock?.cancel();
@@ -1861,10 +1884,12 @@ class CommissioningController extends Notifier<CommissionState> {
         throw const GatewayFailure('identify_unsupported');
       }
       final note = state.identifyNote, line = state.identifyLine;
-      state = state.copy(
-        identifyNote: identifySentText,
-        identifyLine: identifySentLine,
-      );
+      // Round 19: at once, until the ack (firmware 1.7.25+ waits up to
+      // 1.5 s for the PTU's answer before it acks).
+      final pending = identifyPtuSupported(state.config)
+          ? identifyPendingText
+          : identifyPendingGatewayText;
+      state = state.copy(identifyNote: pending, identifyLine: pending);
       try {
         await _identify(generation, target);
       } catch (error) {
@@ -1879,6 +1904,21 @@ class CommissioningController extends Notifier<CommissionState> {
     if (ref.mounted && !_autoRelinking && _linkLostAt(4)) {
       await _autoRelink(4);
     }
+  }
+
+  /// Round 19 (field round 19: the back office flashed the pile and the
+  /// installer was not told): an identify ack of the back office's, while a
+  /// gateway is connected, becomes [CommissionState.remoteIdentifyNote] —
+  /// nothing else (step, busy, error, identification) changes. Other
+  /// foreign acks are ignored.
+  void _onForeignAck(Map<String, dynamic> ack) {
+    if (!ref.mounted || state.peer == null) return;
+    if (ack['status'] != 'ok' || !isIdentifyAck(ack)) return;
+    state = state.copy(
+      error: state.error,
+      remoteIdentifyNote: remoteIdentifyText(ack),
+      remoteIdentifyCount: state.remoteIdentifyCount + 1,
+    );
   }
 
   Future<void> _identify(int generation, String target) async {

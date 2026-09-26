@@ -363,6 +363,15 @@ const identifySentText = '已送出，請看樁上燈號';
 /// Round 16: [identifySentText] as the one-line bottom bar form.
 const identifySentLine = '已送出 · 請看樁上燈號';
 
+/// Round 19: beside 「辨識此樁」 (and in the bottom bar) from the tap until
+/// the ack — firmware 1.7.25+ acks only once the PTU answered or 1.5 s
+/// passed (field round 19: ~1.5 s without any change on screen).
+const identifyPendingText = '已送出，等待 PTU 回應…';
+
+/// Round 19: [identifyPendingText] for firmware that blinks the gateway
+/// only (no PTU to wait for).
+const identifyPendingGatewayText = '已送出，等待閘道器回應…';
+
 /// Round 18: firmware 1.7.25+ says whether the PTU confirmed the blink
 /// (`ptu_confirmed`, `ptu_confirm` ok | unsupported_pattern | timeout,
 /// `ptu_confirm_ms`); older firmware sends neither (`ptu_confirmed` there
@@ -435,6 +444,46 @@ String identifyNoteText(Map<String, dynamic> ack) {
     IdentifyConfirm.legacy => identifySentText,
   };
   return '$head（$ptu）';
+}
+
+/// Round 19: the result of an identify ack in a few words (「PTU 已確認亮燈」,
+/// 「PTU 未回應確認」…); null when the ack says nothing about the PTU.
+String? identifyResultText(Map<String, dynamic> ack) {
+  final ptuWrite = ack['ptu_write'];
+  if (ptuWrite != null && ptuWrite != 'ok') {
+    return '只有閘道器閃燈，PTU 未收到（$ptuWrite）';
+  }
+  return switch (identifyConfirmOf(ack)) {
+    IdentifyConfirm.confirmed => identifyConfirmedText,
+    IdentifyConfirm.timeout => 'PTU 未回應確認（PTU 韌體尚未支援）',
+    IdentifyConfirm.unsupportedPattern => 'PTU 不支援此燈效',
+    IdentifyConfirm.legacy => ptuWrite == 'ok' ? 'PTU 已收到閃燈指令' : null,
+  };
+}
+
+/// Round 19: an identify ack the gateway relayed to the phone that answers
+/// no request of this APP — the back office made the pile blink (backend
+/// D5, allowed during commissioning). Only [ack] results shaped like an
+/// identify ack (`ptu_write` / `ptu_confirm` / `ptu_confirmed` /
+/// `gateway_led`) count.
+bool isIdentifyAck(Map<String, dynamic> ack) =>
+    ack.containsKey('ptu_write') ||
+    ack.containsKey('ptu_confirm') ||
+    ack.containsKey('ptu_confirmed') ||
+    ack.containsKey('gateway_led');
+
+/// Round 19: the non-blocking notice for [isIdentifyAck] acks the back
+/// office sent: 「後台剛讓這台樁閃燈（請看樁上燈號）」 with the PTU's
+/// answer, its MAC and RSSI when given.
+String remoteIdentifyText(Map<String, dynamic> ack) {
+  final result = identifyResultText(ack);
+  final mac = ack['mac'];
+  final rssi = ack['rssi'];
+  final ptu = [
+    if (mac != null) 'PTU ${formatMac(mac)}',
+    if (rssi is num) rssiLabel(rssi),
+  ].join(' · ');
+  return ['後台剛讓這台樁閃燈（請看樁上燈號）', ?result, if (ptu.isNotEmpty) ptu].join(' · ');
 }
 
 /// Round 17: 「辨識此樁」 while the gateway's link to the PTU it just

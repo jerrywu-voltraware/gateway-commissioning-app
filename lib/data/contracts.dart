@@ -34,6 +34,15 @@ abstract class BluetoothReadiness {
   Future<void> waitAdapterReady(Duration max);
 }
 
+/// Optional (round 19): acks the gateway sends over BLE that answer no
+/// request of this APP — the gateway relays every ACK to a connected phone,
+/// including those of commands the back office sent over MQTT (e.g. a
+/// remote identify). Each is the frame's parsed `result` (a map) with
+/// `req_id` / `status` added.
+abstract class ForeignAcks {
+  Stream<Map<String, dynamic>> get foreignAcks;
+}
+
 /// Optional connect diagnostics: the exception of the latest connect's
 /// first failed attempt (round 8: the first reconnect sometimes fails).
 abstract class ConnectDiagnostics {

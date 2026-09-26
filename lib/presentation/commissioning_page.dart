@@ -488,6 +488,28 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     }
   }
 
+  /// Round 19 (field round 19: the back office flashed the pile and the
+  /// installer never knew): its identify ack as a passing snack bar — over
+  /// the page, never moving it, and changing nothing in the flow.
+  void _showRemoteIdentify(CommissionState? previous, CommissionState next) {
+    if (previous == null ||
+        next.remoteIdentifyCount == previous.remoteIdentifyCount ||
+        next.remoteIdentifyNote.isEmpty ||
+        !mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          key: const Key('remote-identify'),
+          content: Text(next.remoteIdentifyNote),
+          duration: const Duration(seconds: 8),
+          showCloseIcon: true,
+        ),
+      );
+  }
+
   /// Step 6 already started its automatic verification for this entry.
   bool _autoVerifyStarted = false;
 
@@ -539,6 +561,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     super.initState();
     ref.listenManual(backendEnvProvider, _onEnvironment, fireImmediately: true);
     ref.listenManual(commissionProvider, _maybeAutoVerify);
+    ref.listenManual(commissionProvider, _showRemoteIdentify);
     _host.addListener(() => _envController.setLocalHost(_host.text));
     _base.addListener(_onBaseEdited);
     WidgetsBinding.instance.addObserver(this);
@@ -780,7 +803,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                         // Round 17: 「取消操作」 is part of the bar's fixed
                         // layout (disabled while idle).
                         if (directPicking) ...[
-                          const DirectPickActions(),
+                          DirectPickActions(onEnd: () => _endFlow(controller)),
                         ] else ...[
                           Text(
                             selectionCountText(state, targetPtuCount),
@@ -1097,26 +1120,23 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                       ),
                     ),
                   ),
-                  // Round 17: at direct step 7 it stays in place while
-                  // busy (disabled), so it never appears under a finger
-                  // the moment a switch finishes; after step 3 it asks
-                  // first (field round 17: a late tap ended the flow).
+                  // After step 3 it asks first (field round 17: a late tap
+                  // ended the flow). Round 19: at direct step 7 it is the
+                  // bottom bar's last row instead ([DirectPickActions]),
+                  // where the card above can no longer move it.
                   if (state.step > 0 &&
-                      (!(selectingPtus && state.busy) || directPicking))
+                      !directPicking &&
+                      !(selectingPtus && state.busy))
                     TextButton(
                       key: const Key('page-cancel'),
                       // Step 9: back to step 7 keeping the progress (round
                       // 8: a cancel here dropped back to step 2).
-                      onPressed: directPicking && state.busy
-                          ? null
-                          : state.step == 6 && state.busy
+                      onPressed: state.step == 6 && state.busy
                           ? controller.backToSelection
                           : state.busy
                           ? () => controller.cancel()
                           : () => _endFlow(controller),
-                      child: Text(
-                        state.busy && !directPicking ? '取消操作' : '結束並重新選擇閘道器',
-                      ),
+                      child: Text(state.busy ? '取消操作' : endFlowLabel),
                     ),
                   if (state.step == 0)
                     SwitchListTile(

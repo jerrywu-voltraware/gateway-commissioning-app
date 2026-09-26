@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../core/mqtt_target.dart';
 import '../core/protocol.dart';
 import 'contracts.dart';
@@ -5,7 +7,7 @@ import 'contracts.dart';
 /// Compile-time production broker host reported by firmware 1.7.3.
 const demoProductionMqttHost = '46.250.255.172';
 
-class DemoSystem implements GatewayLink, GatewayApi {
+class DemoSystem implements GatewayLink, GatewayApi, ForeignAcks {
   final config = <String, dynamic>{
     'fw_version': '1.7.3',
     'identify_supported': true,
@@ -30,6 +32,40 @@ class DemoSystem implements GatewayLink, GatewayApi {
 
   /// Identify requests received (params as sent).
   final identifyRequests = <Map<String, dynamic>>[];
+
+  final _foreign = StreamController<Map<String, dynamic>>.broadcast();
+
+  @override
+  Stream<Map<String, dynamic>> get foreignAcks => _foreign.stream;
+
+  /// Round 19: an ack of a command this APP did not send, as the gateway
+  /// relays it to the phone (see [ForeignAcks]).
+  void relayForeignAck(Map<String, dynamic> ack) => _foreign.add(ack);
+
+  /// Round 19: the back office's identify (sent over MQTT, dashboard
+  /// pattern 0 / 3 s) as the gateway relays its ack to the phone:
+  /// [confirm] as `ptu_confirm` (firmware 1.7.25+), the connected PTU's
+  /// MAC / RSSI when there is one.
+  void remoteIdentify({
+    String reqId = '20260926-00007',
+    String? confirm = 'timeout',
+  }) {
+    final ptu = devices.where((d) => d['connected'] == true).firstOrNull;
+    relayForeignAck({
+      'gateway_led': 'ok',
+      'ptu_write': ptu == null ? 'not_connected' : 'ok',
+      'ptu_confirmed': ptu != null && confirm == 'ok',
+      if (ptu != null && confirm != null) ...{
+        'ptu_confirm': confirm,
+        'ptu_confirm_ms': confirm == 'ok' ? 180 : 1505,
+        'ptu_seq': 3,
+      },
+      if (ptu != null) 'mac': ptu['mac'],
+      if (ptu != null) 'rssi': ptu['rssi'],
+      'req_id': reqId,
+      'status': 'ok',
+    });
+  }
 
   /// Round 18: firmware 1.7.25's `ptu_confirm` for a PTU identify (`ok`,
   /// `unsupported_pattern`, `timeout`); null simulates older firmware.
