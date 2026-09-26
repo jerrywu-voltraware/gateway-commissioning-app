@@ -71,6 +71,16 @@ abstract class SessionStore {
   Future<bool> restoreSession(String base);
 }
 
+/// Optional (field rescue v1): whether the API holds a login right now and
+/// for which backend — the field reporter queues its uploads instead of
+/// sending them without one (it never asks for the password itself).
+abstract class SessionInfo {
+  bool get hasSession;
+
+  /// `scheme://host:port` of the logged-in backend, or null.
+  String? get origin;
+}
+
 abstract class GatewayApi {
   Future<void> login(String base, String password);
   Future<Map<String, dynamic>> request(

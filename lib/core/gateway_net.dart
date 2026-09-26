@@ -111,10 +111,12 @@ enum WifiFailKind {
 
 /// `wifi_err_reason_t` values (ESP-IDF 5.4.1,
 /// `components/esp_wifi/include/esp_wifi_types_generic.h`) meaning the
-/// password / key exchange failed: AUTH_EXPIRE 2, MIC_FAILURE 14,
-/// 4WAY_HANDSHAKE_TIMEOUT 15, 802_1X_AUTH_FAILED 23, AUTH_FAIL 202,
-/// HANDSHAKE_TIMEOUT 204.
-const wifiPasswordReasons = {2, 14, 15, 23, 202, 204};
+/// password / key exchange failed: MIC_FAILURE 14, 4WAY_HANDSHAKE_TIMEOUT 15,
+/// 802_1X_AUTH_FAILED 23, AUTH_FAIL 202, HANDSHAKE_TIMEOUT 204.
+/// AUTH_EXPIRE 2 is not here: the AP dropped an idle / stale authentication
+/// (weak signal or roaming), and calling it a wrong password misleads the
+/// installer (firmware review), so it is [WifiFailKind.weakOrOther].
+const wifiPasswordReasons = {14, 15, 23, 202, 204};
 
 /// No matching network: NO_AP_FOUND 201, NO_AP_FOUND_W_COMPATIBLE_SECURITY
 /// 210, NO_AP_FOUND_IN_AUTHMODE_THRESHOLD 211. (NO_AP_FOUND_IN_RSSI_THRESHOLD
@@ -126,8 +128,9 @@ const wifiNotFoundReasons = {201, 210, 211};
 /// it is treated like no reason at all.
 const wifiLeaveReasons = {3, 8, 36};
 
-/// Everything else — BEACON_TIMEOUT 200, ASSOC_FAIL 203, CONNECTION_FAIL
-/// 205, NO_AP_FOUND_IN_RSSI_THRESHOLD 212, … — is weak signal or other.
+/// Everything else — AUTH_EXPIRE 2, BEACON_TIMEOUT 200, ASSOC_FAIL 203,
+/// CONNECTION_FAIL 205, NO_AP_FOUND_IN_RSSI_THRESHOLD 212, … — is weak
+/// signal or other.
 WifiFailKind? wifiFailKindOf(int? reason) => reason == null
     ? null
     : wifiPasswordReasons.contains(reason)

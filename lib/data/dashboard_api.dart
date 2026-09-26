@@ -41,7 +41,7 @@ Uri? _apiBase(String base) {
   return uri;
 }
 
-class DashboardApi implements GatewayApi, SessionStore {
+class DashboardApi implements GatewayApi, SessionStore, SessionInfo {
   DashboardApi({DateTime Function()? now}) : _now = now ?? DateTime.now;
 
   final DateTime Function() _now;
@@ -49,6 +49,13 @@ class DashboardApi implements GatewayApi, SessionStore {
   final _http = HttpClient()..connectionTimeout = const Duration(seconds: 10);
   Uri? _base;
   String? _key;
+
+  @override
+  bool get hasSession => _base != null && _key != null;
+
+  @override
+  String? get origin => _base?.origin;
+
   @override
   Future<void> login(String base, String password) async {
     final uri = _apiBase(base);

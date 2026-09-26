@@ -12,6 +12,7 @@ import '../core/gateway_topology.dart';
 import '../core/ptu_rssi.dart';
 import '../core/mqtt_target.dart';
 import '../core/protocol.dart';
+import '../core/rescue_code.dart';
 import '../data/ble_gateway_link.dart';
 import '../data/contracts.dart';
 import '../data/recent_gateways.dart';
@@ -19,6 +20,7 @@ import '../data/dashboard_api.dart';
 import '../data/demo_system.dart';
 import '../data/ptu_inventory.dart';
 import 'backend_environment.dart';
+import 'field_report.dart';
 import 'network_check.dart';
 import 'topology_settings.dart';
 import 'verify_diagnosis.dart';
@@ -1362,6 +1364,13 @@ final commissionProvider =
 class CommissioningController extends Notifier<CommissionState> {
   late GatewayLink _link;
   late GatewayApi _api;
+
+  /// Field rescue v1: session reports, diagnostics, help (never blocks or
+  /// fails the commissioning).
+  late FieldReporter _field;
+
+  /// When get_net_status was last absorbed (diagnostics `net_read_age_s`).
+  DateTime? _netReadAt;
   Timer? _clock, _health;
   int _generation = 0;
   // Topology changed while a step was running; applied when it ends.
@@ -1456,6 +1465,8 @@ class CommissioningController extends Notifier<CommissionState> {
     _link = ref.watch(linkProvider);
     _api = ref.watch(apiProvider);
     _timing = ref.read(uploadWatchTimingProvider);
+    _field = ref.watch(fieldReporterProvider);
+    _field.attach(input: _fieldInput, sections: _fieldSections);
     // 切換拓撲（直連／星狀）或改星狀台數：先依新拓撲重算 pendingNext 與 selected
     // （沿用既有 ptus 清單，套用跟 _discover 相同的範圍過濾／預選邏輯，不重
     // 掃），再把已勾選裁到新的目標台數，只保留 RSSI 最強的前 N 台；顯示的
@@ -1481,6 +1492,9 @@ class CommissioningController extends Notifier<CommissionState> {
     // saved too. A pending saved resume is superseded once a fresh run
     // reaches the gateway (step >= 2) outside 「重新連線並繼續」.
     listenSelf((previous, next) {
+      // Field rescue: decides (after this synchronous update) whether the
+      // step / status / error changed enough for a session report.
+      _field.onState();
       if (previous == null || next.step < 1) return;
       if (_shown(previous) == _shown(next)) return;
       if (_saved != null) {
@@ -1498,6 +1512,7 @@ class CommissioningController extends Notifier<CommissionState> {
     }
     ref.onDispose(() {
       _generation++;
+      _field.detach();
       _clock?.cancel();
       _health?.cancel();
       _poll?.cancel();
@@ -1649,6 +1664,10 @@ class CommissioningController extends Notifier<CommissionState> {
   void _loginOk(String base, String password) {
     _setLoggedIn(true, base);
     _credentials = (base.trim(), password);
+    // Field rescue: the password never reaches a report; what waited for
+    // a login goes out now.
+    _field.journal.addSecret(password);
+    unawaited(_field.flush());
   }
 
   /// [password] as typed, or — left empty — the one that last logged in to
@@ -1729,11 +1748,24 @@ class CommissioningController extends Notifier<CommissionState> {
     String? before;
     try {
       for (int attempt = 0; ; attempt++) {
+        // Field rescue: every try is journaled (params masked) for the
+        // diagnostics package.
+        final watch = Stopwatch()..start();
+        var answered = false;
         try {
+          if (takeFieldFault(op)) {
+            await Future<void>.delayed(const Duration(seconds: 3));
+            throw const GatewayFailure('timeout');
+          }
           final result = await _link.command(op, params);
+          answered = true;
+          _journalBle(op, params, 'ok', watch, result: result);
           _check(generation);
           return result;
         } on GatewayFailure catch (error) {
+          if (!answered) {
+            _journalBle(op, params, _journalStatus(error), watch, error: error);
+          }
           if (error.code != 'busy' || attempt >= busyRetryLimit) rethrow;
           _check(generation);
           before ??= state.message;
@@ -1743,6 +1775,11 @@ class CommissioningController extends Notifier<CommissionState> {
             _link.demo ? const Duration(milliseconds: 1) : busyRetryDelay,
           );
           _check(generation);
+        } catch (error) {
+          if (!answered) {
+            _journalBle(op, params, _journalStatus(error), watch, error: error);
+          }
+          rethrow;
         }
       }
     } finally {
@@ -1759,7 +1796,15 @@ class CommissioningController extends Notifier<CommissionState> {
     Map<String, dynamic>? body,
   ]) async {
     _check(generation);
-    final result = await _withRelogin(() => _api.request(method, path, body));
+    final watch = Stopwatch()..start();
+    final Map<String, dynamic> result;
+    try {
+      result = await _withRelogin(() => _api.request(method, path, body));
+      _journalHttp(method, path, watch);
+    } catch (error) {
+      _journalHttp(method, path, watch, error: error);
+      rethrow;
+    }
     if (generation != _generation &&
         path.endsWith('/bot-monitor') &&
         body?['enabled'] == false) {
@@ -1778,9 +1823,9 @@ class CommissioningController extends Notifier<CommissionState> {
       try {
         // Never leave the gateway with BLE or upload switched off: an
         // interrupted step 8 turns monitoring back on.
-        await _link.command('set_ble_enabled', {'enabled': true});
-        await _link.command('set_data_upload', {'enabled': true});
-        final config = await _link.command('get_config');
+        await _rawCommand('set_ble_enabled', {'enabled': true});
+        await _rawCommand('set_data_upload', {'enabled': true});
+        final config = await _rawCommand('get_config');
         final safe =
             config['ble_enabled'] != false && config['upload_paused'] != true;
         if (safe) _provisioningMayBeActive = false;
@@ -1816,6 +1861,8 @@ class CommissioningController extends Notifier<CommissionState> {
     if (state.busy) return;
     final generation = ++_generation;
     _diagnosis = null;
+    // Field rescue rule 1: a restart notice that appears during this run.
+    final rebootBefore = state.gatewayReboot?.to;
     state = state.copy(
       busy: true,
       message: label,
@@ -1936,6 +1983,19 @@ class CommissioningController extends Notifier<CommissionState> {
               ? '資料驗證未通過：\n${diagnosis.$2}'
               : failure.message,
         );
+        // Field rescue: classified after the red box is set, so the report
+        // carries the very text on screen. Never throws.
+        final rebootNow = state.gatewayReboot?.to;
+        _field.onFailure(
+          failure,
+          rebooted:
+              rebooted || (rebootNow != null && rebootNow != rebootBefore),
+          // A link issue's red box is the link text, not 「尚未確認…監控」.
+          safe: linkIssue ? null : safe,
+          timedOut: timedOut,
+          runLabel: label,
+          ctlStep: state.step,
+        );
       }
     } finally {
       _clock?.cancel();
@@ -2020,6 +2080,8 @@ class CommissioningController extends Notifier<CommissionState> {
         'assignments': state.ptus
             .map((p) => {'mac': p['mac'], 'id': p['device_number']})
             .toList(),
+        // Field rescue: 「重新連線並繼續」 keeps the same help code.
+        'field_session': ?_field.persisted(),
       }),
     );
   }
@@ -2048,6 +2110,8 @@ class CommissioningController extends Notifier<CommissionState> {
         return;
       }
       _saved = data;
+      await _field.restore(data['field_session']);
+      if (!ref.mounted) return;
       // Compared on 「重新連線並繼續」: restarted while the APP was closed?
       if (data['peer'] is String && data['boot_count'] is int) {
         _boot = (
@@ -2090,6 +2154,7 @@ class CommissioningController extends Notifier<CommissionState> {
 
   /// 「重新開始」 after a finished run: forget the saved progress.
   Future<void> clearCompleted() async {
+    _field.end('abandoned');
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_link.demo ? 'demo_progress' : 'progress');
     _saved = null;
@@ -2145,11 +2210,11 @@ class CommissioningController extends Notifier<CommissionState> {
     try {
       await _link.prepare();
     } catch (error) {
-      state = state.copy(
-        error: error is GatewayFailure
-            ? error.message
-            : GatewayFailure.unexpected(error).message,
-      );
+      final failure = error is GatewayFailure
+          ? error
+          : GatewayFailure.unexpected(error);
+      state = state.copy(error: failure.message);
+      _field.onFailure(failure, ctlStep: state.step);
       return;
     }
     _resumingSaved = true;
@@ -2618,6 +2683,7 @@ class CommissioningController extends Notifier<CommissionState> {
     if (state.config['wifi_only'] == true) {
       if (!state.networkReady) {
         state = state.copy(error: uploadNotReadyText);
+        _field.noteErrorCode(_notReadyCode());
         return;
       }
       state = state.copy(
@@ -2723,6 +2789,7 @@ class CommissioningController extends Notifier<CommissionState> {
     // Keep the network gate before proceeding with an existing station.
     if (!newStation && !wifiOnly && !state.networkReady) {
       state = state.copy(error: reuseBlockedText);
+      _field.noteErrorCode(_notReadyCode());
       return;
     }
     state = state.copy(
@@ -4357,7 +4424,9 @@ class CommissioningController extends Notifier<CommissionState> {
   Future<void> setDirectBind(bool bind) async {
     final mac = bind ? directConnectedMac : null;
     if (bind && mac == null) {
-      state = state.copy(error: const GatewayFailure('direct_no_ptu').message);
+      const failure = GatewayFailure('direct_no_ptu');
+      state = state.copy(error: failure.message);
+      _field.onFailure(failure, ctlStep: state.step);
       return;
     }
     await _directConfig({'direct_bind_mac': mac ?? ''});
@@ -4715,9 +4784,9 @@ class CommissioningController extends Notifier<CommissionState> {
       return null;
     }
     try {
-      await _link
-          .command('set_config', {'direct_bind_mac': restore ?? ''})
-          .timeout(const Duration(seconds: 8));
+      await _rawCommand('set_config', {
+        'direct_bind_mac': restore ?? '',
+      }).timeout(const Duration(seconds: 8));
     } catch (error) {
       return error.toString();
     }
@@ -5491,6 +5560,7 @@ class CommissioningController extends Notifier<CommissionState> {
             report: _report(),
             message: verifiedText,
           );
+          _field.end('completed');
           _health?.cancel();
           _abnormalStreak = 0;
           _health = Timer.periodic(
@@ -5558,6 +5628,7 @@ class CommissioningController extends Notifier<CommissionState> {
   /// On step 6/7 the shown result (verification error, 「開通驗證通過」,
   /// data health) came from the old backend, so it is cleared.
   void backendChanged(String base) {
+    _field.onBackendChanged(base);
     final next = base.trim();
     if (_loginBase == next && _loggedIn) return;
     if (!state.busy) _backend = describeBackend(Uri.tryParse(next));
@@ -5597,7 +5668,9 @@ class CommissioningController extends Notifier<CommissionState> {
     _setLoggedIn(true, trimmed);
     if ((fallbackPassword ?? '').isNotEmpty) {
       _credentials = (trimmed, fallbackPassword!);
+      _field.journal.addSecret(fallbackPassword);
     }
+    unawaited(_field.flush());
     return true;
   }
 
@@ -5704,6 +5777,7 @@ class CommissioningController extends Notifier<CommissionState> {
         if (source.containsKey(key)) key: source[key],
     };
     if (update.isEmpty) return false;
+    _netReadAt = DateTime.now();
     state = state.copy(net: {...state.net, ...update}, error: state.error);
     return _noteBoot(source);
   }
@@ -5783,9 +5857,9 @@ class CommissioningController extends Notifier<CommissionState> {
       return false;
     }
     try {
-      final net = await _link
-          .command('get_net_status')
-          .timeout(const Duration(seconds: 6));
+      final net = await _rawCommand(
+        'get_net_status',
+      ).timeout(const Duration(seconds: 6));
       return ref.mounted && _absorbNet(net);
     } catch (_) {
       return false;
@@ -6264,6 +6338,7 @@ class CommissioningController extends Notifier<CommissionState> {
       errorDetail: error.toString(),
       scanResumePending: state.step == 4 ? true : null,
     );
+    _field.onFailure(error, ctlStep: state.step);
     if (state.step == 4) {
       final keep = Set.of(state.selected);
       unawaited(_autoRelink(4, keep: keep.isEmpty ? null : keep));
@@ -6392,6 +6467,7 @@ class CommissioningController extends Notifier<CommissionState> {
 
   void setForeground(bool value) {
     _foreground = value;
+    _field.setForeground(value);
     if (!value) _markRssiStale();
   }
 
@@ -6584,6 +6660,162 @@ class CommissioningController extends Notifier<CommissionState> {
             : '暫時綁定 $tempBound 未能還原成 $restore：$unbindFailure',
         message: '已取消。請重新連線核對進度；未成功恢復的監控會話最晚於到期時恢復。',
       );
+      if (!safe) {
+        _field.noteErrorCode(RescueCode.monitorUnconfirmed);
+      } else if (unbindFailure != null) {
+        _field.noteErrorCode(RescueCode.directPick);
+      }
+      // Field rescue: 「結束並重新選擇閘道器」 ends this session.
+      _field.end('abandoned');
     }
+  }
+
+  // ---- Field rescue v1 (PLAN_2026-09-26_FIELD_RESCUE.md §5) ----
+
+  /// 「打電話給後台前按這裡」 / 「找後台幫忙」: a help report and package
+  /// (the session is created if there is none yet); the sheet follows
+  /// [fieldHelpProvider]. Never throws, never changes the commissioning.
+  Future<void> requestHelp() async {
+    try {
+      await _field.requestHelp();
+    } catch (_) {}
+  }
+
+  /// 〔重新傳送〕 on the help sheet.
+  Future<void> resendHelp() async {
+    try {
+      await _field.resendHelp();
+    } catch (_) {}
+  }
+
+  /// Uploads are on (not the demo gateway): the help buttons are shown.
+  bool get fieldHelpAvailable => _field.enabled;
+
+  FieldInput? _fieldInput() {
+    if (!ref.mounted) return null;
+    final topology = ref.read(topologyProvider);
+    return FieldInput(
+      state: state,
+      env: ref.read(backendEnvProvider),
+      directMode: topology.topology.isDirect,
+      targetCount: topology.targetCount,
+      loggedIn: _loggedIn,
+    );
+  }
+
+  /// Diagnostics blocks from what was already read (no new command).
+  Map<String, dynamic> _fieldSections() {
+    final link = _link;
+    return diagnosticSections(
+      state,
+      now: DateTime.now(),
+      connectLog: _connectLog?.$2 ?? const [],
+      firstConnectFailure: link is ConnectDiagnostics
+          ? (link as ConnectDiagnostics).firstConnectFailure
+          : null,
+      signalConnected: link is GatewaySignalSource
+          ? (link as GatewaySignalSource).signalConnected
+          : null,
+      netReadAt: _netReadAt,
+    );
+  }
+
+  /// Why the gateway cannot be used yet (「沿用目前站點」 / upload gate).
+  RescueCode _notReadyCode() => state.wifi == WifiVerdict.ok
+      ? RescueCode.uploadNotStarted
+      : wifiRescueCode(wifiDiscReasonOf(state.net));
+
+  /// A BLE command outside [_commandBusy] (safe stop, restart check,
+  /// temporary binding), journaled the same way.
+  Future<Map<String, dynamic>> _rawCommand(
+    String op, [
+    Map<String, dynamic> params = const {},
+  ]) async {
+    final watch = Stopwatch()..start();
+    try {
+      final result = await _link.command(op, params);
+      _journalBle(op, params, 'ok', watch, result: result);
+      return result;
+    } catch (error) {
+      _journalBle(op, params, _journalStatus(error), watch, error: error);
+      rethrow;
+    }
+  }
+
+  static String _journalStatus(Object error) {
+    if (error is TimeoutException) return 'timeout';
+    if (error is! GatewayFailure) return 'error';
+    if (error.code == 'timeout') return 'timeout';
+    if (error.code == 'busy') return 'busy';
+    return error.fromGateway ? 'fail' : 'error';
+  }
+
+  void _journalBle(
+    String op,
+    Map<String, dynamic> params,
+    String status,
+    Stopwatch watch, {
+    Object? result,
+    Object? error,
+  }) {
+    try {
+      _field.journal.ble(
+        op,
+        params,
+        status: status,
+        durMs: watch.elapsedMilliseconds,
+        result:
+            result ??
+            (error is GatewayFailure && error.fromGateway
+                ? error.detail
+                : null),
+        error: error is GatewayFailure
+            ? (error.fromGateway ? error.code : error.toString())
+            : error?.toString(),
+      );
+    } catch (_) {}
+  }
+
+  void _journalHttp(
+    String method,
+    String path,
+    Stopwatch watch, {
+    Object? error,
+  }) {
+    try {
+      final failure = error is GatewayFailure ? error : null;
+      final String status;
+      if (error == null) {
+        status = 'ok';
+      } else if (failure == null) {
+        status = error is TimeoutException ? 'timeout' : 'error';
+      } else if (failure.code == 'network') {
+        status = failure.detail == '逾時' ? 'timeout' : 'error';
+      } else if (const {
+        'api',
+        'authentication',
+        'conflict',
+      }.contains(failure.code)) {
+        status = 'fail';
+      } else {
+        status = 'error';
+      }
+      _field.journal.http(
+        method,
+        path,
+        status: status,
+        durMs: watch.elapsedMilliseconds,
+        httpStatus: error == null
+            ? 200
+            : failure?.code == 'authentication'
+            ? 401
+            : failure?.code == 'conflict'
+            ? 409
+            : failure?.status,
+        error: failure == null
+            ? error?.toString()
+            : '${failure.code}${failure.detail == null ? '' : ' ${failure.detail}'}',
+      );
+    } catch (_) {}
   }
 }

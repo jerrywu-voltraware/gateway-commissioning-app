@@ -21,6 +21,7 @@ import 'connection_status_panel.dart';
 import 'direct_calibration_sheet.dart';
 import 'direct_mode_panel.dart';
 import 'environment_switch.dart';
+import 'field_help_sheet.dart';
 import 'local_backend_field.dart';
 import 'ptu_selection_tile.dart';
 import 'gateway_signal.dart';
@@ -734,6 +735,15 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         appBar: AppBar(
           title: const Text('GIOS 現場開通'),
           actions: [
+            // Field rescue v1: no error, but the installer does not know
+            // what to do next.
+            if (state.step > 0 && !demo && controller.fieldHelpAvailable)
+              IconButton(
+                key: const Key('field-help-appbar'),
+                icon: const Icon(Icons.support_agent),
+                tooltip: '找後台幫忙',
+                onPressed: () => openFieldHelp(context, ref),
+              ),
             EnvironmentChip(onPressed: _openEnvironmentSheet),
             // 拓撲模式（進階）：直連／星狀切換與星狀「每台 PTU 數」收在同一個選單，
             // 避免 360dp 窄螢幕被多個 AppBar action 擠壓（narrow 360dp widget test）。
@@ -1085,6 +1095,29 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                                   color: colors.onErrorContainer,
                                 ),
                               ),
+                              // Field rescue v1: the help code to read out
+                              // on the phone (a button, so the banner's own
+                              // tap action does not fire).
+                              if (!demo && controller.fieldHelpAvailable)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 12),
+                                  child: OutlinedButton.icon(
+                                    key: const Key('field-help'),
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: colors.onErrorContainer,
+                                      side: BorderSide(
+                                        color: colors.onErrorContainer,
+                                      ),
+                                    ),
+                                    icon: const Icon(
+                                      Icons.support_agent,
+                                      size: 20,
+                                    ),
+                                    onPressed: () =>
+                                        openFieldHelp(context, ref),
+                                    label: const Text('打電話給後台前按這裡'),
+                                  ),
+                                ),
                               if (_resumeAction(state, controller) != null)
                                 Padding(
                                   padding: const EdgeInsets.only(top: 12),

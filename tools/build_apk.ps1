@@ -199,6 +199,8 @@ Write-Host "keystore: $ks (alias $alias)"
 
 # ---------------------------------------------------------------- build
 $flutterArgs = @('build', 'apk', '--release')
+# Field rescue v1: the build the back office sees in every report (app.build).
+$flutterArgs += "--dart-define=APP_BUILD=$hash"
 if ($Env -eq 'local') { $flutterArgs += '--dart-define=LOCAL_DEVELOPMENT=true' }
 $gradleOut = Join-Path $Root 'build\app\outputs\flutter-apk\app-release.apk'
 # Never sign a leftover from an earlier build.

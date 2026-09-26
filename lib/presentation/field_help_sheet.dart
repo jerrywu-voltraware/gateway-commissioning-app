@@ -1,0 +1,145 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../application/backend_environment.dart';
+import '../application/commissioning_controller.dart';
+import '../application/field_report.dart';
+import '../application/topology_settings.dart';
+
+/// Field rescue v1 (PLAN_2026-09-26_FIELD_RESCUE.md §5.3): asks the
+/// controller to send a help report and opens [FieldHelpSheet]. The sheet
+/// opens at once; the upload goes on behind it.
+Future<void> openFieldHelp(BuildContext context, WidgetRef ref) {
+  final controller = ref.read(commissionProvider.notifier);
+  unawaited(controller.requestHelp());
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    showDragHandle: true,
+    builder: (_) => const FieldHelpSheet(),
+  );
+}
+
+/// 「找後台幫忙」: the help code to read out on the phone, whether the back
+/// office already has the current situation, and — always, sent or not —
+/// what to tell them.
+class FieldHelpSheet extends ConsumerWidget {
+  const FieldHelpSheet({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final help = ref.watch(fieldHelpProvider);
+    final state = ref.watch(commissionProvider);
+    final env = ref.watch(backendEnvProvider);
+    final topology = ref.watch(topologyProvider);
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final code = help.code;
+    final lines = fieldHelpLines(
+      FieldInput(
+        state: state,
+        env: env,
+        directMode: topology.topology.isDirect,
+        targetCount: topology.targetCount,
+        loggedIn: state.loggedIn,
+      ),
+      errorCode: help.errorCode,
+    );
+    final (statusText, statusColor) = switch (help.phase) {
+      FieldHelpPhase.sent => ('✓ 已把目前狀況送給後台，打電話時先唸求助碼。', colors.primary),
+      FieldHelpPhase.queued => (
+        '⚠ 目前送不出去（${help.reason.isEmpty ? '沒有網路／尚未登入後台' : help.reason}），'
+            '後台暫時看不到。請在電話中直接唸下面的資訊。',
+        colors.error,
+      ),
+      FieldHelpPhase.unsupported => ('後台版本還不支援線上求助，請直接唸下面的資訊。', colors.error),
+      FieldHelpPhase.disabled => (
+        '示範模式不會傳送，請直接唸下面的資訊。',
+        colors.onSurfaceVariant,
+      ),
+      FieldHelpPhase.idle ||
+      FieldHelpPhase.sending => ('正在把目前狀況送給後台…', colors.onSurfaceVariant),
+    };
+    return SingleChildScrollView(
+      key: const Key('field-help-sheet'),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('找後台幫忙', style: theme.textTheme.titleLarge),
+          const Divider(),
+          Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 12,
+            children: [
+              Text('求助碼', style: theme.textTheme.titleMedium),
+              SelectableText(
+                help.displayCode ?? '—',
+                key: const Key('field-help-code'),
+                style: const TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 2,
+                ),
+              ),
+            ],
+          ),
+          if (code != null)
+            Text(
+              '（電話中請唸：${spokenShortCode(code)}）',
+              key: const Key('field-help-spoken'),
+            ),
+          const SizedBox(height: 12),
+          Text(
+            statusText,
+            key: const Key('field-help-status'),
+            style: TextStyle(color: statusColor),
+          ),
+          if (help.phase == FieldHelpPhase.queued)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                key: const Key('field-help-resend'),
+                icon: const Icon(Icons.refresh, size: 20),
+                onPressed: () =>
+                    ref.read(commissionProvider.notifier).resendHelp(),
+                label: const Text('重新傳送'),
+              ),
+            ),
+          const SizedBox(height: 12),
+          Text(
+            '請唸給後台：',
+            key: const Key('field-help-read'),
+            style: theme.textTheme.titleSmall,
+          ),
+          const SizedBox(height: 4),
+          for (final line in lines)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text('・$line'),
+            ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '不會傳送 Wi-Fi 密碼。',
+                  style: TextStyle(color: colors.onSurfaceVariant),
+                ),
+              ),
+              TextButton(
+                key: const Key('field-help-close'),
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('關閉'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
