@@ -15,6 +15,7 @@ import '../core/gateway_reboot.dart';
 import '../core/gateway_topology.dart';
 import '../core/local_backend_address.dart';
 import '../core/mqtt_target.dart';
+import '../core/star_allow_list.dart';
 import '../data/contracts.dart';
 import '../data/wifi_scan.dart';
 import 'connection_status_panel.dart';
@@ -1830,6 +1831,30 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                 style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
             ),
+          // Round 26: PTUs carrying this gateway's numbers but not on its
+          // allow list (ignored by the gateway), in plain words.
+          if (topology.isStar)
+            if (foreignPtuText(foreign: s.foreignPtus, unlisted: s.unlistedPtus)
+                case final text?)
+              Padding(
+                key: const Key('foreign-ptu-notice'),
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  text,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ),
+          if (topology.isStar &&
+              s.starListSwitch &&
+              s.starList == StarListStatus.failed)
+            Padding(
+              key: const Key('star-list-switch-failed'),
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                starListSwitchFailedText,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ),
           if (!directStep7)
             ...s.ptus.map((ptu) {
               final blocked = c.ptuOutOfRange(ptu);
@@ -2042,6 +2067,43 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               key: const Key('direct-bound-note'),
               padding: const EdgeInsets.only(top: 8),
               child: Text(directBoundNote(s)!),
+            ),
+          // Round 26: the star allow list written after verification; a
+          // failure keeps the completion, with 「重試寫入綁定名單」.
+          if (topology.isStar &&
+              !s.starListSwitch &&
+              s.starList != StarListStatus.none)
+            Padding(
+              key: const Key('star-list-status'),
+              padding: const EdgeInsets.only(top: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    switch (s.starList) {
+                      StarListStatus.writing => '$starListWritingText…',
+                      StarListStatus.written => starListWrittenText(
+                        s.starListIds,
+                      ),
+                      _ => starListFailedText,
+                    },
+                    key: const Key('star-list-text'),
+                    style: s.starList == StarListStatus.failed
+                        ? TextStyle(color: Theme.of(context).colorScheme.error)
+                        : null,
+                  ),
+                  if (s.starList == StarListStatus.failed)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: FilledButton.icon(
+                        key: const Key('star-list-retry'),
+                        icon: const Icon(Icons.refresh, size: 20),
+                        onPressed: enabled ? c.writeStarList : null,
+                        label: const Text(starListRetryLabel),
+                      ),
+                    ),
+                ],
+              ),
             ),
           // Round 18: measure the site and write the threshold back.
           if (topology.isDirect &&

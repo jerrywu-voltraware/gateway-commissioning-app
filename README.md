@@ -52,3 +52,13 @@ Wi-Fi 名稱下方可掃描手機周邊的 2.4 GHz 網路，依訊號排序，�
 - 「後端回報在線上／離線」使用目前登入環境的 fleet-status，每 15 秒更新。僅用曾透過 BLE get_config 驗證的 gateway_uid 對應後端 last_seen_mac；新裝置、未登入、讀取失敗、重複或衝突資料顯示未知，不依廣播名称推測。
 
 支援 identify_supported 的韌體在連線後提供「辨識這台・雙閃 6 秒」。辨識效果為每秒兩次短閃，結束後恢復原有呼吸／恆亮狀態。舊韌體仍可連線，畫面提示更新後才支援雙閃。這次不包含 QR Code 功能。
+
+## 星狀 PTU 綁定名單（韌體 1.7.36 起）
+
+修第 25 輪 P0「星狀連錯樁」（閘道器只看編號，把附近帶舊編號的外來 PTU 當成自己的連走）。韌體契約見 `ble_multi_wifi_gateway/docs/cmd_contract.md` §3B（`star_macs`）。韌體 1.7.37 起名單未設定時只看編號、`assign_device_id` 不會建立名單，所以由 APP 寫入：
+
+- **寫入時機**：星狀第 9 步資料驗證通過、完成頁出現後，APP 以 `get_ble_devices` 回讀本機範圍內（#起始～+4）的 PTU，送 `set_config {"star_macs":[…]}`（覆寫整份），再用 `get_config` 讀回核對。名單＝本次勾選／指派／核對過的 PTU（含中斷後續作前已完成的）、本次未連線但 APP 已指派的本機 PTU（例如驗證時略過的）、閘道器已列入名單的，以及名單尚未生效時編號在範圍內且唯一的已連線 PTU（先前配置、這次沒動的）；一個編號只列一台，本次的優先。只在 `fw_version` ≥ 1.7.36 時送（舊韌體會把未知參數算 rejected）；直連模式不送。
+- **失敗不阻塞完成**：自動重試 3 次（間隔 2 秒），仍失敗時完成頁顯示「PTU 綁定名單未寫入，請重試」與「重試寫入綁定名單」按鈕；安裝報告另有一行「PTU 綁定名單：已寫入 #…／未寫入」。
+- **直連切回星狀**：第 8 步把 `max_connections` 由 1 改成星狀時（直連期間名單不會更新，舊名單會擋掉新選的 PTU），緊接著以本次選定的 PTU 重送名單，再 `join_fleet`；失敗時第 7/8 步提示「驗證完成後會再寫一次」。
+- **外來 PTU 提示**：星狀 PTU 列表讀 `get_status.star.foreign_ptus` 與 `get_ble_devices` 的 `star_enforced`／`star_listed`，有忽略中的同編號 PTU 時顯示「附近有 N 台編號相同的其他 PTU，已被閘道器忽略（不會連線）」等人話提示，不顯示韌體代碼。
+- 程式：`lib/core/star_allow_list.dart`（名單規則與文字）、`CommissioningController.writeStarList`；測試 `test/round26_star_macs_test.dart`。

@@ -13,6 +13,7 @@ import '../core/ptu_rssi.dart';
 import '../core/mqtt_target.dart';
 import '../core/protocol.dart';
 import '../core/rescue_code.dart';
+import '../core/star_allow_list.dart';
 import '../data/ble_gateway_link.dart';
 import '../data/contracts.dart';
 import '../data/recent_gateways.dart';
@@ -987,7 +988,31 @@ class CommissionState {
     this.assignRunning = false,
     this.gatewayReboot,
     this.ptuListBusy = false,
+    this.starList = StarListStatus.none,
+    this.starListIds = const [],
+    this.starListSwitch = false,
+    this.foreignPtus = 0,
+    this.unlistedPtus = 0,
   });
+
+  /// Round 26 (P0 「星狀連錯樁」, firmware 1.7.36 `star_macs`): the allow
+  /// list this APP writes — after a star verification passes, and right
+  /// after step 8 switches a direct gateway back to star. A failure never
+  /// blocks the completion; the page offers 「重試寫入綁定名單」.
+  final StarListStatus starList;
+
+  /// Numbers of the PTUs on the list last written (completion page).
+  final List<int> starListIds;
+
+  /// [starList] is about the write right after the direct → star switch
+  /// (step 8), not the one after verification.
+  final bool starListSwitch;
+
+  /// Round 26: step 7 star list — PTUs with one of this gateway's numbers
+  /// but not on its allow list: heard nearby in the last 10 minutes
+  /// (get_status `star.foreign_ptus`) / connected while the list is
+  /// enforced (get_ble_devices `star_listed:false`). See [foreignPtuText].
+  final int foreignPtus, unlistedPtus;
 
   /// Round 24 (field round 24: a rescan refused as busy left 「已連線 0 台
   /// ／周邊未連線 0 台 · 已選 0 / 5 台」, read as nothing found): the last
@@ -1306,8 +1331,18 @@ class CommissionState {
     bool? assignRunning,
     Object? gatewayReboot = _keep,
     bool? ptuListBusy,
+    StarListStatus? starList,
+    List<int>? starListIds,
+    bool? starListSwitch,
+    int? foreignPtus,
+    int? unlistedPtus,
   }) => CommissionState(
     ptuListBusy: ptuListBusy ?? this.ptuListBusy,
+    starList: starList ?? this.starList,
+    starListIds: starListIds ?? this.starListIds,
+    starListSwitch: starListSwitch ?? this.starListSwitch,
+    foreignPtus: foreignPtus ?? this.foreignPtus,
+    unlistedPtus: unlistedPtus ?? this.unlistedPtus,
     gatewayReboot: identical(gatewayReboot, _keep)
         ? this.gatewayReboot
         : gatewayReboot as GatewayReboot?,
@@ -1628,6 +1663,8 @@ class CommissioningController extends Notifier<CommissionState> {
       remoteIdentifyNote: '',
       remoteIdentifyHead: '',
       remoteIdentifyPtu: '',
+      foreignPtus: 0,
+      unlistedPtus: 0,
       message: topologySwitchedText(topology),
       error: state.error,
     );
@@ -3681,6 +3718,7 @@ class CommissioningController extends Notifier<CommissionState> {
       rethrow;
     }
     await _absorbDirect(generation);
+    await _absorbStar(generation, connected);
     final ptus = mergePtuInventory(
       response['devices'] as List? ?? [],
       connected['devices'] as List? ?? [],
@@ -3872,11 +3910,14 @@ class CommissioningController extends Notifier<CommissionState> {
         _provisioningMayBeActive = true;
         final isStar = ref.read(topologyProvider).topology.isStar;
         final config = await _command(generation, 'get_config');
+        final toStar = isStar && await _switchingToStar(generation, config);
         if (config['max_connections'] != monitorLimit(isStar)) {
           await _command(generation, 'set_config', {
             'max_connections': monitorLimit(isStar),
           });
         }
+        // Round 26: direct → star, the allow list goes with the switch.
+        if (toStar) await _starListAfterSwitch(generation, chosen);
         await _command(generation, 'join_fleet');
         await _waitConnected(generation, chosen, limitSec: 30);
       });
@@ -5215,11 +5256,19 @@ class CommissioningController extends Notifier<CommissionState> {
     }
     final isStar = ref.read(topologyProvider).topology.isStar;
     try {
+      // Round 26: read before the star range opens.
+      final toStar = isStar && await _switchingToStar(generation);
       await _command(generation, 'set_config', {
         // Never shrink to the success count (round 6: 4 PTUs locked the
         // gateway at 4 and a 5th could never connect).
         'max_connections': monitorLimit(isStar),
       });
+      if (toStar) {
+        await _starListAfterSwitch(
+          generation,
+          chosen.where((p) => !failed.containsKey(p['mac'])),
+        );
+      }
       await _command(generation, 'join_fleet');
     } catch (e) {
       if (!isPhoneLinkFailure(e)) rethrow;
@@ -5380,18 +5429,230 @@ class CommissioningController extends Notifier<CommissionState> {
   /// retried every [backendRetryGap] (「後端暫時無回應，自動重試中（n）」)
   /// until [backendRetryWindow] of failures has accumulated; the per-PTU
   /// progress is kept, also for the 「重試」 after that.
-  Future<void> verify(String base, String password, {String? environment}) =>
-      _run('確認每台 PTU 的資料持續進入後端', _verifyRunSeconds, (generation) async {
-        state = state.copy(verifyBackendDown: false);
-        try {
-          await _verify(generation, base, password, environment);
-        } on GatewayFailure catch (error) {
-          if (error.code == 'backend_unavailable' && ref.mounted) {
-            state = state.copy(verifyBackendDown: true);
-          }
-          rethrow;
+  ///
+  /// Round 26: a star verification that passed writes the gateway's MAC
+  /// allow list next ([writeStarList]; firmware 1.7.36+), after the
+  /// completion page is shown — a failure never takes the completion back.
+  Future<void> verify(
+    String base,
+    String password, {
+    String? environment,
+  }) async {
+    await _run('確認每台 PTU 的資料持續進入後端', _verifyRunSeconds, (generation) async {
+      state = state.copy(
+        verifyBackendDown: false,
+        starList: StarListStatus.none,
+      );
+      try {
+        await _verify(generation, base, password, environment);
+      } on GatewayFailure catch (error) {
+        if (error.code == 'backend_unavailable' && ref.mounted) {
+          state = state.copy(verifyBackendDown: true);
         }
-      });
+        rethrow;
+      }
+    });
+    if (ref.mounted &&
+        state.step == 7 &&
+        state.verified &&
+        state.error == null) {
+      await writeStarList();
+    }
+  }
+
+  // ---- Star MAC allow list (firmware 1.7.36, cmd_contract.md §3B) ----
+
+  /// Attempts per write (set_config + get_config read-back), 2 s apart.
+  static const starListAttempts = 3;
+
+  /// No new attempt starts after this much time in one write.
+  static const _starListBudget = Duration(seconds: 90);
+
+  /// Star commissioning on firmware that takes `star_macs` (1.7.36+).
+  bool get _starListApplies =>
+      ref.read(topologyProvider).topology.isStar &&
+      starAllowListSupported(state.config) &&
+      state.peer != null;
+
+  /// Round 26: writes this gateway's allow list — its verified PTUs, read
+  /// back with get_ble_devices ([starAllowList]: this run's PTUs, also
+  /// those of an interrupted earlier part, plus the ones configured before
+  /// and left untouched) — with `set_config star_macs`, retried
+  /// [starListAttempts] times and read back with get_config. Called when
+  /// a star verification passes and by 「重試寫入綁定名單」; a failure only
+  /// sets [StarListStatus.failed] (completion page notice), no red banner.
+  Future<void> writeStarList() async {
+    if (!ref.mounted || state.step != 7 || !_starListApplies) return;
+    await _sideTask(starListWritingText, 200, (generation) async {
+      state = state.copy(
+        starList: StarListStatus.writing,
+        starListSwitch: false,
+        message: starListWritingText,
+      );
+      try {
+        final response = await _command(generation, 'get_ble_devices');
+        final rows = (response['devices'] as List? ?? const [])
+            .whereType<Map>()
+            .map(Map<String, dynamic>.from)
+            .toList();
+        final entries = starAllowList(
+          rows: rows,
+          own: {...state.selected, ...state.assignedOk, ..._doneAssign.keys},
+          first: (gateway - 1) * 5 + 1,
+          enforced: response['star_enforced'] == true,
+          known: state.ptus,
+        );
+        final ok =
+            entries.isNotEmpty &&
+            await _sendStarList(generation, [for (final e in entries) e.mac]);
+        state = state.copy(
+          starList: ok ? StarListStatus.written : StarListStatus.failed,
+          starListIds: ok ? [for (final e in entries) e.id] : null,
+        );
+      } catch (e) {
+        if (e is GatewayFailure && e.code == 'cancelled') rethrow;
+        state = state.copy(starList: StarListStatus.failed);
+      }
+    });
+    // Cancelled or refused (another run busy): not written.
+    if (ref.mounted && state.starList == StarListStatus.writing) {
+      state = state.copy(starList: StarListStatus.failed, error: state.error);
+      _refreshReport();
+    }
+  }
+
+  /// `set_config star_macs` = [macs] (whole list), read back with
+  /// get_config; true once the gateway lists exactly [macs]. Retried
+  /// [starListAttempts] times; a phone↔gateway link loss or a
+  /// cancellation is rethrown.
+  Future<bool> _sendStarList(int generation, List<String> macs) async {
+    final watch = Stopwatch()..start();
+    for (var attempt = 0; attempt < starListAttempts; attempt++) {
+      if (attempt > 0) {
+        if (watch.elapsed > _starListBudget) break;
+        await _wait(2, generation);
+      }
+      try {
+        final ack = await _command(generation, 'set_config', {
+          'star_macs': macs,
+        });
+        if (setConfigRejected(ack)) continue;
+        final back = await _command(generation, 'get_config');
+        final listed = starMacSet(back['star_macs']);
+        if (listed != null &&
+            !(listed.length == macs.length && listed.containsAll(macs))) {
+          continue;
+        }
+        state = state.copy(
+          config: {
+            ...state.config,
+            for (final key in ['star_macs', 'star_mac_lock', 'star_macs_set'])
+              if (back.containsKey(key)) key: back[key],
+          },
+          error: state.error,
+        );
+        return true;
+      } catch (e) {
+        if (e is GatewayFailure && e.code == 'cancelled') rethrow;
+        _check(generation);
+        if (isPhoneLinkFailure(e)) rethrow;
+      }
+    }
+    return false;
+  }
+
+  /// Round 26: peer id of a gateway step 8 switched from direct
+  /// (max_connections 1) to star whose allow list is not sent yet (e.g.
+  /// the link dropped right after the switch); the next step 8 sends it.
+  String? _starSwitchPeer;
+
+  /// Step 8 is about to open the star range: true when the gateway is
+  /// switched back from direct mode ([config]: its get_config, read here
+  /// when null) on firmware 1.7.36+, or an earlier switch still owes the
+  /// list ([_starSwitchPeer]).
+  Future<bool> _switchingToStar(
+    int generation, [
+    Map<String, dynamic>? config,
+  ]) async {
+    if (!_starListApplies) return false;
+    if (_starSwitchPeer != null && _starSwitchPeer == state.peer?.id) {
+      return true;
+    }
+    var limit = config?['max_connections'];
+    if (config == null) {
+      try {
+        limit = (await _command(generation, 'get_config'))['max_connections'];
+      } catch (e) {
+        if (e is GatewayFailure && e.code == 'cancelled') rethrow;
+        _check(generation);
+        if (isPhoneLinkFailure(e)) rethrow;
+        limit = state.config['max_connections'];
+      }
+    }
+    if (limit != 1) return false;
+    _starSwitchPeer = state.peer?.id;
+    return true;
+  }
+
+  /// Round 26 (direct → star): direct mode never touches the gateway's
+  /// allow list, so the one from before (if any) would refuse the PTUs
+  /// just chosen once the star range opens. Sent again right after the
+  /// switch with the [chosen] PTUs; a failure is shown at step 8 and the
+  /// verified list is written after the data verification anyway.
+  Future<void> _starListAfterSwitch(
+    int generation,
+    Iterable<Map<String, dynamic>> chosen,
+  ) async {
+    final macs = {
+      for (final p in chosen) ?starMac(p['mac']),
+    }.take(starAllowListMax).toList();
+    if (macs.isEmpty) return;
+    state = state.copy(starList: StarListStatus.writing, starListSwitch: true);
+    final bool ok;
+    try {
+      ok = await _sendStarList(generation, macs);
+    } catch (_) {
+      // Link loss / cancel: [_starSwitchPeer] keeps it for the next step 8.
+      if (ref.mounted) state = state.copy(starList: StarListStatus.none);
+      rethrow;
+    }
+    _starSwitchPeer = null;
+    state = state.copy(
+      starList: ok ? StarListStatus.written : StarListStatus.failed,
+      starListSwitch: true,
+      starListIds: ok
+          ? [for (final p in chosen) ?(p['device_number'] as num?)?.toInt()]
+          : null,
+    );
+  }
+
+  /// Round 26: step 7 star list — how many PTUs carrying this gateway's
+  /// numbers it ignores ([CommissionState.foreignPtus] from get_status
+  /// `star.foreign_ptus`, [CommissionState.unlistedPtus] from the
+  /// get_ble_devices [response]). Advisory: never fails the scan.
+  Future<void> _absorbStar(
+    int generation,
+    Map<String, dynamic> response,
+  ) async {
+    if (!ref.read(topologyProvider).topology.isStar ||
+        !starAllowListSupported(state.config)) {
+      if (state.foreignPtus != 0 || state.unlistedPtus != 0) {
+        state = state.copy(foreignPtus: 0, unlistedPtus: 0, error: state.error);
+      }
+      return;
+    }
+    var foreign = state.foreignPtus;
+    try {
+      final star = (await _link.command('get_status'))['star'];
+      if (star is Map) foreign = (star['foreign_ptus'] as num?)?.toInt() ?? 0;
+    } catch (_) {}
+    if (!ref.mounted || generation != _generation) return;
+    state = state.copy(
+      foreignPtus: foreign,
+      unlistedPtus: unlistedStarPtus(response),
+      error: state.error,
+    );
+  }
 
   /// Step 9 poll window (seconds of successful polls).
   static const _verifyWindow = 180;
@@ -5942,7 +6203,11 @@ class CommissioningController extends Notifier<CommissionState> {
 
   /// Install report text (set on step 7); empty before the first pass.
   String _reportBody = '';
-  String _report() => '$_reportBody\n${reportTargetText(state.config)}';
+  String _report() => [
+    _reportBody,
+    ?starListReportText(state.starList, state.starListIds),
+    reportTargetText(state.config),
+  ].join('\n');
 
   /// Keeps the step-7 report's upload-target lines in sync after a switch.
   void _refreshReport() {
@@ -6315,6 +6580,12 @@ class CommissioningController extends Notifier<CommissionState> {
       // it had already taken) must still be preselected, unless the user
       // already edited the selection.
       state = state.copy(
+        // Round 26: a PTU not on the enforced allow list, dropped since.
+        unlistedPtus:
+            ref.read(topologyProvider).topology.isStar &&
+                starAllowListSupported(state.config)
+            ? unlistedStarPtus(result)
+            : 0,
         ptus: ptus,
         selected: _selectionTouched
             ? state.selected

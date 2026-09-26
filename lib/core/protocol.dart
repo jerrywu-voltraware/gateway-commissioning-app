@@ -25,6 +25,25 @@ ProtocolProfile profileFor(String version) {
       : ProtocolProfile.legacy;
 }
 
+/// [version] (`fw_version`, e.g. `1.7.36`, `v1.7.37-dev`) is at least
+/// [major].[minor].[patch]; false when it cannot be read.
+bool firmwareAtLeast(Object? version, int major, int minor, int patch) {
+  final match = RegExp(
+    r'(\d+)\.(\d+)(?:\.(\d+))?',
+  ).firstMatch(version?.toString() ?? '');
+  if (match == null) return false;
+  final got = [
+    int.parse(match.group(1)!),
+    int.parse(match.group(2)!),
+    int.tryParse(match.group(3) ?? '') ?? 0,
+  ];
+  final want = [major, minor, patch];
+  for (var i = 0; i < 3; i++) {
+    if (got[i] != want[i]) return got[i] > want[i];
+  }
+  return true;
+}
+
 Duration commandTimeout(String op, Map<String, dynamic> params) => Duration(
   seconds: switch (op) {
     'ping' || 'set_wifi' => 5,
