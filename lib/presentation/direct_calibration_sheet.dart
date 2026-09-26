@@ -24,6 +24,10 @@ Future<void> openDirectCalibration(BuildContext context) =>
 /// close for any threshold: a yellow warning and no suggestion. Round 19:
 /// 「參考值（閘道器韌體較舊）」 without firmware 1.7.27's fields; stale
 /// neighbours are left out and 「重新取樣」 reads 「重新掃描鄰近」.
+/// Round 20: this pile's advertising value says how old it is (「本樁廣播
+/// 值來自 N 分鐘前選台」) and, over 15 minutes or undated, is left out of
+/// the upper bound (a reference value); neighbours within 1 dB of the
+/// strongest are listed together (at most 3, MAC order).
 class DirectCalibrationSheet extends ConsumerStatefulWidget {
   const DirectCalibrationSheet({super.key});
 
@@ -112,6 +116,10 @@ class _DirectCalibrationSheetState
     final progress = total <= 0 ? 1.0 : (elapsed / total).clamp(0.0, 1.0);
     final left = ((total - elapsed) / 1000).ceil().clamp(0, seconds);
     final neighborMac = samples?.strongestNeighborMac;
+    // Round 20: every neighbour within 1 dB of the strongest (≤ 3, MAC
+    // order) — field round 20 named one of two equal piles at random.
+    final neighborMacs = samples?.strongestNeighborMacs ?? const <String>[];
+    final neighborTies = samples?.strongestNeighborTies ?? 0;
     // Round 19: what the figures are built on; a reference value unless the
     // firmware reports everything its rules use (1.7.27).
     final basis = (samples?.reads ?? 0) == 0 ? null : samples!.basis;
@@ -195,7 +203,27 @@ class _DirectCalibrationSheetState
                 CalibrationBasis.noOwnAdvertising => '閘道器未回報',
                 CalibrationBasis.current =>
                   '中位數 ${dbm(samples!.ownAdvertising!)}',
+                // Round 20: shown, but not used for the upper bound.
+                CalibrationBasis.staleOwnAdvertising ||
+                CalibrationBasis.undatedOwnAdvertising =>
+                  '中位數 ${dbm(samples!.ownAdvertising!)}（未列入上限）',
               }, const Key('calibration-own-adv')),
+              // Round 20: firmware measures it while selecting and freezes
+              // it once connected (field round 20: 249–274 s old).
+              if (basis == CalibrationBasis.current ||
+                  (basis?.ownAdvertisingSkipped ?? false))
+                Padding(
+                  padding: const EdgeInsets.only(left: 104),
+                  child: Text(
+                    calibrationSelfAdvAgeText(samples!.ownAdvertisingAgeS),
+                    key: const Key('calibration-own-adv-age'),
+                    style: text.bodySmall?.copyWith(
+                      color: basis == CalibrationBasis.current
+                          ? colors.onSurfaceVariant
+                          : warnFg,
+                    ),
+                  ),
+                ),
               // Round 19: the value on one line, the MAC on its own (field
               // round 19: 「）」 wrapped onto a line of its own).
               Padding(
@@ -215,10 +243,25 @@ class _DirectCalibrationSheetState
                             key: const Key('calibration-neighbor'),
                             style: bold,
                           ),
-                          if (neighborMac != null)
+                          // Round 20: ties within 1 dB listed together.
+                          if (neighborMacs.length > 1)
+                            Text(
+                              neighborTies > neighborMacs.length
+                                  ? '$neighborTies 台相差 $calibrationNeighborTieDb dB 內，'
+                                        '列出 ${neighborMacs.length} 台'
+                                  : '${neighborMacs.length} 台相差 '
+                                        '$calibrationNeighborTieDb dB 內，一併列出',
+                              key: const Key('calibration-neighbor-ties'),
+                              style: text.bodySmall,
+                            ),
+                          for (final (i, mac) in neighborMacs.indexed)
                             MacText(
-                              neighborMac,
-                              key: const Key('calibration-neighbor-mac'),
+                              mac,
+                              key: Key(
+                                i == 0
+                                    ? 'calibration-neighbor-mac'
+                                    : 'calibration-neighbor-mac-${i + 1}',
+                              ),
                               others: [own, ...samples!.neighborMacs],
                               style: bold,
                             ),
@@ -286,7 +329,10 @@ class _DirectCalibrationSheetState
                           // 太接近 with a perfectly fine gap —
                           // calibrationTooCloseReason picks
                           // non-contradictory wording then.
-                          '${calibrationTooCloseReason(suggestion, distinguishingMacSegment(neighborMac, [own, ...samples!.neighborMacs]))}。$calibrationTooCloseText。',
+                          // Round 20: the tied neighbours named together.
+                          '${calibrationTooCloseReason(suggestion, calibrationNeighborLabel([
+                            for (final mac in neighborMacs) distinguishingMacSegment(mac, [own, ...samples!.neighborMacs]),
+                          ], total: neighborTies))}。$calibrationTooCloseText。',
                           style: TextStyle(color: warnFg),
                         ),
                       ),

@@ -22,6 +22,16 @@
 /// Firmware before 1.7.27 has no `self_adv_rssi_med` / `neighbors`: upper
 /// from the link readings only, neighbours from the last selection window
 /// (`candidates`) — a reference value.
+///
+/// Round 20 (field round 20: `self_adv_age_s` 249–274 s at calibration):
+/// `self_adv_rssi_med` is measured while the gateway selects and frozen
+/// once it is connected. The sheet says how old it is (「本樁廣播值來自 N
+/// 分鐘前選台」); older than [calibrationSelfAdvMaxAge] s or without an age
+/// it no longer bounds the threshold — upper from the link readings only,
+/// a reference value. Neighbours within [calibrationNeighborTieDb] of the
+/// strongest are named together (at most [calibrationNeighborTieMax], in
+/// MAC order) — two at -46 dBm were named in list order, so the named pile
+/// flipped between runs.
 library;
 
 import 'dart:math' as math;
@@ -66,6 +76,17 @@ const calibrationMinNeighborSamples = 3;
 /// …heard within this many seconds (`age_s`); older: 「重新掃描鄰近」.
 const calibrationNeighborMaxAge = 60;
 
+/// Round 20: `self_adv_age_s` over this (seconds), or none: this pile's
+/// advertising median no longer bounds the threshold (a reference value).
+const calibrationSelfAdvMaxAge = 900;
+
+/// Round 20: neighbours whose peak is within this of the strongest are
+/// named together…
+const calibrationNeighborTieDb = 1;
+
+/// …at most this many.
+const calibrationNeighborTieMax = 3;
+
 const calibrationTitle = '校正門檻';
 
 /// Signals too close for any threshold (yellow).
@@ -105,6 +126,28 @@ const calibrationRescanLabel = '重新掃描鄰近';
 const calibrationReferenceLegacyText = '參考值（閘道器韌體較舊）';
 const calibrationReferenceNoAdvText = '參考值（閘道器未回報本樁廣播訊號）';
 
+/// Round 20: this pile's advertising median too old / without an age.
+const calibrationReferenceStaleAdvText =
+    '參考值（本樁廣播值超過 ${calibrationSelfAdvMaxAge ~/ 60} 分鐘，上限只用連線訊號）';
+const calibrationReferenceUndatedAdvText = '參考值（本樁廣播值未附選台時間，上限只用連線訊號）';
+
+/// Round 20: how old this pile's advertising median is ([ageS]:
+/// `self_adv_age_s`, null when not reported) — measured while the gateway
+/// selected, frozen once connected.
+String calibrationSelfAdvAgeText(num? ageS) {
+  if (ageS == null) return '本樁廣播值未附選台時間';
+  if (ageS < 60) return '本樁廣播值來自 ${ageS.round()} 秒前選台';
+  return '本樁廣播值來自 ${ageS ~/ 60} 分鐘前選台';
+}
+
+/// Round 20: the neighbours named in [calibrationGapText] — each MAC
+/// segment kept on one line ([noBreak]), joined by 「、」; [total] ties
+/// beyond the ones named: 「等 N 台」.
+String calibrationNeighborLabel(List<String> segments, {int? total}) {
+  final named = segments.map(noBreak).join('、');
+  return total != null && total > segments.length ? '$named 等 $total 台' : named;
+}
+
 /// Round 19: [value] dBm that never breaks between the number and 「dBm」.
 String dbm(int value) => '$value\u00A0dBm';
 
@@ -115,9 +158,9 @@ String noBreak(String text) => text.split('').join('\u2060');
 /// Round 19: the too-close comparison in the installer's words — [gap] is
 /// this pile's upper bound minus the strongest neighbour's peak
 /// ([DirectThresholdSuggestion.gap]), [neighbor] that neighbour's MAC
-/// segment (kept on one line).
+/// segment (round 20: the tied neighbours, [calibrationNeighborLabel]).
 String calibrationGapText(int gap, String neighbor) {
-  final who = '鄰近樁 ${noBreak(neighbor)} ';
+  final who = '鄰近樁 $neighbor ';
   if (gap < 0) return '$who比本樁還強 ${-gap} dB';
   if (gap == 0) return '$who和本樁一樣強';
   return '$who只比本樁弱 $gap dB，餘裕不足（至少要弱 $calibrationMinGap dB）';
@@ -340,15 +383,30 @@ enum CalibrationBasis {
 
   /// Firmware without the fields: upper from the link readings only, the
   /// neighbours from the last selection window (a reference value).
-  legacy;
+  legacy,
+
+  /// Round 20: this pile's advertising median older than
+  /// [calibrationSelfAdvMaxAge] s (frozen since the gateway selected):
+  /// upper from the link readings only (a reference value).
+  staleOwnAdvertising,
+
+  /// Round 20: this pile's advertising median without `self_adv_age_s`:
+  /// upper from the link readings only (a reference value).
+  undatedOwnAdvertising;
 
   /// Not built on everything the firmware's rules use: [referenceText].
   bool get reference => this != current;
+
+  /// Round 20: this pile's advertising median was read but is not used.
+  bool get ownAdvertisingSkipped =>
+      this == staleOwnAdvertising || this == undatedOwnAdvertising;
 
   String? get referenceText => switch (this) {
     current => null,
     noOwnAdvertising => calibrationReferenceNoAdvText,
     legacy => calibrationReferenceLegacyText,
+    staleOwnAdvertising => calibrationReferenceStaleAdvText,
+    undatedOwnAdvertising => calibrationReferenceUndatedAdvText,
   };
 }
 
@@ -405,6 +463,10 @@ class DirectCalibrationSamples {
   /// reports it connected to [ownMac]).
   final ownAdvertisingReads = <int>[];
 
+  /// Round 20: `self_adv_age_s` of the latest [ownAdvertisingReads] entry
+  /// (null: not reported).
+  num? ownAdvertisingAgeS;
+
   /// Round 19: a read connected to [ownMac] carried `self_adv_rssi_med`
   /// (even null) / a read carried `neighbors`.
   bool selfAdvReported = false;
@@ -438,6 +500,7 @@ class DirectCalibrationSamples {
       selfAdvReported = true;
       if (validRssi(status.selfAdvRssiMed)) {
         ownAdvertisingReads.add(status.selfAdvRssiMed!);
+        ownAdvertisingAgeS = status.selfAdvAgeS;
       }
     }
     final near = status.neighbors;
@@ -464,9 +527,15 @@ class DirectCalibrationSamples {
   }
 
   /// This pile's advertising median over the sampling (the median of the
-  /// medians read), or null.
+  /// medians read), or null. Shown as read; the threshold uses
+  /// [usableOwnAdvertising].
   int? get ownAdvertising =>
       ownAdvertisingReads.isEmpty ? null : _median(ownAdvertisingReads);
+
+  /// Round 20: [ownAdvertising] only while it is recent enough to bound
+  /// the threshold ([CalibrationBasis.current]).
+  int? get usableOwnAdvertising =>
+      basis == CalibrationBasis.current ? ownAdvertising : null;
 
   /// The counted neighbours' peaks (MAC → dBm).
   Map<String, int> get neighbors => {
@@ -474,17 +543,38 @@ class DirectCalibrationSamples {
       if (n.counts) n.mac: n.peak!,
   };
 
-  /// MAC of the strongest counted neighbour, if any.
-  String? get strongestNeighborMac {
-    String? best;
-    int? strongest;
-    for (final MapEntry(key: mac, value: dbm) in neighbors.entries) {
-      if (strongest == null || dbm > strongest) {
-        best = mac;
-        strongest = dbm;
-      }
-    }
-    return best;
+  /// Counted neighbours, strongest first; equal peaks in MAC order.
+  List<MapEntry<String, int>> get _byStrength =>
+      neighbors.entries.toList()..sort((a, b) {
+        final byPeak = b.value.compareTo(a.value);
+        return byPeak != 0 ? byPeak : _key(a.key).compareTo(_key(b.key));
+      });
+
+  /// MAC of the strongest counted neighbour, if any (equal peaks: the
+  /// lowest MAC, the same one every run).
+  String? get strongestNeighborMac => _byStrength.firstOrNull?.key;
+
+  /// Round 20: how many counted neighbours are within
+  /// [calibrationNeighborTieDb] of the strongest peak (itself included).
+  int get strongestNeighborTies {
+    final order = _byStrength;
+    if (order.isEmpty) return 0;
+    final top = order.first.value;
+    return order.where((e) => e.value >= top - calibrationNeighborTieDb).length;
+  }
+
+  /// Round 20 (field round 20: two neighbours at -46 dBm, named in list
+  /// order, so the named pile flipped between runs): the strongest
+  /// neighbours named together — within [calibrationNeighborTieDb] of the
+  /// strongest, at most [calibrationNeighborTieMax] (the strongest always
+  /// kept), listed in MAC order so the same piles read the same way every
+  /// run.
+  List<String> get strongestNeighborMacs {
+    final kept = _byStrength.take(
+      math.min(strongestNeighborTies, calibrationNeighborTieMax),
+    );
+    return [for (final e in kept) e.key]
+      ..sort((a, b) => _key(a).compareTo(_key(b)));
   }
 
   /// MACs of every neighbour heard (counted or not).
@@ -506,15 +596,23 @@ class DirectCalibrationSamples {
       .where((n) => n.peak != null && !n.stale && n.fewSamples)
       .length;
 
-  CalibrationBasis get basis => !selfAdvReported || !neighborsReported
-      ? CalibrationBasis.legacy
-      : ownAdvertisingReads.isEmpty
-      ? CalibrationBasis.noOwnAdvertising
-      : CalibrationBasis.current;
+  CalibrationBasis get basis {
+    if (!selfAdvReported || !neighborsReported) return CalibrationBasis.legacy;
+    if (ownAdvertisingReads.isEmpty) return CalibrationBasis.noOwnAdvertising;
+    final age = ownAdvertisingAgeS;
+    if (age == null) return CalibrationBasis.undatedOwnAdvertising;
+    if (age > calibrationSelfAdvMaxAge) {
+      return CalibrationBasis.staleOwnAdvertising;
+    }
+    return CalibrationBasis.current;
+  }
 
+  /// Round 20: this pile's advertising median bounds the threshold only
+  /// while recent ([usableOwnAdvertising]); else upper from the link
+  /// readings alone.
   DirectThresholdSuggestion get suggestion => suggestDirectThreshold(
     ownLink: ownLink,
-    ownAdvertising: ownAdvertising,
+    ownAdvertising: usableOwnAdvertising,
     neighborPeaks: neighbors.values,
   );
 }

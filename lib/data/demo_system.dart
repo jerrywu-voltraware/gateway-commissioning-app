@@ -88,6 +88,10 @@ class DemoSystem implements GatewayLink, GatewayApi, ForeignAcks {
   /// not heard, reported as null).
   int? selfAdvOffset = 0;
 
+  /// Round 20: `self_adv_age_s` while connected (null: not reported) —
+  /// the firmware freezes the median once connected, so it grows.
+  num? selfAdvAgeS = 1;
+
   /// Round 19: every neighbour's `samples` / `age_s` (MAC → value;
   /// default 8 readings, heard 2 s ago).
   final neighborSamples = <String, int>{};
@@ -200,7 +204,7 @@ class DemoSystem implements GatewayLink, GatewayApi, ForeignAcks {
         'self_adv_rssi_med': linked == null || selfAdvOffset == null
             ? null
             : (linked['rssi'] as num) + selfAdvOffset!,
-        'self_adv_age_s': linked == null ? null : 1,
+        'self_adv_age_s': linked == null ? null : selfAdvAgeS,
         'neighbors': [
           if (linked != null)
             for (final d in candidates)

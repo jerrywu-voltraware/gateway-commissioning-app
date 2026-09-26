@@ -674,6 +674,13 @@ class _WarnBox extends StatelessWidget {
 /// screen and this is its last row, so nothing above it can move it. The
 /// note while an identify waits for its ack: [identifyPendingText] with a
 /// spinner.
+///
+/// Round 20 (field round 20: the back office's identify snack bar sat
+/// over the card's yellow box for 8 s): here the notice
+/// ([CommissionState.remoteIdentifyNote]) takes row 2's one line for
+/// [remoteIdentifyNoticeDuration] instead — nothing is covered and no row
+/// moves; a tap shows the whole text. The installer's own identify (a new
+/// [CommissionState.identifyNote]) replaces it at once.
 class DirectPickActions extends ConsumerStatefulWidget {
   const DirectPickActions({super.key, this.onEnd});
 
@@ -684,14 +691,67 @@ class DirectPickActions extends ConsumerStatefulWidget {
   ConsumerState<DirectPickActions> createState() => _DirectPickActionsState();
 }
 
+/// Round 20: how long the back office's identify notice holds row 2.
+const remoteIdentifyNoticeDuration = Duration(seconds: 8);
+
 class _DirectPickActionsState extends ConsumerState<DirectPickActions> {
   bool _detail = false;
+
+  /// Round 20: the back office's identify notice shown in row 2, if any.
+  String? _remote;
+  Timer? _remoteTimer;
+
+  void _showRemote(String note) {
+    _remoteTimer?.cancel();
+    _remoteTimer = null;
+    setState(() {
+      _remote = note;
+      _detail = false;
+    });
+    // Timed from the frame that shows it (the ack may arrive in another
+    // zone than the frames, e.g. a widget test's real-async block).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _remote != note || _remoteTimer != null) return;
+      _remoteTimer = Timer(remoteIdentifyNoticeDuration, _clearRemote);
+    });
+  }
+
+  void _clearRemote() {
+    _remoteTimer?.cancel();
+    _remoteTimer = null;
+    if (!mounted || _remote == null) return;
+    setState(() {
+      _remote = null;
+      _detail = false;
+    });
+  }
+
+  @override
+  void dispose() {
+    _remoteTimer?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(commissionProvider);
     final controller = ref.read(commissionProvider.notifier);
     final colors = Theme.of(context).colorScheme;
+    // Round 20: a new back-office identify takes row 2; the installer's own
+    // identify (a new note) hands it back at once.
+    ref.listen(commissionProvider.select((s) => s.remoteIdentifyCount), (
+      previous,
+      next,
+    ) {
+      final note = ref.read(commissionProvider).remoteIdentifyNote;
+      if (previous != null && next != previous && note.isNotEmpty) {
+        _showRemote(note);
+      }
+    });
+    ref.listen(
+      commissionProvider.select((s) => s.identifyNote),
+      (previous, next) => _clearRemote(),
+    );
     final picked = state.direct?.pickedMac;
     final shown = state.selected.firstOrNull;
     final ready = picked != null && shown != null && sameMac(picked, shown);
@@ -704,19 +764,25 @@ class _DirectPickActionsState extends ConsumerState<DirectPickActions> {
     final others = [
       for (final c in state.direct?.candidates ?? const []) c.mac,
     ];
-    final note = ready ? state.identifyNote : '';
-    final line = !ready
-        ? state.busy
-              ? '閘道器處理中，請稍候…'
-              : '閘道器尚未連上 PTU'
-        : note.isEmpty
-        ? '按下後請看樁上 PTU 與閘道器的燈號'
-        : state.identifyLine.isEmpty
-        ? note
-        : state.identifyLine;
-    final showDetail = _detail && note.isNotEmpty && note != line;
+    final remote = _remote;
+    final note = remote ?? (ready ? state.identifyNote : '');
+    final line =
+        remote ??
+        (!ready
+            ? state.busy
+                  ? '閘道器處理中，請稍候…'
+                  : '閘道器尚未連上 PTU'
+            : note.isEmpty
+            ? '按下後請看樁上 PTU 與閘道器的燈號'
+            : state.identifyLine.isEmpty
+            ? note
+            : state.identifyLine);
+    // Round 20: the back office's notice can always be opened in full.
+    final expandable = note.isNotEmpty && (remote != null || note != line);
+    final showDetail = _detail && expandable;
     // Round 19: sent, the ack not back yet.
     final pending =
+        remote == null &&
         state.busy &&
         (line == identifyPendingText || line == identifyPendingGatewayText);
     return Column(
@@ -756,13 +822,22 @@ class _DirectPickActionsState extends ConsumerState<DirectPickActions> {
         if (identifySupported)
           InkWell(
             key: const Key('direct-identify-toggle'),
-            onTap: note.isEmpty || note == line
-                ? null
-                : () => setState(() => _detail = !_detail),
+            onTap: expandable ? () => setState(() => _detail = !_detail) : null,
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: Row(
                 children: [
+                  // Round 20: the back office's identify, not this phone's.
+                  if (remote != null)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: Icon(
+                        Icons.support_agent,
+                        key: const Key('remote-identify-icon'),
+                        size: 16,
+                        color: colors.tertiary,
+                      ),
+                    ),
                   if (pending)
                     Padding(
                       padding: const EdgeInsets.only(right: 6),
@@ -782,7 +857,9 @@ class _DirectPickActionsState extends ConsumerState<DirectPickActions> {
                     child: LayoutBuilder(
                       builder: (context, box) {
                         final style = TextStyle(
-                          color: note.isEmpty
+                          color: remote != null
+                              ? colors.tertiary
+                              : note.isEmpty
                               ? colors.onSurfaceVariant
                               : colors.primary,
                         );
@@ -794,7 +871,11 @@ class _DirectPickActionsState extends ConsumerState<DirectPickActions> {
                               )
                               ? line
                               : shortenMacIn(line, others),
-                          key: const Key('direct-identify-note'),
+                          key: Key(
+                            remote != null
+                                ? 'remote-identify'
+                                : 'direct-identify-note',
+                          ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: style,
@@ -802,7 +883,7 @@ class _DirectPickActionsState extends ConsumerState<DirectPickActions> {
                       },
                     ),
                   ),
-                  if (note.isNotEmpty && note != line)
+                  if (expandable)
                     Icon(
                       showDetail ? Icons.expand_less : Icons.expand_more,
                       size: 18,
@@ -817,7 +898,11 @@ class _DirectPickActionsState extends ConsumerState<DirectPickActions> {
             padding: const EdgeInsets.only(bottom: 4),
             child: macRichText(
               note,
-              key: const Key('direct-identify-detail'),
+              key: Key(
+                remote != null
+                    ? 'remote-identify-detail'
+                    : 'direct-identify-detail',
+              ),
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ),

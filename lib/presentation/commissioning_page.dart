@@ -491,11 +491,23 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   /// Round 19 (field round 19: the back office flashed the pile and the
   /// installer never knew): its identify ack as a passing snack bar — over
   /// the page, never moving it, and changing nothing in the flow.
+  ///
+  /// Round 20 (field round 20: at direct step 7 the snack bar covered the
+  /// card's yellow box for 8 s): with the direct bar's identify line on
+  /// screen the notice goes there instead ([DirectPickActions]); the snack
+  /// bar stays for every other page.
   void _showRemoteIdentify(CommissionState? previous, CommissionState next) {
     if (previous == null ||
         next.remoteIdentifyCount == previous.remoteIdentifyCount ||
         next.remoteIdentifyNote.isEmpty ||
         !mounted) {
+      return;
+    }
+    if (directPickBarShown(
+          next,
+          directFlow: ref.read(commissionProvider.notifier).directFlow,
+        ) &&
+        next.config['identify_supported'] == true) {
       return;
     }
     ScaffoldMessenger.of(context)
@@ -701,12 +713,10 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     // Round 15: direct flow step 7 — the gateway's own pick with
     // 「辨識此樁」/「是這台，開始監控」; a link loss or a resume keeps the
     // reconnect button below.
-    final directPicking =
-        state.step == 4 &&
-        controller.directFlow &&
-        !state.relinking &&
-        !state.resumePending &&
-        !step7LinkLost(state);
+    final directPicking = directPickBarShown(
+      state,
+      directFlow: controller.directFlow,
+    );
     return PopScope(
       // Round 15b: 返回 while a 「不是這台？」 binding is still temporary
       // ends like 「結束並重新選擇閘道器」, which clears it on the gateway.

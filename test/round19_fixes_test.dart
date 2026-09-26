@@ -858,7 +858,9 @@ void main() {
       expect(fake.sent('identify'), hasLength(sent), reason: 'nothing sent');
     });
 
-    testWidgets('page: a passing snack bar', (tester) async {
+    // Round 20: at direct step 7 the notice is the bar's identify line
+    // (round20_fixes_test.dart); the key, the text and the bar hold.
+    testWidgets('page: a passing notice', (tester) async {
       _phone(tester, size: const Size(411, 891));
       SharedPreferences.setMockInitialValues({});
       final fake = PickGateway();

@@ -520,6 +520,16 @@ String directPickMessage(DirectStatus? direct) {
 /// Step 7, not busy, phone↔gateway link lost (banner shown).
 bool step7LinkLost(CommissionState s) => !s.busy && _step7Lost(s);
 
+/// Direct flow step 7 with the gateway's pick and its bottom bar
+/// ([directFlow]: `CommissioningController.directFlow`) — not while
+/// relinking, resuming or after a link loss (the reconnect button instead).
+bool directPickBarShown(CommissionState s, {required bool directFlow}) =>
+    s.step == 4 &&
+    directFlow &&
+    !s.relinking &&
+    !s.resumePending &&
+    !step7LinkLost(s);
+
 bool _step7Lost(CommissionState s) =>
     s.step == 4 &&
     !s.resumePending &&
