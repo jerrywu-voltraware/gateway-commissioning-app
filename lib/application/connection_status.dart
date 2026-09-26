@@ -4,6 +4,7 @@
 /// Pure Dart so every wording can be unit-tested without widgets.
 library;
 
+import '../core/gateway_identity.dart';
 import '../core/gateway_net.dart';
 import '../core/gateway_reboot.dart';
 import '../core/mqtt_target.dart';
@@ -228,7 +229,11 @@ ConnectionStatus connectionStatus({
   final current = parseMqttTarget(config);
   final unconfirmed = config['mqtt_target'] == unconfirmedMqttTarget;
   final polling = state.uploadWatch == UploadWatch.polling;
-  final uploading = config['mqtt_connected'] == true;
+  // Round 26 (field: 「✓ 資料上傳中」 while the gateway's upload was paused
+  // — heartbeats only, 0 rows — or it was in test mode): connected to the
+  // broker is not uploading PTU data then.
+  final held = state.testMode || state.uploadPaused;
+  final uploading = config['mqtt_connected'] == true && !held;
 
   StatusRow gateway;
   String? hint;
@@ -259,6 +264,12 @@ ConnectionStatus connectionStatus({
         : 'Gateway 把資料送到${current.plainLabel}，但手機連的是'
               '${syncTarget.plainLabel}。按「同步」讓 Gateway 改送到'
               '${placeOf(syncTarget)}。';
+  } else if (held) {
+    gateway = StatusRow(
+      placeOf(current),
+      state.testMode ? '⚠ 測試模式' : '⚠ 上傳已暫停',
+      StatusTone.warn,
+    );
   } else if (uploading || backendFresh) {
     gateway = StatusRow(placeOf(current), '✓ 資料上傳中', StatusTone.ok);
   } else if (polling) {
@@ -308,6 +319,9 @@ ConnectionStatus connectionStatus({
         hint = uploadCheckHint(current);
       }
     }
+  }
+  if (held && gateway.tone == StatusTone.warn && !noWifi) {
+    hint = state.testMode ? testModeStatusHint : uploadPausedStatusHint;
   }
   if (need == SyncNeed.invalid) hint = app.error;
   if (state.uploadWatch == UploadWatch.linkLost) {
@@ -377,6 +391,11 @@ ConnectionStatus connectionStatus({
       'Gateway 開機次數：$bootCount'
           '${net['reset_reason'] is String ? '（上次開機原因：${resetReasonText(net['reset_reason'])}）' : ''}',
     '韌體版本：${config['fw_version'] ?? '未知'}',
+    if (config['mode'] != null)
+      '閘道器模式：${state.testMode ? '測試模式（只產生測試資料）' : '正常'}',
+    if (config['upload_paused'] is bool)
+      '資料上傳：${config['upload_paused'] == true ? '已暫停' : '開啟'}'
+          '${config['pause_reason'] is String && (config['pause_reason'] as String).isNotEmpty ? '（${config['pause_reason']}）' : ''}',
     if (current?.isLocal == true)
       '本地 MQTT 連不上時請確認：電腦防火牆已開放 TCP ${current!.port}、'
           '本地 MQTT broker 已啟動，且 broker 憑證包含 ${current.host}。',

@@ -5,6 +5,7 @@
 /// Pure Dart so every wording can be unit-tested without widgets.
 library;
 
+import '../core/gateway_identity.dart';
 import '../core/gateway_net.dart';
 import '../core/mqtt_target.dart';
 import 'backend_environment.dart';
@@ -52,7 +53,17 @@ class NetworkCheck {
     required this.uploadHint,
     required this.canSkip,
     this.wifiWeak,
+    this.testMode = false,
+    this.uploadPaused = false,
   });
+
+  /// Round 26: the gateway is in test mode (the page shows the card with
+  /// 〔切回正常模式〕); the upload item is not passed.
+  final bool testMode;
+
+  /// Round 26: a gateway in service with its upload paused — the upload
+  /// item offers 〔恢復上傳〕 and is not passed.
+  final bool uploadPaused;
   final CheckLine wifi, target, upload;
 
   /// Joined, but the signal is below [weakWifiRssiDbm]: the red warning with
@@ -91,6 +102,10 @@ class NetworkCheck {
   /// Why 「沿用目前站點」 cannot be used now (null when it can).
   String? get reuseBlockedReason => ready
       ? null
+      : testMode
+      ? '閘道器在測試模式'
+      : uploadPaused && wifiOk && targetOk
+      ? '閘道器的資料上傳已暫停'
       : !wifiOk
       ? 'Gateway 還沒連上 Wi-Fi'
       : !targetOk
@@ -216,6 +231,12 @@ NetworkCheck networkCheck({
   if (state.uploadWatch == UploadWatch.linkLost) {
     upload = const CheckLine('✗', '手機和 Gateway 的藍牙斷了，無法確認。', StatusTone.bad);
     hint = '請靠近 Gateway，按「結束並重新選擇閘道器」重新連線。';
+  } else if (state.testMode) {
+    // Round 26 (field: 「✓ 資料上傳中」 from a gateway in test mode).
+    upload = const CheckLine('⚠', testModeUploadText, StatusTone.warn);
+  } else if (state.uploadPaused) {
+    // Round 26 (field: 「✓ 資料上傳中」 with the upload paused, 0 rows).
+    upload = const CheckLine('⚠', uploadPausedText, StatusTone.warn);
   } else if (!supported) {
     upload = const CheckLine('？', '無法確認，最後的資料驗證會再確認。', StatusTone.neutral);
     uploadOk = true;
@@ -264,8 +285,10 @@ NetworkCheck networkCheck({
     need: need,
     syncTarget: syncTarget,
     uploadHint: hint,
-    canSkip: !ready && (state.offline || !pending),
+    canSkip: !ready && (state.offline || !pending) && !state.testMode,
     wifiWeak: supported && wifiOk ? weakWifiWarning(state.net) : null,
+    testMode: state.testMode,
+    uploadPaused: state.uploadPaused,
   );
 }
 

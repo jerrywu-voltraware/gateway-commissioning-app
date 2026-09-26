@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'gateway_identity.dart';
 import 'gateway_net.dart';
 import 'mqtt_target.dart';
 
@@ -295,6 +296,10 @@ class GatewayFailure implements Exception {
     // Firmware 1.7.32 tells why (wifi_last_disc_reason, see [wifiFailedDetail]).
     'wifi_failed' => wifiSetFailedText(wifiFailedReason(detail)),
     'no_devices' => '未找到 PTU。請確認已上電並靠近閘道器後重掃。',
+    // Round 26: an old gateway in test mode never scans PTUs.
+    'test_mode' => testModeText,
+    'test_mode_stuck' => '閘道器重新開機後仍在測試模式，請再按一次「$leaveTestModeLabel」；若仍不行，請按求助。',
+    'upload_paused' => '閘道器仍回報資料上傳暫停，請再按一次「$resumeUploadLabel」；若仍不行，請按求助。',
     'gateway_full' => '本機已滿，請連另一台閘道器。',
     'incomplete' => '仍有 PTU 未連線或資料未到達，請查看各台狀態後重試。',
     'authentication' => '登入失敗或已失效，請重新輸入登入資訊。',

@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/assign_progress.dart';
 import '../core/direct_calibration.dart';
 import '../core/direct_mode.dart';
+import '../core/gateway_identity.dart';
 import '../core/gateway_net.dart';
 import '../core/gateway_reboot.dart';
 import '../core/gateway_topology.dart';
@@ -160,6 +162,12 @@ const uploadNotReadyText =
     '要等 Gateway 連上 Wi-Fi 並開始上傳資料，才能繼續選擇 PTU。'
     '請等「確認資料上傳」出現 ✓，或再重設一次 Wi-Fi。';
 
+/// Round 26: the Wi-Fi of a station was reset and its upload works — the
+/// station is chosen again (it may be another site's, field round 26).
+const wifiUpdatedChooseStationText =
+    'Wi-Fi 已更新，資料上傳正常。請確認站點：這台閘道器目前的站點若不是這裡，'
+    '請選「設定新站點與 Wi-Fi」。';
+
 /// Step 7 after a backend switch: the earlier result belongs to the old one.
 const backendSwitchedDoneText = '已切換連線環境，資料要在新的環境重新確認。';
 
@@ -224,6 +232,40 @@ String ptuFailureText(Object? error) {
     return error.message;
   }
   return 'PTU 設定未完成，請靠近後重試';
+}
+
+/// Round 26: a failure a gateway in test mode explains — anything the
+/// gateway answered (e.g. `scan failed: ESP_ERR_TIMEOUT`, read as 「PTU 沒有
+/// 回應」) or a PTU-side outcome; never the phone's own link or a cancel.
+bool testModeExplains(GatewayFailure failure) {
+  if (failure.code == 'test_mode' || failure.code == 'test_mode_stuck') {
+    return false;
+  }
+  if (isPhoneLinkFailure(failure)) return false;
+  // The gateway's own refusals (time, OTP, busy, upload target) stay.
+  const own = {
+    'time_not_synced',
+    'expired',
+    'otp_required',
+    'otp_enabled',
+    'otp_invalid',
+    'otp_locked',
+    'otp_reused',
+    'not_ready',
+    'busy',
+    'duplicate',
+    'bad_json',
+    'upload_target',
+  };
+  if (own.contains(failure.code)) return false;
+  return failure.fromGateway ||
+      const {
+        'timeout',
+        'no_devices',
+        'incomplete',
+        'direct_pick_missing',
+        'identify_no_ptu',
+      }.contains(failure.code);
 }
 
 /// The gateway could not open its Bluetooth link to the PTU (GATT 133,
@@ -1243,6 +1285,15 @@ class CommissionState {
         uploadWatch == UploadWatch.linkLost,
   );
 
+  /// Round 26 (field: an old gateway in test mode only answered 「PTU 沒有
+  /// 回應」): get_config / get_ble_devices report `mode:"test"` — the
+  /// firmware generates test data and never scans PTUs.
+  bool get testMode => isTestMode(config);
+
+  /// Round 26 (field: 「✓ 資料上傳中」 with the upload paused, 0 rows): a
+  /// gateway in service whose upload is paused ([uploadPausedProblem]).
+  bool get uploadPaused => uploadPausedProblem(config);
+
   /// The firmware answers get_net_status (1.7+); older ones cannot be checked.
   bool get netCheckSupported =>
       profileFor(config['fw_version']?.toString() ?? '') ==
@@ -1480,6 +1531,45 @@ class CommissioningController extends Notifier<CommissionState> {
   /// retry with replaceExisting so it does not re-reserve (already granted).
   bool _pendingReplace = false;
   bool get pendingReplace => _pendingReplace;
+
+  /// Round 26 (field: a neighbouring gateway's own Bluetooth advertisement
+  /// listed as 「未指派 PTU」 and preselected; in direct mode the gateway
+  /// connected it): Bluetooth MACs known to be gateways — the phone's
+  /// gateway list, recent gateways, the connected one, and discover rows
+  /// named like a gateway. They are never listed, picked or offered as PTUs.
+  final Set<String> _gatewayMacs = {};
+
+  /// The gateway list ([GatewayDiscovery]) heard these gateways.
+  void noteGatewayPeers(Iterable<GatewayPeer> peers) {
+    for (final peer in peers) {
+      _noteGatewayMac(peer.id);
+    }
+  }
+
+  void _noteGatewayMac(Object? mac) {
+    final key = gatewayMacKey(mac);
+    if (key.isNotEmpty) _gatewayMacs.add(key);
+  }
+
+  bool _isGatewayMac(String mac) {
+    final key = gatewayMacKey(mac);
+    return key.isNotEmpty && _gatewayMacs.contains(key);
+  }
+
+  /// [mac] is known to be a gateway (never listed as a PTU).
+  bool knowsGateway(String mac) => _isGatewayMac(mac);
+
+  /// Round 26: logs the rows left out of a PTU list because they are
+  /// gateways (and remembers their MACs for the direct-mode report).
+  void _dropGatewayRows(Iterable<Map<String, dynamic>> rows, String where) {
+    for (final row in rows) {
+      _noteGatewayMac(row['mac']);
+      debugPrint(
+        '[ptu-filter] $where: ${row['mac']} '
+        '"${row['name'] ?? ''}" is a gateway, not listed as a PTU',
+      );
+    }
+  }
 
   /// PTU 目標台數：直連固定 1，星狀依「每台 PTU 數」設定（預設 5）。
   int get targetPtuCount => ref.read(topologyProvider).targetCount;
@@ -1838,6 +1928,7 @@ class CommissioningController extends Notifier<CommissionState> {
           answered = true;
           _journalBle(op, params, 'ok', watch, result: result);
           _check(generation);
+          _absorbGatewayState(op, params, result);
           return result;
         } on GatewayFailure catch (error) {
           if (!answered) {
@@ -1864,6 +1955,47 @@ class CommissioningController extends Notifier<CommissionState> {
         state = state.copy(message: before, error: state.error);
       }
     }
+  }
+
+  /// Round 26 (field: 「✓ 資料上傳中」 while the gateway's upload was
+  /// paused, and no word of its test mode): what a successful command says
+  /// about the gateway's mode and upload is kept in the config at once, so
+  /// every screen shows the gateway's real state.
+  void _absorbGatewayState(
+    String op,
+    Map<String, dynamic> params,
+    Map<String, dynamic> result,
+  ) {
+    if (!ref.mounted) return;
+    final update = <String, dynamic>{};
+    switch (op) {
+      case 'get_config':
+        for (final key in const ['mode', 'upload_paused', 'pause_reason']) {
+          if (result.containsKey(key)) update[key] = result[key];
+        }
+      case 'get_ble_devices':
+        if (result['mode'] is String) update['mode'] = result['mode'];
+      case 'get_status' || 'get_net_status':
+        if (result['upload_paused'] is bool) {
+          update['upload_paused'] = result['upload_paused'];
+        }
+      case 'set_data_upload':
+        final enabled = result['upload_enabled'] ?? params['enabled'];
+        if (enabled is bool) update['upload_paused'] = !enabled;
+      case 'join_fleet':
+        // cmd_contract.md: fleet_joined=1, ble_enabled=1, upload_paused=0.
+        update
+          ..['fleet_joined'] = true
+          ..['upload_paused'] = false;
+    }
+    if (update.isEmpty ||
+        update.entries.every((e) => state.config[e.key] == e.value)) {
+      return;
+    }
+    state = state.copy(
+      config: {...state.config, ...update},
+      error: state.error,
+    );
   }
 
   Future<Map<String, dynamic>> _request(
@@ -2013,9 +2145,19 @@ class CommissioningController extends Notifier<CommissionState> {
       }
       _classifyingFailure = true;
       final safe = await _safeStop();
-      final failure = error is GatewayFailure
+      var failure = error is GatewayFailure
           ? error
           : GatewayFailure.unexpected(error);
+      // Round 26 (field: 「PTU 沒有回應」 twice from a gateway in test
+      // mode): in test mode the gateway never scans or connects PTUs, so a
+      // failure of the PTU steps (7 / 8) is that, not the PTU. The Wi-Fi
+      // and identity steps keep their own texts.
+      if (ref.mounted &&
+          state.testMode &&
+          (state.step == 4 || state.step == 5) &&
+          testModeExplains(failure)) {
+        failure = GatewayFailure('test_mode', detail: failure.toString());
+      }
       final diagnosis = _diagnosis;
       final detailed =
           diagnosis != null &&
@@ -2379,6 +2521,7 @@ class CommissioningController extends Notifier<CommissionState> {
   Future<void> scan() => _run('搜尋附近的閘道器', 30, (generation) async {
     final peers = await _link.scan();
     _check(generation);
+    noteGatewayPeers(peers);
     state = state.copy(
       peers: peers,
       message: peers.isEmpty ? '未找到閘道器，請靠近並確認電源後重掃。' : '請選擇要開通的閘道器',
@@ -2536,6 +2679,7 @@ class CommissioningController extends Notifier<CommissionState> {
 
   Future<void> connect(GatewayPeer peer) async {
     if (state.busy) return;
+    _noteGatewayMac(peer.id);
     _stopWatch(UploadWatch.idle);
     _settleTimer?.cancel();
     // Round 27: a new commissioning of this gateway starts untouched.
@@ -2646,6 +2790,14 @@ class CommissioningController extends Notifier<CommissionState> {
         } catch (_) {
           /* Recents must not block a successful BLE connection. */
         }
+        try {
+          // Round 26: gateways used before are never PTUs either.
+          for (final recent in await RecentGateways.load(_link.demo)) {
+            _noteGatewayMac(recent.peer.id);
+          }
+        } catch (_) {
+          /* Advisory only. */
+        }
         _check(generation);
         // 網路體檢: the gateway's own Wi-Fi and upload state.
         final read = await _readNet(generation, config);
@@ -2687,7 +2839,20 @@ class CommissioningController extends Notifier<CommissionState> {
       int? site;
       int gw = 1;
       var offline = !_loggedIn;
-      if (_loggedIn) {
+      // Round 26 (field: set_site_identity 80/2 went through, the reconnect
+      // failed; connected again, the form offered 「站點 1 / 閘道器 1」 and
+      // 80 had to be typed again): a gateway that carries an identity other
+      // than the factory 1/1 (not yet in service, e.g. set a moment ago)
+      // keeps it as the proposal.
+      final ownSite = (config['site_id'] as num?)?.toInt() ?? 0;
+      final ownGw = (config['gateway_id'] as num?)?.toInt() ?? 0;
+      final ownIdentity =
+          ownSite > 0 && ownGw > 0 && !(ownSite == 1 && ownGw == 1);
+      if (ownIdentity) {
+        site = ownSite;
+        gw = ownGw;
+      }
+      if (_loggedIn && !ownIdentity) {
         try {
           final discover = await _request(
             generation,
@@ -2766,22 +2931,39 @@ class CommissioningController extends Notifier<CommissionState> {
   /// passed; the Wi-Fi-only path still requires a successful network check.
   Future<void> passNetworkCheck({bool skip = false}) async {
     if (!_atCheck) return;
+    // Round 26: nothing goes on in test mode (the gateway never scans PTUs).
+    if (state.testMode) {
+      state = state.copy(error: testModeText);
+      return;
+    }
     if (state.config['wifi_only'] == true) {
       if (!state.networkReady) {
         state = state.copy(error: uploadNotReadyText);
         _field.noteErrorCode(_notReadyCode());
         return;
       }
+      if (state.uploadPaused) {
+        state = state.copy(error: uploadPausedText);
+        return;
+      }
+      // Round 26 (field: a gateway from another site had its Wi-Fi reset
+      // and went straight to the PTU scan as 「站點 20 / 閘道器 1」): after
+      // the Wi-Fi works, the station is chosen again — 沿用 keeps it and
+      // scans the PTUs, 設定新站點 renames it.
       state = state.copy(
-        step: 4,
         checkPassed: true,
+        config: {
+          ...state.config,
+          'choose_station': true,
+          'new_station': false,
+          'wifi_only': false,
+        },
         results: {},
         assignStatus: {},
         verified: false,
         report: '',
-        message: 'Wi-Fi 已更新，站點設定保留。接著由 Gateway 搜尋 PTU，請確認要監控的裝置。',
+        message: wifiUpdatedChooseStationText,
       );
-      await discover();
       return;
     }
     final station = state.config['choose_station'] == true;
@@ -2873,9 +3055,17 @@ class CommissioningController extends Notifier<CommissionState> {
   }) async {
     if (state.busy || state.config['choose_station'] != true) return;
     // Keep the network gate before proceeding with an existing station.
+    if (!newStation && !wifiOnly && state.testMode) {
+      state = state.copy(error: testModeText);
+      return;
+    }
     if (!newStation && !wifiOnly && !state.networkReady) {
       state = state.copy(error: reuseBlockedText);
       _field.noteErrorCode(_notReadyCode());
+      return;
+    }
+    if (!newStation && !wifiOnly && state.uploadPaused) {
+      state = state.copy(error: uploadPausedText);
       return;
     }
     state = state.copy(
@@ -3304,6 +3494,129 @@ class CommissioningController extends Notifier<CommissionState> {
     throw const GatewayFailure('timeout');
   });
 
+  /// Round 26: reads get_config for its `mode` (absorbed by
+  /// [_absorbGatewayState]); true in test mode. A failed read is false:
+  /// the caller keeps its own error.
+  Future<bool> _readTestMode(int generation) async {
+    try {
+      await _command(generation, 'get_config');
+    } catch (error) {
+      if (error is GatewayFailure && error.code == 'cancelled') rethrow;
+      return false;
+    }
+    return ref.mounted && state.testMode;
+  }
+
+  /// Round 26 (field: an old gateway in test mode — only test data, no PTU
+  /// scan — was a dead end, rescued only by the back office's set_mode):
+  /// 〔切回正常模式〕. `set_mode normal` acks, then the gateway reboots
+  /// (cmd_contract.md: ACK, NVS, 1 s); the APP reconnects, reads the mode
+  /// back and carries on where it was — at step 7 it scans again.
+  Future<void> leaveTestMode() async {
+    if (state.busy || state.peer == null || !state.testMode) return;
+    final rescan = state.step == 4;
+    await _sideTask(leavingTestModeText, 150, (generation) async {
+      final peer = state.peer!;
+      _expectReboot();
+      Map<String, dynamic>? ack;
+      try {
+        ack = await _command(generation, 'set_mode', {'mode': 'normal'});
+      } on GatewayFailure catch (error) {
+        if (error.fromGateway) rethrow;
+        // ACK lost: the gateway may already be restarting; reconnect and
+        // read the mode back instead of guessing.
+        if (!const {
+          'disconnected',
+          'not_connected',
+          'timeout',
+        }.contains(error.code)) {
+          rethrow;
+        }
+      }
+      // `already in normal mode, no change`: no reboot.
+      final unchanged = (ack?['message']?.toString() ?? '').contains(
+        'no change',
+      );
+      if (!unchanged) {
+        state = state.copy(
+          config: {...state.config}..remove('mqtt_connected'),
+          net: const {},
+        );
+        await _reconnectAfterReboot(generation, peer, 1000);
+        _startWifiGrace();
+      }
+      final config = await _readConfigAfterBoot(generation);
+      if (isTestMode(config)) throw const GatewayFailure('test_mode_stuck');
+      state = state.copy(
+        config: {...state.config, ...config},
+        message: state.step == 2 ? leftTestModeText : null,
+      );
+      try {
+        final net = await _command(
+          generation,
+          state.netCheckSupported ? 'get_net_status' : 'get_status',
+        );
+        _absorbTarget(net);
+        _absorbNet(net);
+      } on GatewayFailure catch (error) {
+        if (error.code == 'cancelled') rethrow;
+        _check(generation);
+        // Not ready yet: the upload check reads it again.
+      }
+    });
+    if (!ref.mounted || state.error != null || state.testMode) return;
+    _watchUploadIfPending();
+    if (rescan && state.step == 4) await discover();
+  }
+
+  /// get_config right after a reboot: refused (not_ready / busy) or
+  /// unanswered for a moment while the gateway boots.
+  Future<Map<String, dynamic>> _readConfigAfterBoot(int generation) async {
+    const transient = {'not_ready', 'busy', 'timeout'};
+    for (var attempt = 0; ; attempt++) {
+      try {
+        return await _command(generation, 'get_config');
+      } on GatewayFailure catch (error) {
+        if (!transient.contains(error.code) || attempt >= 9) rethrow;
+      }
+      await _wait(3, generation);
+    }
+  }
+
+  /// Round 26 (field: a gateway in service with its upload paused showed
+  /// 「✓ 資料上傳中」, 0 rows came in): 〔恢復上傳〕 sends
+  /// `set_data_upload enabled` and reads the state back.
+  Future<void> resumeUpload() async {
+    if (state.busy || state.peer == null) return;
+    await _sideTask(resumingUploadText, 30, (generation) async {
+      await _command(generation, 'set_data_upload', {'enabled': true});
+      await _command(generation, 'get_config');
+      if (state.config['upload_paused'] == true) {
+        throw const GatewayFailure('upload_paused');
+      }
+      state = state.copy(uploadNotice: uploadResumedText);
+    });
+    if (ref.mounted && state.error == null) _watchUploadIfPending();
+  }
+
+  /// Round 26: before the done page — the gateway itself must not be
+  /// paused (the data rows just came in; a pause since is resumed). Never
+  /// blocks the completion: a lost phone link leaves it to the back office
+  /// data, which already passed.
+  Future<void> _confirmUploadBeforeDone(int generation) async {
+    if (state.peer == null) return;
+    try {
+      final config = await _command(generation, 'get_config');
+      if (config['upload_paused'] == true) {
+        await _command(generation, 'set_data_upload', {'enabled': true});
+        await _command(generation, 'get_config');
+      }
+    } catch (error) {
+      if (error is GatewayFailure && error.code == 'cancelled') rethrow;
+      _check(generation);
+    }
+  }
+
   /// Return from verification to a fresh gateway-side inventory, without
   /// changing the site, Wi-Fi or PTU assignments until the user confirms.
   Future<void> rescanPtus() async {
@@ -3375,6 +3688,8 @@ class CommissioningController extends Notifier<CommissionState> {
             ? phoneLinkLostText
             : state.uploadWatch == UploadWatch.linkLost
             ? 'Gateway 掃描未完成：藍牙連線已中斷。請靠近 Gateway，再按「$rescanAfterLossLabel」。'
+            : state.testMode
+            ? '閘道器在測試模式，不會掃描 PTU。請按「$leaveTestModeLabel」，切換後 APP 會自動重新掃描。'
             : directFlow
             ? '閘道器選台未完成，請查看錯誤後按「重新搜尋」。'
             : 'Gateway 掃描未完成，請查看錯誤後按「$rescanLabel」。',
@@ -3457,6 +3772,8 @@ class CommissioningController extends Notifier<CommissionState> {
           directNotice: relink ? null : '',
         );
         final config = await _command(generation, 'get_config');
+        // Round 26: a gateway in test mode never picks a PTU.
+        if (isTestMode(config)) throw const GatewayFailure('test_mode');
         state = state.copy(
           config: {
             ...state.config,
@@ -3554,7 +3871,27 @@ class CommissioningController extends Notifier<CommissionState> {
   /// 「連線建立中…」; an RSSI reading, another pick or none ends it.
   void _takeDirect(Object? direct) {
     if (!ref.mounted || direct is! Map) return;
-    final raw = Map<String, dynamic>.from(direct);
+    // Round 26 (field: the gateway picked — and connected — a neighbouring
+    // gateway, strongest at -7 dBm): gateways are left out of the report,
+    // a gateway pick reads as no pick with a notice.
+    final clean = directWithoutGateways(
+      Map<String, dynamic>.from(direct),
+      _isGatewayMac,
+    );
+    for (final mac in clean.dropped) {
+      debugPrint('[ptu-filter] direct: $mac is a gateway, not a PTU');
+    }
+    final raw = clean.direct;
+    final gatewayPick = clean.pickedGateway;
+    final notice = gatewayPick != null
+        ? directGatewayPickText(gatewayPick)
+        : isDirectGatewayPickText(state.directNotice) &&
+              DirectStatus.from(raw)?.pickedMac != null
+        ? ''
+        : null;
+    if (notice != null) {
+      state = state.copy(directNotice: notice, error: state.error);
+    }
     final before = state.direct?.pickedMac;
     final next = DirectStatus.from(raw);
     final picked = next?.pickedMac;
@@ -3601,7 +3938,10 @@ class CommissioningController extends Notifier<CommissionState> {
     if (identified != null && (mac == null || !sameMac(mac, identified))) {
       state = state.copy(
         identifiedMac: null,
-        directNotice: mac == null ? '' : directSwitchedText(mac),
+        // Round 26: a gateway pick's notice ([_takeDirect]) stays.
+        directNotice: mac == null
+            ? (isDirectGatewayPickText(state.directNotice) ? null : '')
+            : directSwitchedText(mac),
         error: state.error,
       );
     }
@@ -3681,6 +4021,13 @@ class CommissioningController extends Notifier<CommissionState> {
       await _releaseTempBind();
       _check(generation);
     }
+    // Round 26 (field: 「PTU 沒有回應」 from a gateway in test mode, twice):
+    // test mode never scans — read the mode again (it may have been
+    // switched since, e.g. by the back office) and say so instead.
+    if (state.testMode) {
+      await _command(generation, 'get_config');
+      if (state.testMode) throw const GatewayFailure('test_mode');
+    }
     // Round 24: the list on screen, put back when the gateway refuses the
     // read as busy (nothing changed on the gateway side).
     final before = (
@@ -3723,14 +4070,31 @@ class CommissioningController extends Notifier<CommissionState> {
           error: state.error,
         );
       }
+      // Round 26: a scan the gateway refused may be its test mode (field:
+      // `scan failed: ESP_ERR_TIMEOUT` shown as 「PTU 沒有回應」).
+      if (ref.mounted &&
+          generation == _generation &&
+          error.fromGateway &&
+          !isGatewayBusyFailure(error) &&
+          await _readTestMode(generation)) {
+        throw GatewayFailure('test_mode', detail: error.toString());
+      }
       rethrow;
     }
     await _absorbDirect(generation);
     await _absorbStar(generation, connected);
-    final ptus = mergePtuInventory(
-      response['devices'] as List? ?? [],
-      connected['devices'] as List? ?? [],
+    // Round 26 (field: a neighbouring gateway listed as 「未指派 PTU」 and
+    // preselected): gateways are never PTUs (firmware 1.7.38 leaves them
+    // out itself; older firmware does not).
+    final inventory = splitGatewayRows(
+      mergePtuInventory(
+        response['devices'] as List? ?? [],
+        connected['devices'] as List? ?? [],
+      ),
+      _isGatewayMac,
     );
+    _dropGatewayRows(inventory.gateways, 'scan_ble_discover');
+    final ptus = inventory.ptus;
     // This scan's device_number is authoritative: never overlay numbers
     // from saved progress (round 5 showed a stale 「PTU #5」 for a PTU the
     // gateway had just reset to 0).
@@ -6014,7 +6378,9 @@ class CommissioningController extends Notifier<CommissionState> {
         final rows = (latest['items'] as List? ?? [])
             .map((p) => Map<String, dynamic>.from(p as Map))
             .toList();
-        if (fleet?['online'] == true || backendRowsFresh(rows)) {
+        // Round 26: a heartbeat with the upload paused is no upload.
+        if ((fleet?['online'] == true && fleet?['upload_paused'] != true) ||
+            backendRowsFresh(rows)) {
           state = state.copy(backendSeenAt: DateTime.now());
         }
         final before = Map<int, DateTime>.of(previous);
@@ -6073,6 +6439,7 @@ class CommissioningController extends Notifier<CommissionState> {
           verifyWaiting: waiting,
         );
         if (good) {
+          await _confirmUploadBeforeDone(generation);
           await backend(
             () => _request(generation, 'PATCH', '$_path/bot-monitor', {
               'enabled': true,

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../application/backend_environment.dart';
 import '../application/commissioning_controller.dart';
+import '../core/gateway_identity.dart';
 import '../core/protocol.dart';
 import '../data/contracts.dart';
 import '../data/recent_gateways.dart';
@@ -174,6 +175,9 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     setState(() => _recent = recent);
     void update(List<GatewayPeer> peers) {
       if (mounted && epoch == _epoch) {
+        // Round 26: gateways heard here are never PTUs (another gateway's
+        // advertisement was listed and picked as one in the field).
+        ref.read(commissionProvider.notifier).noteGatewayPeers(peers);
         for (final peer in peers) {
           _order.putIfAbsent(peer.id, () => _order.length);
         }
@@ -239,6 +243,14 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
         : found.rssi <= -127
         ? '訊號未知'
         : '${found.rssi} dBm';
+    // Round 26 (field: two gateways both read 「GIOS-S80-G…」): 「站 80 ·
+    // 閘道器 2」 as the title, the advertised name (the live one: a recent
+    // entry keeps the name it had) and the MAC tail below — nothing cut,
+    // long text wraps.
+    final name = found?.name ?? peer.name;
+    final title = gatewayTitle(name);
+    final tail = macTailText(peer.id);
+    final theme = Theme.of(context).textTheme;
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 3),
       child: ListTile(
@@ -246,23 +258,27 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
         dense: true,
         contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
         title: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
               child: Text(
-                peer.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+                title,
+                key: ValueKey('gateway-title-${peer.id}'),
+                style: const TextStyle(fontWeight: FontWeight.w700),
               ),
             ),
             const SizedBox(width: 6),
-            Text(signal, style: Theme.of(context).textTheme.labelMedium),
+            Text(signal, style: theme.labelMedium),
           ],
         ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(peer.id, maxLines: 1, overflow: TextOverflow.ellipsis),
-            Text(status, maxLines: 1, overflow: TextOverflow.ellipsis),
+            Wrap(
+              spacing: 8,
+              children: [if (title != name) Text(name), Text(tail ?? peer.id)],
+            ),
+            Text(status),
           ],
         ),
         trailing: widget.onIdentify == null
@@ -297,7 +313,9 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     });
     final recentIds = _recent.map((r) => r.peer.id).toSet();
     bool matches(GatewayPeer peer) =>
-        '${peer.name} ${peer.id}'.toLowerCase().contains(_query);
+        '${peer.name} ${gatewayTitle(peer.name)} ${peer.id}'
+            .toLowerCase()
+            .contains(_query);
     final recent = _recent.where((r) => matches(r.peer)).toList();
     final nearby = _found
         .where((p) => !recentIds.contains(p.id) && matches(p))

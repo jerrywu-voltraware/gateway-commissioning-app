@@ -18,7 +18,7 @@ class DemoSystem implements GatewayLink, GatewayApi, ForeignAcks {
     'max_connections': 3,
     'fleet_joined': false,
     'ble_enabled': true,
-    'upload_paused': true,
+    // `upload_paused` unset: see [uploadPaused] (round 26).
     'mqtt_target': 'production',
     'mqtt_host': demoProductionMqttHost,
     'mqtt_port': defaultMqttPort,
@@ -359,7 +359,25 @@ class DemoSystem implements GatewayLink, GatewayApi, ForeignAcks {
     if (rebooting) throw const GatewayFailure('disconnected');
     switch (op) {
       case 'get_config':
-        return {...config, 'boot_count': ?bootCount};
+        return {
+          ...config,
+          'upload_paused': uploadPaused,
+          'boot_count': ?bootCount,
+        };
+      case 'set_mode':
+        // Firmware: same mode → no reboot; else ACK, NVS, reboot.
+        final mode = params['mode'];
+        if (mode != 'test' && mode != 'normal') {
+          throw const GatewayFailure.gateway(
+            'unknown mode (use "test" or "normal")',
+          );
+        }
+        if ((config['mode'] ?? 'normal') == mode) {
+          return {'message': 'already in $mode mode, no change'};
+        }
+        config['mode'] = mode;
+        rebooting = true;
+        return {'message': 'mode switching to $mode, rebooting...'};
       case 'set_site_identity':
         config.addAll(params);
         return {'message': 'rebooting'};
@@ -487,13 +505,20 @@ class DemoSystem implements GatewayLink, GatewayApi, ForeignAcks {
         return {'mac': params['mac'], 'success': true};
       case 'set_data_upload':
         config['upload_paused'] = params['enabled'] != true;
-        return {};
+        return {'upload_enabled': params['enabled'] == true};
       case 'check_db_upload':
         return {'db_ok': true};
       default:
         return {};
     }
   }
+
+  /// Round 26: `upload_paused` as get_config reports it — set explicitly
+  /// (set_data_upload, join_fleet, a test), or else paused until the
+  /// gateway is in service (a new gateway uploads nothing before
+  /// join_fleet; a gateway in service uploads).
+  bool get uploadPaused =>
+      config['upload_paused'] as bool? ?? config['fleet_joined'] != true;
 
   /// Mirrors cmd_exec_set_mqtt_target in firmware 1.7.3.
   Map<String, dynamic> _setMqttTarget(Map<String, dynamic> params) {

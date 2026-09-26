@@ -10,6 +10,7 @@ import '../application/topology_settings.dart';
 import '../core/assign_progress.dart';
 import '../core/direct_calibration.dart';
 import '../core/direct_mode.dart';
+import '../core/gateway_identity.dart';
 import '../core/gateway_net.dart';
 import '../core/gateway_reboot.dart';
 import '../core/gateway_topology.dart';
@@ -27,6 +28,7 @@ import 'local_backend_field.dart';
 import 'ptu_selection_tile.dart';
 import 'gateway_signal.dart';
 import 'gateway_discovery.dart';
+import 'gateway_mode_card.dart';
 
 class CommissioningPage extends ConsumerStatefulWidget {
   const CommissioningPage({
@@ -895,8 +897,12 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                           ],
                           FilledButton(
                             key: const Key('ptu-configure'),
+                            // Round 26: a gateway in test mode cannot scan;
+                            // the one action is to switch it back.
                             onPressed: state.relinking
                                 ? null
+                                : state.testMode && !state.busy
+                                ? controller.leaveTestMode
                                 : step7LinkLost(state) ||
                                       (!state.busy &&
                                           configureLabel(state) == rescanLabel)
@@ -927,7 +933,11 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                                     }
                                   }
                                 : null,
-                            child: Text(configureLabel(state)),
+                            child: Text(
+                              state.testMode && !state.busy
+                                  ? leaveTestModeLabel
+                                  : configureLabel(state),
+                            ),
                           ),
                           if (state.busy)
                             TextButton(
@@ -1004,9 +1014,16 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                     ),
                   if (!selectingPtus) StepList(current: shown),
                   SizedBox(height: selectingPtus ? 4 : 16),
+                  // Round 26: 「站 80 · 閘道器 2 · MAC 後 4 碼 70F2 · 1.7.36」
+                  // (field: two gateways read 「GIOS-S80-G…」).
                   if (state.peer != null)
                     Text(
-                      '${state.peer!.name} · ${state.config['fw_version'] ?? ''}',
+                      gatewayHeaderText(
+                        name: state.peer!.name,
+                        id: state.peer!.id,
+                        config: state.config,
+                      ),
+                      key: const Key('gateway-header'),
                     ),
                   if (state.peer != null)
                     GatewaySignal(
@@ -1077,6 +1094,8 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                         ],
                       ),
                     ),
+                  // Round 26: test mode / paused upload, with the way out.
+                  const GatewayModeCard(),
                   if (state.error != null)
                     Material(
                       key: const Key('error-banner'),
@@ -1586,8 +1605,14 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: Text(
-                  '要沿用目前站點，Gateway 必須先連上 Wi-Fi 並開始上傳資料（目前：$reason）。'
-                  '請用「保留站點，重設 Wi-Fi」，或按「回到網路體檢」。',
+                  // Round 26: test mode / a paused upload have their own
+                  // button in the card above, not a Wi-Fi reset.
+                  check.testMode
+                      ? '要沿用目前站點，請先按上方「$leaveTestModeLabel」（目前：$reason）。'
+                      : check.uploadPaused && check.wifiOk && check.targetOk
+                      ? '要沿用目前站點，請先按上方「$resumeUploadLabel」（目前：$reason）。'
+                      : '要沿用目前站點，Gateway 必須先連上 Wi-Fi 並開始上傳資料（目前：$reason）。'
+                            '請用「保留站點，重設 Wi-Fi」，或按「回到網路體檢」。',
                   key: const Key('reuse-blocked'),
                   style: TextStyle(color: Theme.of(context).colorScheme.error),
                 ),
@@ -2233,8 +2258,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   ) {
     if (s.step != 2 || s.checkPassed) return null;
     if (!networkCheck(state: s, env: env).ready) return null;
+    // Round 26: after a Wi-Fi reset the station is chosen again.
     final label = s.config['wifi_only'] == true
-        ? '下一步：由 Gateway 搜尋 PTU'
+        ? '下一步：確認站點'
         : s.config['fleet_joined'] == true
         ? '下一步：選擇站點'
         : '下一步：設定身份與 Wi-Fi';
@@ -2285,7 +2311,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       const SizedBox(height: 4),
       Text(
         recheck
-            ? 'Wi-Fi 已更新。等 Gateway 開始上傳資料，再由 Gateway 搜尋 PTU 供你確認。'
+            ? 'Wi-Fi 已更新。等 Gateway 開始上傳資料，再確認站點（沿用或設定新站點）。'
             : '先確認 Gateway 能上網、資料送對地方，再選擇站點。',
         style: muted,
       ),
@@ -2328,6 +2354,19 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           ),
         ),
       item('資料上傳', check.upload, 'check-upload'),
+      // Round 26 (field: 「✓ 資料上傳中」 with the upload paused).
+      if (check.uploadPaused && !check.testMode)
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: SizedBox(
+            width: double.infinity,
+            child: FilledButton.tonal(
+              key: const Key('check-resume-upload'),
+              onPressed: enabled ? c.resumeUpload : null,
+              child: const Text(resumeUploadLabel),
+            ),
+          ),
+        ),
       if (check.uploadHint != null)
         Container(
           key: const Key('check-hint'),
