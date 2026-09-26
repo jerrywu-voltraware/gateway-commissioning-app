@@ -499,11 +499,16 @@ void main() {
             reason: 'retry $n announced',
           );
         }
-        // Nothing to tap meanwhile.
+        // Nothing to tap meanwhile (round 21: 「讀取列表中…」 once back).
         expect(
           states
               .where((x) => x.relinking)
-              .every((x) => configureLabel(x) == relinkingLabel),
+              .every(
+                (x) => [
+                  relinkingLabel,
+                  relistingLabel,
+                ].contains(configureLabel(x)),
+              ),
           isTrue,
         );
       },

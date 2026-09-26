@@ -486,6 +486,49 @@ String remoteIdentifyText(Map<String, dynamic> ack) {
   return ['後台剛讓這台樁閃燈（請看樁上燈號）', ?result, if (ptu.isNotEmpty) ptu].join(' · ');
 }
 
+/// Round 21 (field round 21: the bar's one line was cut after
+/// 「後台剛讓這台樁閃燈（請看樁上燈…」 — the PTU's answer, MAC and RSSI
+/// behind the chevron): the notice's short first sentence, 「後台已讓此樁
+/// 閃燈 · PTU 未回應確認」 (or 已確認…). At most [remoteIdentifyHeadMax]
+/// characters, so it fits one line of a 360 dp bar at text scale 1 and two
+/// at 1.3. [remoteIdentifyText] stays the full text (details, snack bar).
+String remoteIdentifyHeadText(Map<String, dynamic> ack) {
+  final ptuWrite = ack['ptu_write'];
+  if (ptuWrite != null && ptuWrite != 'ok') return remoteIdentifyHeads[4];
+  return switch (identifyConfirmOf(ack)) {
+    IdentifyConfirm.confirmed => remoteIdentifyHeads[0],
+    IdentifyConfirm.timeout => remoteIdentifyHeads[1],
+    IdentifyConfirm.unsupportedPattern => remoteIdentifyHeads[2],
+    IdentifyConfirm.legacy =>
+      ptuWrite == 'ok' ? remoteIdentifyHeads[3] : remoteIdentifyHeads[5],
+  };
+}
+
+/// Round 21: every [remoteIdentifyHeadText] (the direct bar sizes its
+/// identify line for the longest).
+const remoteIdentifyHeads = [
+  '後台已讓此樁閃燈 · PTU 已確認',
+  '後台已讓此樁閃燈 · PTU 未回應確認',
+  '後台已讓此樁閃燈 · PTU 不支援燈效',
+  '後台已讓此樁閃燈 · PTU 已收到',
+  '後台已讓閘道器閃燈 · PTU 未收到',
+  '後台已讓此樁閃燈 · 請看樁上燈號',
+];
+
+/// Round 21: longest [remoteIdentifyHeads] entry, in characters.
+const remoteIdentifyHeadMax = 20;
+
+/// Round 21: the notice's second line — the PTU's MAC and RSSI (「PTU
+/// 90:5F:E8:9A:96:00 · -46 dBm」); empty when the ack names neither.
+String remoteIdentifyPtuText(Map<String, dynamic> ack) {
+  final mac = ack['mac'];
+  final rssi = ack['rssi'];
+  return [
+    if (mac != null) 'PTU ${formatMac(mac)}',
+    if (rssi is num) rssiLabel(rssi),
+  ].join(' · ');
+}
+
 /// Round 17: 「辨識此樁」 while the gateway's link to the PTU it just
 /// connected is still being set up (field round 17: an identify 0.9 s
 /// after the connect came back `ptu_write:not_connected`, one 2.7 s after

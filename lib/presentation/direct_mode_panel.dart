@@ -694,18 +694,115 @@ class DirectPickActions extends ConsumerStatefulWidget {
 /// Round 20: how long the back office's identify notice holds row 2.
 const remoteIdentifyNoticeDuration = Duration(seconds: 8);
 
+/// Round 21: row 2's width taken beside its text — the back office icon
+/// (16 + 6) and the chevron (18).
+const identifyLineChrome = 40.0;
+
+/// Round 21: whether every [remoteIdentifyHeads] fits one line of [width]
+/// here (else row 2 is two lines high).
+bool remoteIdentifyHeadsFit(BuildContext context, double width) =>
+    remoteIdentifyHeads.every(
+      (head) => fitsOneLine(context, TextSpan(text: head), width),
+    );
+
+/// Round 21: the height of [lines] lines of the default text style here.
+double textLinesHeight(BuildContext context, int lines) {
+  final painter = TextPainter(
+    text: TextSpan(
+      style: DefaultTextStyle.of(context).style,
+      text: List.filled(lines, ' ').join('\n'),
+    ),
+    textDirection: Directionality.of(context),
+    textScaler: MediaQuery.textScalerOf(context),
+  )..layout();
+  final height = painter.height;
+  painter.dispose();
+  return height;
+}
+
+/// Round 21 (field round 21: 「後台剛讓這台樁閃燈（請看樁上燈…」 cut in
+/// one line): the back office's identify notice in the direct bar — the
+/// short first sentence ([head], 「後台已讓此樁閃燈 · PTU 未回應確認」) never
+/// cut, the PTU's MAC · RSSI ([ptu]) after it, below it, or behind the tap.
+///
+/// One line ([twoLines] false): 「head · ptu」 when it fits (the MAC
+/// shortened against [others] if needed), else [head]. Two lines: [head]
+/// then [ptu]; a [head] too long for one line takes both, broken after
+/// 「閃燈」, and [ptu] opens with a tap.
+class RemoteIdentifyLines extends StatelessWidget {
+  const RemoteIdentifyLines({
+    super.key,
+    required this.head,
+    required this.ptu,
+    required this.others,
+    required this.twoLines,
+    required this.width,
+    this.style,
+  });
+
+  final String head, ptu;
+  final List<Object?> others;
+  final bool twoLines;
+  final double width;
+  final TextStyle? style;
+
+  @override
+  Widget build(BuildContext context) {
+    bool fits(String text) => fitsOneLine(context, macSpan(text, style), width);
+    final shortPtu = shortenMacIn(ptu, others);
+    Text line(String text, Key key, {int lines = 1}) => macRichText(
+      text,
+      key: key,
+      maxLines: lines,
+      overflow: TextOverflow.ellipsis,
+      style: style,
+    );
+    const headKey = Key('remote-identify');
+    const ptuKey = Key('remote-identify-ptu');
+    if (!twoLines) {
+      final full = '$head · $ptu', short = '$head · $shortPtu';
+      return line(
+        ptu.isEmpty
+            ? head
+            : fits(full)
+            ? full
+            : fits(short)
+            ? short
+            : head,
+        headKey,
+      );
+    }
+    if (!fits(head)) {
+      return line(head.replaceFirst(' · ', '\n'), headKey, lines: 2);
+    }
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        line(head, headKey),
+        if (ptu.isNotEmpty) line(fits(ptu) ? ptu : shortPtu, ptuKey),
+      ],
+    );
+  }
+}
+
 class _DirectPickActionsState extends ConsumerState<DirectPickActions> {
   bool _detail = false;
 
   /// Round 20: the back office's identify notice shown in row 2, if any.
   String? _remote;
+
+  /// Round 21: its short first sentence and its PTU MAC · RSSI line.
+  String _remoteHead = '', _remotePtu = '';
   Timer? _remoteTimer;
 
-  void _showRemote(String note) {
+  void _showRemote(String note, {String head = '', String ptu = ''}) {
     _remoteTimer?.cancel();
     _remoteTimer = null;
     setState(() {
       _remote = note;
+      _remoteHead = head.isEmpty ? note : head;
+      _remotePtu = ptu;
       _detail = false;
     });
     // Timed from the frame that shows it (the ack may arrive in another
@@ -743,9 +840,14 @@ class _DirectPickActionsState extends ConsumerState<DirectPickActions> {
       previous,
       next,
     ) {
-      final note = ref.read(commissionProvider).remoteIdentifyNote;
+      final now = ref.read(commissionProvider);
+      final note = now.remoteIdentifyNote;
       if (previous != null && next != previous && note.isNotEmpty) {
-        _showRemote(note);
+        _showRemote(
+          note,
+          head: now.remoteIdentifyHead,
+          ptu: now.remoteIdentifyPtu,
+        );
       }
     });
     ref.listen(
@@ -825,71 +927,97 @@ class _DirectPickActionsState extends ConsumerState<DirectPickActions> {
             onTap: expandable ? () => setState(() => _detail = !_detail) : null,
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Row(
-                children: [
-                  // Round 20: the back office's identify, not this phone's.
-                  if (remote != null)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 6),
-                      child: Icon(
-                        Icons.support_agent,
-                        key: const Key('remote-identify-icon'),
-                        size: 16,
-                        color: colors.tertiary,
-                      ),
+              // Round 21: two lines high whenever the back office's longest
+              // notice needs them here (360 dp at text scale 1.3) — also
+              // without a notice, so its arrival moves no button.
+              child: LayoutBuilder(
+                builder: (context, row) {
+                  final twoLines = !remoteIdentifyHeadsFit(
+                    context,
+                    row.maxWidth - identifyLineChrome,
+                  );
+                  return ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: twoLines ? textLinesHeight(context, 2) : 0,
                     ),
-                  if (pending)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 6),
-                      child: SizedBox(
-                        key: const Key('direct-identify-pending'),
-                        width: 12,
-                        height: 12,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: colors.primary,
-                        ),
-                      ),
-                    ),
-                  Expanded(
-                    // Round 16b: the full MAC when the line fits, else the
-                    // bytes telling it apart (the full note opens below).
-                    child: LayoutBuilder(
-                      builder: (context, box) {
-                        final style = TextStyle(
-                          color: remote != null
-                              ? colors.tertiary
-                              : note.isEmpty
-                              ? colors.onSurfaceVariant
-                              : colors.primary,
-                        );
-                        return macRichText(
-                          fitsOneLine(
-                                context,
-                                macSpan(line, style),
-                                box.maxWidth,
-                              )
-                              ? line
-                              : shortenMacIn(line, others),
-                          key: Key(
-                            remote != null
-                                ? 'remote-identify'
-                                : 'direct-identify-note',
+                    child: Row(
+                      children: [
+                        // Round 20: the back office's identify, not this phone's.
+                        if (remote != null)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: Icon(
+                              Icons.support_agent,
+                              key: const Key('remote-identify-icon'),
+                              size: 16,
+                              color: colors.tertiary,
+                            ),
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: style,
-                        );
-                      },
+                        if (pending)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: SizedBox(
+                              key: const Key('direct-identify-pending'),
+                              width: 12,
+                              height: 12,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: colors.primary,
+                              ),
+                            ),
+                          ),
+                        Expanded(
+                          // Round 16b: the full MAC when the line fits, else the
+                          // bytes telling it apart (the full note opens below).
+                          child: LayoutBuilder(
+                            builder: (context, box) {
+                              final style = TextStyle(
+                                color: remote != null
+                                    ? colors.tertiary
+                                    : note.isEmpty
+                                    ? colors.onSurfaceVariant
+                                    : colors.primary,
+                              );
+                              if (remote != null) {
+                                return RemoteIdentifyLines(
+                                  head: _remoteHead,
+                                  ptu: _remotePtu,
+                                  others: others,
+                                  twoLines: twoLines,
+                                  width: box.maxWidth,
+                                  style: style,
+                                );
+                              }
+                              return macRichText(
+                                fitsOneLine(
+                                      context,
+                                      macSpan(line, style),
+                                      box.maxWidth,
+                                    )
+                                    ? line
+                                    : shortenMacIn(line, others),
+                                key: Key(
+                                  remote != null
+                                      ? 'remote-identify'
+                                      : 'direct-identify-note',
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: style,
+                              );
+                            },
+                          ),
+                        ),
+                        if (expandable)
+                          Icon(
+                            showDetail ? Icons.expand_less : Icons.expand_more,
+                            size: 18,
+                            color: colors.onSurfaceVariant,
+                          ),
+                      ],
                     ),
-                  ),
-                  if (expandable)
-                    Icon(
-                      showDetail ? Icons.expand_less : Icons.expand_more,
-                      size: 18,
-                      color: colors.onSurfaceVariant,
-                    ),
-                ],
+                  );
+                },
               ),
             ),
           ),

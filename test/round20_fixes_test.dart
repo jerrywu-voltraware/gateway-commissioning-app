@@ -586,7 +586,8 @@ void main() {
           findsOneWidget,
         );
         expect(find.byKey(const Key('remote-identify-icon')), findsOneWidget);
-        expect(find.textContaining('後台剛讓這台樁閃燈（請看樁上燈號）'), findsOneWidget);
+        // Round 21: the short first sentence (full text behind the tap).
+        expect(find.textContaining('後台已讓此樁閃燈'), findsOneWidget);
         final screen = Offset.zero & size;
         final noticeRect = tester.getRect(notice);
         expect(screen.contains(noticeRect.topLeft), isTrue);
@@ -657,7 +658,7 @@ void main() {
       });
       await tester.pump();
       expect(find.byKey(const Key('remote-identify')), findsOneWidget);
-      expect(find.textContaining(identifyConfirmedText), findsOneWidget);
+      expect(find.textContaining('PTU 已確認'), findsOneWidget);
 
       await tester.runAsync(c.identify);
       await tester.pump();

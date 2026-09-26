@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../core/assign_progress.dart';
 import '../core/direct_calibration.dart';
 import '../core/direct_mode.dart';
 import '../core/gateway_net.dart';
@@ -172,10 +173,7 @@ String ptuFailureText(Object? error) {
       ? '${error.code} ${error.detail ?? ''}'
       : error?.toString() ?? '';
   final text = raw.toLowerCase();
-  if (text.contains('133') ||
-      text.contains('connect') ||
-      text.contains('discovery') ||
-      text.contains('gatt')) {
+  if (isPtuConnectFailure(error)) {
     return 'PTU 連線失敗，請確認 PTU 電源與距離';
   }
   if (text.contains('timeout') || text.contains('timed out')) {
@@ -188,6 +186,28 @@ String ptuFailureText(Object? error) {
     return error.message;
   }
   return 'PTU 設定未完成，請靠近後重試';
+}
+
+/// The gateway could not open its Bluetooth link to the PTU (GATT 133,
+/// connection / service discovery timeout) — not the phone's link.
+bool isPtuConnectFailure(Object? error) {
+  if (isPhoneLinkFailure(error)) return false;
+  final raw = error is GatewayFailure
+      ? '${error.code} ${error.detail ?? ''}'
+      : error?.toString() ?? '';
+  final text = raw.toLowerCase();
+  return text.contains('133') ||
+      text.contains('connect') ||
+      text.contains('discovery') ||
+      text.contains('gatt');
+}
+
+/// Round 21: the row status of a failed assign try that is retried by
+/// itself: a busy gateway, the gateway's link to the PTU, or anything else.
+AssignPhase assignRetryPhase(Object? error) {
+  final code = error is GatewayFailure ? error.code : error?.toString();
+  if (code?.trim() == 'busy') return AssignPhase.busy;
+  return isPtuConnectFailure(error) ? AssignPhase.linkRetry : AssignPhase.retry;
 }
 
 /// PTU tile text when step 8 stopped because the phone lost the gateway.
@@ -325,6 +345,9 @@ String configureLabel(CommissionState s) {
   // Round 13: step 8 too — disabled 「重新連線中…」 while the automatic
   // reconnect (or any run on a lost link) runs; 「重新連線並繼續」 only once
   // it gave up.
+  if (s.relinking && s.relinkStage == RelinkStage.reloading) {
+    return relistingLabel;
+  }
   if (s.relinking ||
       (s.busy &&
           ((s.step == 4 && _step7Lost(s)) ||
@@ -371,6 +394,41 @@ const rescanLabel = '重新掃描';
 
 /// Steps 7/8 bottom button while the automatic reconnect runs (disabled).
 const relinkingLabel = '重新連線中…';
+
+/// Round 21: step 7 bottom button once the phone is back and the PTU list
+/// is read again (disabled).
+const relistingLabel = '讀取列表中…';
+
+/// Round 21: the automatic reconnect's stage ([CommissionState.relinkStage]).
+enum RelinkStage {
+  /// The phone reconnects to the gateway.
+  reconnecting,
+
+  /// Reconnected; the PTU list is read again (step 7 scan, step 8
+  /// reconcile).
+  reloading,
+
+  /// Reconnected and read; step 8 goes on assigning (its own progress).
+  resumed,
+}
+
+/// Round 21: bottom bar status while the phone reconnects by itself.
+const relinkReconnectText = '手機與閘道器重新連線中…';
+
+/// Round 21: bottom bar status once reconnected, while the list is read
+/// again (field round 21: the list came 20 s after the reconnect).
+const relinkReloadText = '重新讀取 PTU 列表…';
+
+/// Round 21: the bottom bar's status line while [CommissionState.relinking]
+/// (null otherwise, and once step 8 goes on assigning).
+String? relinkStatusText(CommissionState s) {
+  if (!s.relinking) return null;
+  return switch (s.relinkStage) {
+    RelinkStage.reconnecting => relinkReconnectText,
+    RelinkStage.reloading => relinkReloadText,
+    RelinkStage.resumed => null,
+  };
+}
 
 /// Round 13: status card / rescan button while the automatic reconnect runs.
 const autoRelinkingText = '正在自動重新連線…';
@@ -746,7 +804,28 @@ class CommissionState {
     this.directSettling = false,
     this.remoteIdentifyNote = '',
     this.remoteIdentifyCount = 0,
+    this.remoteIdentifyHead = '',
+    this.remoteIdentifyPtu = '',
+    this.assignStatus = const {},
+    this.relinkStage = RelinkStage.reconnecting,
   });
+
+  /// Round 21 (field round 21: the one-line notice was cut after
+  /// 「後台剛讓這台樁閃燈（請看樁上燈…」): the notice's short first sentence
+  /// ([remoteIdentifyHeadText]) and its PTU MAC · RSSI
+  /// ([remoteIdentifyPtuText]) for the direct bar's identify line;
+  /// [remoteIdentifyNote] stays the full text (details, snack bar).
+  final String remoteIdentifyHead, remoteIdentifyPtu;
+
+  /// Round 21: step 8, each chosen PTU's assignment as shown on its row
+  /// (「等待中」「指派中」「藍牙連線失敗，自動重試 1/2」…) and summed up above
+  /// the list ([assignProgressText]). Empty outside an assignment run.
+  final Map<String, AssignStatus> assignStatus;
+
+  /// Round 21: while [relinking], whether the phone is still reconnecting
+  /// or already reads the PTU list again (field round 21: back after 2.6 s,
+  /// the list 20 s later, the screen said 「重新連線中」 all along).
+  final RelinkStage relinkStage;
 
   /// Round 19: the back office made the connected pile blink (its identify
   /// ack, relayed by the gateway, answers no request of this APP) — shown
@@ -1014,7 +1093,15 @@ class CommissionState {
     bool? directSettling,
     String? remoteIdentifyNote,
     int? remoteIdentifyCount,
+    String? remoteIdentifyHead,
+    String? remoteIdentifyPtu,
+    Map<String, AssignStatus>? assignStatus,
+    RelinkStage? relinkStage,
   }) => CommissionState(
+    remoteIdentifyHead: remoteIdentifyHead ?? this.remoteIdentifyHead,
+    remoteIdentifyPtu: remoteIdentifyPtu ?? this.remoteIdentifyPtu,
+    assignStatus: assignStatus ?? this.assignStatus,
+    relinkStage: relinkStage ?? this.relinkStage,
     remoteIdentifyNote: remoteIdentifyNote ?? this.remoteIdentifyNote,
     remoteIdentifyCount: remoteIdentifyCount ?? this.remoteIdentifyCount,
     directSettling: directSettling ?? this.directSettling,
@@ -1366,7 +1453,16 @@ class CommissioningController extends Notifier<CommissionState> {
     int generation,
     String op, [
     Map<String, dynamic> params = const {},
-  ]) async {
+  ]) => _commandBusy(generation, op, params);
+
+  /// [_command]; [onBusy] runs each time the gateway answers 'busy' (before
+  /// the command is sent again).
+  Future<Map<String, dynamic>> _commandBusy(
+    int generation,
+    String op,
+    Map<String, dynamic> params, {
+    void Function()? onBusy,
+  }) async {
     _check(generation);
     if (sensitiveOps.contains(op) && state.config['otp_enabled'] == true) {
       throw const GatewayFailure('otp_enabled');
@@ -1386,6 +1482,7 @@ class CommissioningController extends Notifier<CommissionState> {
           _check(generation);
           before ??= state.message;
           state = state.copy(message: gatewayBusyText, error: state.error);
+          onBusy?.call();
           await Future<void>.delayed(
             _link.demo ? const Duration(milliseconds: 1) : busyRetryDelay,
           );
@@ -1591,6 +1688,7 @@ class CommissioningController extends Notifier<CommissionState> {
           seconds: 0,
           error: state.error,
           relinking: follows ? true : null,
+          relinkStage: follows ? RelinkStage.reconnecting : null,
         );
         if (_topologyDeferred) {
           _topologyDeferred = false;
@@ -1791,6 +1889,7 @@ class CommissioningController extends Notifier<CommissionState> {
       savedProgress: false,
       config: {...state.config, 'choose_station': false},
       results: {},
+      assignStatus: {},
       message: '已重新連線，由 Gateway 重新掃描 PTU。',
     );
     await discover();
@@ -1927,6 +2026,8 @@ class CommissioningController extends Notifier<CommissionState> {
     state = state.copy(
       error: state.error,
       remoteIdentifyNote: remoteIdentifyText(ack),
+      remoteIdentifyHead: remoteIdentifyHeadText(ack),
+      remoteIdentifyPtu: remoteIdentifyPtuText(ack),
       remoteIdentifyCount: state.remoteIdentifyCount + 1,
     );
   }
@@ -2239,6 +2340,7 @@ class CommissioningController extends Notifier<CommissionState> {
         step: 4,
         checkPassed: true,
         results: {},
+        assignStatus: {},
         verified: false,
         report: '',
         message: 'Wi-Fi 已更新，站點設定保留。接著由 Gateway 搜尋 PTU，請確認要監控的裝置。',
@@ -2284,6 +2386,7 @@ class CommissioningController extends Notifier<CommissionState> {
         'wifi_only': station,
       },
       results: {},
+      assignStatus: {},
       verified: false,
       report: '',
       message: station
@@ -2349,6 +2452,7 @@ class CommissioningController extends Notifier<CommissionState> {
       },
       selected: newStation ? <String>{} : state.selected,
       results: {},
+      assignStatus: {},
       verified: false,
       report: '',
       message: newStation
@@ -2767,6 +2871,7 @@ class CommissioningController extends Notifier<CommissionState> {
       verified: false,
       report: '',
       results: {},
+      assignStatus: {},
       verifyBackendDown: false,
     );
     await discover();
@@ -2870,6 +2975,7 @@ class CommissioningController extends Notifier<CommissionState> {
             state.uploadWatch == UploadWatch.linkLost || state.resumePending;
         if (relink) {
           await _reconnect(generation);
+          state = state.copy(relinkStage: RelinkStage.reloading);
           final net = await _command(
             generation,
             state.netCheckSupported ? 'get_net_status' : 'get_status',
@@ -2883,6 +2989,7 @@ class CommissioningController extends Notifier<CommissionState> {
           ptus: relink ? null : [],
           selected: relink ? null : {},
           results: {},
+          assignStatus: {},
           missing: [],
           starNotice: '',
           identifyNote: relink ? null : '',
@@ -3087,8 +3194,15 @@ class CommissioningController extends Notifier<CommissionState> {
     bool autoReset = true,
     Set<String>? keep,
   }) => _run(relinkStep: 4, 'Gateway 正在掃描周邊 PTU，請稍候', 75, (generation) async {
-    if (state.uploadWatch == UploadWatch.linkLost || state.resumePending) {
+    final relink =
+        state.uploadWatch == UploadWatch.linkLost || state.resumePending;
+    if (relink) {
       await _reconnect(generation);
+      // Round 21: back — say so while the list is read again.
+      state = state.copy(
+        message: relinkReloadText,
+        relinkStage: RelinkStage.reloading,
+      );
       // Re-establish the same gateway link and read fresh network status;
       // never turn the last MQTT snapshot green just because ping succeeds.
       final net = await _command(
@@ -3100,10 +3214,11 @@ class CommissioningController extends Notifier<CommissionState> {
       _stopWatch(UploadWatch.idle);
     }
     state = state.copy(
-      message: 'Gateway 正在掃描周邊 PTU，請稍候',
+      message: relink ? relinkReloadText : 'Gateway 正在掃描周邊 PTU，請稍候',
       ptus: [],
       selected: {},
       results: {},
+      assignStatus: {},
       missing: [],
       starNotice: '',
     );
@@ -3461,16 +3576,46 @@ class CommissioningController extends Notifier<CommissionState> {
 
   /// 逐台指派一台 PTU：失敗自動重試 [assignRetries] 次（間隔 2 秒）。
   /// 成功回 null，否則回給前線看的失敗原因；取消一律往外丟。
+  ///
+  /// Round 21: the row shows each automatic retry (「藍牙連線失敗，自動重試
+  /// 1/2」, 「閘道器忙碌，稍後重試」); the raw failure goes to
+  /// [_assignDetail] for the details sheet. Retries unchanged.
   Future<String?> _assignOne(int generation, String mac, int id) async {
     String? reason;
+    void failedTry(int attempt, Object? error, String detail) {
+      _assignDetail[mac] = detail;
+      if (attempt >= assignRetries) return; // no retry follows
+      _setAssign(
+        mac,
+        AssignStatus(
+          assignRetryPhase(error),
+          id: id,
+          retry: attempt + 1,
+          retries: assignRetries,
+          detail: detail,
+        ),
+      );
+    }
+
     for (int attempt = 0; attempt <= assignRetries; attempt++) {
       if (attempt > 0) await _wait(2, generation);
       _check(generation);
       try {
-        final result = await _command(generation, 'assign_device_id', {
-          'mac': mac,
-          'new_id': id,
-        });
+        final result = await _commandBusy(
+          generation,
+          'assign_device_id',
+          {'mac': mac, 'new_id': id},
+          onBusy: () => _setAssign(
+            mac,
+            AssignStatus(
+              AssignPhase.busy,
+              id: id,
+              retry: attempt,
+              retries: assignRetries,
+              detail: _assignDetail[mac],
+            ),
+          ),
+        );
         if (result['success'] == true) {
           // Firmware 1.7.15+: the ack names the PTU actually written.
           reason = assignAckMismatch(result, mac, id);
@@ -3478,18 +3623,78 @@ class CommissioningController extends Notifier<CommissionState> {
             if (ackNeedsReadback(result)) _pendingReadback.add(mac);
             return null;
           }
+          failedTry(attempt, null, jsonEncode(result));
           continue;
         }
-        reason = ptuFailureText(result['error'] ?? result['result']);
+        final error = result['error'] ?? result['result'];
+        reason = ptuFailureText(error);
+        failedTry(attempt, error, jsonEncode(result));
       } catch (e) {
         if (e is GatewayFailure && e.code == 'cancelled') rethrow;
         _check(generation);
         // Phone↔gateway link down: not this PTU's fault, stop retrying.
         if (isPhoneLinkFailure(e)) rethrow;
         reason = ptuFailureText(e);
+        failedTry(attempt, e, e.toString());
       }
     }
     return reason ?? ptuFailureText(null);
+  }
+
+  /// Round 21: the last raw failure per PTU of the current assignment run
+  /// (details sheet only).
+  final Map<String, String> _assignDetail = {};
+
+  /// Round 21: one PTU row's assignment status.
+  void _setAssign(String mac, AssignStatus status) {
+    if (!ref.mounted) return;
+    state = state.copy(
+      assignStatus: {...state.assignStatus, mac: status},
+      error: state.error,
+    );
+  }
+
+  /// Round 21: a step 8 run that ended early (stopped, phone link lost,
+  /// timed out) leaves no row 「指派中」 / 「自動重試」 with a spinner: those
+  /// wait again for the next run.
+  void _settleAssign() {
+    if (!ref.mounted || state.busy) return;
+    final stale = {
+      for (final e in state.assignStatus.entries)
+        if (e.value.active) e.key: e.value,
+    };
+    if (stale.isEmpty) return;
+    state = state.copy(
+      assignStatus: {
+        ...state.assignStatus,
+        for (final e in stale.entries)
+          e.key: AssignStatus(
+            AssignPhase.waiting,
+            id: e.value.id,
+            detail: e.value.detail,
+          ),
+      },
+      error: state.error,
+    );
+  }
+
+  /// Round 21: the rows of an assignment run over [chosen] — [targets]
+  /// wait their turn, the others are done already.
+  Map<String, AssignStatus> _assignStart(
+    List<Map<String, dynamic>> chosen,
+    List<Map<String, dynamic>> targets,
+  ) {
+    _assignDetail.clear();
+    final pending = targets.map((p) => p['mac'].toString()).toSet();
+    return {
+      for (final p in chosen)
+        p['mac'].toString(): pending.contains(p['mac'].toString())
+            ? const AssignStatus(AssignPhase.waiting)
+            : AssignStatus(
+                AssignPhase.done,
+                id: (p['device_number'] as num?)?.toInt(),
+              ),
+    };
   }
 
   /// 指派 [targets]；單台失敗不中止。回傳失敗 MAC → 原因。
@@ -3523,7 +3728,13 @@ class CommissioningController extends Notifier<CommissionState> {
             );
       used.add(id);
       results[mac] = '正在指派 #$id';
-      state = state.copy(results: Map.of(results));
+      state = state.copy(
+        results: Map.of(results),
+        assignStatus: {
+          ...state.assignStatus,
+          mac: AssignStatus(AssignPhase.assigning, id: id),
+        },
+      );
       _inflightAssign[mac] = id;
       await _save();
       final String? reason;
@@ -3544,6 +3755,10 @@ class CommissioningController extends Notifier<CommissionState> {
           assignFailed: Map.of(failed),
           unassigned: rest,
           resumePending: true,
+          assignStatus: {
+            ...state.assignStatus,
+            for (final m in rest) m: const AssignStatus(AssignPhase.waiting),
+          },
         );
         await _save();
         throw GatewayFailure('phone_link_lost', detail: e.toString());
@@ -3556,6 +3771,14 @@ class CommissioningController extends Notifier<CommissionState> {
         state = state.copy(
           results: Map.of(results),
           assignFailed: {...state.assignFailed, mac: reason},
+          assignStatus: {
+            ...state.assignStatus,
+            mac: AssignStatus(
+              AssignPhase.failed,
+              id: id,
+              detail: _assignDetail[mac],
+            ),
+          },
         );
         continue;
       }
@@ -3571,6 +3794,10 @@ class CommissioningController extends Notifier<CommissionState> {
         assignFailed: stillFailed,
         unassigned: state.unassigned.difference({mac}),
         assignedOk: {...state.assignedOk, mac},
+        assignStatus: {
+          ...state.assignStatus,
+          mac: AssignStatus(AssignPhase.done, id: id),
+        },
       );
       await _save();
     }
@@ -3633,6 +3860,14 @@ class CommissioningController extends Notifier<CommissionState> {
       results: Map.of(results),
       assignFailed: {...state.assignFailed, ...failed},
       assignedOk: state.assignedOk.difference(mismatched),
+      assignStatus: {
+        ...state.assignStatus,
+        for (final mac in mismatched)
+          mac: AssignStatus(
+            AssignPhase.failed,
+            detail: 'get_ble_devices: ${failed[mac]}',
+          ),
+      },
     );
     await _save();
   }
@@ -3663,6 +3898,7 @@ class CommissioningController extends Notifier<CommissionState> {
           _doneAssign.clear();
           _inflightAssign.clear();
         }
+        final targets = chosen.where((p) => !skip.contains(p['mac'])).toList();
         state = state.copy(
           step: 5,
           results: {
@@ -3670,13 +3906,13 @@ class CommissioningController extends Notifier<CommissionState> {
               if (skip.contains(p['mac']))
                 p['mac'].toString(): '已指派 #${p['device_number']}',
           },
+          assignStatus: _assignStart(chosen, targets),
           assignFailed: {},
           unassigned: {},
           assignedOk: skip,
           resumePending: false,
           monitoringOk: false,
         );
-        final targets = chosen.where((p) => !skip.contains(p['mac'])).toList();
         final failed = await _assignAll(generation, targets);
         await _startMonitoring(generation, chosen, failed);
       });
@@ -3922,6 +4158,7 @@ class CommissioningController extends Notifier<CommissionState> {
         state = state.copy(
           step: 5,
           results: done ? {mac: '已指派 #$directPtuId'} : {},
+          assignStatus: _assignStart([row], done ? const [] : [row]),
           assignFailed: {},
           unassigned: {},
           assignedOk: done ? {mac} : {},
@@ -4258,6 +4495,12 @@ class CommissioningController extends Notifier<CommissionState> {
     if (ok.isNotEmpty) {
       state = state.copy(
         results: results,
+        assignStatus: {
+          ...state.assignStatus,
+          for (final mac in ok)
+            if (state.assignStatus.containsKey(mac))
+              mac: AssignStatus(AssignPhase.done, id: _doneAssign[mac]),
+        },
         assignedOk: {...state.assignedOk, ...ok},
         unassigned: state.unassigned.difference(ok),
         assignFailed: {
@@ -4303,7 +4546,10 @@ class CommissioningController extends Notifier<CommissionState> {
       await link.waitAdapterReady(bluetoothReadyBudget);
       _check(generation);
     }
-    state = state.copy(message: reconnectingText);
+    state = state.copy(
+      message: reconnectingText,
+      relinkStage: RelinkStage.reconnecting,
+    );
     try {
       await _relink(generation, peer, after: after).timeout(reconnectBudget);
     } catch (e) {
@@ -4331,7 +4577,17 @@ class CommissioningController extends Notifier<CommissionState> {
         // persistent link loop, so a link that drops right after connecting
         // is retried for the whole [connectPersistence] instead of ending
         // the run after one round.
-        await _reconnect(generation, after: () => _reconcile(generation));
+        await _reconnect(
+          generation,
+          after: () async {
+            // Round 21: back; the list is read again.
+            state = state.copy(
+              relinkStage: RelinkStage.reloading,
+              error: state.error,
+            );
+            await _reconcile(generation);
+          },
+        );
         final chosen = state.ptus
             .where((p) => state.selected.contains(p['mac']))
             .toList();
@@ -4342,6 +4598,8 @@ class CommissioningController extends Notifier<CommissionState> {
           step: 5,
           resumePending: false,
           monitorUnconfirmed: false,
+          relinkStage: RelinkStage.resumed,
+          assignStatus: _assignStart(chosen, targets),
           message: targets.isEmpty
               ? '正在確認 Gateway 監控狀態'
               : '繼續指派 ${targets.length} 台',
@@ -4432,27 +4690,28 @@ class CommissioningController extends Notifier<CommissionState> {
   }
 
   /// 「重試這 N 台」：只對上次指派失敗的 PTU 重跑指派，再 set_config/join_fleet。
-  Future<void> retryFailedAssign() =>
-      _step8Run('重試指派失敗的 PTU', 240, (generation) async {
-        final chosen = state.ptus
-            .where(
-              (p) =>
-                  state.selected.contains(p['mac']) ||
-                  state.assignFailed.containsKey(p['mac']),
-            )
-            .toList();
-        final targets = chosen
-            .where((p) => state.assignFailed.containsKey(p['mac']))
-            .toList();
-        if (targets.isEmpty) throw const GatewayFailure('no_devices');
-        state = state.copy(
-          selected: chosen.map((p) => p['mac'].toString()).toSet(),
-        );
-        _provisioningMayBeActive = true;
-        state = state.copy(step: 5);
-        final failed = await _assignAll(generation, targets);
-        await _startMonitoring(generation, chosen, failed);
-      });
+  Future<void> retryFailedAssign() => _step8Run('重試指派失敗的 PTU', 240, (
+    generation,
+  ) async {
+    final chosen = state.ptus
+        .where(
+          (p) =>
+              state.selected.contains(p['mac']) ||
+              state.assignFailed.containsKey(p['mac']),
+        )
+        .toList();
+    final targets = chosen
+        .where((p) => state.assignFailed.containsKey(p['mac']))
+        .toList();
+    if (targets.isEmpty) throw const GatewayFailure('no_devices');
+    state = state.copy(
+      selected: chosen.map((p) => p['mac'].toString()).toSet(),
+    );
+    _provisioningMayBeActive = true;
+    state = state.copy(step: 5, assignStatus: _assignStart(chosen, targets));
+    final failed = await _assignAll(generation, targets);
+    await _startMonitoring(generation, chosen, failed);
+  });
 
   /// set_config（成功台數，至少 1）＋ join_fleet；有失敗時先讓成功的上線、
   /// 停在選擇頁列出失敗台；全部成功才等連線並進入驗證。
@@ -5319,6 +5578,12 @@ class CommissioningController extends Notifier<CommissionState> {
         if (error is GatewayFailure && error.code == 'cancelled') rethrow;
         _check(generation);
         failures.add('第 $attempt 次：${connectFailureType(error)}');
+        if (state.relinkStage != RelinkStage.reconnecting) {
+          state = state.copy(
+            relinkStage: RelinkStage.reconnecting,
+            error: state.error,
+          );
+        }
         final retry =
             isRetryableConnect(error) &&
             watch.elapsed + connectRetryGap < connectPersistence;
@@ -5603,6 +5868,7 @@ class CommissioningController extends Notifier<CommissionState> {
     Future<void> Function(int) action,
   ) async {
     await _run(label, timeout, action, relinkStep: 5);
+    _settleAssign();
     if (!ref.mounted || _autoRelinking) return;
     if (_linkLostAt(5)) {
       await _autoRelink(5);
@@ -5646,7 +5912,11 @@ class CommissioningController extends Notifier<CommissionState> {
       return;
     }
     _autoRelinking = true;
-    state = state.copy(relinking: true, error: state.error);
+    state = state.copy(
+      relinking: true,
+      relinkStage: RelinkStage.reconnecting,
+      error: state.error,
+    );
     try {
       if (step == 4) {
         await _autoRelinkStep7(keep);

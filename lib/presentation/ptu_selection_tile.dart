@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../core/assign_progress.dart';
 import '../core/ptu_rssi.dart';
 
 /// Compact selection row; technical detail is available without making every
@@ -14,7 +15,14 @@ class PtuSelectionTile extends StatelessWidget {
     this.onReset,
     this.blockedText = '已屬於其他閘道器',
     this.resetLabel = '重置並納入',
+    this.status,
+    this.statusText,
   });
+
+  /// Round 21: this PTU's step 8 assignment; with [statusText] it replaces
+  /// [result] on the row (the details sheet keeps both and the raw failure).
+  final AssignStatus? status;
+  final String? statusText;
 
   final Map<String, dynamic> ptu;
   final bool selected;
@@ -64,7 +72,21 @@ class PtuSelectionTile extends StatelessWidget {
               Text('訊號：${rssi is num && rssi < 0 ? '$rssi dBm' : '尚無讀值'}'),
               Text('讀值狀態：${ptuRssiText(ptu)}'),
               const Text('此處為開啟時的讀值；動態數值請看清單。'),
-              if (result?.isNotEmpty == true) Text(result!),
+              if (statusText != null) Text('狀態：$statusText'),
+              if (result?.isNotEmpty == true && result != statusText)
+                Text(result!),
+              if (status?.detail?.isNotEmpty == true) ...[
+                const SizedBox(height: 8),
+                Text(
+                  '詳細（最近一次失敗）',
+                  style: Theme.of(context).textTheme.labelMedium,
+                ),
+                SelectableText(
+                  status!.detail!,
+                  key: const Key('ptu-assign-detail'),
+                  style: const TextStyle(fontSize: 12),
+                ),
+              ],
               const SizedBox(height: 16),
               TextButton(
                 onPressed: () => Navigator.pop(context),
@@ -143,7 +165,9 @@ class PtuSelectionTile extends StatelessWidget {
                             ),
                         ],
                       ),
-                    if (result?.isNotEmpty == true)
+                    if (statusText != null && status != null)
+                      AssignStatusLine(status: status!, text: statusText!)
+                    else if (result?.isNotEmpty == true)
                       Text(result!, style: theme.textTheme.bodySmall),
                   ],
                 ),
@@ -154,6 +178,61 @@ class PtuSelectionTile extends StatelessWidget {
             tooltip: '$title 裝置資訊',
             onPressed: () => _showDetails(context),
             icon: const Icon(Icons.info_outline, size: 20),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Round 21: a PTU row's assignment status — a spinner while the APP works
+/// on it (first try or an automatic retry), a mark once done or failed.
+class AssignStatusLine extends StatelessWidget {
+  const AssignStatusLine({super.key, required this.status, required this.text});
+
+  final AssignStatus status;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final color = switch (status.phase) {
+      AssignPhase.waiting => colors.onSurfaceVariant,
+      AssignPhase.assigning => colors.primary,
+      AssignPhase.linkRetry ||
+      AssignPhase.retry ||
+      AssignPhase.busy => colors.tertiary,
+      AssignPhase.done => colors.primary,
+      AssignPhase.failed => colors.error,
+    };
+    final Widget mark = status.active
+        ? SizedBox(
+            width: 12,
+            height: 12,
+            child: CircularProgressIndicator(strokeWidth: 2, color: color),
+          )
+        : Icon(
+            switch (status.phase) {
+              AssignPhase.done => Icons.check_circle_outline,
+              AssignPhase.failed => Icons.error_outline,
+              _ => Icons.schedule,
+            },
+            size: 14,
+            color: color,
+          );
+    return Padding(
+      padding: const EdgeInsets.only(top: 2),
+      child: Row(
+        children: [
+          mark,
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              text,
+              key: const Key('ptu-assign-status'),
+              style: theme.textTheme.bodySmall?.copyWith(color: color),
+            ),
           ),
         ],
       ),

@@ -897,8 +897,9 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
       expect(find.byKey(const Key('remote-identify')), findsOneWidget);
-      expect(find.textContaining('後台剛讓這台樁閃燈（請看樁上燈號）'), findsOneWidget);
-      expect(find.textContaining(identifyConfirmedText), findsOneWidget);
+      // Round 21: the bar shows the short first sentence.
+      expect(find.textContaining('後台已讓此樁閃燈'), findsOneWidget);
+      expect(find.textContaining('PTU 已確認'), findsOneWidget);
       expect(tester.getRect(find.byType(DirectPickActions)), bar);
       expect(container.read(commissionProvider).step, 4);
     });

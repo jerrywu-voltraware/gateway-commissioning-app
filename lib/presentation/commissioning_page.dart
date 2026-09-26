@@ -7,6 +7,7 @@ import '../application/commissioning_controller.dart';
 import '../application/connection_status.dart';
 import '../application/network_check.dart';
 import '../application/topology_settings.dart';
+import '../core/assign_progress.dart';
 import '../core/direct_calibration.dart';
 import '../core/direct_mode.dart';
 import '../core/gateway_net.dart';
@@ -815,6 +816,31 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                         if (directPicking) ...[
                           DirectPickActions(onEnd: () => _endFlow(controller)),
                         ] else ...[
+                          // Round 21: the automatic reconnect says what it
+                          // does — reconnecting, then reading the list.
+                          if (relinkStatusText(state) case final relink?)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 4),
+                              child: Row(
+                                children: [
+                                  const SizedBox(
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      relink,
+                                      key: const Key('relink-status'),
+                                      style: TextStyle(color: colors.primary),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           Text(
                             selectionCountText(state, targetPtuCount),
                             key: const Key('ptu-selection-count'),
@@ -1623,12 +1649,25 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                 ],
               ),
             ),
+          // Round 21: the assignment run in one line above the rows.
+          if (!directStep7 && (s.step == 5 || s.assignStatus.isNotEmpty))
+            if (assignProgressText(s.assignStatus) case final progress?)
+              AssignProgressHeader(
+                text: progress,
+                value: assignProgressValue(s.assignStatus),
+                running: s.busy,
+                failed: s.assignStatus.values
+                    .where((a) => a.phase == AssignPhase.failed)
+                    .length,
+              ),
           if (!directStep7) ...[
             OutlinedButton.icon(
               icon: const Icon(Icons.refresh, size: 20),
               onPressed: enabled ? c.discover : null,
               label: Text(
-                s.relinking
+                s.relinking && s.relinkStage == RelinkStage.reloading
+                    ? relinkReloadText
+                    : s.relinking
                     ? autoRelinkingText
                     : s.uploadWatch == UploadWatch.linkLost || s.resumePending
                     ? rescanAfterLossLabel
@@ -1710,6 +1749,15 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                 ptu: ptu,
                 selected: s.selected.contains(ptu['mac']),
                 result: s.results[ptu['mac']],
+                status: s.assignStatus[ptu['mac']],
+                statusText: switch (s.assignStatus[ptu['mac']]) {
+                  final a? => assignStatusText(
+                    a,
+                    result: s.results[ptu['mac']],
+                    failure: s.assignFailed[ptu['mac']],
+                  ),
+                  null => null,
+                },
                 blocked: blocked,
                 // 直連模式：已自動勾選 RSSI 最強的一台，這裡只留「配置並開始監控」
                 // 當確認鈕，不再開放改選。星狀模式：範圍外（屬於其他閘道器）的
@@ -2165,6 +2213,63 @@ class StepList extends StatelessWidget {
             ),
           ),
       ],
+    );
+  }
+}
+
+/// Round 21 (field round 21: 140 s with a spinner only): the step 8 run
+/// above the PTU rows — 「3/5 完成，1 台自動重試中」 with a bar, and while it
+/// runs that the APP handles retries by itself.
+class AssignProgressHeader extends StatelessWidget {
+  const AssignProgressHeader({
+    super.key,
+    required this.text,
+    required this.value,
+    required this.running,
+    required this.failed,
+  });
+
+  final String text;
+  final double value;
+  final bool running;
+
+  /// PTUs out of automatic retries.
+  final int failed;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      key: const Key('assign-progress'),
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: colors.primaryContainer.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            text,
+            key: const Key('assign-progress-text'),
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
+          const SizedBox(height: 6),
+          LinearProgressIndicator(value: value),
+          if (running || failed > 0)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                running ? assignAutoHint : assignFailedHint(failed),
+                key: const Key('assign-progress-hint'),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: running ? colors.onSurfaceVariant : colors.error,
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
