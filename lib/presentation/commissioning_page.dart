@@ -718,6 +718,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       state,
       directFlow: controller.directFlow,
     );
+    final checkNext = _checkNext(state, controller, env);
     return PopScope(
       // Round 15b: 返回 while a 「不是這台？」 binding is still temporary
       // ends like 「結束並重新選擇閘道器」, which clears it on the gateway.
@@ -801,7 +802,23 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             ),
           ],
         ),
-        bottomNavigationBar: selectingPtus
+        bottomNavigationBar: checkNext != null
+            ? SafeArea(
+                top: false,
+                child: Material(
+                  elevation: 8,
+                  color: colors.surface,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                    child: FilledButton(
+                      key: const Key('check-next'),
+                      onPressed: state.busy ? null : checkNext.$2,
+                      child: Text(checkNext.$1),
+                    ),
+                  ),
+                ),
+              )
+            : selectingPtus
             ? SafeArea(
                 top: false,
                 child: Material(
@@ -1679,10 +1696,26 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Text(
-                '已連線 ${s.ptus.where((p) => p['connected'] == true).length} 台／周邊未連線 ${s.ptus.where((p) => p['connected'] != true).length} 台',
+                // Round 23: 「讀取中…」 until the list is read (field: 「已連線
+                // 0 台／周邊未連線 0 台」 during a re-read read as nothing found).
+                ptuCountText(s),
+                key: const Key('ptu-list-count'),
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ),
+            // Round 23: the gateway takes the star range only at 「配置」
+            // (field: one PTU connected after the switch read as a fault).
+            if (starApplyNote(s, isStar: topology.isStar) case final note?)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  note,
+                  key: const Key('star-apply-note'),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+              ),
           ],
           if (directStep7) const DirectStatusPanel(actionsInBar: true),
           // Old firmware direct list only; a failed scan has its own error
@@ -2052,6 +2085,27 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     ),
   );
 
+  /// Round 23 (field rounds 22/23: after the gateway connect the page
+  /// starts at its title — [_connectPeer] jumps to the top so the new step
+  /// is read from its start — and 「下一步：選擇站點」, the card's last row
+  /// below the step list and the 連線狀態 panel, was a swipe away): the
+  /// network check's 「下一步」 once it is ready, shown in the bottom bar so
+  /// it is on screen whatever the scroll; null otherwise.
+  (String, VoidCallback)? _checkNext(
+    CommissionState s,
+    CommissioningController c,
+    BackendEnvState env,
+  ) {
+    if (s.step != 2 || s.checkPassed) return null;
+    if (!networkCheck(state: s, env: env).ready) return null;
+    final label = s.config['wifi_only'] == true
+        ? '下一步：由 Gateway 搜尋 PTU'
+        : s.config['fleet_joined'] == true
+        ? '下一步：選擇站點'
+        : '下一步：設定身份與 Wi-Fi';
+    return (label, () => c.passNetworkCheck());
+  }
+
   /// 「Gateway 網路體檢」 → 「對準上傳目標」 → 「確認資料上傳」 (step 2
   /// before the station choice; again after a Wi-Fi change that keeps the
   /// station, before the data verification).
@@ -2082,11 +2136,6 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       ),
     );
 
-    final nextLabel = recheck
-        ? '下一步：由 Gateway 搜尋 PTU'
-        : station
-        ? '下一步：選擇站點'
-        : '下一步：設定身份與 Wi-Fi';
     final skipLabel = station
         ? '先選擇站點（沿用要等網路正常）'
         : s.offline
@@ -2153,9 +2202,8 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           onPressed: enabled ? _fixWifi : null,
           child: const Text('重設 Wi-Fi'),
         ),
-      if (check.ready)
-        button(nextLabel, () => c.passNetworkCheck(), enabled)
-      else
+      // Round 23: once ready, 「下一步」 is in the bottom bar ([_checkNext]).
+      if (!check.ready)
         TextButton(
           key: const Key('check-refresh'),
           onPressed: enabled ? c.refreshUploadTarget : null,

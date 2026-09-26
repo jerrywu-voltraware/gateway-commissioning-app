@@ -357,6 +357,10 @@ String configureLabel(CommissionState s) {
               ((s.step == 4 || s.step == 5) && s.resumePending)))) {
     return relinkingLabel;
   }
+  // Round 23: step 8 assigning — the run's own progress, disabled (field
+  // round 23: a grey 「配置 5 台並開始監控」 beside 「0/5 完成，PTU #1 自動
+  // 重試中」 read as not started).
+  if (assigningShown(s)) return assigningLabel(s.assignStatus);
   if (step7LinkLost(s)) return rescanAfterLossLabel;
   // Phone link lost: the button reconnects first (same as the banner).
   if (s.resumePending) {
@@ -380,6 +384,19 @@ String configureLabel(CommissionState s) {
   // 「已選 5 / 5 台」 read as if only one would be set up.
   final done = s.selected.length - rest;
   return done > 0 ? '配置剩餘 $rest 台並開始監控' : '配置 $rest 台並開始監控';
+}
+
+/// Round 23: a step 8 run is assigning ([CommissionState.assignRunning])
+/// and the configure button shows its progress ([assigningLabel]).
+bool assigningShown(CommissionState s) =>
+    s.assignRunning && s.busy && s.step == 5 && s.assignStatus.isNotEmpty;
+
+/// Round 23: the configure button while step 8 assigns — 「配置中… 4/5」,
+/// the same count as the progress line above the list
+/// ([assignProgressText]).
+String assigningLabel(Map<String, AssignStatus> statuses) {
+  final done = statuses.values.where((a) => a.phase == AssignPhase.done);
+  return '配置中… ${done.length}/${statuses.length}';
 }
 
 /// Step 7/8 line above the configure button: 「已選 n / target 台」, or —
@@ -407,6 +424,45 @@ bool ptuListLoading(CommissionState s) =>
 
 /// Round 22: the count line while [ptuListLoading].
 String ptuListLoadingText(int target) => '讀取中…（目標 $target 台）';
+
+/// Round 23: the list card's count line — 「已連線 n 台／周邊未連線 m 台」
+/// only once the list is read. While it is read with nothing in yet it is
+/// [ptuCountReadingText] (field round 23: 「已連線 0 台／周邊未連線 0 台」
+/// during the re-read after a topology switch read as nothing found);
+/// after a topology switch whose read has not started,
+/// [ptuCountUnreadText].
+String ptuCountText(CommissionState s) {
+  if (s.ptus.isEmpty && (s.step == 4 || s.step == 5)) {
+    if (s.busy || s.relinking) return ptuCountReadingText;
+    if (s.relistReason.isNotEmpty) return ptuCountUnreadText;
+  }
+  final connected = s.ptus.where((p) => p['connected'] == true).length;
+  return '已連線 $connected 台／周邊未連線 ${s.ptus.length - connected} 台';
+}
+
+/// Round 23: [ptuCountText] while the PTU list is read.
+const ptuCountReadingText = '讀取中…';
+
+/// Round 23: [ptuCountText] after a topology switch, before the new read.
+const ptuCountUnreadText = '尚未讀取 PTU 列表';
+
+/// Round 23 (field round 23: switched back to star at step 7, the gateway
+/// still connected one PTU — its max_connections is applied only by
+/// 「配置」, by design — which read as a fault): at star step 7 while the
+/// gateway's known max_connections is below the star range and the list
+/// shows PTUs it has not connected, a line under the list count says that
+/// 「配置」 connects them; null otherwise.
+String? starApplyNote(CommissionState s, {required bool isStar}) {
+  if (!isStar || s.step != 4) return null;
+  if (!s.ptus.any((p) => p['connected'] != true)) return null;
+  final limit = s.config['max_connections'];
+  if (limit is! num || limit < 1 || limit >= maxStarPtuCount) return null;
+  return starApplyText(limit.toInt());
+}
+
+/// Round 23: [starApplyNote]'s text for a gateway at [limit] connections.
+String starApplyText(int limit) =>
+    '閘道器目前只連 $limit 台；按下「配置」後，閘道器會切換為星狀並連線全部 PTU。';
 
 /// Round 22: the count line after a topology switch at step 7
 /// ([CommissionState.relistReason], e.g. 「已切換為星狀模式」): the old
@@ -870,7 +926,15 @@ class CommissionState {
     this.assignStatus = const {},
     this.relinkStage = RelinkStage.reconnecting,
     this.relistReason = '',
+    this.assignRunning = false,
   });
+
+  /// Round 23 (field round 23: a busy retry at 「0/5 完成，PTU #1 自動重試中」
+  /// kept a grey 「配置 5 台並開始監控」 at the bottom, read as not started):
+  /// a step 8 run is assigning PTUs (from its first assign until the run
+  /// ends, monitoring start included); the configure button then shows the
+  /// run's progress ([assigningLabel]).
+  final bool assignRunning;
 
   /// Round 22 (field round 22: switched direct → star at step 7, the star
   /// list kept the direct pick — 1 PTU and 「配置 1 台並開始監控」): why the
@@ -1166,8 +1230,10 @@ class CommissionState {
     Map<String, AssignStatus>? assignStatus,
     RelinkStage? relinkStage,
     String? relistReason,
+    bool? assignRunning,
   }) => CommissionState(
     relistReason: relistReason ?? this.relistReason,
+    assignRunning: assignRunning ?? this.assignRunning,
     remoteIdentifyHead: remoteIdentifyHead ?? this.remoteIdentifyHead,
     remoteIdentifyPtu: remoteIdentifyPtu ?? this.remoteIdentifyPtu,
     assignStatus: assignStatus ?? this.assignStatus,
@@ -3880,6 +3946,12 @@ class CommissioningController extends Notifier<CommissionState> {
     final failed = <String, String>{};
     final first = (gateway - 1) * 5 + 1;
     final direct = _directFixedId;
+    // Round 23: the configure button shows this run's progress until the
+    // run ends ([assigningLabel]); the runs set it with their first rows
+    // already, this keeps any other caller covered.
+    if (!state.assignRunning) {
+      state = state.copy(assignRunning: true, error: state.error);
+    }
     for (final (index, p) in targets.indexed) {
       _check(generation);
       final mac = p['mac'].toString();
@@ -4074,6 +4146,7 @@ class CommissioningController extends Notifier<CommissionState> {
               if (skip.contains(p['mac']))
                 p['mac'].toString(): '已指派 #${p['device_number']}',
           },
+          assignRunning: true,
           assignStatus: _assignStart(chosen, targets),
           assignFailed: {},
           unassigned: {},
@@ -4326,6 +4399,7 @@ class CommissioningController extends Notifier<CommissionState> {
         state = state.copy(
           step: 5,
           results: done ? {mac: '已指派 #$directPtuId'} : {},
+          assignRunning: true,
           assignStatus: _assignStart([row], done ? const [] : [row]),
           assignFailed: {},
           unassigned: {},
@@ -4767,6 +4841,7 @@ class CommissioningController extends Notifier<CommissionState> {
           resumePending: false,
           monitorUnconfirmed: false,
           relinkStage: RelinkStage.resumed,
+          assignRunning: true,
           assignStatus: _assignStart(chosen, targets),
           message: targets.isEmpty
               ? '正在確認 Gateway 監控狀態'
@@ -4858,28 +4933,31 @@ class CommissioningController extends Notifier<CommissionState> {
   }
 
   /// 「重試這 N 台」：只對上次指派失敗的 PTU 重跑指派，再 set_config/join_fleet。
-  Future<void> retryFailedAssign() => _step8Run('重試指派失敗的 PTU', 240, (
-    generation,
-  ) async {
-    final chosen = state.ptus
-        .where(
-          (p) =>
-              state.selected.contains(p['mac']) ||
-              state.assignFailed.containsKey(p['mac']),
-        )
-        .toList();
-    final targets = chosen
-        .where((p) => state.assignFailed.containsKey(p['mac']))
-        .toList();
-    if (targets.isEmpty) throw const GatewayFailure('no_devices');
-    state = state.copy(
-      selected: chosen.map((p) => p['mac'].toString()).toSet(),
-    );
-    _provisioningMayBeActive = true;
-    state = state.copy(step: 5, assignStatus: _assignStart(chosen, targets));
-    final failed = await _assignAll(generation, targets);
-    await _startMonitoring(generation, chosen, failed);
-  });
+  Future<void> retryFailedAssign() =>
+      _step8Run('重試指派失敗的 PTU', 240, (generation) async {
+        final chosen = state.ptus
+            .where(
+              (p) =>
+                  state.selected.contains(p['mac']) ||
+                  state.assignFailed.containsKey(p['mac']),
+            )
+            .toList();
+        final targets = chosen
+            .where((p) => state.assignFailed.containsKey(p['mac']))
+            .toList();
+        if (targets.isEmpty) throw const GatewayFailure('no_devices');
+        state = state.copy(
+          selected: chosen.map((p) => p['mac'].toString()).toSet(),
+        );
+        _provisioningMayBeActive = true;
+        state = state.copy(
+          step: 5,
+          assignRunning: true,
+          assignStatus: _assignStart(chosen, targets),
+        );
+        final failed = await _assignAll(generation, targets);
+        await _startMonitoring(generation, chosen, failed);
+      });
 
   /// set_config（成功台數，至少 1）＋ join_fleet；有失敗時先讓成功的上線、
   /// 停在選擇頁列出失敗台；全部成功才等連線並進入驗證。
@@ -6036,6 +6114,11 @@ class CommissioningController extends Notifier<CommissionState> {
     Future<void> Function(int) action,
   ) async {
     await _run(label, timeout, action, relinkStep: 5);
+    // Round 23: the run is over (a run refused because another one is busy
+    // leaves that one's flag alone).
+    if (ref.mounted && state.assignRunning && !state.busy) {
+      state = state.copy(assignRunning: false, error: state.error);
+    }
     _settleAssign();
     if (!ref.mounted || _autoRelinking) return;
     if (_linkLostAt(5)) {
