@@ -2159,7 +2159,7 @@ class CommissioningController extends Notifier<CommissionState> {
         'assignments': state.ptus
             .map((p) => {'mac': p['mac'], 'id': p['device_number']})
             .toList(),
-        // Field rescue: 「重新連線並繼續」 keeps the same help code.
+        // Field rescue: 「重新連線並繼續」 keeps the same session.
         'field_session': ?_field.persisted(),
       }),
     );
@@ -7218,7 +7218,7 @@ class CommissioningController extends Notifier<CommissionState> {
 
   // ---- Field rescue v1 (PLAN_2026-09-26_FIELD_RESCUE.md §5) ----
 
-  /// 「打電話給後台前按這裡」 / 「找後台幫忙」: a help report and package
+  /// 「請後台協助」 (red box / AppBar): a help report and package
   /// (the session is created if there is none yet); the sheet follows
   /// [fieldHelpProvider]. Never throws, never changes the commissioning.
   Future<void> requestHelp() async {

@@ -1,8 +1,8 @@
 // Field rescue v1 (PLAN_2026-09-26_FIELD_RESCUE.md §5.3, §6.3 APP 5): the
-// 「打電話給後台前按這裡」 button in the red box and the AppBar 「找後台幫忙」
-// open the help sheet with a NNN-NNN code; when nothing could be sent the
-// 「請唸給後台」 lines are still there. On the field phone's 360x640 screen
-// at font scale 1.1.
+// 「請後台協助」 button in the red box and in the AppBar open the help sheet:
+// 「已通知後台」 and the 「請唸給後台」 lines (also when nothing could be
+// sent). v1.1: no help code anywhere (user decision), `operator_name` in
+// what goes out. On the field phone's 360x640 screen at font scale 1.1.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -13,19 +13,26 @@ import 'package:gateway_commissioning/core/protocol.dart';
 import 'package:gateway_commissioning/data/contracts.dart';
 import 'package:gateway_commissioning/data/demo_system.dart';
 import 'package:gateway_commissioning/gateway_app.dart';
-
-const _code = r'^\d{3}-\d{3}$';
+import 'package:gateway_commissioning/presentation/field_help_sheet.dart';
 
 /// Demo gateway + backend recording the rescue uploads ([mode] `ok` /
-/// `network`); [failOp] times out once.
-class _Fake extends DemoSystem implements SessionInfo {
+/// `network`); [failOp] times out once. Logged in as [operatorName].
+class _Fake extends DemoSystem implements SessionInfo, OperatorInfo {
   String mode = 'ok';
   String? failOp;
   final uploads = <(String, Map<String, dynamic>)>[];
 
+  @override
+  String? operatorName;
+
   List<Map<String, dynamic>> get diags => [
     for (final u in uploads)
       if (u.$1 == fieldDiagnosticsPath) u.$2,
+  ];
+
+  List<Map<String, dynamic>> get reports => [
+    for (final u in uploads)
+      if (u.$1 == fieldSessionsPath) u.$2,
   ];
 
   @override
@@ -136,15 +143,28 @@ Future<void> _wait(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-String _shownCode(WidgetTester tester) => tester
-    .widget<SelectableText>(find.byKey(const Key('field-help-code')))
-    .data!;
+String _status(WidgetTester tester) =>
+    tester.widget<Text>(find.byKey(const Key('field-help-status'))).data!;
+
+/// No help code anywhere on screen, nor in anything sent.
+void _noHelpCode(WidgetTester tester, _Fake fake) {
+  expect(find.textContaining('求助碼'), findsNothing);
+  expect(find.textContaining('電話中請唸'), findsNothing);
+  expect(find.byKey(const Key('field-help-code')), findsNothing);
+  expect(
+    find.textContaining(RegExp(r'\b\d{3}-\d{3}\b')),
+    findsNothing,
+    reason: 'no NNN-NNN code',
+  );
+  for (final u in fake.uploads) {
+    expect(u.$2.containsKey('short_code'), isFalse, reason: u.$1);
+  }
+}
 
 void main() {
-  testWidgets('red box: 打電話給後台前按這裡 → code NNN-NNN, sent, on 360x640', (
-    tester,
-  ) async {
-    final fake = _Fake();
+  testWidgets('red box: 請後台協助 → 已通知後台 + the lines, no help code, on '
+      '360x640', (tester) async {
+    final fake = _Fake()..operatorName = '王小明';
     final container = await _pump(tester, fake);
     await _connect(tester);
     await _fail(tester, container, fake);
@@ -161,39 +181,53 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(find.text('打電話給後台前按這裡'), findsOneWidget);
+    expect(
+      find.descendant(of: help, matching: find.text('請後台協助')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('打電話給後台前按這裡'), findsNothing);
+    _noHelpCode(tester, fake);
     await _tap(tester, help);
     await _wait(tester);
 
-    expect(find.byKey(const Key('field-help-sheet')), findsOneWidget);
-    final code = _shownCode(tester);
-    expect(code, matches(_code));
-    expect(find.textContaining('電話中請唸'), findsOneWidget);
+    final sheet = find.byKey(const Key('field-help-sheet'));
+    expect(sheet, findsOneWidget);
     expect(
-      tester.widget<Text>(find.byKey(const Key('field-help-status'))).data,
-      '✓ 已把目前狀況送給後台，打電話時先唸求助碼。',
+      find.descendant(of: sheet, matching: find.text('請後台協助')),
+      findsOneWidget,
+      reason: 'title',
     );
+    expect(_status(tester), '✓ 已通知後台');
     expect(find.text('請唸給後台：'), findsOneWidget);
+    // The lines to read out stay: site / gateway, MAC, step, error, firmware.
+    expect(find.textContaining('閘道器'), findsWidgets);
+    expect(find.textContaining('韌體'), findsOneWidget);
+    _noHelpCode(tester, fake);
     final step = fake.diags.last['step'];
     expect(find.textContaining('目前第 $step 步：'), findsOneWidget);
     // Round 24: the error line in words only; the code is in 詳細資訊.
-    expect(
-      find.text('・錯誤：等待超時，請確認裝置與網路後重試。'),
-      findsOneWidget,
-    );
+    expect(find.text('・錯誤：等待超時，請確認裝置與網路後重試。'), findsOneWidget);
     expect(find.textContaining('CMD_TIMEOUT'), findsNothing);
     await _tap(tester, find.byKey(const Key('field-help-details')));
     expect(find.text('狀況代碼：CMD_TIMEOUT'), findsOneWidget);
     expect(find.text('不會傳送 Wi-Fi 密碼。'), findsOneWidget);
-    // The code on screen is the one the back office got.
+    // What the back office got: no code, the installer's name (package:
+    // context.operator_name, report: top level).
     final diag = fake.diags.last;
     expect(diag['trigger'], 'help');
-    expect(diag['short_code'], code.replaceAll('-', ''));
+    expect(diag.containsKey('short_code'), isFalse);
+    expect((diag['context'] as Map)['operator_name'], '王小明');
     expect((diag['error'] as Map)['code'], 'CMD_TIMEOUT');
-    // The code fits on the phone's screen.
-    final rect = tester.getRect(find.byKey(const Key('field-help-code')));
-    expect(rect.right, lessThanOrEqualTo(360));
-    expect(rect.bottom, lessThanOrEqualTo(640));
+    final report = fake.reports.lastWhere((r) => r['event'] == 'help');
+    expect(report.containsKey('short_code'), isFalse);
+    expect(report['operator_name'], '王小明');
+    // The sheet fits the phone's screen (no overflow, inside 360 wide).
+    for (final key in ['field-help-status', 'field-help-read']) {
+      final rect = tester.getRect(find.byKey(Key(key)));
+      expect(rect.left, greaterThanOrEqualTo(0));
+      expect(rect.right, lessThanOrEqualTo(360));
+      expect(rect.bottom, lessThanOrEqualTo(640));
+    }
     // Only the sheet opened: the commissioning did not move.
     final after = container.read(commissionProvider);
     expect(after.error, before.error);
@@ -205,7 +239,7 @@ void main() {
     expect(find.byKey(const Key('field-help-sheet')), findsNothing);
   });
 
-  testWidgets('AppBar 找後台幫忙 (no error) → HELP_ONLY, same code again', (
+  testWidgets('AppBar 請後台協助 (no error) → HELP_ONLY, same session again', (
     tester,
   ) async {
     final fake = _Fake();
@@ -219,10 +253,22 @@ void main() {
       find.descendant(of: find.byType(AppBar), matching: appbar),
       findsOneWidget,
     );
+    expect(
+      tester.widget<IconButton>(appbar).tooltip,
+      fieldHelpLabel,
+      reason: '請後台協助',
+    );
     await _tap(tester, appbar);
     await _wait(tester);
-    final code = _shownCode(tester);
-    expect(code, matches(_code));
+    expect(_status(tester), '✓ 已通知後台');
+    _noHelpCode(tester, fake);
+    // Not logged in by name: null, still sent.
+    expect(
+      (fake.diags.last['context'] as Map).containsKey('operator_name'),
+      isTrue,
+    );
+    expect((fake.diags.last['context'] as Map)['operator_name'], isNull);
+    final session = fake.diags.last['session_id'];
     // Round 24 (field round 24: 「狀況代碼：HELP_ONLY」 on the sheet).
     expect(find.text('・狀況：畫面沒有錯誤，現場主動求助'), findsOneWidget);
     expect(find.textContaining('HELP_ONLY'), findsNothing);
@@ -233,7 +279,8 @@ void main() {
     await _tap(tester, find.byKey(const Key('field-help-close')));
     await _tap(tester, appbar);
     await _wait(tester);
-    expect(_shownCode(tester), code, reason: 'one session, one code');
+    expect(fake.diags.last['session_id'], session, reason: 'one session');
+    _noHelpCode(tester, fake);
   });
 
   testWidgets('not sent: 送不出去, the lines to read out, 重新傳送 works', (
@@ -246,10 +293,8 @@ void main() {
     await _tap(tester, find.byKey(const Key('field-help')));
     await _wait(tester);
 
-    expect(_shownCode(tester), matches(_code));
-    final status = tester
-        .widget<Text>(find.byKey(const Key('field-help-status')))
-        .data!;
+    _noHelpCode(tester, fake);
+    final status = _status(tester);
     expect(status, startsWith('⚠ 目前送不出去（沒有網路或後台沒有回應）'));
     expect(status, contains('請在電話中直接唸下面的資訊'));
     expect(find.text('請唸給後台：'), findsOneWidget);
@@ -265,11 +310,9 @@ void main() {
     fake.mode = 'ok';
     await _tap(tester, resend);
     await _wait(tester);
-    expect(
-      tester.widget<Text>(find.byKey(const Key('field-help-status'))).data,
-      '✓ 已把目前狀況送給後台，打電話時先唸求助碼。',
-    );
+    expect(_status(tester), '✓ 已通知後台');
     expect(fake.diags.last['trigger'], 'help');
+    _noHelpCode(tester, fake);
   });
 
   testWidgets('demo gateway: no help buttons at all', (tester) async {

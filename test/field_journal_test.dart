@@ -54,7 +54,6 @@ void main() {
     );
     final diag = buildDiagnostics(
       sessionId: 'a' * 32,
-      shortCode: '482915',
       diagSeq: 1,
       trigger: 'timeout',
       now: DateTime(2026, 9, 26, 14, 3),

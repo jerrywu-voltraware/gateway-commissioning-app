@@ -1,8 +1,9 @@
 // Field rescue v1 (PLAN_2026-09-26_FIELD_RESCUE.md §2.2–§2.8, §5.4): when
 // session reports go out, the diagnostics package of a failure, the
 // offline outbox (login, 24 h expiry, caps, other backend), 404 / 409, the
-// same help code after a restart, demo mode, and that no upload problem
-// ever reaches the commissioning.
+// same session after a restart, demo mode, and that no upload problem
+// ever reaches the commissioning. v1.1: no help code (`short_code`) is
+// made or sent; `operator_name` names the logged-in account.
 import 'dart:async';
 import 'dart:convert';
 
@@ -13,6 +14,7 @@ import 'package:gateway_commissioning/application/backend_environment.dart';
 import 'package:gateway_commissioning/application/commissioning_controller.dart';
 import 'package:gateway_commissioning/application/field_report.dart';
 import 'package:gateway_commissioning/core/protocol.dart';
+import 'package:gateway_commissioning/core/rescue_code.dart';
 import 'package:gateway_commissioning/data/contracts.dart';
 import 'package:gateway_commissioning/data/demo_system.dart';
 
@@ -164,7 +166,10 @@ void main() {
         expect(fake.reports[1]['seq'], 2);
         expect(first['schema'], 1);
         expect(first['session_id'], matches(RegExp(r'^[0-9a-f]{32}$')));
-        expect(first['short_code'], matches(RegExp(r'^[0-9]{6}$')));
+        // v1.1: no help code; the account name (none on this backend).
+        expect(first.containsKey('short_code'), isFalse);
+        expect(first.containsKey('operator_name'), isTrue);
+        expect(first['operator_name'], isNull);
         expect(first['client_ts'], matches(RegExp(r'[+-]\d\d:\d\d$')));
         expect(first['app'], containsPair('env', isA<String>()));
 
@@ -334,7 +339,6 @@ void main() {
       await c.connect(container.read(commissionProvider).peers.single);
       await _settle();
       final first = fake.reports.first['session_id'];
-      final code = fake.reports.first['short_code'];
       final sent = fake.reports.length;
       await c.cancel();
       await _settle();
@@ -343,13 +347,13 @@ void main() {
       expect(end['status'], 'abandoned');
       expect(end['session_id'], first);
       // Back on the gateway list (第 2 步): the next gateway is a new
-      // session with its own help code.
+      // session.
       final next = after.last;
       expect(next['event'], 'step');
       expect(next['step'], 2);
       expect(next['session_id'], isNot(first));
       expect(next['seq'], 1);
-      expect(container.read(fieldHelpProvider).code, isNot(code));
+      expect(next.containsKey('short_code'), isFalse);
     });
   });
 
@@ -402,6 +406,7 @@ void main() {
         'body': {
           'schema': 1,
           'session_id': 'b' * 32,
+          // Queued by v1 (before the help code was dropped).
           'short_code': '123456',
           'seq': seq,
           'event': 'step',
@@ -422,6 +427,8 @@ void main() {
       await reporter.flush();
       expect(fake.reports.single['seq'], 2);
       expect(fake.reports.single['queued_ms'], greaterThan(3600 * 1000));
+      // v1.1: a code queued by v1 is not sent.
+      expect(fake.reports.single.containsKey('short_code'), isFalse);
     });
 
     test('caps: 50 events per session (status first), 5 packages', () {
@@ -502,26 +509,26 @@ void main() {
       expect(fake.diags.single['trigger'], 'help');
     });
 
-    test(
-      '409 short_code_taken: a new code, same session, sent again',
-      () async {
-        final fake = FieldFake()..mode = '409once';
-        final container = _container(fake);
-        final c = container.read(commissionProvider.notifier);
-        await c.prepare(_base, 'pw-00001');
-        await _settle();
-        expect(fake.reports, hasLength(3));
-        final (a, b) = (fake.reports[0], fake.reports[1]);
-        expect(a['session_id'], b['session_id']);
-        expect(a['seq'], b['seq']);
-        expect(b['short_code'], isNot(a['short_code']));
-        expect(fake.reports[2]['short_code'], b['short_code']);
-        final reporter = container.read(fieldReporterProvider);
-        expect(reporter.session!.code, b['short_code']);
-        expect(container.read(fieldHelpProvider).code, b['short_code']);
-        expect(reporter.outbox, isEmpty);
-      },
-    );
+    test('409: an ordinary failure (kept, sent again later), no code to '
+        're-roll', () async {
+      final fake = FieldFake()..mode = '409once';
+      final container = _container(fake);
+      final c = container.read(commissionProvider.notifier);
+      await c.prepare(_base, 'pw-00001');
+      await _settle();
+      final reporter = container.read(fieldReporterProvider);
+      // Not re-sent at once (v1 re-rolled the code and retried in place).
+      expect(fake.reports, hasLength(1));
+      expect(reporter.outbox, isNotEmpty);
+      reporter.onNetworkBack();
+      await _until(() => reporter.outbox.isEmpty);
+      final (a, b) = (fake.reports[0], fake.reports[1]);
+      expect(b['session_id'], a['session_id']);
+      expect(b['seq'], a['seq'], reason: 'the same report again');
+      for (final r in fake.reports) {
+        expect(r.containsKey('short_code'), isFalse);
+      }
+    });
 
     test(
       'another backend: what was queued for the old one is dropped',
@@ -540,33 +547,28 @@ void main() {
   });
 
   group('restart and demo', () {
-    test(
-      'restore after a kill: same session id and code, seq continues',
-      () async {
-        final fake = FieldFake();
-        final container = _container(fake);
-        await _toStep7(container, fake);
-        final reporter = container.read(fieldReporterProvider);
-        final id = reporter.session!.id, code = reporter.session!.code;
-        final lastSeq = fake.reports.last['seq'] as int;
-        container.dispose();
+    test('restore after a kill: same session id, seq continues', () async {
+      final fake = FieldFake();
+      final container = _container(fake);
+      await _toStep7(container, fake);
+      final reporter = container.read(fieldReporterProvider);
+      final id = reporter.session!.id;
+      final lastSeq = fake.reports.last['seq'] as int;
+      container.dispose();
 
-        final fake2 = FieldFake();
-        final container2 = _container(fake2);
-        final c2 = container2.read(commissionProvider.notifier);
-        await c2.restore();
-        final restored = container2.read(fieldReporterProvider).session!;
-        expect(restored.id, id);
-        expect(restored.code, code);
-        expect(container2.read(fieldHelpProvider).code, code);
+      final fake2 = FieldFake();
+      final container2 = _container(fake2);
+      final c2 = container2.read(commissionProvider.notifier);
+      await c2.restore();
+      final restored = container2.read(fieldReporterProvider).session!;
+      expect(restored.id, id);
 
-        await c2.resumeSaved();
-        await _settle();
-        expect(fake2.reports, isNotEmpty);
-        expect(fake2.reports.every((r) => r['session_id'] == id), isTrue);
-        expect(fake2.reports.first['seq'], greaterThan(lastSeq));
-      },
-    );
+      await c2.resumeSaved();
+      await _settle();
+      expect(fake2.reports, isNotEmpty);
+      expect(fake2.reports.every((r) => r['session_id'] == id), isTrue);
+      expect(fake2.reports.first['seq'], greaterThan(lastSeq));
+    });
 
     test('demo gateway: no session, no request, help says demo', () async {
       final fake = FieldFake();
@@ -739,7 +741,6 @@ void main() {
       );
       final body = buildSessionReport(
         sessionId: 'c' * 32,
-        shortCode: '000123',
         seq: 1,
         event: 'status',
         now: DateTime(2026, 9, 26, 14),
@@ -758,7 +759,7 @@ void main() {
       expect(body.keys.toSet(), {
         'schema',
         'session_id',
-        'short_code',
+        'operator_name',
         'seq',
         'event',
         'client_ts',
@@ -783,8 +784,74 @@ void main() {
         'progress',
         'last_command',
       }, reason: 'additionalProperties: false');
-      expect(formatShortCode('482915'), '482-915');
-      expect(spokenShortCode('482915'), '四八二、九一五');
+      expect(body['operator_name'], isNull);
+    });
+
+    test('v1.1 operator_name: report top level, package context, at most '
+        '64 characters; no short_code in either', () {
+      const state = CommissionState(
+        step: 4,
+        config: {'site_id': 80, 'gateway_id': 1},
+        peer: GatewayPeer('p', 'GIOS-S80-GW01', -50),
+      );
+      const input = FieldInput(
+        state: state,
+        env: BackendEnvState(loaded: true),
+      );
+      final long = '${'陳' * 40}  現場  ${'A' * 40}';
+      final report = buildSessionReport(
+        sessionId: 'd' * 32,
+        seq: 1,
+        event: 'help',
+        now: DateTime(2026, 9, 27, 9),
+        input: input,
+        status: 'help',
+        operatorName: '  王  小明 ',
+      );
+      expect(report['operator_name'], '王 小明');
+      expect(report.containsKey('short_code'), isFalse);
+      final cut = buildSessionReport(
+        sessionId: 'd' * 32,
+        seq: 2,
+        event: 'status',
+        now: DateTime(2026, 9, 27, 9),
+        input: input,
+        status: 'idle',
+        operatorName: long,
+      );
+      expect((cut['operator_name'] as String).length, 64);
+      expect(cut['operator_name'], startsWith('陳' * 40));
+      final diag = buildDiagnostics(
+        sessionId: 'd' * 32,
+        diagSeq: 1,
+        trigger: 'help',
+        now: DateTime(2026, 9, 27, 9),
+        input: input,
+        code: RescueCode.helpOnly,
+        operatorName: long,
+      );
+      expect(diag.containsKey('short_code'), isFalse);
+      expect(diag.containsKey('operator_name'), isFalse, reason: 'context');
+      final context = diag['context'] as Map;
+      expect((context['operator_name'] as String).length, 64);
+      expect(operatorNameOf(''), isNull);
+      expect(operatorNameOf('   '), isNull);
+      expect(operatorNameOf(42), isNull);
+    });
+
+    test('v1.1: a session saved by v1 (with its code) is restored without '
+        'it', () {
+      final session = FieldSession.fromJson({
+        'id': 'e' * 32,
+        'code': '482915',
+        'seq': 7,
+        'diag_seq': 2,
+        'created_ms': 1,
+      })!;
+      expect(session.id, 'e' * 32);
+      expect(session.seq, 7);
+      expect(session.toJson().containsKey('code'), isFalse);
+      expect(FieldSession.fromJson({'id': 'f' * 32})!.seq, 0);
     });
   });
 }

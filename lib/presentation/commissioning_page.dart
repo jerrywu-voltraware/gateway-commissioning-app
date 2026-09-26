@@ -742,7 +742,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               IconButton(
                 key: const Key('field-help-appbar'),
                 icon: const Icon(Icons.support_agent),
-                tooltip: '找後台幫忙',
+                tooltip: fieldHelpLabel,
                 onPressed: () => openFieldHelp(context, ref),
               ),
             EnvironmentChip(onPressed: _openEnvironmentSheet),
@@ -1096,9 +1096,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                                   color: colors.onErrorContainer,
                                 ),
                               ),
-                              // Field rescue v1: the help code to read out
-                              // on the phone (a button, so the banner's own
-                              // tap action does not fire).
+                              // Field rescue v1.1: 「請後台協助」 (a button,
+                              // so the banner's own tap action does not
+                              // fire).
                               if (!demo && controller.fieldHelpAvailable)
                                 Padding(
                                   padding: const EdgeInsets.only(top: 12),
@@ -1116,7 +1116,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                                     ),
                                     onPressed: () =>
                                         openFieldHelp(context, ref),
-                                    label: const Text('打電話給後台前按這裡'),
+                                    label: const Text(fieldHelpLabel),
                                   ),
                                 ),
                               if (_resumeAction(state, controller) != null)

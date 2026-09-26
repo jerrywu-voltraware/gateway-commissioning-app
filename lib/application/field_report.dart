@@ -1,8 +1,13 @@
 /// Field rescue v1 (PLAN_2026-09-26_FIELD_RESCUE.md §2, §5): the APP tells
 /// the back office where the installer is (session reports on every step /
 /// status change and a heartbeat) and what went wrong (a diagnostics package
-/// on a failure, a timeout, a step stuck for 2 minutes, or 「求助」), queued
-/// on the phone while there is no network or no login.
+/// on a failure, a timeout, a step stuck for 2 minutes, or 「請後台協助」),
+/// queued on the phone while there is no network or no login.
+///
+/// v1.1 (user decision: the installer is already on the phone, a code to
+/// read out on top is odd): no help code any more. The back office finds
+/// the session by site / gateway / the installer's name (`operator_name`,
+/// the account the APP is logged in with); nothing is sent as `short_code`.
 ///
 /// Nothing here may disturb the commissioning itself: every entry point
 /// swallows its own errors, never touches [CommissionState], and never
@@ -207,27 +212,6 @@ String newSessionId(Random random) => [
     random.nextInt(256).toRadixString(16).padLeft(2, '0'),
 ].join();
 
-/// Six digits, the help code (§8 decision 3).
-String newShortCode(Random random) =>
-    random.nextInt(1000000).toString().padLeft(6, '0');
-
-/// `482915` → `482-915`.
-String formatShortCode(String code) =>
-    code.length == 6 ? '${code.substring(0, 3)}-${code.substring(3)}' : code;
-
-const _spokenDigits = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
-
-/// `482915` → `四八二、九一五` (how to read it on the phone).
-String spokenShortCode(String code) {
-  String say(String part) => [
-    for (final c in part.split(''))
-      int.tryParse(c) == null ? c : _spokenDigits[int.parse(c)],
-  ].join();
-  return code.length == 6
-      ? '${say(code.substring(0, 3))}、${say(code.substring(3))}'
-      : say(code);
-}
-
 // ---- What the controller hands over ----
 
 /// The commissioning as the reporter sees it (built by the controller on
@@ -336,10 +320,11 @@ Map<String, dynamic> fieldProgress(FieldInput i) {
   return {'done': done, 'total': total};
 }
 
-/// §2.3 body. [secrets] are masked wherever they show.
+/// §2.3 body. [secrets] are masked wherever they show. v1.1: no
+/// `short_code`; [operatorName] (the logged-in account, at most 64
+/// characters) as `operator_name`, null when unknown.
 Map<String, dynamic> buildSessionReport({
   required String sessionId,
-  required String shortCode,
   required int seq,
   required String event,
   required DateTime now,
@@ -352,13 +337,14 @@ Map<String, dynamic> buildSessionReport({
   Map<String, dynamic>? lastCommand,
   Iterable<String> secrets = const [],
   String? errorMessage,
+  String? operatorName,
 }) {
   final s = input.state;
   final step = fieldStep(input);
   final body = <String, dynamic>{
     'schema': fieldSchemaVersion,
     'session_id': sessionId,
-    'short_code': shortCode,
+    'operator_name': operatorNameOf(operatorName),
     'seq': seq,
     'event': event,
     'client_ts': isoWithOffset(now),
@@ -547,9 +533,9 @@ class FieldFailure {
 }
 
 /// §2.4 body: masked (§2.5, whole package) and trimmed (§2.4 大小預算).
+/// v1.1: no `short_code`; [operatorName] as `context.operator_name`.
 Map<String, dynamic> buildDiagnostics({
   required String sessionId,
-  required String shortCode,
   required int diagSeq,
   required String trigger,
   required DateTime now,
@@ -561,6 +547,7 @@ Map<String, dynamic> buildDiagnostics({
   Map<String, dynamic> app = const {},
   Map<String, dynamic> phone = const {},
   Iterable<String> secrets = const [],
+  String? operatorName,
 }) {
   final s = input.state;
   final step = fieldStep(input);
@@ -569,7 +556,6 @@ Map<String, dynamic> buildDiagnostics({
   final body = <String, dynamic>{
     'schema': fieldSchemaVersion,
     'session_id': sessionId,
-    'short_code': shortCode,
     'diag_seq': diagSeq,
     'trigger': trigger,
     'client_ts': isoWithOffset(now),
@@ -602,6 +588,7 @@ Map<String, dynamic> buildDiagnostics({
         k: identity[k],
       'offline': s.offline,
       'logged_in': input.loggedIn,
+      'operator_name': operatorNameOf(operatorName),
       'app': app,
       'phone': phone,
     },
@@ -712,14 +699,12 @@ List<String> fieldHelpDetailLines({String? errorCode}) => [
 class FieldSession {
   FieldSession({
     required this.id,
-    required this.code,
     required this.createdMs,
     this.seq = 0,
     this.diagSeq = 0,
   });
 
   final String id;
-  String code;
   final int createdMs;
   int seq, diagSeq;
 
@@ -737,24 +722,21 @@ class FieldSession {
 
   Map<String, dynamic> toJson() => {
     'id': id,
-    'code': code,
     'seq': seq,
     'diag_seq': diagSeq,
     'created_ms': createdMs,
   };
 
   static final _id = RegExp(r'^[0-9a-f]{32}$');
-  static final _code = RegExp(r'^[0-9]{6}$');
 
+  /// A session saved by v1 still carries its help code (`code`): ignored.
   static FieldSession? fromJson(Object? raw) {
     if (raw is! Map) return null;
-    final id = raw['id'], code = raw['code'];
+    final id = raw['id'];
     if (id is! String || !_id.hasMatch(id)) return null;
-    if (code is! String || !_code.hasMatch(code)) return null;
     final seq = raw['seq'], diag = raw['diag_seq'], created = raw['created_ms'];
     return FieldSession(
       id: id,
-      code: code,
       seq: seq is int && seq >= 0 ? seq : 0,
       diagSeq: diag is int && diag >= 0 ? diag : 0,
       createdMs: created is int ? created : 0,
@@ -880,14 +862,11 @@ enum FieldHelpPhase {
 
 class FieldHelpState {
   const FieldHelpState({
-    this.code,
     this.phase = FieldHelpPhase.idle,
     this.reason = '',
     this.errorCode,
   });
 
-  /// Six digits (null before a session exists).
-  final String? code;
   final FieldHelpPhase phase;
 
   /// Why it is queued (「尚未登入後台」…).
@@ -896,15 +875,11 @@ class FieldHelpState {
   /// The code sent with the help report (shown with the error line).
   final String? errorCode;
 
-  String? get displayCode => code == null ? null : formatShortCode(code!);
-
   FieldHelpState copyWith({
-    Object? code = _keepValue,
     FieldHelpPhase? phase,
     String? reason,
     Object? errorCode = _keepValue,
   }) => FieldHelpState(
-    code: identical(code, _keepValue) ? this.code : code as String?,
     phase: phase ?? this.phase,
     reason: reason ?? this.reason,
     errorCode: identical(errorCode, _keepValue)
@@ -1119,6 +1094,17 @@ class FieldReporter {
     return api is SessionInfo ? (api as SessionInfo).origin : null;
   }
 
+  /// v1.1 `operator_name`: the account the APP is logged in with.
+  String? _operator() {
+    final api = _api;
+    if (api is! OperatorInfo) return null;
+    try {
+      return (api as OperatorInfo).operatorName;
+    } catch (_) {
+      return null;
+    }
+  }
+
   String? _originFor(FieldInput i) {
     final origin = _apiOrigin() ?? originOf(i.env.base);
     if (origin != null) _lastOrigin = origin;
@@ -1188,7 +1174,6 @@ class FieldReporter {
   FieldSession _startSession() {
     final session = FieldSession(
       id: newSessionId(_random),
-      code: newShortCode(_random),
       createdMs: _now().millisecondsSinceEpoch,
     );
     _open(session);
@@ -1205,7 +1190,7 @@ class FieldReporter {
     _recent.clear();
     _startHeartbeat();
     _saveLive();
-    _setHelp(FieldHelpState(code: session.code));
+    _setHelp(const FieldHelpState());
   }
 
   void _startHeartbeat() {
@@ -1228,8 +1213,8 @@ class FieldReporter {
   /// The running session for the progress file (null when none).
   Map<String, dynamic>? persisted() => _enabled ? _session?.toJson() : null;
 
-  /// 「重新連線並繼續」 after the APP was killed: the same session (and help
-  /// code) as before; its counters continue past anything already sent.
+  /// 「重新連線並繼續」 after the APP was killed: the same session as
+  /// before; its counters continue past anything already sent.
   Future<void> restore(Object? raw) async {
     if (!_enabled) return;
     try {
@@ -1423,7 +1408,6 @@ class FieldReporter {
     session.seq++;
     final body = buildSessionReport(
       sessionId: session.id,
-      shortCode: session.code,
       seq: session.seq,
       event: event,
       now: now,
@@ -1436,6 +1420,7 @@ class FieldReporter {
       lastCommand: journal.lastCommand(now),
       secrets: journal.secrets,
       errorMessage: message,
+      operatorName: _operator(),
     );
     if (remember) _last = _Reported(fieldStep(i), status, code?.wire);
     _recent.add(now);
@@ -1484,7 +1469,6 @@ class FieldReporter {
     } catch (_) {}
     final body = buildDiagnostics(
       sessionId: session.id,
-      shortCode: session.code,
       diagSeq: session.diagSeq,
       trigger: trigger,
       now: now,
@@ -1496,6 +1480,7 @@ class FieldReporter {
       app: _app(i),
       phone: _phone,
       secrets: journal.secrets,
+      operatorName: _operator(),
     );
     _lastDiagAt = now;
     session.diagSentThisStep = true;
@@ -1724,8 +1709,8 @@ class FieldReporter {
 
   // ---- help ----
 
-  /// 「打電話給後台前按這裡」: a session (created if none yet), a `help`
-  /// report and a `help` package, then the outcome for the sheet.
+  /// 「請後台協助」: a session (created if none yet), a `help` report and a
+  /// `help` package, then the outcome for the sheet (「已通知後台」).
   Future<void> requestHelp() async {
     if (!_enabled) {
       _setHelp(const FieldHelpState(phase: FieldHelpPhase.disabled));
@@ -1741,11 +1726,7 @@ class FieldReporter {
       session.help = (step: step, base: base);
       final code = base ?? RescueCode.helpOnly;
       _setHelp(
-        FieldHelpState(
-          code: session.code,
-          phase: FieldHelpPhase.sending,
-          errorCode: code.wire,
-        ),
+        FieldHelpState(phase: FieldHelpPhase.sending, errorCode: code.wire),
       );
       if (i != null) {
         _report(session, 'help', i, status: 'help', code: code);
@@ -1827,22 +1808,6 @@ class FieldReporter {
     }
   }
 
-  void _reroll(String? sessionId) {
-    if (sessionId == null) return;
-    final code = newShortCode(_random);
-    for (final it in [..._items, ..._early]) {
-      if (it.sessionId == sessionId) {
-        it.body = {...it.body, 'short_code': code};
-      }
-    }
-    final session = _session;
-    if (session != null && session.id == sessionId) {
-      session.code = code;
-      _saveLive();
-      _setHelp(_help.copyWith(code: code));
-    }
-  }
-
   /// Sends what is queued, one request at a time (reports first, then
   /// packages; each in the order made). Never throws.
   Future<void> flush() {
@@ -1903,14 +1868,13 @@ class FieldReporter {
     // environment were already dropped when it was switched
     // ([onBackendChanged]).
     final origin = _apiOrigin();
-    var rerolls = 0;
     while (!_disposed) {
       final item = _next();
       if (item == null) break;
       final body = {
         ...item.body,
         'queued_ms': max(0, _now().millisecondsSinceEpoch - item.createdMs),
-      };
+      }..remove('short_code'); // v1 items queued before the update
       try {
         await _api.request('POST', item.path, body);
         _items.remove(item);
@@ -1919,17 +1883,12 @@ class FieldReporter {
         if (item.kind == 'diag') {
           debugPrint(
             'FIELD diag sent ${item.trigger} #${item.body['diag_seq']} '
-            '${formatShortCode(item.body['short_code']?.toString() ?? '')}',
+            '${item.sessionId ?? ''}',
           );
         }
       } on GatewayFailure catch (f) {
-        final conflict =
-            f.code == 'conflict' || (f.code == 'api' && f.status == 409);
-        if (conflict && rerolls < 3) {
-          rerolls++;
-          _reroll(item.sessionId);
-          continue;
-        }
+        // v1.1: a 409 (no longer sent for a help code) is an ordinary
+        // failure: kept and tried again after the back-off.
         if (item.transient) _items.remove(item);
         if (f.code == 'authentication') break;
         if (f.code == 'api' && f.status == 404) {

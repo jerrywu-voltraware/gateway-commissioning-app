@@ -41,7 +41,8 @@ Uri? _apiBase(String base) {
   return uri;
 }
 
-class DashboardApi implements GatewayApi, SessionStore, SessionInfo {
+class DashboardApi
+    implements GatewayApi, SessionStore, SessionInfo, OperatorInfo {
   DashboardApi({DateTime Function()? now}) : _now = now ?? DateTime.now;
 
   final DateTime Function() _now;
@@ -50,8 +51,16 @@ class DashboardApi implements GatewayApi, SessionStore, SessionInfo {
   Uri? _base;
   String? _key;
 
+  /// Field rescue v1.1: the account name the login answered with (none
+  /// today: the backend login is one shared password), kept with the
+  /// session token.
+  String? _operator;
+
   @override
   bool get hasSession => _base != null && _key != null;
+
+  @override
+  String? get operatorName => _operator;
 
   @override
   String? get origin => _base?.origin;
@@ -61,6 +70,7 @@ class DashboardApi implements GatewayApi, SessionStore, SessionInfo {
     final uri = _apiBase(base);
     if (uri == null) throw const GatewayFailure('https_required');
     _key = null;
+    _operator = null;
     _base = uri;
     final result = await request('POST', '/api/auth/login', {
       'password': password,
@@ -69,6 +79,7 @@ class DashboardApi implements GatewayApi, SessionStore, SessionInfo {
     if (_key == null || _key!.isEmpty) {
       throw const GatewayFailure('authentication');
     }
+    _operator = operatorNameOf(result['operator_name'] ?? result['username']);
     // Round 17: the token (not the password) with its expiry, so 「重新連線
     // 並繼續」 after the APP was killed needs no login. A storage failure
     // never fails the login itself.
@@ -78,6 +89,7 @@ class DashboardApi implements GatewayApi, SessionStore, SessionInfo {
         value: jsonEncode({
           'token': _key,
           'expires': _now().add(sessionTokenTtl).millisecondsSinceEpoch,
+          'operator': ?_operator,
         }),
       );
       await _storage.delete(key: 'api:${uri.origin}');
@@ -105,6 +117,7 @@ class DashboardApi implements GatewayApi, SessionStore, SessionInfo {
       }
       _base = uri;
       _key = token;
+      _operator = operatorNameOf(data['operator']);
       return true;
     } catch (_) {
       return false;

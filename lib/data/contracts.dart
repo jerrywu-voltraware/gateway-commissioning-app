@@ -81,6 +81,22 @@ abstract class SessionInfo {
   String? get origin;
 }
 
+/// Field rescue v1.1: the name of the account the APP is logged in with
+/// (sent as `operator_name`, so the back office finds the installer by
+/// name); null when the login carries none.
+abstract class OperatorInfo {
+  String? get operatorName;
+}
+
+/// Field rescue v1.1 `operator_name`: [value] trimmed, runs of white space
+/// as one space, at most 64 characters; null when empty or not a string.
+String? operatorNameOf(Object? value) {
+  if (value is! String) return null;
+  final name = value.replaceAll(RegExp(r'\s+'), ' ').trim();
+  if (name.isEmpty) return null;
+  return name.length > 64 ? name.substring(0, 64) : name;
+}
+
 abstract class GatewayApi {
   Future<void> login(String base, String password);
   Future<Map<String, dynamic>> request(
