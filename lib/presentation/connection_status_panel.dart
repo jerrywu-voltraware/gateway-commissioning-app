@@ -27,7 +27,6 @@ class ConnectionStatusPanel extends ConsumerStatefulWidget {
     required this.env,
     required this.onSync,
     required this.onRefresh,
-    required this.onShipSwitch,
     this.demo = false,
   });
   final CommissionState state;
@@ -37,9 +36,6 @@ class ConnectionStatusPanel extends ConsumerStatefulWidget {
   /// 「同步」: bring the gateway in line with the APP environment.
   final VoidCallback onSync;
   final VoidCallback onRefresh;
-
-  /// Step 7: switch a local gateway back to production before shipping.
-  final VoidCallback onShipSwitch;
 
   @override
   ConsumerState<ConnectionStatusPanel> createState() =>
@@ -184,31 +180,9 @@ class _ConnectionStatusPanelState extends ConsumerState<ConnectionStatusPanel> {
         ),
       );
     }
-    if (status.shipWarning) {
-      children.add(
-        Container(
-          margin: const EdgeInsets.only(top: 10),
-          padding: const EdgeInsets.all(12),
-          color: colors.errorContainer,
-          child: Text(
-            localTargetShipWarning,
-            style: TextStyle(color: colors.onErrorContainer),
-          ),
-        ),
-      );
-      children.add(
-        Padding(
-          padding: const EdgeInsets.only(top: 8),
-          child: SizedBox(
-            width: double.infinity,
-            child: FilledButton(
-              onPressed: enabled ? widget.onShipSwitch : null,
-              child: const Text('手機和 Gateway 都切回正式站'),
-            ),
-          ),
-        ),
-      );
-    }
+    // Round 29: 「出貨前切回正式站」 is no longer here (field drill: its red
+    // box and full-width button read as the done page's next step); the
+    // done page of a local test build carries it as a developer note.
     if (widget.state.uploadNotice.isNotEmpty) {
       children.add(
         Padding(

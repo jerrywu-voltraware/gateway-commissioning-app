@@ -88,6 +88,7 @@ class NetGateway extends DemoSystem {
 
   final paths = <String>[];
   Completer<void>? latestGate;
+
   /// When set, replaces the demo /api/latest answer (health-check tests).
   Map<String, dynamic>? latestOverride;
   @override
@@ -195,9 +196,24 @@ void main() {
       expect(old.gateway.status, '？ 未確認');
     });
     test('backendRowsFresh needs an online row under 60 s lag', () {
-      expect(backendRowsFresh([{'online': true, 'lag_seconds': 12}]), isTrue);
-      expect(backendRowsFresh([{'online': true, 'lag_seconds': 75}]), isFalse);
-      expect(backendRowsFresh([{'online': false, 'lag_seconds': 5}]), isFalse);
+      expect(
+        backendRowsFresh([
+          {'online': true, 'lag_seconds': 12},
+        ]),
+        isTrue,
+      );
+      expect(
+        backendRowsFresh([
+          {'online': true, 'lag_seconds': 75},
+        ]),
+        isFalse,
+      );
+      expect(
+        backendRowsFresh([
+          {'online': false, 'lag_seconds': 5},
+        ]),
+        isFalse,
+      );
     });
     test('gateway on another /24 gets the Wi-Fi hint only after waiting', () {
       const net = {
@@ -370,14 +386,16 @@ void main() {
       expect(unknown.phone.where, '正式站');
       expect(unknown.phone.status, isEmpty);
     });
-    test('step 7 with a local gateway warns before shipping', () {
+    test('step 7 with a local gateway: shipWarning, still the one-line OK '
+        '(round 29: the note is the done page\'s, local builds only)', () {
       final status = connectionStatus(
         env: _local,
         state: _state(_target('local', connected: true), step: 7),
         probe: _healthy,
       );
       expect(status.shipWarning, isTrue);
-      expect(status.allOk, isFalse);
+      expect(status.allOk, isTrue);
+      expect(status.summary, '✓ 本地測試：手機與 Gateway 都已連上');
     });
     test('step 7 on 正式站 has no shipping warning', () {
       final status = connectionStatus(
@@ -793,7 +811,6 @@ void main() {
                     env: env,
                     onSync: () => calls.add('sync'),
                     onRefresh: () => calls.add('refresh'),
-                    onShipSwitch: () => calls.add('ship'),
                   ),
                 ],
               ),
@@ -839,17 +856,19 @@ void main() {
       await tester.tap(find.byKey(const Key('connection-status-refresh')));
       expect(calls, ['sync', 'refresh']);
     });
-    testWidgets('step 7 on a local target offers the switch back', (
-      tester,
-    ) async {
-      final calls = await pumpPanel(
+    testWidgets('step 7 on a local target: no shipping box or button in '
+        'the panel (round 29)', (tester) async {
+      await pumpPanel(
         tester,
         _state(_target('local', connected: true), step: 7),
         _local,
       );
-      expect(find.text(localTargetShipWarning), findsOneWidget);
-      await tester.tap(find.text('手機和 Gateway 都切回正式站'));
-      expect(calls, ['ship']);
+      expect(find.text('✓ 本地測試：手機與 Gateway 都已連上'), findsOneWidget);
+      await tester.tap(find.text('✓ 本地測試：手機與 Gateway 都已連上'));
+      await tester.pumpAndSettle();
+      expect(find.text(localTargetShipWarning), findsNothing);
+      expect(find.text('手機和 Gateway 都切回正式站'), findsNothing);
+      expect(find.byType(FilledButton), findsNothing);
     });
     testWidgets('step 7 on 正式站 shows no shipping warning', (tester) async {
       await pumpPanel(

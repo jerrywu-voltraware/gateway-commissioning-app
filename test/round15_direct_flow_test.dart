@@ -12,7 +12,8 @@
 //    manual 「重新連線並繼續」.
 // 5. A failed get_ble_devices ends 「掃描中…」 with 「重新掃描」.
 // 6. Step 9: the backend retry line sits above the per-PTU progress.
-// 7. A finished run is not overwritten by a later connect (「上次配置已完成」).
+// 7. A finished run is not overwritten by a later connect (round 29: the
+//    「上一台已完成」 note, never a resume card).
 // 8. Round 15b: 「是這台」 only numbers the PTU the installer identified
 //    (identify ack MAC, re-checked against get_status); a temporary
 //    「不是這台？」 binding is cleared on 取消 (「確認後綁定」 off) and a
@@ -646,7 +647,7 @@ void main() {
   });
 
   group('7. finished run', () {
-    test('a later connect keeps 上次配置已完成 (no leftover resume)', () async {
+    test('a later connect keeps 上一台已完成 (no leftover resume)', () async {
       final fake = Round13Link();
       final (container, c) = await atStep9(fake);
       await c.verify('https://example.invalid', '');
@@ -669,12 +670,12 @@ void main() {
       final c2 = next.read(commissionProvider.notifier);
       await c2.restore();
       var s = next.read(commissionProvider);
-      expect(s.lastCompleted, isTrue);
+      expect(s.lastDone, startsWith('上一台已完成'));
       expect(s.savedResume, isFalse);
-      expect(s.message, startsWith('上次配置已完成'));
+      expect(s.savedProgress, isFalse);
+      expect(s.message, isEmpty);
       await c2.clearCompleted();
       s = next.read(commissionProvider);
-      expect(s.lastCompleted, isFalse);
       expect(s.message, isEmpty);
       final prefs = await SharedPreferences.getInstance();
       expect(prefs.getString('demo_progress'), isNull);

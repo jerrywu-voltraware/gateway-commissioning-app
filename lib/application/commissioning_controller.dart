@@ -812,7 +812,7 @@ String deferConfirmText(int threshold) =>
 
 /// Round 28: the done page after 〔先完成配置〕.
 const deferredDoneTitle = '閘道器配置完成';
-const deferredDoneText = '本樁 PTU 尚未連線，上電後會自動連上；綁定需之後到現場按〔辨識〕確認。';
+const deferredDoneText = '本樁 PTU 尚未連線。PTU 上電後會自動連線，之後到現場按〔辨識〕確認綁定。';
 
 /// Round 28: what the gateway was left with ([threshold] dBm).
 String deferredDetailText(int threshold) =>
@@ -902,16 +902,40 @@ Set<String> configureTargets(CommissionState s) =>
 /// Step 10 message right after verification, before any health answer.
 const verifiedText = '開通驗證通過，已恢復自動監控';
 
-/// Restart prompt when the saved run already finished (round 6: a finished
-/// run still showed 「已保留先前進度」).
-String completedText(
+/// Round 29 (field drill: after 〔完成〕 nothing said the last gateway was
+/// done; a finished run restored after a restart came back as a 「上次配置」
+/// card with 〔重新開始〕): the start page / gateway list note after a
+/// finished run — 〔完成〕, 〔配置下一台〕, or a saved finished run
+/// (round 6: never offered as a resume).
+String lastDoneText(
   Object? site,
-  Object? gateway,
-  int count, {
+  Object? gateway, {
   bool ptuDeferred = false,
-}) => ptuDeferred
-    ? '上次配置已完成（site $site / gateway $gateway，本樁 PTU 尚未連線、尚未綁定）'
-    : '上次配置已完成（site $site / gateway $gateway，$count 台）';
+}) =>
+    '上一台已完成：站 $site 閘道器 $gateway'
+    '${ptuDeferred ? '（本樁 PTU 尚未連線，上電後自動連上）' : ''}';
+
+/// Round 29: the gateway list after 〔配置下一台〕 — a new gateway is
+/// proposed on the same station ([site]).
+String nextGatewayText(int site) => '請選擇下一台閘道器；新的閘道器會預設沿用站 $site。';
+
+/// Round 29: the done page's main button (also the system 返回 there).
+const doneFinishLabel = '完成';
+
+/// Round 29: the done page's second button.
+const doneNextLabel = '配置下一台';
+
+/// Round 29: the system 返回 on the done page while an action there runs.
+const doneBusyText = '正在處理，完成後再按〔完成〕。';
+
+/// Round 29: the done page's developer note, local test builds only
+/// ([EnvSwitchPolicy.localBuild]) — never the done page's main action.
+const devShipNoteText =
+    '開發環境提示（本地測試版才會出現，現場人員不用處理）：這台 Gateway 目前上傳到本地測試站，'
+    '出貨前需由開發人員把手機和 Gateway 一起切回正式站。';
+
+/// Round 29: the developer note's small text button.
+const devShipSwitchLabel = '切回正式站';
 
 /// Step 8/max_connections policy: star mode always opens the full range (5)
 /// so a later 5th PTU can still connect; direct mode is one PTU.
@@ -1096,7 +1120,7 @@ class CommissionState {
     this.reconnectFailed = false,
     this.savedResume = false,
     this.savedProgress = false,
-    this.lastCompleted = false,
+    this.lastDone = '',
     this.verifyCounts = const {},
     this.verifyWaiting = const {},
     this.verifySkipped = const {},
@@ -1293,9 +1317,11 @@ class CommissionState {
   final bool busy, verified, online;
   final String message, report;
 
-  /// Saved progress belongs to a run that finished (step 10 verified):
-  /// offer 「重新開始」 instead of 「重新連線並繼續」.
-  final bool lastCompleted;
+  /// Round 29: 「上一台已完成：站 X 閘道器 Y」 ([lastDoneText]) on the start
+  /// page and the gateway list after a finished run (〔完成〕 /
+  /// 〔配置下一台〕, or a finished run saved before a restart) — a note,
+  /// never a resume card; '' when there is none.
+  final String lastDone;
 
   /// Round 16: progress of an unfinished run was restored (「上次中斷於…」),
   /// whether or not it can be resumed ([savedResume]): 「重新開始」 clears
@@ -1478,7 +1504,7 @@ class CommissionState {
     bool? reconnectFailed,
     bool? savedResume,
     bool? savedProgress,
-    bool? lastCompleted,
+    String? lastDone,
     Map<int, int>? verifyCounts,
     Set<int>? verifyWaiting,
     Set<int>? verifySkipped,
@@ -1553,7 +1579,7 @@ class CommissionState {
     identifyNote: identifyNote ?? this.identifyNote,
     identifyLine: identifyLine ?? this.identifyLine,
     rescanNeeded: rescanNeeded ?? this.rescanNeeded,
-    lastCompleted: lastCompleted ?? this.lastCompleted,
+    lastDone: lastDone ?? this.lastDone,
     verifyCounts: verifyCounts ?? this.verifyCounts,
     verifyWaiting: verifyWaiting ?? this.verifyWaiting,
     verifySkipped: verifySkipped ?? this.verifySkipped,
@@ -1728,6 +1754,20 @@ class CommissioningController extends Notifier<CommissionState> {
   /// overwrite it before it reaches the PTU steps (a connect or identify
   /// from the gateway list left 「上次中斷於第 5 步」 in round 14).
   bool _completedSticky = false;
+
+  /// Round 29: the done page was left with 〔完成〕 / 〔配置下一台〕 — nothing
+  /// is saved until the next run connects a gateway ([_save]).
+  bool _doneLeft = false;
+
+  /// Round 29: 〔配置下一台〕 — the station a new gateway is proposed on
+  /// (its number the next free one there); null after 〔完成〕.
+  int? _keepSite;
+
+  /// Round 29: [_keepSite], for the page's 「設定新站點與 Wi-Fi」.
+  int? get keptSite => _keepSite;
+
+  /// Round 29: [finishDone] is running (one tap, one finish).
+  bool _finishing = false;
   int get site => (state.config['site_id'] as num?)?.toInt() ?? 1;
   int get gateway => (state.config['gateway_id'] as num?)?.toInt() ?? 1;
   String get _path => '/api/gateways/$site/$gateway';
@@ -2392,6 +2432,13 @@ class CommissioningController extends Notifier<CommissionState> {
   bool _resumingSaved = false;
 
   Future<void> _save() async {
+    // Round 29: after 〔完成〕 / 〔配置下一台〕 nothing is saved until the next
+    // run connects a gateway (the start page and the gateway list have
+    // nothing to resume).
+    if (_doneLeft) {
+      if (state.step < 2) return;
+      _doneLeft = false;
+    }
     final shown = _shown(state);
     // Round 28: 〔先完成配置〕 is a finished run too (nothing to resume).
     final completed = state.step == 7 && (state.verified || state.ptuDeferred);
@@ -2466,14 +2513,14 @@ class CommissioningController extends Notifier<CommissionState> {
         return;
       }
       if (data['completed'] == true) {
+        // Round 29: a finished run (the APP closed on its done page) is a
+        // note on the start page, never a card to resume or restart.
         _completedSticky = true;
         state = state.copy(
           savedResume: false,
-          lastCompleted: true,
-          message: completedText(
+          lastDone: lastDoneText(
             data['site'],
             data['gateway'],
-            (data['count'] as num?)?.toInt() ?? 0,
             ptuDeferred: data['ptu_deferred'] == true,
           ),
         );
@@ -2533,7 +2580,7 @@ class CommissioningController extends Notifier<CommissionState> {
     }
   }
 
-  /// 「重新開始」 after a finished run: forget the saved progress.
+  /// 「重新開始」 on an unfinished run's saved progress: forget it.
   Future<void> clearCompleted() async {
     _field.end('abandoned');
     final prefs = await SharedPreferences.getInstance();
@@ -2542,7 +2589,6 @@ class CommissioningController extends Notifier<CommissionState> {
     _completedSticky = false;
     if (ref.mounted) {
       state = state.copy(
-        lastCompleted: false,
         savedResume: false,
         savedProgress: false,
         savedGateway: '',
@@ -3046,7 +3092,20 @@ class CommissioningController extends Notifier<CommissionState> {
         site = ownSite;
         gw = ownGw;
       }
-      if (_loggedIn && !ownIdentity) {
+      // Round 29: 〔配置下一台〕 — a new gateway on the station just done,
+      // the next free number there (a full station falls through to the
+      // search below).
+      final keep = _keepSite;
+      if (!ownIdentity && keep != null) {
+        final (g, kind) = await suggestGateway(keep);
+        _check(generation);
+        if (kind != GatewaySuggestKind.full) {
+          site = keep;
+          gw = g;
+          offline = kind == GatewaySuggestKind.offline;
+        }
+      }
+      if (_loggedIn && !ownIdentity && site == null) {
         try {
           final discover = await _request(
             generation,
@@ -7824,7 +7883,9 @@ class CommissioningController extends Notifier<CommissionState> {
     _healthBusy = true;
     final loginBase = _loginBase;
     // A switch of backend while the request runs makes its answer stale.
-    bool stale() => !_loggedIn || _loginBase != loginBase;
+    // Round 29: so does leaving the done page (〔完成〕／〔配置下一台〕) —
+    // no 「資料持續更新」 on the start page.
+    bool stale() => !_loggedIn || _loginBase != loginBase || state.step != 7;
     try {
       final latest = await _withRelogin(
         () => _api.request(
@@ -8019,6 +8080,70 @@ class CommissioningController extends Notifier<CommissionState> {
       }
       // Field rescue: 「結束並重新選擇閘道器」 ends this session.
       _field.end('abandoned');
+    }
+  }
+
+  /// Round 29 (field drill: the done page had no way to end it — its
+  /// biggest button was 「手機和 Gateway 都切回正式站」, read as the next
+  /// step): 〔完成〕 and 〔配置下一台〕, also the system 返回 on the done page.
+  /// The run is finished, so nothing asks and nothing is kept to resume:
+  /// the health poll stops, a monitoring lease still held is handed back,
+  /// the gateway is let go (it keeps running), the saved progress is
+  /// removed (a restart shows no 「上次配置」 card) and the start page says
+  /// 「上一台已完成：站 X 閘道器 Y」 ([CommissionState.lastDone]).
+  /// [next]: 〔配置下一台〕 — the gateway list (step 1), a new gateway then
+  /// proposed on the same station ([keptSite]); otherwise the start page.
+  Future<void> finishDone({bool next = false}) async {
+    if (_finishing || state.busy || state.step != 7) return;
+    _finishing = true;
+    try {
+      final doneSite = site;
+      final done = lastDoneText(
+        doneSite,
+        gateway,
+        ptuDeferred: state.ptuDeferred,
+      );
+      _generation++;
+      _health?.cancel();
+      _verifyCarry = null;
+      _grace?.cancel();
+      _stopWatch(UploadWatch.idle);
+      await _safeStop();
+      try {
+        await _link.disconnect();
+      } catch (_) {}
+      if (_lease) {
+        try {
+          await _api.request('PATCH', '$_path/bot-monitor', {'enabled': true});
+          _lease = false;
+        } catch (_) {}
+      }
+      _doneLeft = true;
+      _completedSticky = false;
+      _saved = null;
+      _keepSite = next ? doneSite : null;
+      _bindLaterRun = false;
+      _doneAssign.clear();
+      _inflightAssign.clear();
+      _pendingReadback.clear();
+      _progressPeer = null;
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove(_link.demo ? 'demo_progress' : 'progress');
+      } catch (_) {}
+      if (!ref.mounted) return;
+      final kept = state;
+      state = CommissionState(
+        step: next ? 1 : 0,
+        loggedIn: kept.loggedIn,
+        offline: kept.offline,
+        autoRssi: kept.autoRssi,
+        peers: kept.peers,
+        lastDone: done,
+        message: next ? nextGatewayText(doneSite) : '',
+      );
+    } finally {
+      _finishing = false;
     }
   }
 

@@ -328,8 +328,8 @@ void main() {
       expect(saved['ptu_deferred'], isTrue);
       expect(prefs.getString('demo_direct_deferred_ptu'), contains(_gw2Wifi));
       expect(
-        completedText(80, 2, 0, ptuDeferred: true),
-        contains('本樁 PTU 尚未連線'),
+        lastDoneText(80, 2, ptuDeferred: true),
+        allOf(startsWith('上一台已完成：站 80 閘道器 2'), contains('本樁 PTU 尚未連線')),
       );
     });
 
@@ -534,15 +534,20 @@ void main() {
         deferredDoneTitle,
       );
       expect(find.text(deferredDoneText), findsOneWidget);
-      expect(find.text(deferredDetailText(-55)), findsOneWidget);
-      // The summary under the step title (the list starts scrolled down).
+      // Round 29: the done page starts at its summary (title, the PTU
+      // line, the note); the details and the action are below it.
+      expect(find.text(deferredSummaryText), findsOneWidget);
       await tester.scrollUntilVisible(
-        find.text(deferredSummaryText),
-        -120,
+        find.text(deferredDetailText(-55)),
+        120,
         scrollable: find.byType(Scrollable).first,
       );
-      expect(find.text(deferredSummaryText), findsOneWidget);
-      await tester.ensureVisible(find.byKey(const Key('deferred-bind-now')));
+      expect(find.text(deferredDetailText(-55)), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('deferred-bind-now')),
+        120,
+        scrollable: find.byType(Scrollable).first,
+      );
       expect(find.byKey(const Key('deferred-bind-now')), findsOneWidget);
       expect(find.byKey(const Key('done-calibrate')), findsNothing);
       expect(find.text('重新連線並驗證'), findsNothing);

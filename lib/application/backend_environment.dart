@@ -19,7 +19,14 @@ class EnvSwitchPolicy {
     this.defaultEnvironment = localDevelopmentBuild
         ? BackendEnv.local
         : BackendEnv.production,
+    this.localBuild = localDevelopmentBuild,
   });
+
+  /// Round 29: a local test build (`LOCAL_DEVELOPMENT=true`). Only here does
+  /// the done page carry the developer note 「出貨前切回正式站」 (field
+  /// drill: it was the done page's biggest button, read as the next step);
+  /// a production build never shows it.
+  final bool localBuild;
 
   /// Environment used when nothing was saved yet. A saved choice
   /// (`backend_environment`) always wins over this.

@@ -64,7 +64,10 @@ class ConnectionStatus {
   final SyncNeed need;
   final MqttTarget? syncTarget;
 
-  /// Step 7: the gateway still uploads to a local test host.
+  /// Step 7: the gateway still uploads to a local test host. Round 29: a
+  /// developer note on the done page of a local test build only
+  /// ([EnvSwitchPolicy.localBuild]); the panel itself no longer shows it,
+  /// and it does not keep the panel from its one-line all-OK summary.
   final bool shipWarning;
 
   /// One-line text for the collapsed all-OK panel, null when not all OK.
@@ -372,8 +375,7 @@ ConnectionStatus connectionStatus({
       phone.tone == StatusTone.ok &&
           gateway.tone == StatusTone.ok &&
           hint == null &&
-          wifiWeak == null &&
-          !shipWarning
+          wifiWeak == null
       ? '✓ ${env.label}：手機與 Gateway 都已連上'
       : null;
   final disc = wifi == WifiVerdict.ok ? null : wifiDiscDetail(net);

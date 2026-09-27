@@ -531,6 +531,16 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   /// Step 6 already started its automatic verification for this entry.
   bool _autoVerifyStarted = false;
 
+  /// Round 29 (field drill: the done page opened scrolled down, on the
+  /// 連線狀態 panel and the 「切回正式站」 box): the done page starts at its
+  /// summary.
+  void _showDoneFromTop(CommissionState? previous, CommissionState next) {
+    if (next.step != 7 || previous?.step == 7) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _pageScroll.hasClients) _pageScroll.jumpTo(0);
+    });
+  }
+
   /// Entering step 6 (驗證資料) starts one verification by itself when logged
   /// in; the manual button stays for re-runs.
   void _maybeAutoVerify(CommissionState? previous, CommissionState next) {
@@ -579,6 +589,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     super.initState();
     ref.listenManual(backendEnvProvider, _onEnvironment, fireImmediately: true);
     ref.listenManual(commissionProvider, _maybeAutoVerify);
+    ref.listenManual(commissionProvider, _showDoneFromTop);
     ref.listenManual(commissionProvider, _showRemoteIdentify);
     _host.addListener(() => _envController.setLocalHost(_host.text));
     _base.addListener(_onBaseEdited);
@@ -724,12 +735,16 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       directFlow: controller.directFlow,
     );
     final checkNext = _checkNext(state, controller, env);
+    // Round 29 (field drill: 「不知道該如何結束」): the done page — the
+    // summary on top, 〔完成〕／〔配置下一台〕 fixed at the bottom.
+    final done = state.step == 7;
     return PopScope(
       // Round 28 (field round 28: a system 返回 at step 7 left the APP at
       // once, mid-configuration): only the start page and the gateway list
       // (nothing running) leave the APP. Otherwise 返回 asks 「結束目前
       // 配置？」 first, like 「結束並重新選擇閘道器」 ([_backPressed]); 結束
       // then also puts back a temporary 「不是這台？」 binding (round 15b).
+      // Round 29: on the done page 返回 is 〔完成〕 (nothing to ask).
       canPop: state.step <= 1 && !state.busy,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) _backPressed(controller);
@@ -953,6 +968,8 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                   ),
                 ),
               )
+            : done
+            ? _doneBar(state, controller)
             : null,
         body: SafeArea(
           child: Center(
@@ -968,17 +985,20 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                       color: colors.secondaryContainer,
                       child: const Text('模擬模式 · 不會設定真實設備或驗證正式資料'),
                     ),
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Text(
-                      '目前模式：${topology.label}',
-                      key: const Key('topology-banner'),
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: colors.onSurfaceVariant,
+                  // Round 29: the done page starts with its summary.
+                  if (done) _doneSummary(state, controller, demo, env),
+                  if (!done)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(
+                        '目前模式：${topology.label}',
+                        key: const Key('topology-banner'),
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
                       ),
                     ),
-                  ),
-                  if (!selectingPtus) ...[
+                  if (!selectingPtus && !done) ...[
                     const SizedBox(height: 20),
                     Text(
                       '讓每一台裝置，都確實上線。',
@@ -991,32 +1011,23 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                     ),
                     const SizedBox(height: 24),
                   ],
-                  LinearProgressIndicator(
-                    value: shown / (stepLabels.length - 1),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    '${shown + 1} / ${stepLabels.length}   ${stepLabels[shown]}',
-                    key: const Key('step-title'),
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 8),
-                  // Right under the title: on a phone the card below starts
-                  // after the long 連線狀態 panel, off screen.
-                  if (state.step >= 7)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Text(
-                        commissionSummaryText(state),
-                        key: const Key('commission-summary'),
-                        style: Theme.of(context).textTheme.titleSmall,
-                      ),
+                  if (!done) ...[
+                    LinearProgressIndicator(
+                      value: shown / (stepLabels.length - 1),
                     ),
-                  if (!selectingPtus) StepList(current: shown),
+                    const SizedBox(height: 12),
+                    Text(
+                      '${shown + 1} / ${stepLabels.length}   ${stepLabels[shown]}',
+                      key: const Key('step-title'),
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                  if (!selectingPtus && !done) StepList(current: shown),
                   SizedBox(height: selectingPtus ? 4 : 16),
                   // Round 26: 「站 80 · 閘道器 2 · MAC 後 4 碼 70F2 · 1.7.36」
                   // (field: two gateways read 「GIOS-S80-G…」).
-                  if (state.peer != null)
+                  if (state.peer != null && !done)
                     Text(
                       gatewayHeaderText(
                         name: state.peer!.name,
@@ -1025,13 +1036,16 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                       ),
                       key: const Key('gateway-header'),
                     ),
-                  if (state.peer != null)
+                  if (state.peer != null && !done)
                     GatewaySignal(
                       link: ref.watch(linkProvider),
                       peer: state.peer!,
                       busy: state.busy,
                     ),
-                  if (state.peer != null && state.step >= 2 && !directPicking)
+                  if (state.peer != null &&
+                      state.step >= 2 &&
+                      !directPicking &&
+                      !done)
                     state.config['identify_supported'] == true
                         ? OutlinedButton.icon(
                             onPressed: state.busy
@@ -1060,6 +1074,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                       ),
                     ),
                   if (state.message.isNotEmpty &&
+                      !done &&
                       (!selectingPtus ||
                           state.busy ||
                           state.error != null ||
@@ -1237,11 +1252,6 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                       demo: demo,
                       onSync: () => _syncGateway(explicit: true),
                       onRefresh: controller.refreshUploadTarget,
-                      // Shipping: phone and gateway both go to 正式站.
-                      onShipSwitch: () => _applyEnvironment(
-                        BackendEnv.production,
-                        fromSheet: true,
-                      ),
                     ),
                   if (state.step >= 1 && state.step <= 2 && !state.loggedIn)
                     Padding(
@@ -1251,20 +1261,27 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                         style: TextStyle(color: colors.onSurfaceVariant),
                       ),
                     ),
-                  Card(
-                    child: Padding(
-                      padding: EdgeInsets.all(selectingPtus ? 8 : 20),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: content(state, controller, demo),
+                  // Round 29: the done page's other actions are secondary,
+                  // below the summary and the 連線狀態 line (no card).
+                  if (done)
+                    ...content(state, controller, demo)
+                  else
+                    Card(
+                      child: Padding(
+                        padding: EdgeInsets.all(selectingPtus ? 8 : 20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: content(state, controller, demo),
+                        ),
                       ),
                     ),
-                  ),
                   // After step 3 it asks first (field round 17: a late tap
                   // ended the flow). Round 19: at direct step 7 it is the
                   // bottom bar's last row instead ([DirectPickActions]),
                   // where the card above can no longer move it.
+                  // Round 29: not on the done page (〔完成〕／〔配置下一台〕).
                   if (state.step > 0 &&
+                      !done &&
                       !directPicking &&
                       !(selectingPtus && state.busy))
                     TextButton(
@@ -1387,11 +1404,22 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   /// ([PopScope] refused to leave): 「結束目前配置？」 — 結束 ends the run
   /// ([CommissioningController.cancel], as 「結束並重新選擇閘道器」 /
   /// 「取消操作」), 繼續配置 stays. Never leaves the APP.
+  ///
+  /// Round 29: on the done page 返回 is 〔完成〕 — the run is finished,
+  /// nothing to ask (while an action there runs: a note to wait).
   bool _backAsking = false;
   Future<void> _backPressed(CommissioningController c) async {
     final s = ref.read(commissionProvider);
     // The start page (checking Bluetooth / the login) has nothing to end.
     if (_backAsking || s.step == 0 || (s.step <= 1 && !s.busy)) return;
+    if (s.step == 7) {
+      if (s.busy) {
+        _snack(doneBusyText);
+      } else {
+        await _finishDone(c);
+      }
+      return;
+    }
     _backAsking = true;
     try {
       await _endFlow(c, always: true);
@@ -1486,6 +1514,24 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     CommissioningController c,
     bool enabled,
   ) => [
+    // Round 29: the finished run before (〔完成〕／〔配置下一台〕, or saved
+    // before a restart) — a note, never a card to resume.
+    if (s.lastDone.isNotEmpty)
+      Padding(
+        key: const Key('last-done'),
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Row(
+          children: [
+            Icon(
+              Icons.check_circle,
+              size: 20,
+              color: toneColor(context, StatusTone.ok),
+            ),
+            const SizedBox(width: 8),
+            Expanded(child: Text(s.lastDone, key: const Key('last-done-text'))),
+          ],
+        ),
+      ),
     // Round 28: which gateway the saved progress belongs to (field round
     // 28: pile B's prompt counted pile A's PTU).
     if ((s.savedResume || s.savedProgress) && s.savedGateway.isNotEmpty)
@@ -1496,15 +1542,15 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           key: const Key('saved-gateway'),
         ),
       ),
-    if (s.lastCompleted || s.savedResume || s.savedProgress)
+    // Round 29: a finished run has no 「重新開始」 (nothing to resume).
+    if (s.savedResume || s.savedProgress)
       OutlinedButton.icon(
         key: const Key('restart-after-done'),
         icon: const Icon(Icons.restart_alt, size: 20),
         onPressed: enabled ? c.clearCompleted : null,
         label: const Text('重新開始'),
       ),
-    if (s.lastCompleted || s.savedResume || s.savedProgress)
-      const SizedBox(height: 16),
+    if (s.savedResume || s.savedProgress) const SizedBox(height: 16),
     if (s.savedResume) ...[
       FilledButton.icon(
         key: const Key('saved-resume'),
@@ -1676,8 +1722,16 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             }, enabled),
             button('設定新站點與 Wi-Fi', () {
               c.chooseStation(newStation: true);
-              _site.clear();
               _gateway.text = '1';
+              // Round 29: after 〔配置下一台〕 the station just done is
+              // proposed (its next free gateway number).
+              final kept = c.keptSite;
+              if (kept != null) {
+                _site.text = '$kept';
+                _scheduleGatewaySuggestion();
+              } else {
+                _site.clear();
+              }
               _wifi.clear();
             }, enabled),
             TextButton(
@@ -2128,80 +2182,24 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             ),
         ];
       default:
-        // Round 28: 〔先完成配置〕 — the gateway in service without its PTU.
+        // Round 29 (field drill: 「不知道該如何結束」): the summary is on top
+        // ([_doneSummary]) and 〔完成〕／〔配置下一台〕 at the bottom
+        // ([_doneBar]); what is left here is secondary.
         final deferred = s.ptuDeferred;
         return [
-          Icon(
-            deferred
-                ? Icons.task_alt
-                : s.online
-                ? Icons.check_circle_outline
-                : Icons.cloud_off,
-            size: 56,
-            color: Theme.of(context).colorScheme.primary,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            deferred
-                ? deferredDoneTitle
-                : demo
-                ? '模擬開通完成'
-                : '開通完成',
-            key: const Key('done-title'),
-            style: Theme.of(context).textTheme.headlineSmall,
-          ),
           if (deferred) ..._deferredDone(s, c, enabled),
-          // Until the first health check answers, say so instead of a
-          // premature 資料有異常.
-          if (showHealthPending(s))
-            const Padding(
-              key: Key('health-pending'),
-              padding: EdgeInsets.only(top: 8),
-              child: Text(healthPendingText),
-            ),
-          // Round 15: the binding (「確認後綁定 PTU」, or kept from 「不是這
-          // 台？」) is named so a PTU swap later is not a mystery.
-          if (topology.isDirect && directBoundNote(s) != null)
-            Padding(
-              key: const Key('direct-bound-note'),
-              padding: const EdgeInsets.only(top: 8),
-              child: Text(directBoundNote(s)!),
-            ),
-          // Round 26: the star allow list written after verification; a
-          // failure keeps the completion, with 「重試寫入綁定名單」.
+          // Round 26: a failed star allow list keeps the completion, with
+          // 「重試寫入綁定名單」 (the status line is in the summary).
           if (topology.isStar &&
               s.starListStage == StarListStage.verified &&
-              s.starList != StarListStatus.none)
+              s.starList == StarListStatus.failed)
             Padding(
-              key: const Key('star-list-status'),
               padding: const EdgeInsets.only(top: 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    switch (s.starList) {
-                      StarListStatus.writing => '$starListWritingText…',
-                      StarListStatus.written => starListWrittenText(
-                        s.starListIds,
-                      ),
-                      _ => starListFailedText,
-                    },
-                    key: const Key('star-list-text'),
-                    style: s.starList == StarListStatus.failed
-                        ? TextStyle(color: Theme.of(context).colorScheme.error)
-                        : null,
-                  ),
-                  if (s.starList == StarListStatus.failed)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: FilledButton.icon(
-                        key: const Key('star-list-retry'),
-                        icon: const Icon(Icons.refresh, size: 20),
-                        onPressed: enabled ? c.writeStarList : null,
-                        label: const Text(starListRetryLabel),
-                      ),
-                    ),
-                ],
+              child: OutlinedButton.icon(
+                key: const Key('star-list-retry'),
+                icon: const Icon(Icons.refresh, size: 20),
+                onPressed: enabled ? c.writeStarList : null,
+                label: const Text(starListRetryLabel),
               ),
             ),
           // Round 18: measure the site and write the threshold back.
@@ -2224,38 +2222,30 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           if (!s.loggedIn && !deferred) ...[
             const SizedBox(height: 16),
             field(_login, '${env.label}的登入密碼', secret: true),
-            button('登入並確認資料', () async {
-              if (!_passwordReady(demo)) return;
-              await c.login(ref.read(backendEnvProvider).base, _login.text);
-              if (mounted && ref.read(commissionProvider).loggedIn) {
-                _afterLogin();
-                await c.refreshHealth();
-              }
-            }, enabled),
+            OutlinedButton(
+              key: const Key('done-login'),
+              onPressed: enabled
+                  ? () async {
+                      if (!_passwordReady(demo)) return;
+                      await c.login(
+                        ref.read(backendEnvProvider).base,
+                        _login.text,
+                      );
+                      if (mounted && ref.read(commissionProvider).loggedIn) {
+                        _afterLogin();
+                        await c.refreshHealth();
+                      }
+                    }
+                  : null,
+              child: const Text('登入並確認資料'),
+            ),
           ],
-          const SizedBox(height: 16),
-          SelectableText(s.report),
-          button('分享安裝報告', () async {
-            try {
-              await const MethodChannel(
-                'voltraware/report',
-              ).invokeMethod<void>('share', {'text': s.report});
-            } on PlatformException {
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('無法開啟分享，可改用複製報告。')),
-                );
-              }
-            }
-          }, enabled),
-          button('複製安裝報告', () async {
-            await Clipboard.setData(ClipboardData(text: s.report));
-            if (mounted) {
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(const SnackBar(content: Text('已複製，可貼上分享')));
-            }
-          }, enabled),
+          // Round 29: 「出貨前切回正式站」 — a developer note of a local test
+          // build only, below the summary; never the page's main action.
+          if (ref.read(envSwitchPolicyProvider).localBuild &&
+              parseMqttTarget(s.config)?.isLocal == true)
+            _devShipNote(enabled),
+          _reportTile(s, enabled),
           if (s.loggedIn && !deferred)
             TextButton(
               onPressed: enabled ? () => c.refreshHealth() : null,
@@ -2284,43 +2274,330 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     }
   }
 
-  /// Round 28: the done page after 〔先完成配置〕 — the PTU is not connected
-  /// yet and connects once powered; the binding is made later (on site:
-  /// 〔PTU 已上電：辨識並綁定〕 right here).
-  List<Widget> _deferredDone(
+  /// Round 29 (field drill: the done page opened on 「本地測試主機 ✓ 資料上傳
+  /// 中」, a red 「出貨前請切回正式站」 and its biggest button; 「開通完成」
+  /// came after): the success summary on top — done, the station and
+  /// gateway, the mode, the PTU and its binding, the data upload.
+  Widget _doneSummary(
     CommissionState s,
     CommissioningController c,
-    bool enabled,
+    bool demo,
+    BackendEnvState env,
   ) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final topology = ref.read(topologyProvider).topology;
+    final deferred = s.ptuDeferred;
+    final probe = demo ? null : ref.watch(backendProbeProvider(env.base)).value;
+    final upload = connectionStatus(
+      env: env,
+      state: s,
+      probe: probe,
+      demo: demo,
+    ).gateway;
+    final bound = topology.isDirect && !deferred ? directBoundNote(s) : null;
+    Widget line(String text, {Key? key, Color? color, bool strong = false}) =>
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Text(
+            text,
+            key: key,
+            style: TextStyle(
+              color: color,
+              fontWeight: strong ? FontWeight.w600 : null,
+            ),
+          ),
+        );
+    return Card(
+      key: const Key('done-summary'),
+      margin: const EdgeInsets.only(top: 8, bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  deferred
+                      ? Icons.task_alt
+                      : s.online
+                      ? Icons.check_circle
+                      : Icons.cloud_off,
+                  size: 40,
+                  color: colors.primary,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    deferred
+                        ? deferredDoneTitle
+                        : demo
+                        ? '模擬開通完成'
+                        : '開通完成',
+                    key: const Key('done-title'),
+                    style: theme.textTheme.headlineSmall,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            line(
+              gatewayIdText(c.site, c.gateway),
+              key: const Key('done-gateway'),
+              strong: true,
+            ),
+            line('模式：${topology.label}', key: const Key('done-mode')),
+            if (bound != null)
+              line(bound, key: const Key('direct-bound-note'))
+            else
+              line(
+                commissionSummaryText(s),
+                key: const Key('commission-summary'),
+              ),
+            // Round 26: the star allow list written after verification.
+            if (topology.isStar &&
+                s.starListStage == StarListStage.verified &&
+                s.starList != StarListStatus.none)
+              line(
+                switch (s.starList) {
+                  StarListStatus.writing => '$starListWritingText…',
+                  StarListStatus.written => starListWrittenText(s.starListIds),
+                  _ => starListFailedText,
+                },
+                key: const Key('star-list-text'),
+                color: s.starList == StarListStatus.failed
+                    ? colors.error
+                    : null,
+              ),
+            line(
+              upload.status.isEmpty
+                  ? '資料上傳：${upload.where}'
+                  : '資料上傳：${upload.status}（${upload.where}）',
+              key: const Key('done-upload'),
+              color: toneColor(context, upload.tone),
+            ),
+            if (!deferred && s.message.isNotEmpty)
+              line(s.message, key: const Key('done-message')),
+            // Until the first health check answers, say so instead of a
+            // premature 資料有異常.
+            if (showHealthPending(s))
+              line(healthPendingText, key: const Key('health-pending')),
+            // Round 28/29: after 〔先完成配置〕 — the PTU connects once
+            // powered, the binding is confirmed on site later.
+            if (deferred) _deferredNote(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Round 28: the note of the done page after 〔先完成配置〕 (round 29: in
+  /// the summary).
+  Widget _deferredNote() {
     final theme = Theme.of(context);
     final dark = theme.brightness == Brightness.dark;
     final warnFg = dark ? Colors.amber.shade200 : Colors.brown.shade900;
     final warnBg = dark
         ? Colors.amber.shade900.withValues(alpha: 0.35)
         : Colors.amber.shade100;
-    return [
-      Container(
-        key: const Key('deferred-note'),
-        margin: const EdgeInsets.only(top: 12),
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: warnBg,
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(Icons.warning_amber_rounded, color: warnFg, size: 22),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                deferredDoneText,
-                style: TextStyle(color: warnFg, fontWeight: FontWeight.w600),
+    return Container(
+      key: const Key('deferred-note'),
+      margin: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: warnBg,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outline, color: warnFg, size: 22),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              deferredDoneText,
+              style: TextStyle(color: warnFg, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Round 29: 〔完成〕 (main: the start page, the progress cleared) and
+  /// 〔配置下一台〕 (the gateway list, the station kept), fixed at the bottom
+  /// of the done page whatever the scroll or the font size.
+  Widget _doneBar(CommissionState s, CommissioningController c) {
+    final colors = Theme.of(context).colorScheme;
+    final enabled = !s.busy;
+    return SafeArea(
+      top: false,
+      child: Material(
+        elevation: 8,
+        color: colors.surface,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+          child: Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  key: const Key('done-next'),
+                  onPressed: enabled ? () => _finishDone(c, next: true) : null,
+                  child: const Text(doneNextLabel),
+                ),
               ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FilledButton.icon(
+                  key: const Key('done-finish'),
+                  onPressed: enabled ? () => _finishDone(c) : null,
+                  icon: const Icon(Icons.check, size: 20),
+                  label: const Text(doneFinishLabel),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Round 29: 〔完成〕／〔配置下一台〕, and 返回 on the done page.
+  Future<void> _finishDone(
+    CommissioningController c, {
+    bool next = false,
+  }) async {
+    await c.finishDone(next: next);
+    if (mounted && _pageScroll.hasClients) _pageScroll.jumpTo(0);
+  }
+
+  /// Round 29: the developer note of a local test build whose gateway still
+  /// uploads to the local test host — small and muted, below the summary,
+  /// with a text button (field drill: a red box and the page's biggest
+  /// button read as the next step).
+  Widget _devShipNote(bool enabled) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    return Container(
+      key: const Key('dev-ship-note'),
+      margin: const EdgeInsets.only(top: 16),
+      padding: const EdgeInsets.fromLTRB(12, 10, 4, 0),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                Icons.developer_mode,
+                size: 18,
+                color: colors.onSurfaceVariant,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  devShipNoteText,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              key: const Key('dev-ship-switch'),
+              style: TextButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                textStyle: theme.textTheme.bodySmall,
+              ),
+              onPressed: enabled
+                  ? () => _applyEnvironment(
+                      BackendEnv.production,
+                      fromSheet: true,
+                    )
+                  : null,
+              child: const Text(devShipSwitchLabel),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Round 29: the install report, collapsed, with 分享／複製 inside.
+  Widget _reportTile(CommissionState s, bool enabled) => Theme(
+    data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+    child: ExpansionTile(
+      key: const Key('done-report'),
+      tilePadding: EdgeInsets.zero,
+      childrenPadding: const EdgeInsets.only(bottom: 8),
+      expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
+      title: Text(s.report.startsWith('模擬') ? '模擬安裝報告' : '安裝報告'),
+      subtitle: const Text('可分享或複製給後台'),
+      children: [
+        SelectableText(s.report),
+        Wrap(
+          spacing: 8,
+          children: [
+            TextButton.icon(
+              key: const Key('report-share'),
+              icon: const Icon(Icons.share, size: 20),
+              onPressed: enabled
+                  ? () async {
+                      try {
+                        await const MethodChannel(
+                          'voltraware/report',
+                        ).invokeMethod<void>('share', {'text': s.report});
+                      } on PlatformException {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('無法開啟分享，可改用複製報告。')),
+                          );
+                        }
+                      }
+                    }
+                  : null,
+              label: const Text('分享安裝報告'),
+            ),
+            TextButton.icon(
+              key: const Key('report-copy'),
+              icon: const Icon(Icons.copy, size: 20),
+              onPressed: enabled
+                  ? () async {
+                      await Clipboard.setData(ClipboardData(text: s.report));
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('已複製，可貼上分享')),
+                        );
+                      }
+                    }
+                  : null,
+              label: const Text('複製安裝報告'),
             ),
           ],
         ),
-      ),
+      ],
+    ),
+  );
+
+  /// Round 28: the done page after 〔先完成配置〕 — the PTU is not connected
+  /// yet and connects once powered; the binding is made later (on site:
+  /// 〔PTU 已上電：辨識並綁定〕 right here). Round 29: its note is in the
+  /// summary ([_deferredNote]); these are the details and the action.
+  List<Widget> _deferredDone(
+    CommissionState s,
+    CommissioningController c,
+    bool enabled,
+  ) {
+    final theme = Theme.of(context);
+    return [
       Padding(
         padding: const EdgeInsets.only(top: 8),
         child: Text(
@@ -2338,7 +2615,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       ),
       Padding(
         padding: const EdgeInsets.only(top: 8),
-        child: FilledButton.tonalIcon(
+        child: OutlinedButton.icon(
           key: const Key('deferred-bind-now'),
           icon: const Icon(Icons.lightbulb_outline, size: 20),
           onPressed: enabled ? c.bindDeferredNow : null,

@@ -241,7 +241,8 @@ void main() {
   });
 
   group('5. finished run is not offered as a resume', () {
-    test('completed progress shows 上次配置已完成 and 重新開始 clears it', () async {
+    test('completed progress is a 上一台已完成 note (round 29), never a '
+        'resume', () async {
       final fake = DroppingLink();
       final (container, c) = await ready(fake);
       addTearDown(container.dispose);
@@ -261,14 +262,12 @@ void main() {
       addTearDown(again.dispose);
       final c2 = again.read(commissionProvider.notifier);
       await c2.restore();
-      var s = again.read(commissionProvider);
+      final s = again.read(commissionProvider);
       expect(s.savedResume, isFalse);
-      expect(s.lastCompleted, isTrue);
-      expect(s.message, completedText(1, 1, 3));
+      expect(s.savedProgress, isFalse);
+      expect(s.lastDone, lastDoneText(1, 1));
       expect(s.message, isNot(contains('已保留先前進度')));
       await c2.clearCompleted();
-      s = again.read(commissionProvider);
-      expect(s.lastCompleted, isFalse);
       expect(prefs.getString('demo_progress'), isNull);
     });
   });

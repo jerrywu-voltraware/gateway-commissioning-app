@@ -16,6 +16,8 @@ import 'package:gateway_commissioning/gateway_app.dart';
 const _debug = EnvSwitchPolicy(
   autoSyncDefault: true,
   confirmGatewaySwitch: false,
+  // Round 29: the done page's 「切回正式站」 note is a local build's.
+  localBuild: true,
 );
 const _release = EnvSwitchPolicy(
   autoSyncDefault: false,
@@ -77,7 +79,10 @@ class SimGateway extends DemoSystem {
   }
 
   @override
-  Future<void> connect(GatewayPeer peer, {void Function(String stage)? onStage}) async {
+  Future<void> connect(
+    GatewayPeer peer, {
+    void Function(String stage)? onStage,
+  }) async {
     await connectGate?.future;
     await super.connect(peer, onStage: onStage);
   }
@@ -358,7 +363,10 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.byKey(const Key('env-sheet-busy')), findsOneWidget);
-    expect(find.text('正在進行「正在連線 GIOS-S1-GW01，請保持靠近」，完成或按「取消操作」後才能切換。'), findsOneWidget);
+    expect(
+      find.text('正在進行「正在連線 GIOS-S1-GW01，請保持靠近」，完成或按「取消操作」後才能切換。'),
+      findsOneWidget,
+    );
     expect(find.text('取消操作'), findsOneWidget, reason: 'the page has it');
     await tester.tap(find.byKey(const Key('env-option-local')));
     await tester.pump(const Duration(milliseconds: 500));
@@ -425,14 +433,15 @@ void main() {
     expect(state.error, isNull);
     expect(state.step, 7);
     expect(find.text('開通驗證通過，已恢復自動監控'), findsOneWidget);
-    expect(find.text(localTargetShipWarning), findsOneWidget);
+    expect(find.byKey(const Key('dev-ship-note')), findsOneWidget);
+    expect(find.text(devShipNoteText), findsOneWidget);
 
-    await _tap(tester, find.text('手機和 Gateway 都切回正式站'));
+    await _tap(tester, find.text(devShipSwitchLabel));
     expect(fake.targetRequests.last, {'target': 'production'});
     state = container.read(commissionProvider);
     expect(state.error, isNull);
     expect(state.loggedIn, isFalse);
-    expect(find.text(localTargetShipWarning), findsNothing);
+    expect(find.byKey(const Key('dev-ship-note')), findsNothing);
     // Before the fix the old 「開通驗證通過」 stayed and there was no way to
     // log in on this page.
     expect(find.text('開通驗證通過，已恢復自動監控'), findsNothing);
@@ -477,7 +486,7 @@ void main() {
     await _passCheck(tester);
     await _tap(tester, find.text('沿用目前站點'));
     await _tap(tester, find.text('配置 3 台並開始監控'));
-    await _tap(tester, find.text('手機和 Gateway 都切回正式站'));
+    await _tap(tester, find.text(devShipSwitchLabel));
     await tester.enterText(
       find.widgetWithText(TextField, '正式站的登入密碼'),
       'vps-secret',
