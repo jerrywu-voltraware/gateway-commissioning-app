@@ -1,7 +1,7 @@
 # AGENTS.md — APP_v2（前線配置 APP，Flutter／Android）
 
 先讀 `..\HANDBOOK_CODEX_2026-09-27.md`（§0 紅線、§3.2 本 repo、§5.4 對帳規則、§5.8 一對一流程、§11.6 建置安裝）與 `..\AGENTS.md`。
-現況（09-27 傍晚）：分支 `wip/network-check` **`f548e59`**（r28 一對一修正：沒有本樁 PTU 時〔先完成配置〕、上傳誤報改看 `mqtt_connected`、無鄰近資料時校正不放寬門檻），745 tests、`flutter analyze` 0；r29 實機驗證用此版，一對一演練已達完成條件。本 repo 沒有 remote。舊版 `..\APP\` 不要動。
+現況（09-27 傍晚）：分支 `wip/network-check` **`f548e59`**（r28 一對一修正：沒有本樁 PTU 時〔先完成配置〕、上傳誤報改看 `mqtt_connected`、無鄰近資料時校正不放寬門檻），745 tests、`flutter analyze` 0；r29 實機驗證用此版，一對一演練已達完成條件。之後 r29 完成頁修正（成功摘要置頂、底部〔完成〕／〔配置下一台〕、返回鍵＝完成、已完成不再續作、「切回正式站」只在本地測試版以開發提示出現；`test/round29_done_page_test.dart`），758 tests。本 repo 沒有 remote。舊版 `..\APP\` 不要動。
 
 ## 本 repo 紅線
 - 交付或上機的 APK 一律用 `tools\build_apk.ps1`（簽章＋apksigner verify；工作樹 dirty 會拒建）；不要交 `flutter build apk` 的未簽章輸出。
