@@ -178,10 +178,11 @@ const backendSwitchedVerifyText = '已切換連線環境，請按「開始資料
 const resetFailedText = '重置失敗（連線逾時），請靠近後重試';
 
 /// 完成頁摘要：「掃到 X 台，本機配置 Y 台」，其他閘道器／重置失敗台數 >0 才顯示。
-String commissionSummaryText(CommissionState s) =>
-    '掃到 ${s.scannedTotal} 台，本機配置 ${s.ptus.length} 台'
-    '${s.pendingNext > 0 ? '，${s.pendingNext} 台屬於其他閘道器' : ''}'
-    '${s.resetFailed.isNotEmpty ? '，${s.resetFailed.length} 台重置失敗' : ''}';
+String commissionSummaryText(CommissionState s) => s.ptuDeferred
+    ? deferredSummaryText
+    : '掃到 ${s.scannedTotal} 台，本機配置 ${s.ptus.length} 台'
+          '${s.pendingNext > 0 ? '，${s.pendingNext} 台屬於其他閘道器' : ''}'
+          '${s.resetFailed.isNotEmpty ? '，${s.resetFailed.length} 台重置失敗' : ''}';
 
 /// Saved resume: the user cancelled the backend login.
 const resumeWithoutLoginText = '未登入時無法自動收編殘留編號，將以手動模式繼續';
@@ -778,6 +779,89 @@ String directPickMessage(DirectStatus? direct) {
   };
 }
 
+// ---- Round 28: this pile's PTU not found (「先完成配置」) ----
+
+/// Round 28 (P0, field round 28: pile B's PTU was not powered — step 7
+/// stayed at 「找不到夠近的 PTU」, the gateway never joined the fleet and
+/// kept its upload paused): step 7 direct flow without a pick, settled
+/// (the gateway reports no candidate / the bound PTU missing, or nothing
+/// at all after the polls) — the no-PTU help and 〔先完成配置〕 show.
+bool directNoPtu(CommissionState s, {required bool directFlow}) {
+  if (!directFlow || s.step != 4 || s.busy || s.relinking) return false;
+  final direct = s.direct;
+  if (direct == null || direct.pickedMac != null) return false;
+  return direct.state == DirectState.noCandidate ||
+      direct.state == DirectState.boundMissing ||
+      direct.state == DirectState.scanning;
+}
+
+/// Round 28: 〔先完成配置〕.
+const deferFinishLabel = '先完成配置';
+
+/// Round 28: the busy text of 〔先完成配置〕.
+const deferringText = '正在完成閘道器配置（本樁 PTU 尚未連線）';
+
+/// Round 28: the confirm dialog of 〔先完成配置〕.
+const deferConfirmTitle = '先完成配置，稍後 PTU 上電自動連線？';
+
+/// Round 28: its body ([threshold]: the gateway's `auto_connect_min_rssi`).
+String deferConfirmText(int threshold) =>
+    '閘道器會照常完成配置：加入運作、恢復上傳，維持一對一模式與目前門檻'
+    '（$threshold dBm），但不綁定 PTU。\n'
+    '本樁 PTU 上電後，閘道器會自動連上它；綁定需之後到現場按〔辨識〕確認。';
+
+/// Round 28: the done page after 〔先完成配置〕.
+const deferredDoneTitle = '閘道器配置完成';
+const deferredDoneText = '本樁 PTU 尚未連線，上電後會自動連上；綁定需之後到現場按〔辨識〕確認。';
+
+/// Round 28: what the gateway was left with ([threshold] dBm).
+String deferredDetailText(int threshold) =>
+    '閘道器已加入運作並恢復上傳，維持一對一模式（門檻 $threshold dBm），尚未綁定 PTU。';
+
+/// Round 28: how the binding is made later.
+const deferredLaterText =
+    '之後補做綁定：PTU 上電後，用 APP 重新連上這台閘道器，會出現〔辨識並綁定〕。'
+    '人還在現場且 PTU 已上電，可直接按下方按鈕。';
+
+/// Round 28: the done page button while still on site.
+const deferredBindNowLabel = 'PTU 已上電：辨識並綁定';
+
+/// Round 28: 「連線狀態」 after 〔先完成配置〕 (uploading, no PTU data yet).
+const deferredUploadStatus = '✓ 已恢復上傳（等本樁 PTU 連上）';
+
+/// Round 28: the install report's PTU line after 〔先完成配置〕.
+const deferredReportLine = 'PTU：尚未連線（上電後閘道器自動連上；綁定與編號待現場按〔辨識〕確認）';
+
+/// Round 28: the done page summary after 〔先完成配置〕.
+const deferredSummaryText = '本樁 PTU 尚未連線（上電後自動連上）';
+
+/// Round 28 (field round 28: pile B left with its upload paused — nothing
+/// would have told the installer): 「結束目前配置？」 on a gateway not in
+/// service yet ([uploadHeldUntilJoin]) past the identity step.
+const endFlowHeldUploadText = '注意：這台閘道器還沒加入運作（資料上傳暫停），結束後不會上傳任何資料。';
+
+/// Round 28: [endFlowHeldUploadText] at direct step 7 without this pile's
+/// PTU ([directNoPtu]).
+const endFlowDeferHint = '本樁 PTU 不在場時，請改按「$deferFinishLabel」。';
+
+// ---- Round 28: the binding made later (bind-later card) ----
+
+/// Round 28: the card on a gateway in service, one-to-one, unbound, that
+/// is connected to a PTU ([CommissionState.bindLaterMac]).
+String bindLaterTitle(String mac) => '這台閘道器已連上 PTU ${formatMac(mac)}，但尚未綁定';
+
+/// Round 28: the same card when the PTU is not connected yet but this
+/// phone finished the gateway without it ([CommissionState.bindLaterDeferred]).
+const bindLaterWaitingTitle = '上次配置時本樁 PTU 尚未連線，閘道器目前仍未連上 PTU';
+
+const bindLaterHint =
+    '請按〔辨識並綁定〕：到選擇 PTU 時按「辨識此樁」確認是眼前這台，'
+    '再按「是這台，開始監控」即會綁定並把它編為 #1。';
+
+const bindLaterWaitingHint = '請確認本樁 PTU 已上電、與閘道器放在同一個機殼內；連上後按〔辨識並綁定〕。';
+
+const bindLaterLabel = '辨識並綁定';
+
 /// Step 7, not busy, phone↔gateway link lost (banner shown).
 bool step7LinkLost(CommissionState s) => !s.busy && _step7Lost(s);
 
@@ -820,8 +904,14 @@ const verifiedText = '開通驗證通過，已恢復自動監控';
 
 /// Restart prompt when the saved run already finished (round 6: a finished
 /// run still showed 「已保留先前進度」).
-String completedText(Object? site, Object? gateway, int count) =>
-    '上次配置已完成（site $site / gateway $gateway，$count 台）';
+String completedText(
+  Object? site,
+  Object? gateway,
+  int count, {
+  bool ptuDeferred = false,
+}) => ptuDeferred
+    ? '上次配置已完成（site $site / gateway $gateway，本樁 PTU 尚未連線、尚未綁定）'
+    : '上次配置已完成（site $site / gateway $gateway，$count 台）';
 
 /// Step 8/max_connections policy: star mode always opens the full range (5)
 /// so a later 5th PTU can still connect; direct mode is one PTU.
@@ -1035,7 +1125,33 @@ class CommissionState {
     this.starListStage = StarListStage.verified,
     this.foreignPtus = 0,
     this.unlistedPtus = 0,
+    this.ptuDeferred = false,
+    this.bindLaterMac,
+    this.bindLaterDeferred = false,
+    this.savedGateway = '',
   });
+
+  /// Round 28 (P0 「沒有 PTU 的樁完成不了」): the run ended with
+  /// 〔先完成配置〕 — the gateway is in service (join_fleet, upload on,
+  /// one-to-one, threshold kept) without this pile's PTU and without a
+  /// binding; the done page says the PTU connects once powered and the
+  /// binding is made later.
+  final bool ptuDeferred;
+
+  /// Round 28: connecting a gateway in service, one-to-one and unbound
+  /// that is connected to this PTU — the bind-later card offers
+  /// 〔辨識並綁定〕 (identify it, then 「是這台」 binds it).
+  final String? bindLaterMac;
+
+  /// Round 28: this phone finished the connected gateway with
+  /// 〔先完成配置〕 and nothing bound it since (the card also shows while
+  /// its PTU is not connected yet).
+  final bool bindLaterDeferred;
+
+  /// Round 28 (field: the resume prompt of pile B counted pile A's PTU):
+  /// the gateway the saved progress belongs to (「站 80 · 閘道器 2 · MAC 後
+  /// 4 碼 70F0」), shown under the resume prompt; '' when unknown.
+  final String savedGateway;
 
   /// Round 26 (P0 「星狀連錯樁」, firmware 1.7.36 `star_macs`): the allow
   /// list this APP writes — before step 8's first assign (round 27), right
@@ -1391,7 +1507,17 @@ class CommissionState {
     StarListStage? starListStage,
     int? foreignPtus,
     int? unlistedPtus,
+    bool? ptuDeferred,
+    Object? bindLaterMac = _keep,
+    bool? bindLaterDeferred,
+    String? savedGateway,
   }) => CommissionState(
+    ptuDeferred: ptuDeferred ?? this.ptuDeferred,
+    bindLaterMac: identical(bindLaterMac, _keep)
+        ? this.bindLaterMac
+        : bindLaterMac as String?,
+    bindLaterDeferred: bindLaterDeferred ?? this.bindLaterDeferred,
+    savedGateway: savedGateway ?? this.savedGateway,
     ptuListBusy: ptuListBusy ?? this.ptuListBusy,
     starList: starList ?? this.starList,
     starListIds: starListIds ?? this.starListIds,
@@ -1513,6 +1639,16 @@ class CommissioningController extends Notifier<CommissionState> {
 
   /// MACs whose ack had verified:false, awaiting get_ble_devices read-back.
   final Set<String> _pendingReadback = {};
+
+  /// Round 28 (field round 28: pile B's resume prompt said 「已完成 1 台
+  /// （#1）」 — pile A's PTU): the gateway (peer id) [_doneAssign] /
+  /// [_inflightAssign] / assignedOk belong to. Connecting another gateway
+  /// starts its own record.
+  String? _progressPeer;
+
+  /// Round 28: 〔辨識並綁定〕 (bind-later card) — the next 「是這台」 binds
+  /// the PTU even with 「確認後綁定 PTU」 turned off.
+  bool _bindLaterRun = false;
 
   /// Saved progress read by [restore] (for 「重新連線並繼續」).
   Map? _saved;
@@ -2257,7 +2393,8 @@ class CommissioningController extends Notifier<CommissionState> {
 
   Future<void> _save() async {
     final shown = _shown(state);
-    final completed = state.step == 7 && state.verified;
+    // Round 28: 〔先完成配置〕 is a finished run too (nothing to resume).
+    final completed = state.step == 7 && (state.verified || state.ptuDeferred);
     // Round 15: a finished run keeps 「上次配置已完成」 until a later run
     // reaches the PTU steps; its resume data is dropped (nothing to resume).
     if (completed) {
@@ -2278,10 +2415,12 @@ class CommissioningController extends Notifier<CommissionState> {
           'count': state.ptus.length,
           'site': site,
           'gateway': gateway,
+          if (state.ptuDeferred) 'ptu_deferred': true,
         }),
       );
       return;
     }
+    final peer = state.peer;
     await prefs.setString(
       _link.demo ? 'demo_progress' : 'progress',
       jsonEncode({
@@ -2291,9 +2430,18 @@ class CommissioningController extends Notifier<CommissionState> {
         'count': state.ptus.length,
         'site': site,
         'gateway': gateway,
-        'peer': state.peer?.id,
-        'peer_name': state.peer?.name,
-        if (_boot != null && _boot!.peer == state.peer?.id)
+        'peer': peer?.id,
+        'peer_name': peer?.name,
+        // Round 28: which gateway this is (Wi-Fi MAC, as the back office
+        // shows it) and that the numbers below are its own.
+        if (peer != null) 'gateway_label': _gatewayLabel(),
+        if (peer != null)
+          'gateway_mac': ?gatewayWifiMac(
+            uid: state.config['gateway_uid'],
+            bleId: peer.id,
+          ),
+        'done_peer': _progressPeer ?? peer?.id,
+        if (_boot != null && _boot!.peer == peer?.id)
           'boot_count': _boot!.count,
         'selected': state.selected.toList(),
         'done': _doneAssign,
@@ -2326,9 +2474,18 @@ class CommissioningController extends Notifier<CommissionState> {
             data['site'],
             data['gateway'],
             (data['count'] as num?)?.toInt() ?? 0,
+            ptuDeferred: data['ptu_deferred'] == true,
           ),
         );
         return;
+      }
+      // Round 28: numbers recorded for another gateway than the one this
+      // progress names are not this gateway's (a record written before
+      // the fix mixed them in: 「已完成 1 台（#1）」 for pile B).
+      final ownNumbers =
+          data['done_peer'] == null || data['done_peer'] == data['peer'];
+      if (!ownNumbers) {
+        data = {...data, 'done': const {}, 'inflight': const {}};
       }
       _saved = data;
       await _field.restore(data['field_session']);
@@ -2362,6 +2519,9 @@ class CommissioningController extends Notifier<CommissionState> {
         config: {'site_id': data['site'], 'gateway_id': data['gateway']},
         savedResume: data['peer'] is String && step >= 4 && step <= 5,
         savedProgress: true,
+        savedGateway: data['gateway_label'] is String
+            ? data['gateway_label'] as String
+            : '',
         message: resumeText(
           step,
           done.values.toList(),
@@ -2385,6 +2545,7 @@ class CommissioningController extends Notifier<CommissionState> {
         lastCompleted: false,
         savedResume: false,
         savedProgress: false,
+        savedGateway: '',
         message: '',
       );
     }
@@ -2410,6 +2571,8 @@ class CommissioningController extends Notifier<CommissionState> {
       0,
     );
     final step = data['step'] as int? ?? 0;
+    // Round 28: the saved numbers are this gateway's own.
+    _progressPeer = peer.id;
     final done = <String>{};
     for (final e in ((data['done'] as Map?) ?? const {}).entries) {
       if (e.value is int) {
@@ -2451,6 +2614,7 @@ class CommissioningController extends Notifier<CommissionState> {
       checkPassed: true,
       savedResume: false,
       savedProgress: false,
+      savedGateway: '',
       config: {...state.config, 'choose_station': false},
       results: {},
       assignStatus: {},
@@ -2686,7 +2850,33 @@ class CommissioningController extends Notifier<CommissionState> {
     _starTouched.clear();
     _starKeep = const [];
     _starTargetPeer = null;
+    _bindLaterRun = false;
+    // Round 28 (field round 28: after pile A was done, pile B's step 7 and
+    // its resume prompt counted pile A's PTU — 「已完成 1 台（#1）」, 「已完成
+    // 的 1 台會保留在閘道器」): another gateway starts its own record.
+    if (_progressPeer != null && _progressPeer != peer.id) {
+      _doneAssign.clear();
+      _inflightAssign.clear();
+      _pendingReadback.clear();
+      state = state.copy(
+        assignedOk: const {},
+        results: const {},
+        assignStatus: const {},
+        assignFailed: const {},
+        unassigned: const {},
+        missing: const [],
+        selected: const {},
+        ptus: const [],
+        resumePending: false,
+        monitoringOk: false,
+        error: state.error,
+      );
+    }
+    _progressPeer = peer.id;
     state = state.copy(
+      ptuDeferred: false,
+      bindLaterMac: null,
+      bindLaterDeferred: false,
       net: const {},
       // A notice from before is not repeated; [_connect] compares again.
       gatewayReboot: null,
@@ -2707,6 +2897,10 @@ class CommissioningController extends Notifier<CommissionState> {
         state.error == null &&
         identical(state.peer, peer)) {
       _startWifiGrace();
+      _watchUploadIfPending();
+      // Round 28: a PTU connected but never bound (e.g. 〔先完成配置〕).
+      await _checkBindLater();
+      return;
     }
     _watchUploadIfPending();
   }
@@ -4927,6 +5121,8 @@ class CommissioningController extends Notifier<CommissionState> {
     final bound = directBoundMacOf(state.config);
     if (bind ? bound != null && sameMac(bound, mac) : bound == null) {
       await _rememberBind(bound);
+      // Round 28: bound — no longer finished without its PTU.
+      if (bind) await _recordDeferred(false);
       if (!ref.mounted) return;
       state = state.copy(
         tempBoundMac: null,
@@ -5055,12 +5251,19 @@ class CommissioningController extends Notifier<CommissionState> {
             ? <String, String>{}
             : await _assignAll(generation, [row]);
         final bound = directBoundMacOf(state.config);
+        // Round 28: 〔辨識並綁定〕 binds whatever 「確認後綁定 PTU」 says.
         if (failed.isEmpty &&
-            ref.read(topologyProvider).directBindOnConfirm &&
+            (ref.read(topologyProvider).directBindOnConfirm || _bindLaterRun) &&
             (bound == null || !sameMac(bound, mac))) {
           await _command(generation, 'set_config', {'direct_bind_mac': mac});
           state = state.copy(config: {...state.config, 'direct_bind_mac': mac});
           await _rememberBind(mac);
+        }
+        // Round 28: this pile's PTU is confirmed — no longer 「先完成配置」.
+        if (failed.isEmpty) {
+          _bindLaterRun = false;
+          await _recordDeferred(false);
+          state = state.copy(bindLaterMac: null, bindLaterDeferred: false);
         }
         await _startMonitoring(generation, [row], failed);
       });
@@ -5160,6 +5363,192 @@ class CommissioningController extends Notifier<CommissionState> {
     if (ref.mounted && !_autoRelinking && _linkLostAt(4)) {
       await _autoRelink(4);
     }
+  }
+
+  /// Round 28 (P0, field round 28: pile B's PTU was not powered — step 7
+  /// stayed at 「找不到夠近的 PTU」, the gateway never joined the fleet and
+  /// kept its upload paused; had the installer left, pile B's PTU powered
+  /// later would have been connected and its data never uploaded):
+  /// 〔先完成配置〕 finishes the gateway without its PTU —
+  ///   * a temporary 「不是這台？」 binding is put back first (not this
+  ///     pile's PTU); no binding is written;
+  ///   * one-to-one kept (max_connections 1), the threshold kept;
+  ///   * join_fleet (in service, BLE on, upload resumed), read back with
+  ///     get_config — a pause left over is resumed and read again; the
+  ///     gateway not confirming it is an error, never a done page;
+  ///   * the back office's monitor lease ends (as after a verification);
+  ///   * this gateway is recorded as finished without its PTU (the next
+  ///     connect offers 〔辨識並綁定〕 until it is bound).
+  /// The gateway keeps scanning and connects the PTU once it is powered
+  /// (its own threshold rule); the done page says so.
+  Future<void> finishWithoutPtu() async {
+    if (!directNoPtu(state, directFlow: directFlow)) return;
+    await _run(relinkStep: 4, deferringText, 60, (generation) async {
+      if (state.tempBoundMac != null) {
+        final temp = state.tempBoundMac;
+        final restore = state.tempRestoreMac;
+        final failure = await _releaseTempBind();
+        _check(generation);
+        if (failure != null) {
+          throw GatewayFailure(
+            'direct_defer_unconfirmed',
+            detail: restore == null
+                ? '暫時綁定 $temp 未能解除：$failure'
+                : '暫時綁定 $temp 未能還原成 $restore：$failure',
+          );
+        }
+      }
+      final config = await _command(generation, 'get_config');
+      if (isTestMode(config)) throw const GatewayFailure('test_mode');
+      if (config['max_connections'] != 1) {
+        await _command(generation, 'set_config', {'max_connections': 1});
+      }
+      await _command(generation, 'join_fleet');
+      var after = await _command(generation, 'get_config');
+      if (after['upload_paused'] == true) {
+        await _command(generation, 'set_data_upload', {'enabled': true});
+        after = await _command(generation, 'get_config');
+      }
+      state = state.copy(config: {...state.config, ...after});
+      final confirmed =
+          after['fleet_joined'] == true &&
+          after['upload_paused'] != true &&
+          after['ble_enabled'] != false &&
+          after['max_connections'] == 1;
+      if (!confirmed) {
+        throw GatewayFailure(
+          'direct_defer_unconfirmed',
+          detail:
+              'fleet_joined=${after['fleet_joined']} '
+              'upload_paused=${after['upload_paused']} '
+              'ble_enabled=${after['ble_enabled']} '
+              'max_connections=${after['max_connections']}',
+        );
+      }
+      if (_lease) {
+        try {
+          await _api.request('PATCH', '$_path/bot-monitor', {'enabled': true});
+          _lease = false;
+        } catch (_) {}
+        _check(generation);
+      }
+      await _recordDeferred(true);
+      _check(generation);
+      _doneAssign.clear();
+      _inflightAssign.clear();
+      _bindLaterRun = false;
+      final threshold = directMinRssiOf(state.config);
+      _reportBody = [
+        _link.demo ? '模擬安裝報告（非實機驗證）' : '安裝報告',
+        '站點 $site / 閘道器 $gateway',
+        deferredReportLine,
+        deferredDetailText(threshold),
+        '完成時間：${DateTime.now().toIso8601String()}',
+        '後端：$_backend',
+      ].join('\n');
+      state = state.copy(
+        step: 7,
+        verified: false,
+        ptuDeferred: true,
+        online: after['mqtt_connected'] == true || state.online,
+        ptus: const [],
+        selected: const {},
+        results: const {},
+        assignStatus: const {},
+        assignedOk: const {},
+        identifyNote: '',
+        identifyLine: '',
+        identifiedMac: null,
+        directNotice: '',
+        tempBoundMac: null,
+        tempRestoreMac: null,
+        report: _report(),
+        message: deferredDoneText,
+      );
+      _field.end('completed');
+    });
+  }
+
+  /// Round 28: the done page after 〔先完成配置〕, still on site and the
+  /// PTU now powered — back to step 7 to identify it; 「是這台」 then binds
+  /// it (also with 「確認後綁定 PTU」 off).
+  Future<void> bindDeferredNow() async {
+    if (state.busy || state.step != 7 || !state.ptuDeferred) return;
+    _bindLaterRun = true;
+    _health?.cancel();
+    state = state.copy(
+      step: 4,
+      ptuDeferred: false,
+      verified: false,
+      report: '',
+      results: {},
+      assignStatus: {},
+      message: '',
+    );
+    await discover();
+  }
+
+  /// Round 28: 〔辨識並綁定〕 on the bind-later card (step 2, a gateway in
+  /// service, one-to-one and unbound — [CommissionState.bindLaterMac] /
+  /// [CommissionState.bindLaterDeferred]): switches the APP to one-to-one
+  /// when needed, passes the network check, keeps the station and goes to
+  /// step 7, where 「辨識此樁」 then 「是這台」 binds the PTU.
+  Future<void> startBindLater() async {
+    if (state.busy || state.step != 2 || state.peer == null) return;
+    if (state.bindLaterMac == null && !state.bindLaterDeferred) return;
+    if (!ref.read(topologyProvider).topology.isDirect) {
+      await ref
+          .read(topologyProvider.notifier)
+          .setTopology(GatewayTopology.direct);
+      if (!ref.mounted) return;
+    }
+    _bindLaterRun = true;
+    if (!state.checkPassed) {
+      await passNetworkCheck();
+      if (!ref.mounted || !state.checkPassed || state.error != null) return;
+    }
+    if (state.config['choose_station'] != true) return;
+    await chooseStation(newStation: false);
+  }
+
+  /// Round 28: after a connect — a gateway in service, one-to-one
+  /// (max_connections 1, firmware that picks its PTU) and unbound: the PTU
+  /// it is connected to, if any ([CommissionState.bindLaterMac]), and
+  /// whether this phone finished it with 〔先完成配置〕
+  /// ([CommissionState.bindLaterDeferred]). Advisory: a failed read shows
+  /// nothing.
+  Future<void> _checkBindLater() async {
+    final config = state.config;
+    if (config['fleet_joined'] != true ||
+        !directAutoConnectSupported(config) ||
+        config['max_connections'] != 1 ||
+        directBoundMacOf(config) != null) {
+      return;
+    }
+    final peer = state.peer;
+    String? linked;
+    try {
+      final status = await _rawCommand('get_status');
+      final direct = status['direct'];
+      if (direct is Map) {
+        final clean = directWithoutGateways(
+          Map<String, dynamic>.from(direct),
+          _isGatewayMac,
+        ).direct;
+        final report = DirectStatus.from(clean);
+        if (report?.boundMac == null) linked = report?.pickedMac;
+      }
+    } catch (_) {}
+    final deferred = await _deferredRecorded();
+    if (!ref.mounted || !identical(state.peer, peer) || state.step != 2) {
+      return;
+    }
+    if (linked == null && !deferred) return;
+    state = state.copy(
+      bindLaterMac: linked,
+      bindLaterDeferred: deferred,
+      error: state.error,
+    );
   }
 
   /// Polls get_status until a collection window newer than [before] has
@@ -5296,8 +5685,54 @@ class CommissioningController extends Notifier<CommissionState> {
     return null;
   }
 
+  /// Round 28: the connected gateway as the resume prompt names it
+  /// (「站 80 · 閘道器 2 · MAC 後 4 碼 70F0（藍牙 70F2）」).
+  String _gatewayLabel() {
+    final peer = state.peer;
+    if (peer == null) return '';
+    final site = (state.config['site_id'] as num?)?.toInt() ?? 0;
+    final gw = (state.config['gateway_id'] as num?)?.toInt() ?? 0;
+    return [
+      site > 0 && gw > 0 ? gatewayIdText(site, gw) : gatewayTitle(peer.name),
+      ?gatewayMacText(uid: state.config['gateway_uid'], bleId: peer.id),
+    ].join(' · ');
+  }
+
   String get _bindPrefsKey =>
       _link.demo ? 'demo_direct_confirmed_bind' : 'direct_confirmed_bind';
+
+  String get _deferredPrefsKey =>
+      _link.demo ? 'demo_direct_deferred_ptu' : 'direct_deferred_ptu';
+
+  /// Round 28: this gateway was finished with 〔先完成配置〕 (its PTU not
+  /// bound since) — keyed like the confirmed binding ([_bindGatewayKey]).
+  Future<bool> _deferredRecorded() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_deferredPrefsKey);
+      if (raw == null) return false;
+      return (jsonDecode(raw) as Map).containsKey(_bindGatewayKey);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Records (or with false forgets) [_deferredRecorded].
+  Future<void> _recordDeferred(bool deferred) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_deferredPrefsKey);
+      final map = <String, dynamic>{
+        if (raw != null) ...Map<String, dynamic>.from(jsonDecode(raw) as Map),
+      };
+      if (deferred) {
+        map[_bindGatewayKey] = DateTime.now().toIso8601String();
+      } else if (map.remove(_bindGatewayKey) == null) {
+        return;
+      }
+      await prefs.setString(_deferredPrefsKey, jsonEncode(map));
+    } catch (_) {}
+  }
 
   String get _bindGatewayKey =>
       state.config['gateway_uid']?.toString() ??
@@ -7551,11 +7986,15 @@ class CommissioningController extends Notifier<CommissionState> {
       } catch (_) {}
     }
     if (ref.mounted) {
+      _bindLaterRun = false;
       state = state.copy(
         step: 1,
         net: const {},
         checkPassed: false,
         wifiGraceOver: false,
+        ptuDeferred: false,
+        bindLaterMac: null,
+        bindLaterDeferred: false,
         identifiedMac: null,
         tempBoundMac: null,
         tempRestoreMac: null,

@@ -725,14 +725,14 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     );
     final checkNext = _checkNext(state, controller, env);
     return PopScope(
-      // Round 15b: 返回 while a 「不是這台？」 binding is still temporary
-      // ends like 「結束並重新選擇閘道器」, which clears it on the gateway.
-      canPop: !state.busy && state.tempBoundMac == null,
+      // Round 28 (field round 28: a system 返回 at step 7 left the APP at
+      // once, mid-configuration): only the start page and the gateway list
+      // (nothing running) leave the APP. Otherwise 返回 asks 「結束目前
+      // 配置？」 first, like 「結束並重新選擇閘道器」 ([_backPressed]); 結束
+      // then also puts back a temporary 「不是這台？」 binding (round 15b).
+      canPop: state.step <= 1 && !state.busy,
       onPopInvokedWithResult: (didPop, _) {
-        final now = ref.read(commissionProvider);
-        if (!didPop && !now.busy && now.tempBoundMac != null) {
-          controller.cancel();
-        }
+        if (!didPop) _backPressed(controller);
       },
       child: Scaffold(
         appBar: AppBar(
@@ -1096,6 +1096,11 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                     ),
                   // Round 26: test mode / paused upload, with the way out.
                   const GatewayModeCard(),
+                  // Round 28: a PTU connected but never bound (〔先完成配置〕
+                  // earlier): 〔辨識並綁定〕.
+                  if (state.step == 2 &&
+                      (state.bindLaterMac != null || state.bindLaterDeferred))
+                    _bindLaterCard(state, controller),
                   if (state.error != null)
                     Material(
                       key: const Key('error-banner'),
@@ -1328,19 +1333,36 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
 
   /// Round 17: 「結束並重新選擇閘道器」 after step 3 asks first — 「結束目前
   /// 配置？已完成的 N 台會保留在閘道器」 [繼續配置] [結束].
-  Future<void> _endFlow(CommissioningController c) async {
+  ///
+  /// Round 28: [always] (the system 返回) asks on every page past the
+  /// gateway list; a gateway not in service yet (upload paused until
+  /// join_fleet) past the identity step adds that it will upload nothing
+  /// (field round 28: pile B was left so) — at direct step 7 without this
+  /// pile's PTU, that 〔先完成配置〕 is the way to finish it.
+  Future<void> _endFlow(
+    CommissioningController c, {
+    bool always = false,
+  }) async {
     final s = ref.read(commissionProvider);
-    if (displayStep(s, ref.read(backendEnvProvider)) >= 3) {
+    if (always || displayStep(s, ref.read(backendEnvProvider)) >= 3) {
+      final held =
+          s.step >= 3 && !s.ptuDeferred && uploadHeldUntilJoin(s.config);
       final end = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
           key: const Key('end-confirm'),
           title: const Text(endFlowConfirmTitle),
           content: Text(
-            endFlowConfirmText(
-              s.assignedOk.length,
-              restoresBind: endFlowRestoresBind(s),
-            ),
+            [
+              endFlowConfirmText(
+                s.assignedOk.length,
+                restoresBind: endFlowRestoresBind(s),
+              ),
+              if (held) endFlowHeldUploadText,
+              if (held && directNoPtu(s, directFlow: c.directFlow))
+                endFlowDeferHint,
+            ].join('\n'),
+            key: const Key('end-confirm-text'),
           ),
           actions: [
             TextButton(
@@ -1359,6 +1381,23 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       if (end != true || !mounted) return;
     }
     await c.cancel();
+  }
+
+  /// Round 28: the system 返回 while a gateway is connected or a step runs
+  /// ([PopScope] refused to leave): 「結束目前配置？」 — 結束 ends the run
+  /// ([CommissioningController.cancel], as 「結束並重新選擇閘道器」 /
+  /// 「取消操作」), 繼續配置 stays. Never leaves the APP.
+  bool _backAsking = false;
+  Future<void> _backPressed(CommissioningController c) async {
+    final s = ref.read(commissionProvider);
+    // The start page (checking Bluetooth / the login) has nothing to end.
+    if (_backAsking || s.step == 0 || (s.step <= 1 && !s.busy)) return;
+    _backAsking = true;
+    try {
+      await _endFlow(c, always: true);
+    } finally {
+      _backAsking = false;
+    }
   }
 
   /// Saved resume skips steps 5/6, so log in first when the rest needs the
@@ -1447,6 +1486,16 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     CommissioningController c,
     bool enabled,
   ) => [
+    // Round 28: which gateway the saved progress belongs to (field round
+    // 28: pile B's prompt counted pile A's PTU).
+    if ((s.savedResume || s.savedProgress) && s.savedGateway.isNotEmpty)
+      Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Text(
+          '上次配置的閘道器：${s.savedGateway}',
+          key: const Key('saved-gateway'),
+        ),
+      ),
     if (s.lastCompleted || s.savedResume || s.savedProgress)
       OutlinedButton.icon(
         key: const Key('restart-after-done'),
@@ -2079,17 +2128,29 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             ),
         ];
       default:
+        // Round 28: 〔先完成配置〕 — the gateway in service without its PTU.
+        final deferred = s.ptuDeferred;
         return [
           Icon(
-            s.online ? Icons.check_circle_outline : Icons.cloud_off,
+            deferred
+                ? Icons.task_alt
+                : s.online
+                ? Icons.check_circle_outline
+                : Icons.cloud_off,
             size: 56,
             color: Theme.of(context).colorScheme.primary,
           ),
           const SizedBox(height: 16),
           Text(
-            demo ? '模擬開通完成' : '開通完成',
+            deferred
+                ? deferredDoneTitle
+                : demo
+                ? '模擬開通完成'
+                : '開通完成',
+            key: const Key('done-title'),
             style: Theme.of(context).textTheme.headlineSmall,
           ),
+          if (deferred) ..._deferredDone(s, c, enabled),
           // Until the first health check answers, say so instead of a
           // premature 資料有異常.
           if (showHealthPending(s))
@@ -2145,6 +2206,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             ),
           // Round 18: measure the site and write the threshold back.
           if (topology.isDirect &&
+              !deferred &&
               s.peer != null &&
               directAutoConnectSupported(s.config))
             Padding(
@@ -2159,7 +2221,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               ),
             ),
           // After a switch of environment: log in there to check the data.
-          if (!s.loggedIn) ...[
+          if (!s.loggedIn && !deferred) ...[
             const SizedBox(height: 16),
             field(_login, '${env.label}的登入密碼', secret: true),
             button('登入並確認資料', () async {
@@ -2194,31 +2256,137 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               ).showSnackBar(const SnackBar(content: Text('已複製，可貼上分享')));
             }
           }, enabled),
-          if (s.loggedIn)
+          if (s.loggedIn && !deferred)
             TextButton(
               onPressed: enabled ? () => c.refreshHealth() : null,
               child: const Text('更新健康狀態'),
             ),
-          TextButton(
-            onPressed: enabled
-                ? () async {
-                    if (s.loggedIn) {
-                      await c.repair();
-                    } else if (_passwordReady(demo)) {
-                      await c.repair(
-                        base: ref.read(backendEnvProvider).base,
-                        password: _login.text,
-                      );
-                      if (mounted && ref.read(commissionProvider).loggedIn) {
-                        _afterLogin();
+          if (!deferred)
+            TextButton(
+              onPressed: enabled
+                  ? () async {
+                      if (s.loggedIn) {
+                        await c.repair();
+                      } else if (_passwordReady(demo)) {
+                        await c.repair(
+                          base: ref.read(backendEnvProvider).base,
+                          password: _login.text,
+                        );
+                        if (mounted && ref.read(commissionProvider).loggedIn) {
+                          _afterLogin();
+                        }
                       }
                     }
-                  }
-                : null,
-            child: const Text('重新連線並驗證'),
-          ),
+                  : null,
+              child: const Text('重新連線並驗證'),
+            ),
         ];
     }
+  }
+
+  /// Round 28: the done page after 〔先完成配置〕 — the PTU is not connected
+  /// yet and connects once powered; the binding is made later (on site:
+  /// 〔PTU 已上電：辨識並綁定〕 right here).
+  List<Widget> _deferredDone(
+    CommissionState s,
+    CommissioningController c,
+    bool enabled,
+  ) {
+    final theme = Theme.of(context);
+    final dark = theme.brightness == Brightness.dark;
+    final warnFg = dark ? Colors.amber.shade200 : Colors.brown.shade900;
+    final warnBg = dark
+        ? Colors.amber.shade900.withValues(alpha: 0.35)
+        : Colors.amber.shade100;
+    return [
+      Container(
+        key: const Key('deferred-note'),
+        margin: const EdgeInsets.only(top: 12),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: warnBg,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.warning_amber_rounded, color: warnFg, size: 22),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                deferredDoneText,
+                style: TextStyle(color: warnFg, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Text(
+          deferredDetailText(directMinRssiOf(s.config)),
+          key: const Key('deferred-detail'),
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Text(
+          deferredLaterText,
+          key: const Key('deferred-later'),
+          style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: FilledButton.tonalIcon(
+          key: const Key('deferred-bind-now'),
+          icon: const Icon(Icons.lightbulb_outline, size: 20),
+          onPressed: enabled ? c.bindDeferredNow : null,
+          label: const Text(deferredBindNowLabel),
+        ),
+      ),
+    ];
+  }
+
+  /// Round 28: a gateway in service, one-to-one and unbound, that is
+  /// connected to a PTU (or that this phone finished with 〔先完成配置〕):
+  /// 〔辨識並綁定〕 goes to step 7 to identify and bind it.
+  Widget _bindLaterCard(CommissionState s, CommissioningController c) {
+    final theme = Theme.of(context);
+    final mac = s.bindLaterMac;
+    return Card(
+      key: const Key('bind-later'),
+      color: theme.colorScheme.tertiaryContainer,
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            macRichText(
+              mac != null ? bindLaterTitle(mac) : bindLaterWaitingTitle,
+              key: const Key('bind-later-title'),
+              style: TextStyle(
+                color: theme.colorScheme.onTertiaryContainer,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              mac != null ? bindLaterHint : bindLaterWaitingHint,
+              style: TextStyle(color: theme.colorScheme.onTertiaryContainer),
+            ),
+            const SizedBox(height: 8),
+            FilledButton.icon(
+              key: const Key('bind-later-go'),
+              icon: const Icon(Icons.lightbulb_outline, size: 20),
+              onPressed: s.busy ? null : c.startBindLater,
+              label: const Text(bindLaterLabel),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   /// Step 7 without a login: the password field must be filled in first.

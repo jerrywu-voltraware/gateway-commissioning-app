@@ -60,9 +60,50 @@ String? macTailText(String? id) {
   return tail == null ? null : 'MAC 後 4 碼 $tail';
 }
 
+/// Round 28 (field: the list read 「MAC 後 4 碼 70F2」, the help panel and
+/// the back office 「70F0」 for the same gateway): the gateway's Wi-Fi MAC
+/// — the identity the back office shows (`gateway_uid`, heartbeats, the
+/// rescue page) — derived from its Bluetooth MAC [bleId]. The firmware
+/// uses the ESP32's four universal MAC addresses
+/// (`CONFIG_ESP32_UNIVERSAL_MAC_ADDRESSES_FOUR`): Wi-Fi STA = the base MAC,
+/// Bluetooth = the base MAC + 2 on its last byte. 12 upper-case hex digits;
+/// null when [bleId] is not a MAC (e.g. an iOS peripheral UUID).
+String? wifiMacFromBle(String? bleId) {
+  if (macTail(bleId) == null) return null;
+  final hex = bleId!.replaceAll(RegExp('[^0-9a-fA-F]'), '').toUpperCase();
+  final last = (int.parse(hex.substring(10), radix: 16) - 2) & 0xFF;
+  return '${hex.substring(0, 10)}${last.toRadixString(16).padLeft(2, '0').toUpperCase()}';
+}
+
+/// Round 28: the gateway's Wi-Fi MAC (12 upper-case hex digits) — [uid]
+/// (`gateway_uid` read over Bluetooth, or remembered from an earlier
+/// connect) when known, else derived from its Bluetooth MAC [bleId]
+/// ([wifiMacFromBle]); null when neither is a MAC.
+String? gatewayWifiMac({Object? uid, String? bleId}) {
+  final known = gatewayMacKey(uid);
+  return known.isNotEmpty ? known : wifiMacFromBle(bleId);
+}
+
+/// Round 28: the gateway's MAC tail as the back office shows it — its
+/// Wi-Fi MAC ([gatewayWifiMac]) — with the Bluetooth tail the phone sees
+/// in brackets when it differs: 「MAC 後 4 碼 70F0（藍牙 70F2）」 ([withBle]
+/// false: the Wi-Fi tail only); null when neither [uid] nor [bleId] is a
+/// MAC.
+String? gatewayMacText({Object? uid, String? bleId, bool withBle = true}) {
+  final wifi = gatewayWifiMac(uid: uid, bleId: bleId);
+  if (wifi == null) return null;
+  final ble = withBle ? macTail(bleId) : null;
+  final tail = wifi.substring(8);
+  return ble == null || ble == tail
+      ? 'MAC 後 4 碼 $tail'
+      : 'MAC 後 4 碼 $tail（藍牙 $ble）';
+}
+
 /// The connected gateway in the page header: its configured identity
 /// (get_config, which follows a site change at once) or else its name,
-/// the MAC tail and the firmware.
+/// the MAC tail and the firmware. Round 28: the Wi-Fi MAC tail
+/// (`gateway_uid`, as the back office and the help panel show it —
+/// [gatewayMacText]; the gateway list adds the Bluetooth tail).
 String gatewayHeaderText({
   required String name,
   required String id,
@@ -74,7 +115,11 @@ String gatewayHeaderText({
       ? gatewayIdText(site, gateway)
       : gatewayTitle(name);
   final fw = config['fw_version']?.toString() ?? '';
-  return [title, ?macTailText(id), if (fw.isNotEmpty) fw].join(' · ');
+  return [
+    title,
+    ?gatewayMacText(uid: config['gateway_uid'], bleId: id, withBle: false),
+    if (fw.isNotEmpty) fw,
+  ].join(' · ');
 }
 
 // ---- Another gateway is not a PTU ----
@@ -184,9 +229,27 @@ bool isTestMode(Map<String, dynamic> source) =>
 /// A gateway already in service (fleet_joined) whose upload is paused:
 /// heartbeats still reach the back office, PTU data does not. A gateway
 /// not in service yet is paused on purpose (set_site_identity pauses it;
-/// step 8's join_fleet resumes it), so that is not a problem.
+/// step 8's join_fleet resumes it), so that is not a problem
+/// ([uploadHeldUntilJoin]).
 bool uploadPausedProblem(Map<String, dynamic> config) =>
     config['fleet_joined'] == true && config['upload_paused'] == true;
+
+/// Round 28 (field: pile B — a new identity, upload paused until
+/// join_fleet — read 「✓ 資料上傳中」 at steps 5 and 6 although not one row
+/// could be uploaded): a gateway not in service yet (`fleet_joined` false,
+/// e.g. after set_site_identity or leave_fleet) whose upload is paused.
+/// That is on purpose until the commissioning sends join_fleet, so it is
+/// not a problem to fix here ([uploadPausedProblem] stays false) — but it
+/// is never 「資料上傳中」 either: connected to the broker means heartbeats
+/// only ([uploadHeldText], [uploadHeldStatus]).
+bool uploadHeldUntilJoin(Map<String, dynamic> config) =>
+    config['fleet_joined'] != true && config['upload_paused'] == true;
+
+/// Round 28: the network check's upload line for [uploadHeldUntilJoin].
+const uploadHeldText = '已連上後台；PTU 資料上傳暫停中，完成配置後才開始上傳';
+
+/// Round 28: the 「連線狀態」 gateway row for [uploadHeldUntilJoin].
+const uploadHeldStatus = '✓ 已連上（完成配置後才上傳）';
 
 /// Test-mode card and the error that replaces 「PTU 沒有回應」 in test mode.
 const testModeText = '這台閘道器處於測試模式（只產生測試資料、不會連 PTU），配置前需切回正常模式。';

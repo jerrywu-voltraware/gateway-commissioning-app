@@ -25,6 +25,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/assign_progress.dart';
+import '../core/direct_mode.dart';
+import '../core/gateway_identity.dart';
 import '../core/gateway_net.dart';
 import '../core/mqtt_target.dart';
 import '../core/protocol.dart';
@@ -278,6 +280,18 @@ RescueCode? sessionRescueCode(FieldInput i) {
   if (s.step == 5 && s.assignFailed.isNotEmpty) {
     return ptuAssignRescueCode(s.assignFailed.values.first);
   }
+  // Round 28 (field round 28: 〔請後台協助〕 at 「找不到夠近的 PTU」 reached the
+  // back office as STEP_STUCK with no text): the direct step 7 settled
+  // without this pile's PTU — the rescue page's 直連選台 card.
+  if (s.step == 4 && i.directMode && !s.busy && !s.relinking) {
+    final direct = s.direct;
+    if (direct != null &&
+        direct.pickedMac == null &&
+        (direct.state == DirectState.noCandidate ||
+            direct.state == DirectState.boundMissing)) {
+      return RescueCode.directPick;
+    }
+  }
   return null;
 }
 
@@ -285,7 +299,8 @@ RescueCode? sessionRescueCode(FieldInput i) {
 /// red box is the installer's own cancel (rule 27), not a failure.
 String sessionStatusOf(FieldInput i, {bool help = false, bool quiet = false}) {
   final s = i.state;
-  if (s.step == 7 && s.verified) return 'completed';
+  // Round 28: 〔先完成配置〕 ends the run too.
+  if (s.step == 7 && (s.verified || s.ptuDeferred)) return 'completed';
   if (help) return 'help';
   if ((s.error != null && !quiet) ||
       (s.step == 5 && s.assignFailed.isNotEmpty) ||
@@ -359,7 +374,14 @@ Map<String, dynamic> buildSessionReport({
     'busy_label': s.busy ? _cut(s.message, 120) : null,
     'error_code': code?.wire,
     'fail_code': _cut(failure?.code, 48),
-    'error_message': _cut(errorMessage ?? s.error, 500),
+    // Round 28 (field round 28: 「（APP 沒有提供錯誤文字）」 for a pile
+    // without its PTU): the step 7 line the installer reads.
+    'error_message': _cut(
+      errorMessage ??
+          s.error ??
+          (code == RescueCode.directPick && s.step == 4 ? s.message : null),
+      500,
+    ),
     'progress': fieldProgress(input),
     'last_command': lastCommand,
   };
@@ -659,10 +681,10 @@ List<String> fieldHelpLines(FieldInput i, {String? errorCode}) {
   final s = i.state;
   final id = fieldIdentity(i);
   final site = id['site_id'], gw = id['gateway_id'];
-  final key = macKey(s.config['gateway_uid']);
-  final tail = key.length >= 4
-      ? key.substring(key.length - 4).toUpperCase()
-      : null;
+  // Round 28: the Wi-Fi MAC (as the back office shows it) — read, else
+  // derived from the Bluetooth MAC; the same tail as the gateway list.
+  final wifi = gatewayWifiMac(uid: s.config['gateway_uid'], bleId: s.peer?.id);
+  final tail = wifi?.substring(8);
   final lines = <String>[];
   if (s.peer != null && site != null && gw != null) {
     lines.add('站 $site / 閘道器 $gw${tail == null ? '' : '（MAC 後 4 碼 $tail）'}');
@@ -1330,7 +1352,7 @@ class FieldReporter {
     if (i == null) return;
     final s = i.state;
     final step = fieldStep(i);
-    final completed = s.step == 7 && s.verified;
+    final completed = s.step == 7 && (s.verified || s.ptuDeferred);
     var session = _session;
     if (session == null) {
       if (completed || s.step < 1 || step < 2) return;

@@ -32,6 +32,16 @@
 /// strongest are named together (at most [calibrationNeighborTieMax], in
 /// MAC order) — two at -46 dBm were named in list order, so the named pile
 /// flipped between runs.
+///
+/// Round 28 (field round 28: pile A's calibration heard no neighbour and
+/// suggested -61 dBm — upper − 10 — exactly the peak pile A's PTU reached
+/// at pile B's gateway; a connected PTU does not advertise, so the
+/// neighbours are almost never heard and every calibration loosened the
+/// threshold by about 10 dB): without neighbour data nothing shows that a
+/// wider threshold is safe, so the suggestion is never wider than the
+/// gateway's current threshold (or the default -55 dBm) — it holds it
+/// ([DirectThresholdVerdict.noNeighbors]). With neighbour data the three
+/// firmware rules above still decide.
 library;
 
 import 'dart:math' as math;
@@ -61,11 +71,9 @@ const calibrationMinGap = calibrationMinRange + calibrationNeighborMargin;
 /// than this make a pick `ambiguous`.
 const calibrationAmbiguousDb = 6;
 
-/// No neighbour counted: the upper bound minus this…
-const calibrationLoneMargin = 10;
-
-/// …but never below this.
-const calibrationLoneFloor = -90;
+/// Round 28: without neighbour data the suggestion holds the gateway's
+/// current threshold (never wider); `min_rssi` not reported: this.
+const calibrationHoldDefault = defaultDirectRssi;
 
 /// Fewer readings (`samples`) than this still count toward
 /// [DirectThresholdSuggestion.lower] (round 19 fix: the bound must stay
@@ -112,9 +120,21 @@ const calibrationNoOwnText =
     '未取得本樁 PTU 的連線訊號（閘道器目前沒有連著已確認的 PTU），無法建議門檻。'
     '請確認本樁 PTU 已連上後重新取樣。';
 
-const calibrationNoNeighborText =
-    '未聽到鄰近 PTU：建議值取本樁可用上限再低 $calibrationLoneMargin dB'
-    '（不低於 $calibrationLoneFloor dBm）。';
+/// Round 28: no neighbour heard — the threshold is held at [hold] dBm.
+String calibrationNoNeighborText(int hold) =>
+    '未偵測到鄰近 PTU（已連線的 PTU 不會廣播），無法確認放寬是否安全，'
+    '建議維持 $hold dBm。';
+
+/// Round 28: no neighbour heard and this pile's own signal is under the
+/// held threshold's reach ([upper] dBm): still not loosened.
+String calibrationOwnBelowHoldText(int upper, int hold) =>
+    '本樁 PTU 訊號偏弱（可用上限 $upper dBm，低於門檻 $hold dBm），'
+    '但沒有鄰近資料不能放寬門檻：請確認已開啟「確認後綁定 PTU」（綁定後不受門檻影響），'
+    '或調整 PTU 擺放後重新取樣。';
+
+/// Round 28: the write button when the suggestion is the gateway's
+/// current threshold.
+String calibrationHoldLabel(int hold) => '維持目前門檻（$hold dBm），不需寫入';
 
 /// No confirmed PTU yet: where to get one.
 const calibrationNeedsOwnText = '請先在第 7 步按「辨識此樁」確認本樁 PTU，再校正門檻。';
@@ -197,7 +217,8 @@ enum DirectThresholdVerdict {
   /// [DirectThresholdSuggestion.upper].
   suggested,
 
-  /// No neighbour counted: upper − 10 dB (floor -90).
+  /// No neighbour counted. Round 28: the gateway's current threshold
+  /// held — never wider without neighbour data (was upper − 10 dB).
   noNeighbors,
 
   /// No suggestion: upper − lower under [calibrationMinRange], or the
@@ -259,6 +280,16 @@ class DirectThresholdSuggestion {
       ? null
       : upper! - neighborStrongest!;
 
+  /// Round 28: [DirectThresholdVerdict.noNeighbors] with this pile's upper
+  /// bound under the held threshold — its own signal is weak for it, and
+  /// without neighbour data the threshold is not loosened either
+  /// ([calibrationOwnBelowHoldText]).
+  bool get ownBelowHold =>
+      verdict == DirectThresholdVerdict.noNeighbors &&
+      upper != null &&
+      threshold != null &&
+      upper! < threshold!;
+
   /// Firmware 1.7.27: this pile's advertising within
   /// [calibrationAmbiguousDb] of the strongest neighbour's peak — the pick
   /// may come out `ambiguous` (a binding is not affected).
@@ -290,8 +321,9 @@ int _median(List<int> values) {
 ///   lower = strongest neighbour peak + 1.
 /// - upper − lower ≥ [calibrationMinRange]: their midpoint, rounded down.
 ///   Otherwise [DirectThresholdVerdict.tooClose], no suggestion.
-/// - No neighbour: upper − [calibrationLoneMargin], not below
-///   [calibrationLoneFloor] (nor above upper).
+/// - No neighbour (round 28): the gateway's [current] threshold (null:
+///   [calibrationHoldDefault]) held — never wider, since nothing shows a
+///   wider one is safe (a connected PTU does not advertise).
 /// - No link reading: [DirectThresholdVerdict.noOwnSignal].
 /// - Always within the gateway's -100…-20 (a clamp that leaves
 ///   [lower, upper]: [DirectThresholdVerdict.tooClose] with
@@ -301,6 +333,7 @@ DirectThresholdSuggestion suggestDirectThreshold({
   required Iterable<int> ownLink,
   int? ownAdvertising,
   required Iterable<int> neighborPeaks,
+  int? current,
 }) {
   final link = [
     for (final r in ownLink)
@@ -342,14 +375,11 @@ DirectThresholdSuggestion suggestDirectThreshold({
     outOfRange: outOfRange,
   );
   if (lower == null) {
+    // Round 28: hold, never wider (field: upper − 10 gave -61 dBm, the
+    // peak pile A's PTU reached at pile B's gateway).
     return result(
       DirectThresholdVerdict.noNeighbors,
-      math
-          .min(
-            math.max(upper - calibrationLoneMargin, calibrationLoneFloor),
-            upper,
-          )
-          .clamp(minDirectRssi, maxDirectRssi),
+      (current ?? calibrationHoldDefault).clamp(minDirectRssi, maxDirectRssi),
     );
   }
   if (upper - lower < calibrationMinRange) {
@@ -478,6 +508,10 @@ class DirectCalibrationSamples {
   int reads = 0;
   int missed = 0;
 
+  /// Round 28: the gateway's threshold (`direct.min_rssi`, latest read);
+  /// null until reported — [suggestion] holds it without neighbour data.
+  int? gatewayThreshold;
+
   /// Time sampled so far; [done] once [directCalibrationDuration] passed.
   Duration elapsed = Duration.zero;
   bool done = false;
@@ -493,6 +527,7 @@ class DirectCalibrationSamples {
       missed++;
       return;
     }
+    if (status.minRssi != null) gatewayThreshold = status.minRssi;
     final linked = status.pickedMac;
     final mine = linked != null && _key(linked) == _key(ownMac);
     if (mine && validRssi(status.ptuRssi)) ownLink.add(status.ptuRssi!);
@@ -614,5 +649,6 @@ class DirectCalibrationSamples {
     ownLink: ownLink,
     ownAdvertising: usableOwnAdvertising,
     neighborPeaks: neighbors.values,
+    current: gatewayThreshold,
   );
 }

@@ -9,6 +9,7 @@ import '../core/direct_calibration.dart';
 import '../core/direct_mode.dart';
 import '../core/ptu_rssi.dart';
 import 'direct_calibration_sheet.dart';
+import 'field_help_sheet.dart';
 
 /// Step 7 (direct mode, firmware 1.7.20+): the PTU the gateway itself
 /// picked — MAC, RSSI and why (`select_reason`). Round 15: no list to tick;
@@ -92,8 +93,14 @@ class _DirectStatusPanelState extends ConsumerState<DirectStatusPanel> {
                       fontWeight: FontWeight.w700,
                     ),
                   ),
+                  // Round 28: 「讀取中」 / the advertising RSSI until the
+                  // gateway reads the link (field: 「RSSI —」 for ~70 s).
                   Text(
-                    row != null ? ptuRssiText(row) : rssiLabel(direct.ptuRssi),
+                    directPickRssiText(
+                      direct,
+                      rowRssi: row?['rssi'],
+                      ptuText: row == null ? null : ptuRssiText(row),
+                    ),
                     key: const Key('direct-rssi'),
                     style: text.titleMedium,
                   ),
@@ -211,6 +218,10 @@ class _DirectStatusPanelState extends ConsumerState<DirectStatusPanel> {
                   style: text.bodySmall,
                 ),
               ),
+            // Round 28: this pile's PTU not found — causes, what to do,
+            // 〔重新搜尋〕〔先完成配置〕〔請後台協助〕.
+            if (directNoPtu(state, directFlow: controller.directFlow))
+              const DirectNoPtuHelp(),
             if (direct?.state == DirectState.boundMissing)
               Align(
                 alignment: Alignment.centerLeft,
@@ -268,6 +279,145 @@ class _DirectStatusPanelState extends ConsumerState<DirectStatusPanel> {
       ),
     );
   }
+}
+
+/// Round 28 (field round 28: pile B's PTU was not powered; step 7 only
+/// said 「請靠近／確認同樁 PTU 已上電」 and the pile could not be finished):
+/// why this pile's PTU may not be found and what to do, in the installer's
+/// words, with 〔重新搜尋〕, 〔先完成配置〕 (asks first; the gateway is
+/// finished without its PTU — [CommissioningController.finishWithoutPtu])
+/// and 〔請後台協助〕.
+class DirectNoPtuHelp extends ConsumerWidget {
+  const DirectNoPtuHelp({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(commissionProvider);
+    final controller = ref.read(commissionProvider.notifier);
+    final text = Theme.of(context).textTheme;
+    final colors = Theme.of(context).colorScheme;
+    final direct = state.direct;
+    final lines = directNoPtuCauses(direct);
+    final enabled = !state.busy && !state.relinking;
+    return Container(
+      key: const Key('direct-no-ptu-help'),
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(directNoPtuTitle, style: text.titleSmall),
+          const SizedBox(height: 4),
+          for (final (i, line) in lines.indexed)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: macRichText(
+                '${i + 1}. $line',
+                key: Key('direct-no-ptu-cause-${i + 1}'),
+                style: text.bodySmall,
+              ),
+            ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            children: [
+              OutlinedButton.icon(
+                key: const Key('no-ptu-rescan'),
+                icon: const Icon(Icons.refresh, size: 18),
+                onPressed: enabled ? controller.rescanDirect : null,
+                label: const Text('重新搜尋'),
+              ),
+              FilledButton.tonalIcon(
+                key: const Key('no-ptu-defer'),
+                icon: const Icon(Icons.task_alt, size: 18),
+                onPressed: enabled
+                    ? () => confirmFinishWithoutPtu(context, ref)
+                    : null,
+                label: const Text(deferFinishLabel),
+              ),
+              if (controller.fieldHelpAvailable)
+                OutlinedButton.icon(
+                  key: const Key('no-ptu-help'),
+                  icon: const Icon(Icons.support_agent, size: 18),
+                  onPressed: () => openFieldHelp(context, ref),
+                  label: const Text('請後台協助'),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Round 28: 〔先完成配置〕 asks first (what the gateway is left with), then
+/// finishes the gateway without its PTU.
+Future<void> confirmFinishWithoutPtu(
+  BuildContext context,
+  WidgetRef ref,
+) async {
+  final state = ref.read(commissionProvider);
+  final threshold = state.direct?.minRssi ?? directMinRssiOf(state.config);
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      key: const Key('defer-confirm'),
+      title: const Text(deferConfirmTitle),
+      content: Text(deferConfirmText(threshold)),
+      actions: [
+        TextButton(
+          key: const Key('defer-confirm-cancel'),
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          key: const Key('defer-confirm-ok'),
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text(deferFinishLabel),
+        ),
+      ],
+    ),
+  );
+  if (ok != true || !context.mounted) return;
+  await ref.read(commissionProvider.notifier).finishWithoutPtu();
+}
+
+/// Round 28: the title of [DirectNoPtuHelp].
+const directNoPtuTitle = '找不到本樁 PTU：可能原因與處理';
+
+/// Round 28: [DirectNoPtuHelp]'s lines for the gateway's report [direct]:
+/// power, placement / housing, the threshold (with the strongest PTU it
+/// did hear, which may be a neighbour's — never loosen the threshold to
+/// take it), the back office, and 〔先完成配置〕.
+List<String> directNoPtuCauses(DirectStatus? direct) {
+  final min = direct?.minRssi ?? defaultDirectRssi;
+  final bound = direct?.boundMac;
+  final heard = direct?.candidates
+      .where((c) => c.rssiPeak != null && c.rssiPeak! < 0)
+      .firstOrNull;
+  final String threshold;
+  if (bound != null) {
+    threshold = '已綁定 PTU ${formatMac(bound)}：閘道器只連這台。若本樁已更換 PTU，請按「解除綁定」後重新搜尋。';
+  } else if (heard != null) {
+    threshold =
+        '門檻：閘道器只連訊號強於 $min dBm 的 PTU。附近最強的是 PTU '
+        '${formatMac(heard.mac)}（峰值 ${heard.rssiPeak} dBm），未達門檻，'
+        '可能是鄰近樁的 PTU——請不要為了連上而放寬門檻。';
+  } else {
+    threshold = '門檻：閘道器只連訊號強於 $min dBm 的 PTU；目前完全沒有聽到任何 PTU。';
+  }
+  return [
+    '本樁 PTU 沒有上電：確認 PTU 電源開啟、指示燈有亮。',
+    '擺放或機殼遮蔽：PTU 要和閘道器裝在同一個機殼內；金屬外殼、天線被擋住都會讓訊號變弱。',
+    threshold,
+    '仍找不到：按「請後台協助」，後台可看到閘道器狀態協助判斷。',
+    'PTU 暫時不在場（尚未安裝或斷電）：按「$deferFinishLabel」，閘道器照常加入運作，PTU 上電後會自動連上。',
+  ];
 }
 
 /// Above the nearby candidates of 「不是這台？」 / 「改選其他 PTU」.

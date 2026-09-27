@@ -77,6 +77,43 @@ class DirectNeighbor {
 String rssiLabel(Object? rssi) =>
     rssi is num && rssi < 0 && rssi >= -127 ? '$rssi dBm' : 'RSSI —';
 
+bool _validRssi(Object? rssi) => rssi is num && rssi < 0 && rssi >= -127;
+
+/// Round 28: the pick's signal while the gateway has no link reading yet.
+const directRssiReadingText = '訊號讀取中…';
+
+/// Round 28: the pick's advertising RSSI shown meanwhile.
+String directAdvRssiText(int rssi) => '廣播 $rssi dBm（連線訊號讀取中）';
+
+/// Round 28 (field round 28: 「RSSI —」 for about 70 s after the gateway
+/// connected its pick — `ptu_rssi` stayed 0 until a re-evaluation read
+/// it): the signal of the gateway's pick on the step 7 card — the link
+/// RSSI once read ([ptuText]: the row's own text for a valid reading),
+/// else its advertising RSSI (this pile's `self_adv_rssi_med`, or the peak
+/// the selection window heard, `candidates[]`), else
+/// [directRssiReadingText]. Never 「0 dBm」 nor a blank.
+String directPickRssiText(
+  DirectStatus direct, {
+  Object? rowRssi,
+  String? ptuText,
+}) {
+  if (_validRssi(rowRssi) && ptuText != null) return ptuText;
+  if (_validRssi(direct.ptuRssi)) return rssiLabel(direct.ptuRssi);
+  final mac = direct.pickedMac;
+  final adv = _validRssi(direct.selfAdvRssiMed)
+      ? direct.selfAdvRssiMed
+      : direct.candidates
+            .where(
+              (c) =>
+                  mac != null &&
+                  DirectStatus._same(c.mac, mac) &&
+                  _validRssi(c.rssiPeak),
+            )
+            .firstOrNull
+            ?.rssiPeak;
+  return adv == null ? directRssiReadingText : directAdvRssiText(adv);
+}
+
 enum DirectState {
   connected,
   connecting,

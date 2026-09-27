@@ -233,6 +233,10 @@ ConnectionStatus connectionStatus({
   // — heartbeats only, 0 rows — or it was in test mode): connected to the
   // broker is not uploading PTU data then.
   final held = state.testMode || state.uploadPaused;
+  // Round 28 (field: pile B read 「✓ 資料上傳中」 at steps 5 and 6 with its
+  // upload paused until join_fleet): a gateway not in service yet uploads
+  // heartbeats only — on purpose, not a warning, never 「資料上傳中」.
+  final waitingJoin = !held && uploadHeldUntilJoin(config);
   final uploading = config['mqtt_connected'] == true && !held;
 
   StatusRow gateway;
@@ -270,8 +274,17 @@ ConnectionStatus connectionStatus({
       state.testMode ? '⚠ 測試模式' : '⚠ 上傳已暫停',
       StatusTone.warn,
     );
+  } else if (waitingJoin && (uploading || backendFresh)) {
+    // Connected, as the one-line summary says; not 「資料上傳中」.
+    gateway = StatusRow(placeOf(current), uploadHeldStatus, StatusTone.ok);
   } else if (uploading || backendFresh) {
-    gateway = StatusRow(placeOf(current), '✓ 資料上傳中', StatusTone.ok);
+    // Round 28: 「先完成配置」 — uploading, but this pile's PTU is not
+    // connected yet, so no PTU data so far.
+    gateway = StatusRow(
+      placeOf(current),
+      state.ptuDeferred ? deferredUploadStatus : '✓ 資料上傳中',
+      StatusTone.ok,
+    );
   } else if (polling) {
     gateway = StatusRow(placeOf(current), '⏳ 連線中…', StatusTone.pending);
   } else if (config['mqtt_connected'] == false ||

@@ -360,8 +360,22 @@ class _DirectCalibrationSheetState
                     key: const Key('calibration-range'),
                     style: text.bodySmall,
                   ),
+                // Round 28: no neighbour data — held, never wider.
                 if (suggestion.verdict == DirectThresholdVerdict.noNeighbors)
-                  Text(calibrationNoNeighborText, style: text.bodySmall),
+                  Text(
+                    calibrationNoNeighborText(threshold),
+                    key: const Key('calibration-no-neighbor'),
+                    style: text.bodySmall,
+                  ),
+                if (suggestion.ownBelowHold)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      calibrationOwnBelowHoldText(suggestion.upper!, threshold),
+                      key: const Key('calibration-own-below-hold'),
+                      style: text.bodySmall?.copyWith(color: warnFg),
+                    ),
+                  ),
                 if (suggestion.mayBeAmbiguous)
                   Padding(
                     padding: const EdgeInsets.only(top: 4),
@@ -402,8 +416,14 @@ class _DirectCalibrationSheetState
             const SizedBox(height: 12),
             FilledButton(
               key: const Key('calibration-write'),
+              // Round 28: the suggestion is the gateway's own threshold
+              // (held): nothing to write.
               onPressed:
-                  threshold != null && _saved == null && !_saving && !state.busy
+                  threshold != null &&
+                      threshold != current &&
+                      _saved == null &&
+                      !_saving &&
+                      !state.busy
                   ? () => _write(threshold)
                   : null,
               child: Text(
@@ -411,6 +431,8 @@ class _DirectCalibrationSheetState
                     ? '寫入中…'
                     : threshold == null
                     ? '寫入閘道器'
+                    : threshold == current && _saved == null
+                    ? calibrationHoldLabel(threshold)
                     : '寫入閘道器（$threshold dBm）',
               ),
             ),

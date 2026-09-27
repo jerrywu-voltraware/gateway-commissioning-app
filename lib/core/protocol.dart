@@ -278,6 +278,9 @@ class GatewayFailure implements Exception {
     'direct_unsupported' => '此韌體尚未支援直連門檻與綁定，請先更新韌體（1.7.20 起）。',
     'direct_pick_missing' => '閘道器目前沒有連上 PTU，請確認 PTU 電源後按「重新搜尋」。',
     'direct_threshold_not_saved' => '門檻未寫入閘道器（回讀的值不同），請重試。',
+    // Round 28: 〔先完成配置〕 did not end with the gateway in service.
+    'direct_defer_unconfirmed' =>
+      '閘道器沒有回報已加入運作並恢復上傳，配置尚未完成。請再按一次「先完成配置」；若仍不行，請按「請後台協助」。',
     'direct_switch_failed' =>
       '閘道器在等待時限內還沒改連這台 PTU（已暫時綁定它）。連上後畫面會自動更新；也可確認這台 PTU 已上電並靠近，或改選其他 PTU。',
     'identify_unsupported' => '此韌體尚未支援辨識燈號，請先更新韌體。連線時的呼吸燈仍可協助辨識。',

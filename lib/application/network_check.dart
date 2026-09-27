@@ -240,6 +240,15 @@ NetworkCheck networkCheck({
   } else if (!supported) {
     upload = const CheckLine('？', '無法確認，最後的資料驗證會再確認。', StatusTone.neutral);
     uploadOk = true;
+  } else if (uploading &&
+      state.uploadWatch != UploadWatch.linkLost &&
+      uploadHeldUntilJoin(config)) {
+    // Round 28 (field: a new identity — upload paused until join_fleet —
+    // read 「✓ 資料上傳中」): connected to the broker is heartbeats only
+    // until the commissioning sends join_fleet; on purpose, so the check
+    // passes, in words that say so.
+    upload = const CheckLine('✓', uploadHeldText, StatusTone.ok);
+    uploadOk = true;
   } else if (uploading && state.uploadWatch != UploadWatch.linkLost) {
     upload = const CheckLine('✓', '資料上傳中', StatusTone.ok);
     uploadOk = true;

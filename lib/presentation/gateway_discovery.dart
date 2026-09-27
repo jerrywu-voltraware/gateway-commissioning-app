@@ -249,7 +249,11 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     // long text wraps.
     final name = found?.name ?? peer.name;
     final title = gatewayTitle(name);
-    final tail = macTailText(peer.id);
+    // Round 28 (field round 28: this list read 「70F2」, the help panel and
+    // the back office 「70F0」): the Wi-Fi MAC tail the back office shows —
+    // remembered from an earlier connect, else derived from the Bluetooth
+    // MAC — with the Bluetooth tail in brackets.
+    final tail = gatewayMacText(uid: last?.uid, bleId: peer.id);
     final theme = Theme.of(context).textTheme;
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 3),
@@ -312,8 +316,10 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
       });
     });
     final recentIds = _recent.map((r) => r.peer.id).toSet();
+    // Round 28: the Wi-Fi MAC the back office shows is searchable too.
     bool matches(GatewayPeer peer) =>
-        '${peer.name} ${gatewayTitle(peer.name)} ${peer.id}'
+        '${peer.name} ${gatewayTitle(peer.name)} ${peer.id} '
+                '${gatewayWifiMac(bleId: peer.id) ?? ''}'
             .toLowerCase()
             .contains(_query);
     final recent = _recent.where((r) => matches(r.peer)).toList();

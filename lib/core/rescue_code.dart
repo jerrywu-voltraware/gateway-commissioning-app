@@ -152,7 +152,10 @@ RescueCode? rescueCodeOf(
   final code = f.code;
   if (code == 'cancelled') return null;
   if (rebooted) return RescueCode.gwRebooted;
-  if (safe == false || code == 'monitor_unconfirmed') {
+  // Round 28: 〔先完成配置〕 not confirmed by the gateway.
+  if (safe == false ||
+      code == 'monitor_unconfirmed' ||
+      code == 'direct_defer_unconfirmed') {
     return RescueCode.monitorUnconfirmed;
   }
   if (code == 'bluetooth_off') return RescueCode.phoneBtOff;
