@@ -1194,7 +1194,7 @@ class _DirectPickActionsState extends ConsumerState<DirectPickActions> {
             !ready
                 ? directWaitingLabel
                 : confirmable
-                ? '是這台，開始監控'
+                ? directConfirmLabel
                 : directIdentifyFirstLabel,
           ),
         ),
@@ -1332,7 +1332,7 @@ class _DirectSettingsSheetState extends ConsumerState<DirectSettingsSheet> {
               title: const Text('確認後綁定 PTU'),
               subtitle: Text(
                 ref.watch(topologyProvider).directBindOnConfirm
-                    ? '按「是這台，開始監控」時把該 PTU 的 MAC 存進閘道器，之後只連這台'
+                    ? '按「$directConfirmLabel」時把該 PTU 的 MAC 存進閘道器，之後只連這台'
                     : '關閉後不會鎖定 MAC：本樁 PTU 關機或斷線時，閘道器可能改連鄰近樁的 PTU',
               ),
               value: ref.watch(topologyProvider).directBindOnConfirm,

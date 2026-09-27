@@ -370,8 +370,12 @@ String shortenMacIn(String text, Iterable<Object?> others) {
 /// identified.
 const directIdentifyFirstLabel = '請先按「辨識此樁」確認';
 
+/// The direct pick's main button (09-28: 「開始配置」 — binding, joining the
+/// fleet and the data check all follow by themselves).
+const directConfirmLabel = '是這台，開始配置';
+
 /// 「是這台」 pressed without identifying the shown PTU.
-const directIdentifyFirstText = '請先按「辨識此樁」確認是眼前這台，再按「是這台，開始監控」。';
+const directIdentifyFirstText = '請先按「辨識此樁」確認是眼前這台，再按「$directConfirmLabel」。';
 
 /// The gateway now connects a PTU other than the one identified.
 String directSwitchedText(Object? mac) =>

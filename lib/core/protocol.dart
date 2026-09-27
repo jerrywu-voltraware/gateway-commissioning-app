@@ -303,7 +303,7 @@ class GatewayFailure implements Exception {
     'wifi_failed' => wifiSetFailedText(wifiFailedReason(detail)),
     // Round 30: the Wi-Fi to keep was gone by 「儲存」 (no password given).
     'wifi_password_needed' =>
-      '閘道器目前沒有連上這個 Wi-Fi，無法沿用。請輸入 Wi-Fi 密碼後再按「儲存並連接 WiFi」。',
+      '閘道器目前沒有連上這個 Wi-Fi，無法沿用。請輸入 Wi-Fi 密碼後再按「儲存並繼續」。',
     'no_devices' => '未找到 PTU。請確認已上電並靠近閘道器後重掃。',
     // Round 26: an old gateway in test mode never scans PTUs.
     'test_mode' => testModeText,

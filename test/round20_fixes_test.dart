@@ -553,7 +553,7 @@ void main() {
         // box right above the bottom bar.
         final page = find
             .ancestor(
-              of: find.byKey(const Key('topology-banner')),
+              of: find.byKey(const Key('task-title')),
               matching: find.byType(Scrollable),
             )
             .first;
@@ -561,6 +561,17 @@ void main() {
         await tester.scrollUntilVisible(box, 80, scrollable: page);
         unawaited(Scrollable.ensureVisible(tester.element(box), alignment: 1));
         await tester.pump();
+        // 09-28: the page is shorter (details collapsed) and may not scroll
+        // that far: it settles at its end first, as a finger would leave it.
+        final scroll = tester
+            .state<ScrollableState>(
+              find.ancestor(of: box, matching: find.byType(Scrollable)).first,
+            )
+            .position;
+        if (scroll.pixels > scroll.maxScrollExtent) {
+          scroll.jumpTo(scroll.maxScrollExtent);
+          await tester.pump();
+        }
         // Round 28: the page's list, found from the box (the header may
         // take one more line with the Wi-Fi MAC tail, so the banner at the
         // top of the list is no longer built once scrolled this far).

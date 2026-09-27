@@ -775,10 +775,16 @@ void main() {
       final (container, _) = await open(tester, fake);
       final header = find.byKey(const Key('gateway-header'));
       final list = find.byType(Scrollable).first;
+      // 09-28: the gateway's name and MAC are in 「設備與連線資訊」.
+      final details = find.text('設備與連線資訊');
+      await tester.scrollUntilVisible(details, 120, scrollable: list);
+      await tester.tap(details);
+      await tester.pumpAndSettle();
       await tester.scrollUntilVisible(header, 120, scrollable: list);
       expect(tester.widget<Text>(header).data, startsWith('站 20 · 閘道器 1'));
       final card = find.byKey(const Key('test-mode-card'));
-      await tester.scrollUntilVisible(card, 120, scrollable: list);
+      // The details are below the card: back up.
+      await tester.scrollUntilVisible(card, -120, scrollable: list);
       await tester.pumpAndSettle();
       expect(card, findsOneWidget);
       // Before the network check (right under the gateway header).

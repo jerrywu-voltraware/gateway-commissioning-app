@@ -158,3 +158,81 @@ class _GatewaySignalState extends State<GatewaySignal>
     );
   }
 }
+
+/// One-thing screens (09-28): the phone-measured signal row
+/// ([GatewaySignal]) is in the collapsed 「設備與連線資訊」; this line stays
+/// on the page and appears only while the Bluetooth link to the gateway is
+/// down, so a disconnect is never hidden behind the fold.
+class GatewayLinkAlert extends StatefulWidget {
+  const GatewayLinkAlert({super.key, required this.link});
+  final GatewayLink link;
+
+  @override
+  State<GatewayLinkAlert> createState() => _GatewayLinkAlertState();
+}
+
+/// [GatewayLinkAlert]'s words.
+const gatewayLinkLostText = '手機與閘道器的藍牙已斷線，請靠近閘道器；APP 會提示如何重新連線。';
+
+class _GatewayLinkAlertState extends State<GatewayLinkAlert> {
+  StreamSubscription<bool>? _subscription;
+  bool _connected = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _attach();
+  }
+
+  void _attach() {
+    _subscription?.cancel();
+    final link = widget.link;
+    final source = link is GatewaySignalSource
+        ? link as GatewaySignalSource
+        : null;
+    _connected = source?.signalConnected ?? true;
+    _subscription = source?.signalConnections.listen((connected) {
+      if (mounted) setState(() => _connected = connected);
+    });
+  }
+
+  @override
+  void didUpdateWidget(GatewayLinkAlert oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.link, widget.link)) _attach();
+  }
+
+  @override
+  void dispose() {
+    _subscription?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_connected) return const SizedBox.shrink();
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      key: const Key('gateway-link-lost'),
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(10),
+      color: colors.errorContainer,
+      child: Row(
+        children: [
+          Icon(
+            Icons.bluetooth_disabled,
+            size: 20,
+            color: colors.onErrorContainer,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              gatewayLinkLostText,
+              style: TextStyle(color: colors.onErrorContainer),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

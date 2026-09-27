@@ -2,7 +2,7 @@
 // 1. Direct mode, firmware with `direct_autoconnect_supported`: step 7 sets
 //    max_connections 1 at once and shows the PTU the gateway itself picked
 //    (MAC / RSSI / select_reason); 「辨識此樁」 note beside the button;
-//    「是這台，開始監控」 numbers exactly that MAC #1 (round 14: the APP
+//    「是這台，開始配置」 numbers exactly that MAC #1 (round 14: the APP
 //    preselected another PTU, waited 98 s and two PTUs ended up #1).
 // 2. ambiguous → yellow hint; 「不是這台？」 → candidate → temporary binding
 //    → the gateway switches (binding kept, named on the done page).
@@ -381,7 +381,7 @@ void main() {
           .toPlainText();
       expect(detail, contains(identifySentText));
       expect(detail, contains(_pick));
-      expect(find.text('是這台，開始監控'), findsOneWidget);
+      expect(find.text('是這台，開始配置'), findsOneWidget);
     });
   });
 
@@ -761,14 +761,14 @@ void main() {
           tester.widget<FilledButton>(find.byKey(const Key('direct-confirm')));
       expect(confirm().onPressed, isNull);
       expect(find.text(directIdentifyFirstLabel), findsOneWidget);
-      expect(find.text('是這台，開始監控'), findsNothing);
+      expect(find.text('是這台，開始配置'), findsNothing);
 
       await tester.tap(find.byKey(const Key('direct-identify')));
       await tester.pump();
       await _idle(tester, container);
       await tester.pump();
       expect(confirm().onPressed, isNotNull);
-      expect(find.text('是這台，開始監控'), findsOneWidget);
+      expect(find.text('是這台，開始配置'), findsOneWidget);
 
       fake.device(_pick)['connected'] = false;
       fake.device(_first)['connected'] = true;

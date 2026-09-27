@@ -139,6 +139,16 @@ Future<void> _tap(WidgetTester tester, Finder finder) async {
 
 Finder get _chip => find.byKey(const Key('env-chip'));
 
+/// 09-28: the connection panel's all-fine line is in 「設備與連線資訊」.
+Future<void> _openDetails(WidgetTester tester) async {
+  await tester.scrollUntilVisible(
+    find.byKey(const Key('commission-details')),
+    200,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await _tap(tester, find.text('設備與連線資訊'));
+}
+
 String _chipText(WidgetTester tester) => tester
     .widget<Text>(find.descendant(of: _chip, matching: find.byType(Text)))
     .data!;
@@ -271,6 +281,7 @@ void main() {
       fake.commands.sublist(fake.commands.indexOf('set_mqtt_target')),
       containsAllInOrder(['set_mqtt_target', 'ping', 'get_net_status']),
     );
+    await _openDetails(tester);
     expect(find.text('✓ 本地測試：手機與 Gateway 都已連上'), findsOneWidget);
     final state = container.read(commissionProvider);
     expect(parseMqttTarget(state.config)!.host, '192.168.1.50');
@@ -307,6 +318,7 @@ void main() {
     await _pumpApp(tester, fake, prefs: _localPrefs, policy: _debug);
     await _connectGateway(tester);
     expect(fake.targetRequests.single['host'], '192.168.1.50');
+    await _openDetails(tester);
     expect(find.text('✓ 本地測試：手機與 Gateway 都已連上'), findsOneWidget);
     expect(find.text('同時切換 Gateway？'), findsNothing);
   });
@@ -430,7 +442,7 @@ void main() {
     await _connectGateway(tester);
     expect(fake.targetRequests.single['host'], '192.168.1.50');
     await _passCheck(tester);
-    await _tap(tester, find.text('沿用目前站點'));
+    await _tap(tester, find.text('使用此站點'));
     await _tap(tester, find.text('配置 3 台並開始監控'));
     // Step 6 starts the data verification by itself (no 開始資料驗證 tap).
     var state = container.read(commissionProvider);
@@ -488,7 +500,7 @@ void main() {
     final container = await _pumpApp(tester, fake, prefs: _localPrefs);
     await _connectGateway(tester);
     await _passCheck(tester);
-    await _tap(tester, find.text('沿用目前站點'));
+    await _tap(tester, find.text('使用此站點'));
     await _tap(tester, find.text('配置 3 台並開始監控'));
     await _tap(tester, find.text(devShipSwitchLabel));
     await tester.enterText(
@@ -521,7 +533,7 @@ void main() {
     );
     await _connectGateway(tester);
     await _passCheck(tester);
-    await _tap(tester, find.text('沿用目前站點'));
+    await _tap(tester, find.text('使用此站點'));
     await _tap(tester, find.text('配置 3 台並開始監控'));
     expect(container.read(commissionProvider).step, 6);
     expect(container.read(commissionProvider).loggedIn, isTrue);

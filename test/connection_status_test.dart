@@ -224,7 +224,7 @@ void main() {
       };
       const hint =
           'Gateway 目前在 192.168.0.x 網段，可能連不到測試主機 192.168.1.187。'
-          '請確認 Gateway 和這台電腦連同一個 Wi-Fi（可用「保留站點，重設 Wi-Fi」）。';
+          '請確認 Gateway 和這台電腦連同一個 Wi-Fi（可用「改用其他 Wi-Fi」）。';
       // Just started polling: a /16 network may still connect, no guess yet.
       final early = connectionStatus(
         env: _local,

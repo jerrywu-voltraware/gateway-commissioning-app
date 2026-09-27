@@ -61,6 +61,53 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   bool _autoOnlineStarted = false;
   bool _autoFlowScheduled = false;
 
+  /// One-thing screens (09-28): 「改用其他站號」 opened the station input;
+  /// [_wifiStage]: a new identity goes on to its Wi-Fi page (the gateway is
+  /// on no Wi-Fi, or 「改用其他 Wi-Fi」 was pressed); [_stationWorking]: the
+  /// 「確定是新站？」 lookup runs (one tap, one action).
+  bool _otherSite = false;
+  bool _wifiStage = false;
+  bool _stationWorking = false;
+
+  /// Leaving the station / Wi-Fi pages (another step, the check again,
+  /// another gateway) closes their page-only choices.
+  void _resetStationPages(CommissionState? previous, CommissionState next) {
+    final open = next.step == 2 && next.checkPassed;
+    if (!open ||
+        previous?.peer != next.peer ||
+        (previous?.config['new_station'] == true &&
+            next.config['choose_station'] == true)) {
+      _otherSite = false;
+      _wifiStage = false;
+    }
+  }
+
+  /// The station the page proposes as 「本站」: the station of a gateway in
+  /// service, or for a new identity the one it already carries or the one
+  /// just done (〔配置下一台〕); null when there is none to propose.
+  int? _stationCurrent(CommissionState s) {
+    final config = s.config;
+    if (config['choose_station'] == true || config['new_station'] == true) {
+      return (config['site_id'] as num?)?.toInt();
+    }
+    if (config['suggested_site_known'] == true) {
+      return (config['suggested_site_id'] as num?)?.toInt();
+    }
+    return null;
+  }
+
+  /// The station page shows the input (not the question).
+  bool _stationInput(CommissionState s) =>
+      _otherSite ||
+      s.config['new_station'] == true ||
+      _stationCurrent(s) == null;
+
+  /// The typed station, when valid.
+  int? get _typedSite {
+    final value = int.tryParse(_site.text);
+    return value != null && value >= 1 && value <= 65535 ? value : null;
+  }
+
   /// Read-only auto-numbering shown next to the site ID field: how the last
   /// [_refreshGatewaySuggestion] answered (online / BLE-name fallback / the
   /// site's 1–[kMaxGatewayId] are all taken), and whether a lookup is in flight.
@@ -174,8 +221,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       if (mounted && _pageScroll.hasClients) _pageScroll.jumpTo(0);
       if (mounted) {
         final next = ref.read(commissionProvider);
-        _site.text =
-            '${next.config['suggested_site_id'] ?? next.config['site_id'] ?? 1}';
+        _site.text = _proposedSiteText(next.config);
         _gateway.text =
             '${next.config['suggested_gateway_id'] ?? next.config['gateway_id'] ?? 1}';
         _gatewayKind = next.config['suggested_offline'] == true
@@ -191,6 +237,17 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     } finally {
       if (mounted) setState(() => _connectingPeer = false);
     }
+  }
+
+  /// The station field's first value: a new gateway without a station to
+  /// propose ([_stationCurrent] null) starts empty, so the number is typed
+  /// on site, never a guess accepted by mistake (backlog K).
+  String _proposedSiteText(Map<String, dynamic> config) {
+    if (config['fleet_joined'] != true &&
+        config['suggested_site_known'] != true) {
+      return '';
+    }
+    return '${config['suggested_site_id'] ?? config['site_id'] ?? 1}';
   }
 
   Future<void> _openEnvironmentSheet() async {
@@ -305,8 +362,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     final next = ref.read(commissionProvider);
     if (next.step == 2 && next.checkPassed) {
       setState(() {
-        _site.text =
-            '${next.config['suggested_site_id'] ?? next.config['site_id'] ?? 1}';
+        _site.text = _proposedSiteText(next.config);
         _gateway.text =
             '${next.config['suggested_gateway_id'] ?? next.config['gateway_id'] ?? 1}';
         _gatewayKind = next.config['suggested_offline'] == true
@@ -632,53 +688,76 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   /// summary.
   void _showDoneFromTop(CommissionState? previous, CommissionState next) {
     if (next.step != 7 || previous?.step == 7) return;
+    _toTop();
+  }
+
+  /// One-thing screens (09-28): the station, Wi-Fi and check pages each
+  /// start at their task sentence (a button at the end of one page must
+  /// not leave the next one scrolled to its middle).
+  void _showStepPageFromTop(CommissionState? previous, CommissionState next) {
+    if (previous == null || next.step != 2) return;
+    String page(CommissionState s) => [
+      s.step,
+      s.checkPassed,
+      s.config['choose_station'] == true,
+      s.config['wifi_only'] == true,
+      s.config['new_station'] == true,
+    ].join('/');
+    if (page(previous) != page(next)) _toTop();
+  }
+
+  void _toTop() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && _pageScroll.hasClients) _pageScroll.jumpTo(0);
     });
   }
 
-  String _actionHint(CommissionState s) {
-    if (s.error != null) return '請先依下方提示處理問題，再按重試；已完成的進度會保留。';
-    if (s.busy || s.relinking) return '正在處理，請稍候；成功後會自動繼續。';
+  /// One-thing screens (09-28): the one sentence at the top of every page
+  /// but the done page — what this page asks, or what runs by itself.
+  String _taskTitle(CommissionState s, BackendEnvState env) {
+    final directFlow = ref.read(commissionProvider.notifier).directFlow;
     switch (s.step) {
       case 0:
-        return '請確認設備已通電，選擇連線環境並登入，再按「檢查並開始」。';
+        return startTaskTitle;
       case 1:
-        return '請選擇眼前這台閘道器；不確定時，請用「辨識」確認。';
+        return s.busy ? checkingTaskTitle : pickGatewayTaskTitle;
       case 2:
         if (!s.checkPassed) {
-          final check = networkCheck(
-            state: s,
-            env: ref.read(backendEnvProvider),
-          );
-          if (_autoCheckPaused && check.ready) return '你正在查看網路檢查結果；看完請按下方按鈕繼續。';
-          if (check.wifiProblem) return '請按「設定 Wi-Fi」或「重設 Wi-Fi」，選擇現場網路並輸入密碼。';
-          if (!check.targetOk) return '請確認資料應送往下方顯示的後台，再依提示切換。';
-          return '正在檢查網路與上傳狀態，通過後會自動繼續。';
+          final check = networkCheck(state: s, env: env);
+          if (s.testMode) return testModeTaskTitle;
+          if (check.ready) {
+            return _autoCheckPaused ? checkPassedTaskTitle : checkingTaskTitle;
+          }
+          if (check.wifiProblem) return wifiProblemTaskTitle;
+          if (!check.targetOk) return targetTaskTitle;
+          if (check.uploadPaused) return uploadPausedTaskTitle;
+          if (check.upload.tone == StatusTone.bad) return uploadBadTaskTitle;
+          return checkingTaskTitle;
         }
-        if (s.config['choose_station'] == true) {
-          return '目前站號是 ${s.config['site_id']}。本站請選「沿用目前站點」；不同站請選「設定新站點與 Wi-Fi」。';
+        if (s.config['wifi_only'] == true ||
+            (_wifiStage && s.config['choose_station'] != true)) {
+          return wifiTaskTitle;
         }
-        if (s.config['wifi_only'] == true) {
-          return '請選擇現場的 2.4 GHz Wi-Fi 並輸入密碼，站號會保留。';
-        }
-        return '請填寫本站站號，確認 Wi-Fi 後儲存；閘道器編號由 APP 分配。';
+        final current = _stationCurrent(s);
+        return current != null && !_stationInput(s)
+            ? stationQuestionTitle(current)
+            : stationInputTitle;
       case 3:
-        return s.offline
-            ? '目前為離線配置，可確認上線或選擇稍後驗證。'
-            : !s.loggedIn
-            ? '請輸入後端登入密碼，開始確認資料上傳。'
-            : '正在自動確認後台收到心跳，請稍候。';
+        return s.busy || (s.loggedIn && !s.offline && s.error == null)
+            ? onlineRunningTaskTitle
+            : onlineTaskTitle;
       case 4:
-        return ref.read(commissionProvider.notifier).directFlow
-            ? '請按「辨識此樁」並確認眼前設備；確認是這台後，APP 會自動完成設定與資料驗證。'
-            : '請選擇本閘道器負責的 PTU，再按下方配置按鈕；之後會自動驗證資料。';
+        return directFlow ? directPickTaskTitle : starPickTaskTitle;
       case 5:
-        return '正在完成設備設定，接著會自動確認資料上傳。';
       case 6:
-        return s.loggedIn ? '正在確認資料持續更新，通過後會顯示配置結果。' : '請登入後台，開始驗證資料。';
+        if (!directFlow) {
+          return s.step == 5 ? starAssignTaskTitle : starVerifyTaskTitle;
+        }
+        return s.step == 6 && !s.loggedIn
+            ? verifyLoginTaskTitle
+            : finishingTaskTitle;
       default:
-        return '請查看配置結果，選擇完成或配置下一台。';
+        return '';
     }
   }
 
@@ -710,6 +789,8 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     super.initState();
     ref.listenManual(backendEnvProvider, _onEnvironment, fireImmediately: true);
     ref.listenManual(commissionProvider, _showDoneFromTop);
+    ref.listenManual(commissionProvider, _showStepPageFromTop);
+    ref.listenManual(commissionProvider, _resetStationPages);
     ref.listenManual(commissionProvider, _showRemoteIdentify);
     _host.addListener(() => _envController.setLocalHost(_host.text));
     _base.addListener(_onBaseEdited);
@@ -862,6 +943,33 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     // Round 29 (field drill: 「不知道該如何結束」): the done page — the
     // summary on top, 〔完成〕／〔配置下一台〕 fixed at the bottom.
     final done = state.step == 7;
+    // One-thing screens (09-28): the gateway's identify stays on the page
+    // where PTUs are chosen in a list (star, old firmware); elsewhere it is
+    // in 「設備與連線資訊」 (the direct pick has its own in the bottom bar).
+    final identifyAt =
+        state.peer != null && state.step >= 2 && !directPicking && !done;
+    final identifyOnPage =
+        selectingPtus || (state.step == 6 && !controller.directFlow);
+    // The connection panel stays on the page while something is wrong (with
+    // its 「同步」); all fine, its one line is in 「設備與連線資訊」. The
+    // station and Wi-Fi pages (the check passed or skipped) say what blocks
+    // them themselves, and the check has the fixes: there it is in the
+    // details too — unless it warns of a weak Wi-Fi (advice kept in sight).
+    final stationPages = state.step == 2 && state.checkPassed;
+    final panelAt = state.peer != null && state.step >= 2;
+    final status = panelAt && !done
+        ? connectionStatus(
+            env: env,
+            state: state,
+            probe: demo
+                ? null
+                : ref.watch(backendProbeProvider(env.base)).value,
+            demo: demo,
+          )
+        : null;
+    final panelOk =
+        status != null &&
+        (status.allOk || (stationPages && status.wifiWeak == null));
     return PopScope(
       // Round 28 (field round 28: a system 返回 at step 7 left the APP at
       // once, mid-configuration): only the start page and the gateway list
@@ -1111,76 +1219,39 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                     ),
                   // Round 29: the done page starts with its summary.
                   if (done) _doneSummary(state, controller, demo, env),
-                  if (!done)
+                  // One-thing screens (09-28): one sentence on top — what
+                  // this page asks, or what runs by itself; the step count
+                  // below it, small.
+                  if (!done) ...[
                     Padding(
-                      padding: const EdgeInsets.only(top: 8),
+                      padding: const EdgeInsets.only(top: 4),
                       child: Text(
-                        '目前模式：${topology.label}',
-                        key: const Key('topology-banner'),
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: colors.onSurfaceVariant,
+                        _taskTitle(state, env),
+                        key: const Key('task-title'),
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                     ),
-                  if (!done) ...[
+                    const SizedBox(height: 10),
                     LinearProgressIndicator(
                       value: shown / (stepLabels.length - 1),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 4),
                     Text(
                       '${shown + 1} / ${stepLabels.length}   ${stepLabels[shown]}',
                       key: const Key('step-title'),
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: 8),
-                    if (!selectingPtus) ...[
-                      Text(
-                        _actionHint(state),
-                        key: const Key('flow-guidance'),
-                        style: Theme.of(context).textTheme.bodyLarge,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: colors.onSurfaceVariant,
                       ),
-                      const SizedBox(height: 8),
-                    ],
+                    ),
                   ],
-                  if (!selectingPtus && !done) StepList(current: shown),
-                  SizedBox(height: selectingPtus ? 4 : 16),
-                  // Round 26: 「站 80 · 閘道器 2 · MAC 後 4 碼 70F2 · 1.7.36」
-                  // (field: two gateways read 「GIOS-S80-G…」).
+                  SizedBox(height: selectingPtus ? 4 : 12),
+                  // The phone's signal row is in 「設備與連線資訊」; a lost
+                  // Bluetooth link is said here, never behind the fold.
                   if (state.peer != null && !done)
-                    Text(
-                      gatewayHeaderText(
-                        name: state.peer!.name,
-                        id: state.peer!.id,
-                        config: state.config,
-                      ),
-                      key: const Key('gateway-header'),
-                    ),
-                  if (state.peer != null && !done)
-                    GatewaySignal(
-                      link: ref.watch(linkProvider),
-                      peer: state.peer!,
-                      busy: state.busy,
-                    ),
-                  if (state.peer != null &&
-                      state.step >= 2 &&
-                      !directPicking &&
-                      !done)
-                    state.config['identify_supported'] == true
-                        ? OutlinedButton.icon(
-                            onPressed: state.busy
-                                ? null
-                                : ref
-                                      .read(commissionProvider.notifier)
-                                      .identify,
-                            icon: const Icon(Icons.lightbulb_outline),
-                            label: Text(
-                              identifyPtuSupported(state.config)
-                                  ? '辨識此樁（PTU 與閘道器閃燈）'
-                                  : '辨識這台・雙閃 6 秒',
-                              key: const Key('identify-label'),
-                            ),
-                          )
-                        : const Text('連線時藍燈呼吸；更新韌體後可使用雙閃辨識。'),
+                    GatewayLinkAlert(link: ref.watch(linkProvider)),
+                  if (identifyAt && identifyOnPage) _identifyButton(state),
                   if (selectingPtus &&
                       !directPicking &&
                       state.identifyNote.isNotEmpty)
@@ -1192,8 +1263,15 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                         style: TextStyle(color: colors.primary),
                       ),
                     ),
+                  // 09-28: on the station and Wi-Fi pages the idle message
+                  // only repeated the task sentence; while something runs
+                  // (or failed) it is shown as before.
                   if (state.message.isNotEmpty &&
                       !done &&
+                      (!stationPages ||
+                          state.busy ||
+                          state.relinking ||
+                          state.error != null) &&
                       (!selectingPtus ||
                           state.busy ||
                           state.error != null ||
@@ -1364,7 +1442,8 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                     ),
                   // Earliest page with the gateway connected and its config
                   // read; kept on step 7 so a local target is not shipped.
-                  if (state.peer != null && state.step >= 2)
+                  // 09-28: all fine, it is in 「設備與連線資訊」 instead.
+                  if (panelAt && !panelOk)
                     ConnectionStatusPanel(
                       state: state,
                       env: env,
@@ -1393,6 +1472,17 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                           children: content(state, controller, demo),
                         ),
                       ),
+                    ),
+                  if (!done)
+                    _details(
+                      state,
+                      controller,
+                      env,
+                      demo,
+                      shown: shown,
+                      topologyLabel: topology.label,
+                      identify: identifyAt && !identifyOnPage,
+                      panel: panelOk,
                     ),
                   // After step 3 it asks first (field round 17: a late tap
                   // ended the flow). Round 19: at direct step 7 it is the
@@ -1463,6 +1553,448 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  /// One-thing screens (09-28): the station page — one question 「目前站號是
+  /// N，這台要配置在本站嗎？」 with 〔使用此站點〕; 「改用其他站號」 (or no
+  /// station to propose) shows the input with 〔使用站點 M〕. The Wi-Fi
+  /// page follows only when the gateway is on no Wi-Fi or 「改用其他
+  /// Wi-Fi」 is pressed ([_wifiPage]).
+  List<Widget> _stationPage(
+    CommissionState s,
+    CommissioningController c,
+    NetworkCheck check,
+    bool enabled,
+  ) {
+    final theme = Theme.of(context);
+    final muted = TextStyle(color: theme.colorScheme.onSurfaceVariant);
+    // A gateway in service (its question, or a new number typed for it).
+    final inService =
+        s.config['choose_station'] == true || s.config['new_station'] == true;
+    final current = _stationCurrent(s);
+    final input = _stationInput(s);
+    final typed = _typedSite;
+    final kept = keptWifiSsid(s);
+    // Keeping the station in service needs its upload working.
+    final reason = inService && (!input || typed == current)
+        ? check.reuseBlockedReason
+        : null;
+    final String label;
+    final bool canUse;
+    if (!input) {
+      label = useStationLabel;
+      canUse = reason == null && (inService || !_gatewaySubmitBlocked);
+    } else if (typed == null) {
+      label = useSiteEmptyLabel;
+      canUse = false;
+    } else {
+      label = useSiteLabel(typed);
+      canUse = inService && typed == current
+          ? reason == null
+          : !_suggestingGateway && !_gatewaySubmitBlocked;
+    }
+    return [
+      if (!input)
+        inService
+            ? Text(
+                '沿用站點 $current／閘道器 ${s.config['gateway_id']}，原站資料不變。',
+                key: const Key('station-current'),
+                style: muted,
+              )
+            : _gatewayAssignment()
+      else ...[
+        field(
+          _site,
+          siteFieldLabel,
+          number: true,
+          onChanged: (_) {
+            _scheduleGatewaySuggestion();
+            setState(() {});
+          },
+        ),
+        if (typed != null && !(inService && typed == current))
+          _gatewayAssignment(),
+      ],
+      if (kept != null)
+        _markedText(
+          CheckLine('✓', wifiKeptText(kept), StatusTone.ok),
+          key: const Key('wifi-keep'),
+        ),
+      if (reason != null)
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Text(
+            // Round 26: test mode / a paused upload have their own button
+            // in the card above, not a Wi-Fi reset.
+            check.testMode
+                ? '要使用此站點，請先按上方「$leaveTestModeLabel」（目前：$reason）。'
+                : check.uploadPaused && check.wifiOk && check.targetOk
+                ? '要使用此站點，請先按上方「$resumeUploadLabel」（目前：$reason）。'
+                : '要使用此站點，Gateway 必須先連上 Wi-Fi 並開始上傳資料（目前：$reason）。'
+                      '請按「$otherWifiLabel」，或按「回到網路體檢」。',
+            key: const Key('reuse-blocked'),
+            style: TextStyle(color: theme.colorScheme.error),
+          ),
+        ),
+      Padding(
+        padding: const EdgeInsets.only(top: 16),
+        child: SizedBox(
+          width: double.infinity,
+          child: FilledButton(
+            key: const Key('station-use'),
+            onPressed: enabled && !_stationWorking && canUse
+                ? () => _useStation(c)
+                : null,
+            child: Text(label),
+          ),
+        ),
+      ),
+      if (!input)
+        TextButton(
+          key: const Key('station-change'),
+          onPressed: enabled && !_stationWorking
+              ? () => setState(() {
+                  _otherSite = true;
+                  _site.clear();
+                })
+              : null,
+          child: const Text(otherSiteLabel),
+        )
+      else if (current != null)
+        TextButton(
+          key: const Key('station-change-cancel'),
+          onPressed: enabled && !_stationWorking
+              ? () => _cancelOtherSite(c)
+              : null,
+          child: Text('改回站號 $current'),
+        ),
+      if ((inService && !input) || kept != null)
+        TextButton(
+          key: const Key('wifi-change'),
+          onPressed: enabled && !_stationWorking && !_scanningWifi
+              ? () => _otherWifi(c)
+              : null,
+          child: const Text(otherWifiLabel),
+        ),
+      if (reason != null)
+        TextButton(
+          key: const Key('station-review-check'),
+          onPressed: enabled ? _reviewNetworkCheck : null,
+          child: const Text('回到網路體檢'),
+        ),
+    ];
+  }
+
+  /// The Wi-Fi page: a station in service kept ([wifiOnly]: its number
+  /// stays, the upload is checked again next), or a new identity whose
+  /// station was chosen on the page before (sent together with it).
+  List<Widget> _wifiPage(
+    CommissionState s,
+    bool enabled, {
+    required bool wifiOnly,
+  }) => [
+    if (wifiOnly)
+      Text(
+        '保留站點 ${s.config['site_id']}／閘道器 ${s.config['gateway_id']}，只更新 Wi-Fi。',
+      )
+    else
+      _gatewayAssignment(),
+    const Padding(
+      padding: EdgeInsets.only(top: 4, bottom: 12),
+      child: Text('Gateway 只能用 2.4 GHz 的 Wi-Fi，5 GHz 的網路連不上。'),
+    ),
+    Row(
+      children: [
+        const Icon(Icons.wifi),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            _customWifi
+                ? '自訂網路'
+                : _ssid.text.isEmpty
+                ? '尚未選擇 Wi-Fi'
+                : _ssid.text,
+            key: const Key('wifi-selected'),
+          ),
+        ),
+        const SizedBox(width: 8),
+        TextButton(
+          key: const Key('wifi-pick'),
+          onPressed: enabled && !_scanningWifi ? _chooseWifi : null,
+          child: Text(_scanningWifi ? '掃描中…' : '更換'),
+        ),
+      ],
+    ),
+    if (_customWifi) field(_ssid, '自訂 Wi-Fi 名稱'),
+    const SizedBox(height: 8),
+    field(_wifi, 'Wi-Fi 密碼', secret: true),
+    Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: SizedBox(
+        width: double.infinity,
+        child: FilledButton(
+          key: const Key('wifi-save'),
+          onPressed: enabled && (wifiOnly || !_gatewaySubmitBlocked)
+              ? () => _saveWifi(wifiOnly)
+              : null,
+          child: const Text(saveWifiLabel),
+        ),
+      ),
+    ),
+    TextButton(
+      key: const Key('wifi-back'),
+      onPressed: enabled
+          ? wifiOnly
+                ? () {
+                    // Back to the station question, through the check.
+                    _autoCheckPaused = false;
+                    ref.read(commissionProvider.notifier).backToNetworkCheck();
+                  }
+                : () {
+                    setState(() => _wifiStage = false);
+                    _toTop();
+                  }
+          : null,
+      child: Text(wifiOnly ? '不改 Wi-Fi，返回' : '返回修改站號'),
+    ),
+  ];
+
+  /// 〔使用此站點〕／〔使用站點 M〕 (and 「改用其他 Wi-Fi」 with a new
+  /// identity): a station in service kept → its PTUs are searched; a new
+  /// number (「確定是新站？」 first when the back office has no gateway
+  /// there) or a new gateway → saved at once when its Wi-Fi is kept, else
+  /// the Wi-Fi page.
+  Future<void> _useStation(
+    CommissioningController c, {
+    bool otherWifi = false,
+  }) async {
+    final s = ref.read(commissionProvider);
+    if (s.busy || _stationWorking) return;
+    final newStation = s.config['new_station'] == true;
+    final inService = s.config['choose_station'] == true || newStation;
+    final current = _stationCurrent(s);
+    final input = _stationInput(s);
+    final site = input ? _typedSite : current;
+    if (site == null) return;
+    // Its own number typed again: the station is kept.
+    if (inService && site == current) {
+      if (newStation) c.cancelNewStation();
+      setState(() => _otherSite = false);
+      await c.chooseStation(newStation: false);
+      return;
+    }
+    setState(() => _stationWorking = true);
+    try {
+      // Backlog K (second user rehearsal: 56 typed for 80, no warning).
+      if (input && !await _confirmNewSite(c, site)) return;
+      if (!mounted) return;
+      if (inService) {
+        await c.chooseStation(newStation: true);
+        if (!mounted ||
+            ref.read(commissionProvider).config['new_station'] != true) {
+          return;
+        }
+      }
+      if (_site.text != '$site') _site.text = '$site';
+      // A typed station: its gateway number is looked up once more.
+      if (input) {
+        _suggestTyping?.cancel();
+        await _refreshGatewaySuggestion();
+        if (!mounted) return;
+      }
+      if (_gatewaySubmitBlocked) return;
+      final kept = keptWifiSsid(ref.read(commissionProvider));
+      if (kept != null && !otherWifi) {
+        _ssid.text = kept;
+        _wifi.clear();
+        _customWifi = false;
+        await _saveWifi(false);
+      } else if (mounted) {
+        setState(() {
+          _wifiStage = true;
+          if (_ssid.text.isEmpty) {
+            _ssid.text = s.config['wifi_ssid']?.toString() ?? '';
+          }
+        });
+        _toTop();
+      }
+    } finally {
+      if (mounted) setState(() => _stationWorking = false);
+    }
+  }
+
+  /// 「改用其他 Wi-Fi」: a station in service kept → Wi-Fi only (then the
+  /// upload check and the station question again); otherwise the station
+  /// shown is taken and the Wi-Fi page opens.
+  Future<void> _otherWifi(CommissioningController c) async {
+    final s = ref.read(commissionProvider);
+    if (s.busy) return;
+    final current = _stationCurrent(s);
+    final newStation = s.config['new_station'] == true;
+    if ((s.config['choose_station'] == true || newStation) &&
+        (!_stationInput(s) || _typedSite == current)) {
+      if (newStation) c.cancelNewStation();
+      await c.chooseStation(newStation: false, wifiOnly: true);
+      if (!mounted) return;
+      setState(() {
+        _otherSite = false;
+        _site.text = '${s.config['site_id']}';
+        _gateway.text = '${s.config['gateway_id']}';
+        _ssid.text = s.config['wifi_ssid']?.toString() ?? '';
+        _wifi.clear();
+        _customWifi = false;
+      });
+      return;
+    }
+    await _useStation(c, otherWifi: true);
+  }
+
+  /// 「改回站號 N」: the station proposed before 「改用其他站號」.
+  void _cancelOtherSite(CommissioningController c) {
+    final s = ref.read(commissionProvider);
+    if (s.config['new_station'] == true) c.cancelNewStation();
+    final current = _stationCurrent(s);
+    setState(() {
+      _otherSite = false;
+      _wifiStage = false;
+      _site.text = current == null ? '' : '$current';
+      _gateway.text =
+          '${s.config['suggested_gateway_id'] ?? s.config['gateway_id'] ?? 1}';
+      _gatewayKind = s.config['suggested_offline'] == true
+          ? GatewaySuggestKind.offline
+          : GatewaySuggestKind.online;
+    });
+  }
+
+  /// Backlog K: a station the back office has no gateway on is asked
+  /// about once (「確定是新站？」); unknown (offline) goes on.
+  Future<bool> _confirmNewSite(CommissioningController c, int site) async {
+    final known = await c.siteHasGateways(site);
+    if (!mounted) return false;
+    if (known != false) return true;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        key: const Key('new-site-confirm'),
+        title: const Text(newSiteConfirmTitle),
+        content: Text(newSiteConfirmText(site)),
+        actions: [
+          TextButton(
+            key: const Key('new-site-cancel'),
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('重新輸入'),
+          ),
+          FilledButton(
+            key: const Key('new-site-ok'),
+            onPressed: () => Navigator.pop(context, true),
+            child: Text('是新站，使用站號 $site'),
+          ),
+        ],
+      ),
+    );
+    return ok == true;
+  }
+
+  /// The gateway's own identify (「辨識這台」): on the page where PTUs are
+  /// chosen in a list, otherwise in 「設備與連線資訊」.
+  Widget _identifyButton(CommissionState state) =>
+      state.config['identify_supported'] == true
+      ? OutlinedButton.icon(
+          onPressed: state.busy
+              ? null
+              : ref.read(commissionProvider.notifier).identify,
+          icon: const Icon(Icons.lightbulb_outline),
+          label: Text(
+            identifyPtuSupported(state.config)
+                ? '辨識此樁（PTU 與閘道器閃燈）'
+                : '辨識這台・雙閃 6 秒',
+            key: const Key('identify-label'),
+          ),
+        )
+      : const Text('連線時藍燈呼吸；更新韌體後可使用雙閃辨識。');
+
+  /// One-thing screens (09-28): 「設備與連線資訊」, collapsed — the mode,
+  /// the step list, the gateway's name / MAC / phone signal, its identify
+  /// and, when all is fine, the connection panel. Errors, the Bluetooth
+  /// alert, reconnect, 「重新開始」, 「請後台協助」 and 「結束」 are never in
+  /// here.
+  Widget _details(
+    CommissionState s,
+    CommissioningController c,
+    BackendEnvState env,
+    bool demo, {
+    required int shown,
+    required String topologyLabel,
+    required bool identify,
+    required bool panel,
+  }) {
+    final theme = Theme.of(context);
+    final muted = theme.textTheme.bodyMedium?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    return Theme(
+      data: theme.copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        key: const Key('commission-details'),
+        tilePadding: EdgeInsets.zero,
+        childrenPadding: const EdgeInsets.only(bottom: 8),
+        expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
+        leading: const Icon(Icons.info_outline, size: 20),
+        title: Text(detailsTitle, style: muted),
+        children: [
+          Text(
+            '目前模式：$topologyLabel',
+            key: const Key('topology-banner'),
+            style: muted,
+          ),
+          const SizedBox(height: 6),
+          StepList(current: shown),
+          // Round 26: 「站 80 · 閘道器 2 · MAC 後 4 碼 70F2 · 1.7.36」
+          // (field: two gateways read 「GIOS-S80-G…」).
+          if (s.peer != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              gatewayHeaderText(
+                name: s.peer!.name,
+                id: s.peer!.id,
+                config: s.config,
+              ),
+              key: const Key('gateway-header'),
+            ),
+            GatewaySignal(
+              link: ref.watch(linkProvider),
+              peer: s.peer!,
+              busy: s.busy,
+            ),
+          ],
+          if (identify)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: _identifyButton(s),
+            ),
+          if (s.step == 2 && s.checkPassed && s.config['wifi_only'] != true)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                key: const Key('details-review-check'),
+                onPressed: s.busy ? null : _reviewNetworkCheck,
+                child: const Text('回到網路體檢'),
+              ),
+            ),
+          if (panel)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: ConnectionStatusPanel(
+                state: s,
+                env: env,
+                demo: demo,
+                onSync: () => _syncGateway(explicit: true),
+                onRefresh: c.refreshUploadTarget,
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -1785,176 +2317,16 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       case 2:
         final check = networkCheck(state: s, env: env);
         if (!s.checkPassed) return _networkCheck(s, c, check, enabled);
-        if (s.config['choose_station'] == true) {
-          final reason = check.reuseBlockedReason;
-          return [
-            Text(
-              '目前站點：${s.config['site_id']}\n閘道器編號：${s.config['gateway_id']}',
-            ),
-            const SizedBox(height: 12),
-            Text(
-              '目前設定的 Wi-Fi：${(s.config['wifi_ssid']?.toString() ?? '').isEmpty ? '尚未設定' : s.config['wifi_ssid']}',
-            ),
-            const SizedBox(height: 12),
-            _markedText(
-              reason == null
-                  ? const CheckLine(
-                      '✓',
-                      '網路體檢通過：Gateway 能上網，資料上傳中。',
-                      StatusTone.ok,
-                    )
-                  : CheckLine('⚠', '網路體檢未通過：$reason。', StatusTone.warn),
-              key: const Key('station-check'),
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              '沿用會保留站點與 Wi-Fi，再由 Gateway 搜尋 PTU 供你確認；設定新站點與 Wi-Fi 可一起修改站號及無線網路。原站歷史資料不會刪除。',
-            ),
-            button(
-              '沿用目前站點',
-              () => c.chooseStation(newStation: false),
-              enabled && reason == null,
-            ),
-            if (reason != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(
-                  // Round 26: test mode / a paused upload have their own
-                  // button in the card above, not a Wi-Fi reset.
-                  check.testMode
-                      ? '要沿用目前站點，請先按上方「$leaveTestModeLabel」（目前：$reason）。'
-                      : check.uploadPaused && check.wifiOk && check.targetOk
-                      ? '要沿用目前站點，請先按上方「$resumeUploadLabel」（目前：$reason）。'
-                      : '要沿用目前站點，Gateway 必須先連上 Wi-Fi 並開始上傳資料（目前：$reason）。'
-                            '請用「保留站點，重設 Wi-Fi」，或按「回到網路體檢」。',
-                  key: const Key('reuse-blocked'),
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
-                ),
-              ),
-            button('保留站點，重設 Wi-Fi', () {
-              c.chooseStation(newStation: false, wifiOnly: true);
-              _site.text = '${s.config['site_id']}';
-              _gateway.text = '${s.config['gateway_id']}';
-              _ssid.text = s.config['wifi_ssid']?.toString() ?? '';
-              _wifi.clear();
-              _customWifi = false;
-            }, enabled),
-            button('設定新站點與 Wi-Fi', () {
-              c.chooseStation(newStation: true);
-              _gateway.text = '1';
-              // Round 29: after 〔配置下一台〕 the station just done is
-              // proposed (its next free gateway number).
-              final kept = c.keptSite;
-              if (kept != null) {
-                _site.text = '$kept';
-                _scheduleGatewaySuggestion();
-              } else {
-                _site.clear();
-              }
-              _wifi.clear();
-            }, enabled),
-            TextButton(
-              onPressed: enabled ? _reviewNetworkCheck : null,
-              child: const Text('回到網路體檢'),
-            ),
-          ];
+        // One-thing screens (09-28): a Wi-Fi page only when it is needed
+        // (the gateway is on no Wi-Fi, or 「改用其他 Wi-Fi」); otherwise the
+        // station page asks one question.
+        if (s.config['wifi_only'] == true) {
+          return _wifiPage(s, enabled, wifiOnly: true);
         }
-        // Round 30 (user rehearsal 09-27, C): the Wi-Fi the gateway is
-        // already on (MQTT up) is kept — no password, no set_wifi.
-        final keptSsid = keptWifiSsid(s);
-        final keepingWifi =
-            keptSsid != null && !_customWifi && _ssid.text == keptSsid;
-        return [
-          const Padding(
-            padding: EdgeInsets.only(bottom: 12),
-            child: Text('Gateway 只能用 2.4 GHz 的 Wi-Fi，5 GHz 的網路連不上。'),
-          ),
-          if (s.config['wifi_only'] == true)
-            Text(
-              '保留站點 ${s.config['site_id']}／閘道器 ${s.config['gateway_id']}，只更新 Wi-Fi。',
-            )
-          else ...[
-            field(
-              _site,
-              '站點 ID（1–65535）',
-              number: true,
-              onChanged: (_) => _scheduleGatewaySuggestion(),
-            ),
-            _gatewayAssignment(),
-          ],
-          const SizedBox(height: 16),
-          if (keepingWifi) ...[
-            _markedText(
-              CheckLine('✓', wifiKeptText(keptSsid), StatusTone.ok),
-              key: const Key('wifi-keep'),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '不必輸入 Wi-Fi 密碼，閘道器不會斷線重連。',
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                key: const Key('wifi-change'),
-                icon: const Icon(Icons.wifi_find, size: 20),
-                onPressed: enabled && !_scanningWifi ? _chooseWifi : null,
-                label: Text(_scanningWifi ? '掃描中…' : '改用其他 Wi-Fi'),
-              ),
-            ),
-            button(
-              '儲存站點，沿用此 Wi-Fi',
-              () => _saveWifi(false),
-              enabled && !_gatewaySubmitBlocked,
-            ),
-            TextButton(
-              onPressed: enabled ? _reviewNetworkCheck : null,
-              child: const Text('返回網路體檢'),
-            ),
-          ] else ...[
-            Text(
-              '目前 Wi-Fi：${(s.config['wifi_ssid']?.toString() ?? '').isEmpty ? '尚未設定' : s.config['wifi_ssid']}',
-            ),
-            const SizedBox(height: 16),
-            const Text('要連接的 Wi-Fi'),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                const Icon(Icons.wifi),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    _customWifi
-                        ? '自訂網路'
-                        : _ssid.text.isEmpty
-                        ? '尚未選擇'
-                        : _ssid.text,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                TextButton(
-                  onPressed: enabled && !_scanningWifi ? _chooseWifi : null,
-                  child: Text(_scanningWifi ? '掃描中…' : '更換'),
-                ),
-              ],
-            ),
-            if (_customWifi) field(_ssid, '自訂 Wi-Fi 名稱'),
-            const SizedBox(height: 16),
-            field(_wifi, 'Wi-Fi 密碼', secret: true),
-            button(
-              '儲存並連接 WiFi',
-              () => _saveWifi(s.config['wifi_only'] == true),
-              enabled &&
-                  (s.config['wifi_only'] == true || !_gatewaySubmitBlocked),
-            ),
-            TextButton(
-              onPressed: enabled ? _reviewNetworkCheck : null,
-              child: const Text('返回網路體檢'),
-            ),
-          ],
-        ];
+        if (_wifiStage && s.config['choose_station'] != true) {
+          return _wifiPage(s, enabled, wifiOnly: false);
+        }
+        return _stationPage(s, c, check, enabled);
       case 3:
         final check = networkCheck(state: s, env: env);
         return [
@@ -1967,7 +2339,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             const SizedBox(height: 12),
             field(_login, '若要確認後端，請輸入${env.label}的登入密碼', secret: true),
           ],
-          // Round 30: 「下一步：確認上線」 is in the bottom bar ([_checkNext]).
+          // Round 30: its retry is in the bottom bar ([_checkNext]).
           const SizedBox(height: 8),
           Text(
             s.busy
@@ -1982,21 +2354,27 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             key: const Key('online-next-hint'),
             style: const TextStyle(fontWeight: FontWeight.w700),
           ),
-          TextButton(
-            onPressed: enabled ? () => c.online(skip: true) : null,
-            child: const Text('暫未確認，先配置 PTU'),
-          ),
-          Text(
-            '略過的話，最後「驗證資料」仍會確認資料有沒有上傳。',
-            style: TextStyle(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
+          // 09-28: while it runs, the page only says what runs.
+          if (!s.busy) ...[
+            TextButton(
+              onPressed: enabled ? () => c.online(skip: true) : null,
+              child: const Text('暫未確認，先配置 PTU'),
             ),
-          ),
+            Text(
+              '略過的話，最後「驗證資料」仍會確認資料有沒有上傳。',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
         ];
       case 4:
       case 5:
         // Round 15: direct flow step 7 shows the gateway's own pick only.
         final directStep7 = c.directFlow && s.step == 4;
+        // 09-28: direct step 8 runs by itself (bind, join, then the data
+        // check): while it runs, only its progress.
+        final directRunning = c.directFlow && s.step == 5 && s.busy;
         return [
           if (s.reconnectFailed && !s.busy)
             Padding(
@@ -2031,19 +2409,20 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                     .length,
               ),
           if (!directStep7) ...[
-            OutlinedButton.icon(
-              icon: const Icon(Icons.refresh, size: 20),
-              onPressed: enabled ? c.discover : null,
-              label: Text(
-                s.relinking && s.relinkStage == RelinkStage.reloading
-                    ? relinkReloadText
-                    : relinkShown(s)
-                    ? autoRelinkingText
-                    : s.uploadWatch == UploadWatch.linkLost || s.resumePending
-                    ? rescanAfterLossLabel
-                    : '由 Gateway 重新掃描 PTU',
+            if (!directRunning)
+              OutlinedButton.icon(
+                icon: const Icon(Icons.refresh, size: 20),
+                onPressed: enabled ? c.discover : null,
+                label: Text(
+                  s.relinking && s.relinkStage == RelinkStage.reloading
+                      ? relinkReloadText
+                      : relinkShown(s)
+                      ? autoRelinkingText
+                      : s.uploadWatch == UploadWatch.linkLost || s.resumePending
+                      ? rescanAfterLossLabel
+                      : '由 Gateway 重新掃描 PTU',
+                ),
               ),
-            ),
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Text(
@@ -2194,7 +2573,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                     : null,
               );
             }),
-          if (s.ptus.length > 1 && !directStep7)
+          if (s.ptus.length > 1 && !directStep7 && !directRunning)
             Align(
               alignment: Alignment.centerLeft,
               child: TextButton.icon(
@@ -2204,7 +2583,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                 label: const Text('依訊號重新排序'),
               ),
             ),
-          if (!directStep7)
+          if (!directStep7 && !directRunning)
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               dense: true,
@@ -2215,31 +2594,37 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               onChanged: enabled ? c.setAutoRssi : null,
             ),
           if (s.missing.isNotEmpty) Text('尚未連線：${s.missing.join('、')}'),
-          ExpansionTile(
-            tilePadding: EdgeInsets.zero,
-            title: Text(
-              '掃描說明與完整流程',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-            children: [
-              Text(
-                '由 Gateway 掃描附近的 PTU，再透過藍牙把清單傳回手機。'
-                '${c.directFlow
-                    ? "直連模式：由閘道器自己選最近的 PTU（門檻內最強，或已綁定的那台），這裡只顯示它的選擇；請用「辨識此樁」確認是眼前這台，不是的話按「不是這台？」改選。"
-                    : topology.isDirect
-                    ? "直連模式：已自動選定訊號最強的一台。"
-                    : "最多可選 ${ref.read(topologyProvider).starCount} 台。"}'
-                'RSSI 是 Gateway 與 PTU 之間的訊號；未連線裝置顯示掃描值。「上次」表示暫停或過期，「快取」表示韌體未提供讀值時間。韌體 1.7.5 起可在配置期間量測；RSSI — 表示尚無有效讀值。',
+          if (!directRunning)
+            ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              title: Text(
+                '掃描說明與完整流程',
+                style: Theme.of(context).textTheme.bodySmall,
               ),
-              StepList(current: displayStep(s, env)),
-            ],
-          ),
+              children: [
+                Text(
+                  '由 Gateway 掃描附近的 PTU，再透過藍牙把清單傳回手機。'
+                  '${c.directFlow
+                      ? "直連模式：由閘道器自己選最近的 PTU（門檻內最強，或已綁定的那台），這裡只顯示它的選擇；請用「辨識此樁」確認是眼前這台，不是的話按「不是這台？」改選。"
+                      : topology.isDirect
+                      ? "直連模式：已自動選定訊號最強的一台。"
+                      : "最多可選 ${ref.read(topologyProvider).starCount} 台。"}'
+                  'RSSI 是 Gateway 與 PTU 之間的訊號；未連線裝置顯示掃描值。「上次」表示暫停或過期，「快取」表示韌體未提供讀值時間。韌體 1.7.5 起可在配置期間量測；RSSI — 表示尚無有效讀值。',
+                ),
+                // The step list is in 「設備與連線資訊」 (09-28).
+              ],
+            ),
         ];
       case 6:
+        // 09-28: the direct flow's data check runs by itself — while it
+        // runs, only its progress (「取消操作」 stays below the card).
+        final autoRunning = c.directFlow && s.busy;
         return [
           const Text('逐台檢查資料時間、落後秒數與錯誤碼。連續三次通過後才判定完成。'),
           const SizedBox(height: 16),
-          if (environment == BackendEnv.custom)
+          if (autoRunning)
+            const SizedBox.shrink()
+          else if (environment == BackendEnv.custom)
             BackendUrlField(controller: _base, label: '後端網址', enabled: enabled)
           else
             Padding(
@@ -2250,7 +2635,8 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                 '${environment == BackendEnv.local ? '（這台電腦上的測試主機）' : ''}',
               ),
             ),
-          if (!s.loggedIn) field(_login, '若尚未登入，請輸入登入密碼', secret: true),
+          if (!s.loggedIn && !autoRunning)
+            field(_login, '若尚未登入，請輸入登入密碼', secret: true),
           // Round 8: listed in scan order (#1, #2, #4, #3); by number now.
           ...byDeviceNumber(s.ptus).map((ptu) {
             final id = (ptu['device_number'] as num?)?.toInt() ?? 0;
@@ -2285,21 +2671,23 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                     ),
             );
           }),
-          TextButton(
-            key: const Key('verify-back'),
-            // Keeps the selection and what was assigned; no cancel.
-            onPressed: c.backToSelection,
-            child: const Text('返回選擇 PTU'),
-          ),
-          TextButton(
-            onPressed: enabled ? c.rescanPtus : null,
-            child: const Text('返回選擇 PTU，由 Gateway 重新掃描'),
-          ),
-          button(
-            '開始資料驗證',
-            _startVerify,
-            enabled && s.ptus.any((p) => s.selected.contains(p['mac'])),
-          ),
+          if (!autoRunning) ...[
+            TextButton(
+              key: const Key('verify-back'),
+              // Keeps the selection and what was assigned; no cancel.
+              onPressed: c.backToSelection,
+              child: const Text('返回選擇 PTU'),
+            ),
+            TextButton(
+              onPressed: enabled ? c.rescanPtus : null,
+              child: const Text('返回選擇 PTU，由 Gateway 重新掃描'),
+            ),
+            button(
+              '開始資料驗證',
+              _startVerify,
+              enabled && s.ptus.any((p) => s.selected.contains(p['mac'])),
+            ),
+          ],
           // The status/error banner is at the top of the page; repeat it
           // here so a tap at the bottom never looks like nothing happened.
           if (s.busy || s.error != null)
@@ -2882,13 +3270,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     if (!networkCheck(state: s, env: env).ready) return null;
     if (!_autoCheckPaused && s.error == null) return null;
     // Round 26: after a Wi-Fi reset the station is chosen again.
-    final label = s.config['wifi_only'] == true
-        ? '下一步：確認站點'
-        : s.config['fleet_joined'] == true
-        ? '下一步：選擇站點'
-        : '下一步：設定身份與 Wi-Fi';
+    // 09-28: named after its action (no 「下一步：…」).
     return (
-      label,
+      checkContinueLabel,
       () {
         _autoCheckPaused = false;
         c.passNetworkCheck();
@@ -3137,3 +3521,39 @@ class AssignProgressHeader extends StatelessWidget {
     );
   }
 }
+
+// ---- One-thing screens (09-28): each page's one sentence and its buttons.
+
+const startTaskTitle = '登入後台，開始配置';
+const pickGatewayTaskTitle = '請選擇眼前要配置的閘道器，可按辨識確認';
+const checkingTaskTitle = '正在連線並檢查網路，請稍候';
+const checkPassedTaskTitle = '網路檢查通過，看完請按下方繼續';
+const testModeTaskTitle = '閘道器在測試模式，請先切回正常模式';
+const wifiProblemTaskTitle = '閘道器沒有連上 Wi-Fi，請設定 Wi-Fi';
+const targetTaskTitle = '請讓閘道器把資料送到目前的後台';
+const uploadPausedTaskTitle = '閘道器的資料上傳已暫停，請恢復上傳';
+const uploadBadTaskTitle = '閘道器還沒開始上傳資料，請依下方提示處理';
+const wifiTaskTitle = '設定閘道器的 Wi-Fi';
+String stationQuestionTitle(int site) => '目前站號是 $site，這台要配置在本站嗎？';
+const stationInputTitle = '請輸入這台要配置的站號';
+const onlineRunningTaskTitle = '正在確認閘道器上線，請稍候';
+const onlineTaskTitle = '確認閘道器上線';
+const directPickTaskTitle = '請辨識眼前的充電樁，確認後開始配置';
+const starPickTaskTitle = '請選擇本閘道器負責的 PTU';
+const starAssignTaskTitle = '正在配置 PTU 並開始監控';
+const starVerifyTaskTitle = '正在確認資料上傳';
+const verifyLoginTaskTitle = '請登入後台，確認資料上傳';
+const finishingTaskTitle = '正在完成設定並確認資料上傳';
+
+const useStationLabel = '使用此站點';
+const useSiteEmptyLabel = '使用站點';
+String useSiteLabel(int site) => '使用站點 $site';
+const otherSiteLabel = '改用其他站號';
+const otherWifiLabel = '改用其他 Wi-Fi';
+const saveWifiLabel = '儲存並繼續';
+const siteFieldLabel = '站號（1–65535）';
+const checkContinueLabel = '繼續設定站點';
+const detailsTitle = '設備與連線資訊';
+const newSiteConfirmTitle = '確定是新站？';
+String newSiteConfirmText(int site) =>
+    '後台還沒有站號 $site 的任何閘道器。請確認站號沒有打錯；確定是新站再繼續。';

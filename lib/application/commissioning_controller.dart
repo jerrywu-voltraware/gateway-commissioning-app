@@ -180,8 +180,8 @@ const gatewayNetKeys = [
 
 /// 「沿用目前站點」 refused because the gateway cannot upload yet.
 const reuseBlockedText =
-    'Gateway 還沒連上 Wi-Fi 或還沒開始上傳資料，暫時不能沿用目前站點。'
-    '請先用「保留站點，重設 Wi-Fi」，或回到網路體檢確認。';
+    'Gateway 還沒連上 Wi-Fi 或還沒開始上傳資料，暫時不能使用此站點。'
+    '請先按「改用其他 Wi-Fi」，或回到網路體檢確認。';
 
 /// Station kept after a Wi-Fi change: confirm upload before reviewing PTUs.
 const uploadNotReadyText =
@@ -192,7 +192,7 @@ const uploadNotReadyText =
 /// station is chosen again (it may be another site's, field round 26).
 const wifiUpdatedChooseStationText =
     'Wi-Fi 已更新，資料上傳正常。請確認站點：這台閘道器目前的站點若不是這裡，'
-    '請選「設定新站點與 Wi-Fi」。';
+    '請選「改用其他站號」。';
 
 /// Step 7 after a backend switch: the earlier result belongs to the old one.
 const backendSwitchedDoneText = '已切換連線環境，資料要在新的環境重新確認。';
@@ -882,7 +882,7 @@ const bindLaterWaitingTitle = '上次配置時本樁 PTU 尚未連線，閘道�
 
 const bindLaterHint =
     '請按〔辨識並綁定〕：到選擇 PTU 時按「辨識此樁」確認是眼前這台，'
-    '再按「是這台，開始監控」即會綁定並把它編為 #1。';
+    '再按「是這台，開始配置」即會綁定並把它編為 #1。';
 
 const bindLaterWaitingHint = '請確認本樁 PTU 已上電、與閘道器放在同一個機殼內；連上後按〔辨識並綁定〕。';
 
@@ -3122,6 +3122,7 @@ class CommissioningController extends Notifier<CommissionState> {
       // the next free number there (a full station falls through to the
       // search below).
       final keep = _keepSite;
+      var keptProposal = false;
       if (!ownIdentity && keep != null) {
         final (g, kind) = await suggestGateway(keep);
         _check(generation);
@@ -3129,6 +3130,7 @@ class CommissioningController extends Notifier<CommissionState> {
           site = keep;
           gw = g;
           offline = kind == GatewaySuggestKind.offline;
+          keptProposal = true;
         }
       }
       if (_loggedIn && !ownIdentity && site == null) {
@@ -3188,6 +3190,12 @@ class CommissioningController extends Notifier<CommissionState> {
       config['suggested_site_id'] = site;
       config['suggested_gateway_id'] = gw;
       config['suggested_offline'] = offline;
+      // One-thing screens (09-28): the station page asks 「目前站號是 N，
+      // 這台要配置在本站嗎？」 only for a station this gateway already
+      // carries or the one just done (〔配置下一台〕); a guess from the
+      // free-slot search is never proposed as 「本站」 (second user
+      // rehearsal: a prefilled number was accepted by mistake).
+      config['suggested_site_known'] = ownIdentity || keptProposal;
     }
     state = state.copy(
       step: 2,
@@ -3328,6 +3336,48 @@ class CommissioningController extends Notifier<CommissionState> {
     );
   }
 
+  /// One-thing screens (09-28): back from 「改用其他站號」 (a station in
+  /// service whose new number was not saved) to the question 「目前站號是
+  /// N，這台要配置在本站嗎？」. Nothing was sent to the gateway yet.
+  void cancelNewStation() {
+    if (state.busy ||
+        state.step != 2 ||
+        !state.checkPassed ||
+        state.config['new_station'] != true ||
+        state.config['fleet_joined'] != true) {
+      return;
+    }
+    state = state.copy(
+      config: {
+        ...state.config,
+        'choose_station': true,
+        'new_station': false,
+        'wifi_only': false,
+      },
+      selected: state.ptus.map((d) => d['mac'].toString()).toSet(),
+      message: '',
+    );
+  }
+
+  /// Backlog K (second user rehearsal: 56 typed for 80, nothing warned):
+  /// whether the backend knows any gateway on [forSite] — true / false,
+  /// null when it cannot tell (not logged in, backend unreachable). The
+  /// page asks 「確定是新站？」 only on false.
+  Future<bool?> siteHasGateways(int forSite) async {
+    if (!_loggedIn) return null;
+    try {
+      final fleet = await _api.request(
+        'GET',
+        '/api/gateways/fleet-status?site_id=$forSite',
+      );
+      return (fleet['gateways'] as List? ?? []).whereType<Map>().any(
+        (row) => (row['site_id'] as num?)?.toInt() == forSite,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> chooseStation({
     required bool newStation,
     bool wifiOnly = false,
@@ -3365,7 +3415,7 @@ class CommissioningController extends Notifier<CommissionState> {
           ? '請輸入新的站點 ID 與 Wi-Fi；儲存後才會變更閘道器。'
           : wifiOnly
           ? '保留目前站點與 PTU，僅更新 Wi-Fi。'
-          : '沿用目前站點，由 Gateway 搜尋 PTU，請確認要監控的裝置。',
+          : '使用此站點，由 Gateway 搜尋 PTU，請確認要監控的裝置。',
     );
     if (!newStation && !wifiOnly) await discover();
   }
@@ -5354,7 +5404,7 @@ class CommissioningController extends Notifier<CommissionState> {
             : shown == null || !sameMac(shown, picked)) {
           final notice = required
               ? directSwitchedText(picked)
-              : '閘道器目前連的是 PTU $picked，請先按「辨識此樁」確認是眼前這台，再按「是這台，開始監控」。';
+              : '閘道器目前連的是 PTU $picked，請先按「辨識此樁」確認是眼前這台，再按「是這台，開始配置」。';
           state = state.copy(
             identifiedMac: null,
             directNotice: notice,
@@ -6396,7 +6446,7 @@ class CommissioningController extends Notifier<CommissionState> {
               .toList(),
           message: connected.isEmpty
               ? directFlow
-                    ? '閘道器還沒收到這台 PTU 的資料，請確認 PTU 電源後再按「是這台，開始監控」重試；Gateway 仍維持監控。'
+                    ? '閘道器還沒收到這台 PTU 的資料，請確認 PTU 電源後再按「是這台，開始配置」重試；Gateway 仍維持監控。'
                     : '未連上任何 PTU，請確認 PTU 電源與距離後重試；Gateway 仍維持監控。'
               : '已調整為 ${connected.length} 台；請重新選擇已連線裝置或修復缺少的 PTU。',
         );

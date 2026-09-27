@@ -511,7 +511,12 @@ void main() {
       expect(find.widgetWithText(TextField, 'Wi-Fi 密碼'), findsNothing);
       expect(find.byKey(const Key('wifi-change')), findsOneWidget);
       expect(find.text('改用其他 Wi-Fi'), findsOneWidget);
-      await tap(find.text('儲存站點，沿用此 Wi-Fi'));
+      // 09-28: one question, 「目前站號是 80，這台要配置在本站嗎？」.
+      expect(
+        tester.widget<Text>(find.byKey(const Key('task-title'))).data,
+        '目前站號是 80，這台要配置在本站嗎？',
+      );
+      await tap(find.text('使用此站點'));
       var now = container.read(commissionProvider);
       expect(now.error, isNull);
       expect(now.step, 4);
@@ -525,7 +530,7 @@ void main() {
       // Human identification remains mandatory, then the rest is automatic.
       expect(fake.count('join_fleet'), 0);
       await tap(find.text('辨識此樁'));
-      await tap(find.text('是這台，開始監控'));
+      await tap(find.text('是這台，開始配置'));
       now = container.read(commissionProvider);
       expect(now.error, isNull);
       expect(now.step, 7);

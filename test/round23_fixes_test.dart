@@ -613,7 +613,7 @@ void main() {
     });
 
     testWidgets('360x640 at scale 1.1: connected from a scrolled gateway list, '
-        '下一步：選擇站點 is on screen without a swipe and stays put', (tester) async {
+        '繼續設定站點 is on screen without a swipe and stays put', (tester) async {
       _phoneView(tester);
       final fake = WifiGateway.station()..config['wifi_ssid'] = 'Office-2G';
       final container = await pumpCheckApp(tester, fake);
@@ -636,12 +636,14 @@ void main() {
       expect(scrolled, greaterThan(0));
       expect(find.byKey(const Key('step-title')).hitTestable(), findsOneWidget);
       // Explicitly reviewing the check must not bounce straight forward.
+      // 09-28: 「回到網路體檢」 is in 「設備與連線資訊」 while the check passed.
       await tester.scrollUntilVisible(
-        find.text('回到網路體檢'),
+        find.text('設備與連線資訊'),
         120,
         scrollable: _page,
       );
-      await tap(tester, find.text('回到網路體檢'));
+      await tap(tester, find.text('設備與連線資訊'));
+      await tap(tester, find.byKey(const Key('details-review-check')));
       expect(read().checkPassed, isFalse);
       await tester.pump(const Duration(seconds: 2));
       await tester.pumpAndSettle();

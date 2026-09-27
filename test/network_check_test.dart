@@ -713,7 +713,7 @@ void main() {
       await tap(tester, find.text('設定 Wi-Fi'));
       expect(container.read(commissionProvider).error, isNotNull);
       await tap(tester, find.byKey(const Key('check-skip')));
-      expect(find.widgetWithText(TextField, '站點 ID（1–65535）'), findsOneWidget);
+      expect(find.widgetWithText(TextField, '站號（1–65535）'), findsOneWidget);
       expect(container.read(commissionProvider).checkPassed, isTrue);
       expect(tester.takeException(), isNull);
     });
@@ -737,6 +737,8 @@ void main() {
         '9 驗證資料',
         '10 完成',
       ];
+      // 09-28: the step list is in 「設備與連線資訊」.
+      await tap(tester, find.text('設備與連線資訊'));
       final list = find.byKey(const Key('step-list'));
       final shown = tester
           .widgetList<Text>(
@@ -757,9 +759,9 @@ void main() {
 
       await connect(tester);
       expect(title(tester), '6 / 10   站點選擇');
-      expect(find.text('沿用目前站點'), findsOneWidget);
+      expect(find.text('使用此站點'), findsOneWidget);
       expect(find.byKey(const Key('check-next')), findsNothing);
-      await tap(tester, find.text('沿用目前站點'));
+      await tap(tester, find.text('使用此站點'));
       expect(title(tester), '7 / 10   選擇 PTU');
       expect(fake.commands, contains('scan_ble_discover'));
       expect(tester.takeException(), isNull);
@@ -783,7 +785,7 @@ void main() {
       await tap(tester, find.byKey(const Key('check-skip')));
       expect(title(tester), '6 / 10   站點選擇');
       final reuse = tester.widget<FilledButton>(
-        find.widgetWithText(FilledButton, '沿用目前站點'),
+        find.widgetWithText(FilledButton, '使用此站點'),
       );
       expect(reuse.onPressed, isNull);
       expect(find.byKey(const Key('reuse-blocked')), findsOneWidget);
@@ -793,7 +795,7 @@ void main() {
       await tap(tester, find.text('回到網路體檢'));
       await tap(tester, find.text('重設 Wi-Fi'));
       expect(find.text('保留站點 80／閘道器 1，只更新 Wi-Fi。'), findsOneWidget);
-      expect(find.widgetWithText(TextField, '站點 ID（1–65535）'), findsNothing);
+      expect(find.widgetWithText(TextField, '站號（1–65535）'), findsNothing);
       expect(tester.takeException(), isNull);
     });
 
@@ -837,8 +839,8 @@ void main() {
       await tap(tester, find.byKey(const Key('check-skip')));
       await reveal(find.byKey(const Key('reuse-blocked')));
       expect(find.byKey(const Key('reuse-blocked')), findsOneWidget);
-      await reveal(find.text('保留站點，重設 Wi-Fi'));
-      await tap(tester, find.text('保留站點，重設 Wi-Fi'));
+      await reveal(find.text('改用其他 Wi-Fi'));
+      await tap(tester, find.text('改用其他 Wi-Fi'));
       await reveal(find.text('Gateway 只能用 2.4 GHz 的 Wi-Fi，5 GHz 的網路連不上。'));
       expect(
         find.text('Gateway 只能用 2.4 GHz 的 Wi-Fi，5 GHz 的網路連不上。'),

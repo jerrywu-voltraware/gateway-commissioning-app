@@ -420,12 +420,15 @@ void main() {
       expect(tester.takeException(), isNull);
 
       // The details keep the raw failure.
-      await tester.tap(
-        find.descendant(
-          of: find.byKey(ValueKey('ptu-${fake.order[3]}')),
-          matching: find.byIcon(Icons.info_outline),
-        ),
+      final info = find.descendant(
+        of: find.byKey(ValueKey('ptu-${fake.order[3]}')),
+        matching: find.byIcon(Icons.info_outline),
       );
+      // 09-28: the page starts with its task title, so the scroll above
+      // can leave the row's icon under the app bar; bring it in first.
+      await tester.ensureVisible(info);
+      await tester.pump();
+      await tester.tap(info);
       for (var i = 0; i < 20; i++) {
         await tester.pump(const Duration(milliseconds: 100));
       }

@@ -252,8 +252,9 @@ bool uploadHeldUntilJoin(Map<String, dynamic> config) =>
 /// asked for help): says the pause is normal and what to press.
 const uploadHeldText = '後台連線正常。PTU 資料會在完成配置後自動開始上傳（目前暫停是正常的），APP 會自動繼續';
 
-/// Round 30: 確認資料上傳's (controller step 3) 「下一步」, in the bottom bar.
-const confirmOnlineLabel = '下一步：確認上線';
+/// Round 30: 確認資料上傳's (controller step 3) retry, in the bottom bar.
+/// 09-28: named after its action (no 「下一步：…」 labels).
+const confirmOnlineLabel = '確認閘道器上線';
 
 /// Round 28: the 「連線狀態」 gateway row for [uploadHeldUntilJoin].
 const uploadHeldStatus = '✓ 已連上（完成配置後才上傳）';

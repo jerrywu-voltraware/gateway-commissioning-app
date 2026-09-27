@@ -104,7 +104,7 @@ String placeOf(MqttTarget target) => target.isLocal ? '本地測試主機' : '�
 String? subnetHint(
   MqttTarget current,
   String gatewayIp, {
-  String wifiAction = '保留站點，重設 Wi-Fi',
+  String wifiAction = '改用其他 Wi-Fi',
 }) {
   final gatewayNet = ipv4Prefix24(gatewayIp);
   final hostNet = current.isLocal ? ipv4Prefix24(current.host) : null;
@@ -330,7 +330,7 @@ ConnectionStatus connectionStatus({
       } else if (wifi == WifiVerdict.connecting) {
         hint =
             'Gateway 還沒連上 Wi-Fi，請稍候；若一直連不上，請確認 Wi-Fi 名稱和密碼'
-            '（可用「保留站點，重設 Wi-Fi」）。';
+            '（可用「改用其他 Wi-Fi」）。';
       } else {
         hint = uploadCheckHint(current);
       }
