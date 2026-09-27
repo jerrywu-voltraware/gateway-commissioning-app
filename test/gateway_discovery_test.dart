@@ -182,12 +182,27 @@ void main() {
         lessThanOrEqualTo(90),
       );
       final before = tester.getTopLeft(find.text('GIOS-S80-GW0'));
+      // Reading noise (2 dB) moves nothing.
+      link.events.add([
+        const GatewayPeer('AA:BB:CC:DD:EE:29', 'GIOS-S80-GW29', -58),
+        ...peers.take(29),
+      ]);
+      await tester.pump();
+      expect(tester.getTopLeft(find.text('GIOS-S80-GW0')), before);
+      // Round 30: a clearly stronger one rises to the top, marked nearest.
       link.events.add([
         const GatewayPeer('AA:BB:CC:DD:EE:29', 'GIOS-S80-GW29', -30),
         ...peers.take(29),
       ]);
       await tester.pump();
-      expect(tester.getTopLeft(find.text('GIOS-S80-GW0')), before);
+      expect(
+        tester.getTopLeft(find.text('GIOS-S80-GW29')).dy,
+        lessThan(tester.getTopLeft(find.text('GIOS-S80-GW0')).dy),
+      );
+      expect(
+        find.byKey(const ValueKey('gateway-nearest-AA:BB:CC:DD:EE:29')),
+        findsOneWidget,
+      );
       await tester.enterText(find.byType(TextField), 'gw29');
       await tester.pump();
       expect(find.byType(ListTile), findsOneWidget);

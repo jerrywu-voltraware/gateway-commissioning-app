@@ -145,12 +145,14 @@ void main() {
       addTearDown(container.dispose);
       await c.configurePtus();
       expect(container.read(commissionProvider).resumePending, isTrue);
-      // Meanwhile the gateway connected all of them and resumed upload.
+      // Meanwhile the gateway connected all of them and resumed upload —
+      // in service (round 30: `fleet_joined` is required, see below).
       for (final d in fake.devices) {
         d['connected'] = true;
         d['notify_enabled'] = true;
       }
       fake.config
+        ..['fleet_joined'] = true
         ..['upload_paused'] = false
         ..['max_connections'] = 5;
       fake.ops.clear();
@@ -164,6 +166,34 @@ void main() {
       expect(commissionSummaryText(s), contains('本機配置 3 台'));
     },
   );
+
+  test('round 30: resume with upload resumed but not in service: join_fleet '
+      'is sent', () async {
+    final fake = AdapterOffLink()
+      ..dropOp = 'get_ble_devices'
+      ..dropOnCall = 2;
+    final (container, c) = await ready(fake);
+    addTearDown(container.dispose);
+    await c.configurePtus();
+    expect(container.read(commissionProvider).resumePending, isTrue);
+    // The back office's 〔恢復上傳〕 (set_data_upload) — PTUs connected,
+    // upload on, BLE on, limit set, but the gateway never joined.
+    for (final d in fake.devices) {
+      d['connected'] = true;
+      d['notify_enabled'] = true;
+    }
+    fake.config
+      ..['fleet_joined'] = false
+      ..['upload_paused'] = false
+      ..['max_connections'] = 5;
+    fake.ops.clear();
+    await c.resumeAssign();
+    final s = container.read(commissionProvider);
+    expect(s.error, isNull);
+    expect(s.step, 6);
+    expect(fake.ops, contains('join_fleet'));
+    expect(fake.config['fleet_joined'], isTrue);
+  });
 
   test('resume that cannot confirm monitoring offers retry and skip', () async {
     final fake = AdapterOffLink()
