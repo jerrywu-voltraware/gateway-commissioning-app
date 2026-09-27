@@ -290,6 +290,7 @@ class GatewayFailure implements Exception {
     'location_off' => '此版本 Android 搜尋藍牙需要定位服務，請開啟手機定位後重新搜尋。',
     'disconnected' || 'not_connected' => '與閘道器的連線已中斷，請靠近後重新連線。',
     'phone_link_lost' => phoneLinkLostText,
+    'identity_archived' => identityArchivedText,
     'reconnect_failed' => reconnectFailedText,
     'timeout' => '等待超時，請確認裝置與網路後重試。',
     'cancelled' => '操作已取消，可從最近完成的步驟重試。',
@@ -336,6 +337,14 @@ const fleetUnconfirmedText =
 
 /// Step 8: the phone's BLE link to the gateway dropped (not a PTU failure).
 const phoneLinkLostText = '手機與閘道器的藍牙連線中斷，請靠近閘道器後按「重新連線並繼續」';
+
+/// 09-28 (GC 刪除 56/1, then the same gateway configured again): 確認上線
+/// found the station archived in the back office — its heartbeats are not
+/// recorded, so they would never arrive. The first sentence is the
+/// checklist item's reason ([checklistReason]).
+const identityArchivedText =
+    '這台閘道器之前在後台被移除（封存），後台不會記錄它的心跳。'
+    '請按下方「重新加入」，恢復記錄後會繼續確認上線。';
 
 /// Step 9 stopped: the backend stayed unavailable (5xx / unreachable /
 /// timeout) through the automatic retries (round 13).

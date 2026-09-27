@@ -184,6 +184,13 @@ const reuseBlockedText =
     'Gateway 還沒連上 Wi-Fi 或還沒開始上傳資料，暫時不能使用此站點。'
     '請先按「改用其他 Wi-Fi」，或回到網路體檢確認。';
 
+/// 09-28: 〔重新加入〕 running (restore, then reserve the station again).
+const rejoiningText = '正在重新加入後台';
+
+/// 09-28: 確認上線 waits this long for heartbeats before it asks the back
+/// office whether the station is archived (its heartbeats are skipped).
+const archivedCheckAfterSeconds = 60;
+
 /// Station kept after a Wi-Fi change: confirm upload before reviewing PTUs.
 const uploadNotReadyText =
     '要等 Gateway 連上 Wi-Fi 並開始上傳資料，才能繼續選擇 PTU。'
@@ -1181,12 +1188,19 @@ class CommissionState {
     this.bindLaterDeferred = false,
     this.savedGateway = '',
     this.checklist,
+    this.identityArchived = false,
   });
 
   /// 09-28: the automatic step running (or just failed) as a checklist
   /// ([Checklist]) — ticked on real events; the page shows it where it
   /// belongs ([shownChecklist]). Null: none.
   final Checklist? checklist;
+
+  /// 09-28 (GC 刪除 56/1, then the same gateway configured again: 確認上線
+  /// waited for heartbeats forever): 確認上線 stopped because this station
+  /// is archived in the back office — its heartbeats are not recorded until
+  /// 〔重新加入〕 ([CommissioningController.rejoinArchived]).
+  final bool identityArchived;
 
   /// Round 28 (P0 「沒有 PTU 的樁完成不了」): the run ended with
   /// 〔先完成配置〕 — the gateway is in service (join_fleet, upload on,
@@ -1571,10 +1585,12 @@ class CommissionState {
     bool? bindLaterDeferred,
     String? savedGateway,
     Object? checklist = _keep,
+    bool? identityArchived,
   }) => CommissionState(
     checklist: identical(checklist, _keep)
         ? this.checklist
         : checklist as Checklist?,
+    identityArchived: identityArchived ?? this.identityArchived,
     ptuDeferred: ptuDeferred ?? this.ptuDeferred,
     bindLaterMac: identical(bindLaterMac, _keep)
         ? this.bindLaterMac
@@ -3705,6 +3721,55 @@ class CommissioningController extends Notifier<CommissionState> {
     return null;
   }
 
+  /// 09-28 (GC 刪除 56/1, then the same gateway configured again: 確認上線
+  /// waited for heartbeats forever — the back office skips the heartbeats
+  /// of an archived station, by design it never restores one by itself):
+  /// read-only, whether (site, gw) is archived in the back office for this
+  /// gateway (no MAC on record, or its own). Another gateway's number is
+  /// [conflictingMac]'s 「編號已被使用」. False when it cannot tell.
+  Future<bool> identityArchived(int site, int gw) async {
+    if (!_loggedIn) return false;
+    try {
+      final identity = await _api.request(
+        'GET',
+        '/api/gateways/$site/$gw/check-identity',
+      );
+      return identity['exists'] == true &&
+          identity['archived'] == true &&
+          (identity['last_seen_mac'] == null ||
+              _mac(identity['last_seen_mac']) ==
+                  _mac(state.config['gateway_uid']));
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// 〔重新加入並繼續〕 on the station page: restores the archived (site, gw)
+  /// and reserves it for this gateway again. True when done (a failure is
+  /// in the red box).
+  Future<bool> rejoinIdentity(int site, int gw) async {
+    await _sideTask(
+      rejoiningText,
+      30,
+      (generation) => _rejoin(generation, site, gw),
+    );
+    return ref.mounted && state.error == null;
+  }
+
+  /// `PATCH restore` (no join_fleet: monitoring is joined at step 8 as
+  /// usual), then `reserve-identity` with this gateway's MAC.
+  Future<void> _rejoin(int generation, int forSite, int forGateway) async {
+    final path = '/api/gateways/$forSite/$forGateway';
+    await _request(generation, 'PATCH', '$path/restore');
+    final uid = state.config['gateway_uid']?.toString() ?? '';
+    await _request(
+      generation,
+      'POST',
+      '$path/reserve-identity?mac=${Uri.encodeComponent(uid)}',
+    );
+    state = state.copy(identityArchived: false, error: state.error);
+  }
+
   Future<void> _configureWifi(
     int newSite,
     int newGateway,
@@ -3947,8 +4012,25 @@ class CommissioningController extends Notifier<CommissionState> {
     String? base,
     String? environment,
     String? password,
+  }) => _onlineThenPick(skip, base, environment, password, rejoin: false);
+
+  /// 09-28: 〔重新加入〕 where 確認上線 stopped on an archived station
+  /// ([CommissionState.identityArchived]): restores it and reserves it for
+  /// this gateway again, then waits for the heartbeats as before.
+  Future<void> rejoinArchived({
+    String? base,
+    String? environment,
+    String? password,
+  }) => _onlineThenPick(false, base, environment, password, rejoin: true);
+
+  Future<void> _onlineThenPick(
+    bool skip,
+    String? base,
+    String? environment,
+    String? password, {
+    required bool rejoin,
   }) async {
-    await _online(skip, base, environment, password);
+    await _online(skip, base, environment, password, rejoin);
     // Round 15: direct flow — entering step 7 starts the gateway's own PTU
     // pick at once (max_connections 1), no 「掃描」 tap needed.
     if (ref.mounted && state.step == 4 && state.error == null && directFlow) {
@@ -3961,10 +4043,13 @@ class CommissioningController extends Notifier<CommissionState> {
     String? base,
     String? environment,
     String? password,
+    bool rejoin,
   ) => _run('確認閘道器持續上線', 90, (generation) async {
     // 09-28: 連上後台 → 第 1 次心跳 → 第 2 次心跳 → 上傳目標, each ticked
     // on what the back office answers.
     if (!skip) _setChecklist(onlineChecklist().start(onlineItemBackend));
+    // A failed 〔重新加入〕 keeps it (the bottom bar offers it again).
+    if (!rejoin) state = state.copy(identityArchived: false);
     final secret = base == null ? '' : _passwordFor(base, password);
     if (!skip && !_loggedIn && base != null && secret.isNotEmpty) {
       _backend = describeBackend(Uri.tryParse(base.trim()));
@@ -3976,6 +4061,7 @@ class CommissioningController extends Notifier<CommissionState> {
       state = state.copy(step: 4, message: '後端尚未確認；完成配置後仍需驗證');
       return;
     }
+    if (rejoin) await _rejoin(generation, site, gateway);
     MqttTarget? wanted;
     if (base != null) {
       try {
@@ -3990,7 +4076,14 @@ class CommissioningController extends Notifier<CommissionState> {
     }
     await _command(generation, 'heartbeat_boost', {'duration': 300});
     String? previous;
+    var identityChecked = false;
     for (int elapsed = 0; elapsed < 90; elapsed += 5) {
+      // 09-28: no heartbeats for [archivedCheckAfterSeconds]: a station
+      // archived in the back office (GC 刪除) has them skipped, so they
+      // would never come — stop on this item and offer 〔重新加入〕.
+      if (elapsed >= archivedCheckAfterSeconds && !identityChecked) {
+        identityChecked = await _stopIfArchived(generation);
+      }
       final row = await _fleet(generation);
       _check(generation);
       final heartbeat = row?['last_heartbeat']?.toString();
@@ -4045,6 +4138,26 @@ class CommissioningController extends Notifier<CommissionState> {
     }
     throw const GatewayFailure('timeout');
   });
+
+  /// 確認上線 without heartbeats: asks the back office (check-identity)
+  /// whether this station is archived. Archived → [identityArchived] set
+  /// and `identity_archived` thrown (the running item shows why, the bottom
+  /// bar 〔重新加入〕). True: answered, not archived; false: it could not
+  /// tell (asked again next round, the wait goes on as before).
+  Future<bool> _stopIfArchived(int generation) async {
+    final Map<String, dynamic> identity;
+    try {
+      identity = await _request(generation, 'GET', '$_path/check-identity');
+    } on GatewayFailure catch (error) {
+      if (error.code == 'cancelled') rethrow;
+      return false;
+    }
+    if (identity['exists'] == true && identity['archived'] == true) {
+      state = state.copy(identityArchived: true, error: state.error);
+      throw const GatewayFailure('identity_archived');
+    }
+    return true;
+  }
 
   /// Round 26: reads get_config for its `mode` (absorbed by
   /// [_absorbGatewayState]); true in test mode. A failed read is false:

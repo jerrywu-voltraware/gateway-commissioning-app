@@ -1824,6 +1824,12 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         if (!mounted) return;
       }
       if (_gatewaySubmitBlocked) return;
+      // 09-28: a number removed (archived) in the back office is asked
+      // about before anything is sent.
+      if (!await _confirmArchived(c, site, int.tryParse(_gateway.text) ?? 0)) {
+        return;
+      }
+      if (!mounted) return;
       final kept = keptWifiSsid(ref.read(commissionProvider));
       if (kept != null && !otherWifi) {
         _ssid.text = kept;
@@ -1885,6 +1891,51 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           ? GatewaySuggestKind.offline
           : GatewaySuggestKind.online;
     });
+  }
+
+  /// 09-28 (GC 刪除 56/1, then this gateway configured again: 確認上線
+  /// waited for heartbeats forever — the back office skips an archived
+  /// station's heartbeats and never restores it by itself): a number
+  /// archived for this gateway is asked about — 〔重新加入並繼續〕 restores
+  /// it, 〔改用其他站號〕 opens the input. True: go on.
+  Future<bool> _confirmArchived(
+    CommissioningController c,
+    int site,
+    int gw,
+  ) async {
+    if (!await c.identityArchived(site, gw)) return true;
+    if (!mounted) return false;
+    final action = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        key: const Key('archived-confirm'),
+        title: const Text(archivedConfirmTitle),
+        content: Text(archivedConfirmText(site, gw)),
+        actions: [
+          TextButton(
+            key: const Key('archived-other-site'),
+            onPressed: () => Navigator.pop(context, 'other'),
+            child: const Text(otherSiteLabel),
+          ),
+          FilledButton(
+            key: const Key('archived-rejoin'),
+            onPressed: () => Navigator.pop(context, 'rejoin'),
+            child: const Text(archivedRejoinLabel),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return false;
+    if (action == 'other') {
+      setState(() {
+        _otherSite = true;
+        _wifiStage = false;
+        _site.clear();
+      });
+      return false;
+    }
+    if (action != 'rejoin') return false;
+    return c.rejoinIdentity(site, gw);
   }
 
   /// Backlog K: a station the back office has no gateway on is asked
@@ -2363,6 +2414,8 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           Text(
             s.busy
                 ? '正在確認後台收到心跳，成功後會自動尋找 PTU，請稍候。'
+                : s.identityArchived
+                ? rejoinHintText
                 : s.error != null
                 ? '檢查尚未通過。請依提示修正後，按下方按鈕重新檢查。'
                 : !s.loggedIn
@@ -3273,6 +3326,18 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     // Round 30 (user rehearsal 09-27, E: 110 s at 確認資料上傳 and a help
     // request): its 「下一步」 is in the bottom bar too, always on screen.
     if (s.step == 3) {
+      // 09-28: stopped on an archived station — 〔重新加入〕, then the
+      // heartbeats are waited for again.
+      if (s.identityArchived) {
+        return (
+          rejoinLabel,
+          () => c.rejoinArchived(
+            base: env.base,
+            environment: env.environment.name,
+            password: _login.text,
+          ),
+        );
+      }
       if (s.error == null && s.loggedIn && !s.offline && !_autoOnlineStarted) {
         return null;
       }
@@ -3576,3 +3641,14 @@ const detailsTitle = '設備與連線資訊';
 const newSiteConfirmTitle = '確定是新站？';
 String newSiteConfirmText(int site) =>
     '後台還沒有站號 $site 的任何閘道器。請確認站號沒有打錯；確定是新站再繼續。';
+
+/// 09-28: the station chosen is archived in the back office (GC 刪除).
+const archivedConfirmTitle = '這台閘道器之前在後台被移除（封存），要重新加入嗎？';
+String archivedConfirmText(int site, int gw) =>
+    '站點 $site／閘道器 $gw 在後台已被移除（封存）。封存的閘道器，後台不會記錄它的心跳，'
+    '配置會停在「確認閘道器上線」。重新加入後會恢復記錄，原本的歷史資料不變。';
+const archivedRejoinLabel = '重新加入並繼續';
+
+/// 09-28: 確認上線 stopped on an archived station — the bottom bar's action.
+const rejoinLabel = '重新加入';
+const rejoinHintText = '這台閘道器在後台被移除（封存），心跳不會被記錄。按下方「重新加入」後會繼續確認上線。';
