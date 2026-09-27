@@ -391,6 +391,9 @@ void main() {
       });
       addTearDown(container.dispose);
       await tester.pumpWidget(_screen(container));
+      // Round 28: the no-PTU help sits above it in the card.
+      await tester.ensureVisible(find.byKey(const Key('direct-not-this')));
+      await tester.pump();
       await tester.tap(find.byKey(const Key('direct-not-this')));
       await tester.pump();
       expect(find.text('峰值 -80 dBm'), findsOneWidget);

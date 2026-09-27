@@ -176,6 +176,8 @@ void main() {
       expect(gatewayTitle('Some-Gateway-Name'), 'Some-Gateway-Name');
       expect(macTail(_gw2), '70F2');
       expect(macTailText(_gw1), 'MAC 後 4 碼 3A02');
+      // Round 28: the Wi-Fi MAC (the back office's) is the one shown.
+      expect(gatewayMacText(bleId: _gw1), 'MAC 後 4 碼 3A00（藍牙 3A02）');
       expect(macTail('C8F09E4B3A02'), '3A02');
       expect(macTail('demo-gateway'), isNull);
       expect(macTail('5E0C3D1A-8F2B-4C11-9E77-0123456789AB'), isNull);
@@ -191,7 +193,7 @@ void main() {
             'fw_version': '1.7.36',
           },
         ),
-        '站 80 · 閘道器 2 · MAC 後 4 碼 70F2 · 1.7.36',
+        '站 80 · 閘道器 2 · MAC 後 4 碼 70F0 · 1.7.36',
       );
       expect(gatewayHeaderText(name: 'GIOS-S0-GW00', id: 'x'), 'GIOS-S0-GW00');
     });
@@ -243,8 +245,10 @@ void main() {
       ]);
       await tester.pump();
       for (final (title, tail, rssi) in [
-        ('站 80 · 閘道器 1', 'MAC 後 4 碼 3A02', '-44 dBm'),
-        ('站 80 · 閘道器 2', 'MAC 後 4 碼 70F2', '-54 dBm'),
+        // Round 28: the Wi-Fi tail (as the back office shows it), the
+        // Bluetooth one in brackets.
+        ('站 80 · 閘道器 1', 'MAC 後 4 碼 3A00（藍牙 3A02）', '-44 dBm'),
+        ('站 80 · 閘道器 2', 'MAC 後 4 碼 70F0（藍牙 70F2）', '-54 dBm'),
       ]) {
         final text = find.text(title);
         expect(text, findsOneWidget);
@@ -609,11 +613,16 @@ void main() {
         '✓ 資料上傳中',
       );
       // Not in service yet: paused on purpose until 開始監控 (join_fleet).
+      // Round 28 (field: pile B read 「✓ 資料上傳中」): not a problem, but
+      // never 「資料上傳中」 either.
       final fresh = paused(joined: false);
       expect(fresh.uploadPaused, isFalse);
+      final freshCheck = networkCheck(state: fresh, env: _production);
+      expect(freshCheck.upload.line, '✓ $uploadHeldText');
+      expect(freshCheck.uploadOk, isTrue);
       expect(
-        networkCheck(state: fresh, env: _production).upload.line,
-        '✓ 資料上傳中',
+        connectionStatus(env: _production, state: fresh).gateway.status,
+        uploadHeldStatus,
       );
     });
 

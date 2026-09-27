@@ -7,6 +7,7 @@ import 'package:gateway_commissioning/application/commissioning_controller.dart'
 import 'package:gateway_commissioning/application/connection_status.dart';
 import 'package:gateway_commissioning/application/local_backend_finder.dart';
 import 'package:gateway_commissioning/application/network_check.dart';
+import 'package:gateway_commissioning/core/gateway_identity.dart';
 import 'package:gateway_commissioning/core/gateway_net.dart';
 import 'package:gateway_commissioning/core/mqtt_target.dart';
 import 'package:gateway_commissioning/core/protocol.dart';
@@ -429,21 +430,27 @@ void main() {
   });
 
   group('upload confirmation', () {
-    test('waits, then shows ✓ 資料上傳中', () async {
-      final fake = WifiGateway()..mqttConnected = false;
-      final (container, _) = await _connected(fake, offline: false);
-      addTearDown(container.dispose);
-      var check = _check(container);
-      expect(check.wifiOk, isTrue);
-      expect(check.upload.line, '⏳ 等待 Gateway 開始上傳資料…（最多約 1 分鐘）');
-      expect(check.stage, CheckStage.upload);
-      expect(check.canSkip, isFalse);
-      fake.mqttConnected = true;
-      await _sleep(60);
-      check = _check(container);
-      expect(check.upload.line, '✓ 資料上傳中');
-      expect(check.ready, isTrue);
-    });
+    // Round 28: a new gateway uploads nothing before join_fleet (its
+    // upload is paused on purpose) — connected, never 「資料上傳中」.
+    test(
+      'waits, then shows ✓ connected (upload after the commissioning)',
+      () async {
+        final fake = WifiGateway()..mqttConnected = false;
+        final (container, _) = await _connected(fake, offline: false);
+        addTearDown(container.dispose);
+        var check = _check(container);
+        expect(check.wifiOk, isTrue);
+        expect(check.upload.line, '⏳ 等待 Gateway 開始上傳資料…（最多約 1 分鐘）');
+        expect(check.stage, CheckStage.upload);
+        expect(check.canSkip, isFalse);
+        fake.mqttConnected = true;
+        await _sleep(60);
+        check = _check(container);
+        expect(check.upload.line, '✓ $uploadHeldText');
+        expect(check.upload.line, isNot(contains('資料上傳中')));
+        expect(check.ready, isTrue);
+      },
+    );
 
     test('no upload in time: plain hints, and 新站 may continue', () async {
       final fake = WifiGateway()

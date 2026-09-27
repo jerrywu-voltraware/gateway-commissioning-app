@@ -274,18 +274,22 @@ void main() {
       expect(s.mayBeAmbiguous, isFalse, reason: 'no advertising figure');
     });
 
-    test('no neighbour: upper − 10, not below -90 nor above upper', () {
+    // Round 28: was upper − 10 (field: -61 dBm, a neighbour's peak).
+    test('no neighbour: the current threshold held, never wider', () {
       var s = suggestDirectThreshold(
         ownLink: [-50, -60],
         ownAdvertising: -52,
         neighborPeaks: const [],
       );
       expect(s.verdict, DirectThresholdVerdict.noNeighbors);
-      expect(s.threshold, -67);
-      s = suggestDirectThreshold(ownLink: [-88], neighborPeaks: const []);
-      expect(s.threshold, -90);
-      s = suggestDirectThreshold(ownLink: [-97], neighborPeaks: const []);
-      expect(s.threshold, -94, reason: 'never above upper');
+      expect(s.threshold, -55);
+      s = suggestDirectThreshold(
+        ownLink: [-88],
+        neighborPeaks: const [],
+        current: -50,
+      );
+      expect(s.threshold, -50);
+      expect(s.ownBelowHold, isTrue);
     });
 
     test('no link reading: no suggestion; invalid readings ignored', () {
@@ -304,6 +308,7 @@ void main() {
         suggestDirectThreshold(
           ownLink: [-5],
           neighborPeaks: const [],
+          current: -10,
         ).threshold,
         -20,
       );

@@ -561,7 +561,12 @@ void main() {
         await tester.scrollUntilVisible(box, 80, scrollable: page);
         unawaited(Scrollable.ensureVisible(tester.element(box), alignment: 1));
         await tester.pump();
-        final viewport = tester.getRect(page);
+        // Round 28: the page's list, found from the box (the header may
+        // take one more line with the Wi-Fi MAC tail, so the banner at the
+        // top of the list is no longer built once scrolled this far).
+        final viewport = tester.getRect(
+          find.ancestor(of: box, matching: find.byType(Scrollable)).first,
+        );
         final boxRect = tester.getRect(box);
         expect(viewport.top, lessThanOrEqualTo(boxRect.top));
         expect(viewport.bottom, greaterThanOrEqualTo(boxRect.bottom));

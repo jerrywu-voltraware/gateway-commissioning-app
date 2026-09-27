@@ -608,6 +608,13 @@ void main() {
 
       await tester.runAsync(() async {
         await tester.binding.handlePopRoute();
+      });
+      await tester.pumpAndSettle();
+      // Round 28: 返回 asks 「結束目前配置？」 first (the APP stays).
+      expect(find.byKey(const Key('end-confirm')), findsOneWidget);
+      expect(container.read(commissionProvider).step, 4);
+      await tester.tap(find.byKey(const Key('end-confirm-end')));
+      await tester.runAsync(() async {
         for (var i = 0; i < 400; i++) {
           if (container.read(commissionProvider).step == 1) break;
           await Future<void>.delayed(const Duration(milliseconds: 5));

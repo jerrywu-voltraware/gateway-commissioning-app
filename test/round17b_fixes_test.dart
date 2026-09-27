@@ -632,8 +632,11 @@ void main() {
       await tester.pumpWidget(_screen(container));
       expect(_label(tester, 'direct-identify'), directSettlingLabel);
       expect(_enabled(tester, 'direct-identify'), isFalse);
-      expect(find.text('RSSI —'), findsOneWidget);
-      expect(find.textContaining('0 dBm'), findsNothing);
+      // Round 28: the advertising RSSI of the pick meanwhile (was 「RSSI
+      // —」 for ~70 s in the field).
+      expect(find.text(directAdvRssiText(-38)), findsOneWidget);
+      expect(find.text('RSSI —'), findsNothing);
+      expect(find.textContaining(' 0 dBm'), findsNothing);
       await tester.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 400)),
       );
