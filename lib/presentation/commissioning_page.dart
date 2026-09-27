@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../application/backend_environment.dart';
 import '../application/commissioning_controller.dart';
+import '../application/auto_checklist.dart';
 import '../application/connection_status.dart';
 import '../application/network_check.dart';
 import '../application/topology_settings.dart';
@@ -25,6 +26,7 @@ import 'direct_mode_panel.dart';
 import 'environment_switch.dart';
 import 'field_help_sheet.dart';
 import 'local_backend_field.dart';
+import 'progress_checklist.dart';
 import 'ptu_selection_tile.dart';
 import 'gateway_signal.dart';
 import 'gateway_discovery.dart';
@@ -970,6 +972,14 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     final panelOk =
         status != null &&
         (status.allOk || (stationPages && status.wifiWeak == null));
+    // 09-28: the automatic step as a checklist that fills in one item at a
+    // time (replaces 「處理中 · 最多等待 N 秒」 there; the seconds stay, small).
+    final checklist = shownChecklist(
+      state,
+      check: state.step == 2 && !state.checkPassed
+          ? networkCheck(state: state, env: env)
+          : null,
+    );
     return PopScope(
       // Round 28 (field round 28: a system 返回 at step 7 left the APP at
       // once, mid-configuration): only the start page and the gateway list
@@ -1313,6 +1323,15 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                   if (state.step == 2 &&
                       (state.bindLaterMac != null || state.bindLaterDeferred))
                     _bindLaterCard(state, controller),
+                  // Above the red box: the item that failed, then why in
+                  // full and its retry.
+                  if (checklist != null)
+                    ProgressChecklist(
+                      key: const Key('auto-checklist'),
+                      items: checklist.items,
+                      animate: state.busy,
+                      footer: state.busy ? '最多等待 ${state.seconds} 秒' : null,
+                    ),
                   if (state.error != null)
                     Material(
                       key: const Key('error-banner'),
@@ -1423,7 +1442,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                         ),
                       ),
                     ),
-                  if (state.busy)
+                  if (state.busy && checklist == null)
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       child: Row(

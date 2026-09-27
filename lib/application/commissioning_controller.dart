@@ -11,6 +11,7 @@ import '../core/gateway_identity.dart';
 import '../core/gateway_net.dart';
 import '../core/gateway_reboot.dart';
 import '../core/gateway_topology.dart';
+import '../core/progress_checklist.dart';
 import '../core/ptu_rssi.dart';
 import '../core/mqtt_target.dart';
 import '../core/protocol.dart';
@@ -1179,7 +1180,13 @@ class CommissionState {
     this.bindLaterMac,
     this.bindLaterDeferred = false,
     this.savedGateway = '',
+    this.checklist,
   });
+
+  /// 09-28: the automatic step running (or just failed) as a checklist
+  /// ([Checklist]) — ticked on real events; the page shows it where it
+  /// belongs ([shownChecklist]). Null: none.
+  final Checklist? checklist;
 
   /// Round 28 (P0 「沒有 PTU 的樁完成不了」): the run ended with
   /// 〔先完成配置〕 — the gateway is in service (join_fleet, upload on,
@@ -1563,7 +1570,11 @@ class CommissionState {
     Object? bindLaterMac = _keep,
     bool? bindLaterDeferred,
     String? savedGateway,
+    Object? checklist = _keep,
   }) => CommissionState(
+    checklist: identical(checklist, _keep)
+        ? this.checklist
+        : checklist as Checklist?,
     ptuDeferred: ptuDeferred ?? this.ptuDeferred,
     bindLaterMac: identical(bindLaterMac, _keep)
         ? this.bindLaterMac
@@ -2256,6 +2267,125 @@ class CommissioningController extends Notifier<CommissionState> {
     }
   }
 
+  // ---- 09-28: the automatic steps as a checklist ([Checklist]) ----
+
+  /// Replaces the checklist (null: none). Never touches the error.
+  void _setChecklist(Checklist? list) {
+    if (!ref.mounted) return;
+    state = state.copy(checklist: list, error: state.error);
+  }
+
+  /// Ticks the current checklist ([kind]: only that one); a no-op without
+  /// one, so a flow started some other way (a resume, an old save) runs as
+  /// before.
+  void _tick(Checklist Function(Checklist) change, {ChecklistKind? kind}) {
+    final list = state.checklist;
+    if (!ref.mounted || list == null) return;
+    if (kind != null && list.kind != kind) return;
+    final next = change(list);
+    if (identical(next, list)) return;
+    state = state.copy(checklist: next, error: state.error);
+  }
+
+  /// A new 「完成設定」 checklist for this run: [chosen] PTUs, [targets]
+  /// the ones it numbers (none: no PTU list to write); [assigned]: an
+  /// earlier run numbered them all (that item starts done).
+  void _startFinishChecklist(
+    List<Map<String, dynamic>> chosen, {
+    List<Map<String, dynamic>> targets = const [],
+    bool assigned = false,
+  }) {
+    final direct = directFlow;
+    var list = finishChecklist(
+      direct: direct,
+      starList: !direct && _starListApplies && targets.isNotEmpty,
+      total: chosen.length,
+    );
+    if (assigned) {
+      list = list.doneBefore(
+        direct ? finishItemSettings : finishItemJoin,
+        note: '先前已完成',
+      );
+    }
+    list = list.startNext();
+    if (list.item(finishItemAssign)?.status == CheckStatus.running) {
+      list = list.progress(finishItemAssign, _assignCount());
+    }
+    _setChecklist(list);
+  }
+
+  /// 指派 PTU starts (after the PTU list went out, if any).
+  void _assignStarted() => _tick(
+    (l) => l.item(finishItemAssign)?.status == CheckStatus.pending
+        ? l.start(finishItemAssign, note: _assignCount())
+        : l,
+    kind: ChecklistKind.finish,
+  );
+
+  /// The gateway already monitors the chosen PTUs: nothing is sent.
+  void _monitoringChecked() => _tick(
+    (l) => l
+        .done(finishItemSettings, note: '已在監控')
+        .done(finishItemJoin, note: '已在監控')
+        .done(finishItemJoined, note: '已在監控'),
+    kind: ChecklistKind.finish,
+  );
+
+  /// [_waitConnected] passed: every chosen PTU is connected and monitored.
+  void _joinedChecked() => _tick(
+    (l) => l.done(
+      finishItemJoined,
+      note: directFlow ? 'PTU 已連上閘道器' : '${state.ptus.length} 台 PTU 已連上',
+    ),
+    kind: ChecklistKind.finish,
+  );
+
+  /// 驗證資料上傳 starts — on the checklist of the configure run, or (a
+  /// verification started later, e.g. after a restart) on a new one whose
+  /// earlier items were done before this page.
+  void _startDataChecklist() {
+    final ptus = state.ptus.where((p) => state.selected.contains(p['mac']));
+    var list = state.checklist;
+    if (list == null || list.kind != ChecklistKind.finish) {
+      list = finishChecklist(
+        direct: directFlow,
+        total: ptus.length,
+      ).doneBefore(finishItemData, note: '先前已完成');
+    }
+    _setChecklist(
+      list.start(finishItemData, note: dataCountNote(0, 3, ptus: ptus.length)),
+    );
+  }
+
+  /// 「2/5 台」: PTUs of this run numbered so far.
+  String _assignCount() {
+    final all = state.assignStatus.values;
+    if (all.isEmpty) return '';
+    final done = all.where((a) => a.phase == AssignPhase.done).length;
+    return '$done/${all.length} 台';
+  }
+
+  /// After [_assignAll] of a list flow: 指派 PTU done, or failed with how
+  /// many did not go through.
+  ///
+  /// One-to-one: 寫入 PTU 綁定 instead ([bindNote]: what was written).
+  void _assignChecked(Map<String, String> failed, {String? bindNote}) => _tick((
+    l,
+  ) {
+    if (l.has(finishItemBind)) {
+      if (failed.isNotEmpty) {
+        return l.fail(checklistReason(failed.values.first), id: finishItemBind);
+      }
+      final bound = l.isDone(finishItemBind)
+          ? l
+          : l.done(finishItemBind, note: bindNote ?? '已指派 PTU #$directPtuId');
+      return bound.start(finishItemSettings);
+    }
+    return failed.isEmpty
+        ? l.done(finishItemAssign, note: _assignCount())
+        : l.fail('${failed.length} 台指派失敗', id: finishItemAssign);
+  }, kind: ChecklistKind.finish);
+
   /// [relinkStep] (4 = step 7 scan, 5 = step 8): a link loss ending this run
   /// hands over to the automatic reconnect ([_autoRelink]) of that step.
   ///
@@ -2418,6 +2548,14 @@ class CommissioningController extends Notifier<CommissionState> {
           runLabel: label,
           ctlStep: state.step,
         );
+        // 09-28: the item that was running shows the red cross and why
+        // (the red box keeps the full text and the retry).
+        if (state.checklist case final list? when list.running) {
+          state = state.copy(
+            checklist: list.fail(checklistReason(state.error)),
+            error: state.error,
+          );
+        }
       }
     } finally {
       _classifyingFailure = false;
@@ -2433,6 +2571,8 @@ class CommissioningController extends Notifier<CommissionState> {
           busy: false,
           seconds: 0,
           error: state.error,
+          // 09-28: nothing keeps spinning once the run is over.
+          checklist: state.checklist?.settle(),
           relinking: follows ? true : null,
           // Round 22: a new loss inside the automatic reconnect's round
           // (e.g. while step 8 assigned again) is 「重新連線中」 again at once.
@@ -2755,6 +2895,8 @@ class CommissioningController extends Notifier<CommissionState> {
         );
       });
   Future<void> scan() => _run('搜尋附近的閘道器', 30, (generation) async {
+    // 09-28: a failed connect's checklist is not this search's.
+    if (state.checklist?.kind == ChecklistKind.connect) _setChecklist(null);
     final peers = await _link.scan();
     _check(generation);
     noteGatewayPeers(peers);
@@ -2962,6 +3104,8 @@ class CommissioningController extends Notifier<CommissionState> {
       strayBindMac: null,
       directNotice: '',
       error: state.error,
+      // 09-28: 「正在連線並檢查網路」 — 藍牙連線 first.
+      checklist: connectChecklist().start(connectItemBle),
     );
     await _connect(peer);
     if (ref.mounted &&
@@ -3032,6 +3176,13 @@ class CommissioningController extends Notifier<CommissionState> {
     try {
       await _persistentLink(generation, peer, () async {
         state = state.copy(message: linkConfirmingText);
+        // The link is up (again, after a drop): its reads start over.
+        _tick(
+          (l) => (l.isDone(connectItemBle) ? l : l.done(connectItemBle)).start(
+            connectItemStatus,
+          ),
+          kind: ChecklistKind.connect,
+        );
         for (int attempt = 0; ; attempt++) {
           try {
             await _command(generation, 'ping');
@@ -3075,6 +3226,11 @@ class CommissioningController extends Notifier<CommissionState> {
               .map((d) => Map<String, dynamic>.from(d as Map))
               .toList();
         }
+        final fw = config['fw_version']?.toString() ?? '';
+        _tick(
+          (l) => l.done(connectItemStatus, note: fw.isEmpty ? '' : '韌體 $fw'),
+          kind: ChecklistKind.connect,
+        );
       });
     } catch (_) {
       // Round 18: 「藍牙已連線，正在確認…」 (or 「連線中（第 n 次）」) must not
@@ -3806,6 +3962,9 @@ class CommissioningController extends Notifier<CommissionState> {
     String? environment,
     String? password,
   ) => _run('確認閘道器持續上線', 90, (generation) async {
+    // 09-28: 連上後台 → 第 1 次心跳 → 第 2 次心跳 → 上傳目標, each ticked
+    // on what the back office answers.
+    if (!skip) _setChecklist(onlineChecklist().start(onlineItemBackend));
     final secret = base == null ? '' : _passwordFor(base, password);
     if (!skip && !_loggedIn && base != null && secret.isNotEmpty) {
       _backend = describeBackend(Uri.tryParse(base.trim()));
@@ -3817,23 +3976,58 @@ class CommissioningController extends Notifier<CommissionState> {
       state = state.copy(step: 4, message: '後端尚未確認；完成配置後仍需驗證');
       return;
     }
-    if (base != null) _checkUploadTarget(base, environment);
+    MqttTarget? wanted;
+    if (base != null) {
+      try {
+        wanted = _checkUploadTarget(base, environment);
+      } on GatewayFailure {
+        _tick(
+          (l) => l.fail('閘道器的資料送到別的後台', id: onlineItemTarget),
+          kind: ChecklistKind.online,
+        );
+        rethrow;
+      }
+    }
     await _command(generation, 'heartbeat_boost', {'duration': 300});
     String? previous;
     for (int elapsed = 0; elapsed < 90; elapsed += 5) {
       final row = await _fleet(generation);
       _check(generation);
       final heartbeat = row?['last_heartbeat']?.toString();
+      _tick((l) {
+        var next = l.isDone(onlineItemBackend)
+            ? l
+            : l.done(onlineItemBackend).start(onlineItemBeat1);
+        if (heartbeat != null && !next.isDone(onlineItemBeat1)) {
+          next = next
+              .done(onlineItemBeat1, note: '心跳 1/2')
+              .start(onlineItemBeat2);
+        }
+        return next;
+      }, kind: ChecklistKind.online);
       if (row?['online'] == true &&
           row?['mqtt_connected'] == true &&
           previous != null &&
           heartbeat != null &&
           heartbeat != previous) {
+        _tick(
+          (l) =>
+              l.done(onlineItemBeat2, note: '心跳 2/2').start(onlineItemTarget),
+          kind: ChecklistKind.online,
+        );
         await _request(generation, 'PATCH', '$_path/bot-monitor', {
           'enabled': false,
           'ttl_minutes': 30,
         });
         _lease = true;
+        // Heartbeats reached this back office: the upload goes here.
+        _tick(
+          (l) => l.done(
+            onlineItemTarget,
+            note: uploadTargetNote(wanted ?? parseMqttTarget(state.config)),
+          ),
+          kind: ChecklistKind.online,
+        );
         state = state.copy(
           step: 4,
           online: true,
@@ -4671,7 +4865,11 @@ class CommissioningController extends Notifier<CommissionState> {
             .toList();
         if (chosen.isEmpty) throw const GatewayFailure('no_devices');
         state = state.copy(step: 5);
-        if (await _alreadyMonitoring(generation, chosen)) return;
+        _startFinishChecklist(chosen, assigned: true);
+        if (await _alreadyMonitoring(generation, chosen)) {
+          _monitoringChecked();
+          return;
+        }
         _provisioningMayBeActive = true;
         final isStar = ref.read(topologyProvider).topology.isStar;
         final config = await _command(generation, 'get_config');
@@ -4684,7 +4882,15 @@ class CommissioningController extends Notifier<CommissionState> {
         // Round 26: direct → star, the allow list goes with the switch.
         if (toStar) await _starListAfterSwitch(generation, chosen);
         await _command(generation, 'join_fleet');
+        _tick(
+          (l) => l
+              .done(finishItemSettings)
+              .done(finishItemJoin)
+              .start(finishItemJoined),
+          kind: ChecklistKind.finish,
+        );
         await _waitConnected(generation, chosen, limitSec: 30);
+        _joinedChecked();
       });
 
   /// Default selection: in-range PTUs, connected first, then RSSI; capped.
@@ -4983,6 +5189,10 @@ class CommissioningController extends Notifier<CommissionState> {
     }
     for (final (index, p) in targets.indexed) {
       _check(generation);
+      _tick(
+        (l) => l.progress(finishItemAssign, _assignCount()),
+        kind: ChecklistKind.finish,
+      );
       final mac = p['mac'].toString();
       final old = (p['device_number'] as num?)?.toInt() ?? 0;
       // Direct mode: always #1 (the firmware ignores the number there and
@@ -5187,8 +5397,11 @@ class CommissioningController extends Notifier<CommissionState> {
           resumePending: false,
           monitoringOk: false,
         );
+        _startFinishChecklist(chosen, targets: targets);
         await _starListBeforeAssign(generation, chosen, targets);
+        _assignStarted();
         final failed = await _assignAll(generation, targets);
+        _assignChecked(failed);
         await _startMonitoring(generation, chosen, failed);
       });
 
@@ -5446,6 +5659,8 @@ class CommissioningController extends Notifier<CommissionState> {
           monitoringOk: false,
           identifyNote: '',
         );
+        // 09-28: 寫入 PTU 綁定 → 設定 → 加入監控 → 核對 → 驗證資料.
+        _startFinishChecklist([row], targets: done ? const [] : [row]);
         final failed = done
             ? <String, String>{}
             : await _assignAll(generation, [row]);
@@ -5464,6 +5679,13 @@ class CommissioningController extends Notifier<CommissionState> {
           await _recordDeferred(false);
           state = state.copy(bindLaterMac: null, bindLaterDeferred: false);
         }
+        final boundNow = directBoundMacOf(state.config);
+        _assignChecked(
+          failed,
+          bindNote: boundNow != null && sameMac(boundNow, mac)
+              ? '已綁定 PTU #$directPtuId'
+              : '已指派 PTU #$directPtuId',
+        );
         await _startMonitoring(generation, [row], failed);
       });
 
@@ -6128,16 +6350,24 @@ class CommissioningController extends Notifier<CommissionState> {
             ? '正在確認 Gateway 監控狀態'
             : '繼續指派 ${targets.length} 台',
       );
+      _startFinishChecklist(
+        chosen,
+        targets: targets,
+        assigned: targets.isEmpty,
+      );
       // Round 7b: everything already assigned and the gateway already
       // monitors all of them with upload running → done, no join_fleet.
       if (targets.isEmpty && await _alreadyMonitoring(generation, chosen)) {
+        _monitoringChecked();
         return;
       }
       _provisioningMayBeActive = true;
       // Round 27: the target list again (the loss may have come before
       // it went out).
       await _starListBeforeAssign(generation, chosen, targets);
+      _assignStarted();
       final failed = await _assignAll(generation, targets);
+      _assignChecked(failed);
       state = state.copy(unassigned: {});
       await _startMonitoring(
         generation,
@@ -6249,9 +6479,12 @@ class CommissioningController extends Notifier<CommissionState> {
           assignRunning: true,
           assignStatus: _assignStart(chosen, targets),
         );
+        _startFinishChecklist(chosen, targets: targets);
         // Round 27: e.g. foreign PTUs held the connections last time.
         await _starListBeforeAssign(generation, chosen, targets);
+        _assignStarted();
         final failed = await _assignAll(generation, targets);
+        _assignChecked(failed);
         await _startMonitoring(generation, chosen, failed);
       });
 
@@ -6285,17 +6518,32 @@ class CommissioningController extends Notifier<CommissionState> {
     // assigned this round (not yet reflected there) fall through to the
     // full flow below.
     if (failed.isEmpty && await _alreadyMonitoring(generation, chosen)) {
+      _monitoringChecked();
       return;
     }
     final isStar = ref.read(topologyProvider).topology.isStar;
     try {
       // Round 26: read before the star range opens.
       final toStar = isStar && await _switchingToStar(generation);
+      _tick(
+        (l) => l.has(finishItemSettings)
+            ? l.start(finishItemSettings)
+            : l.start(finishItemJoin),
+        kind: ChecklistKind.finish,
+      );
       await _command(generation, 'set_config', {
         // Never shrink to the success count (round 6: 4 PTUs locked the
         // gateway at 4 and a 5th could never connect).
         'max_connections': monitorLimit(isStar),
       });
+      _tick(
+        (l) => l.has(finishItemSettings)
+            ? l
+                  .done(finishItemSettings, note: isStar ? '星狀' : '一對一')
+                  .start(finishItemJoin)
+            : l,
+        kind: ChecklistKind.finish,
+      );
       if (toStar) {
         await _starListAfterSwitch(
           generation,
@@ -6303,6 +6551,7 @@ class CommissioningController extends Notifier<CommissionState> {
         );
       }
       await _command(generation, 'join_fleet');
+      _tick((l) => l.done(finishItemJoin), kind: ChecklistKind.finish);
     } catch (e) {
       if (!isPhoneLinkFailure(e)) rethrow;
       state = state.copy(assignFailed: failed, resumePending: true);
@@ -6318,12 +6567,14 @@ class CommissioningController extends Notifier<CommissionState> {
       );
       return;
     }
+    _tick((l) => l.start(finishItemJoined), kind: ChecklistKind.finish);
     await _waitConnected(
       generation,
       chosen,
       limitSec: resumed ? 30 : 90,
       confirmOnly: resumed,
     );
+    _joinedChecked();
   }
 
   Future<void> _waitConnected(
@@ -6477,6 +6728,7 @@ class CommissioningController extends Notifier<CommissionState> {
         starList: StarListStatus.none,
         starListStage: StarListStage.verified,
       );
+      _startDataChecklist();
       try {
         await _verify(generation, base, password, environment);
       } on GatewayFailure catch (error) {
@@ -6673,7 +6925,14 @@ class CommissioningController extends Notifier<CommissionState> {
     List<Map<String, dynamic>> targets,
   ) async {
     _starAssignList = null;
-    if (targets.isEmpty || !_starListApplies) return;
+    void unchanged() => _tick(
+      (l) => l.done(finishItemList, note: '不需變更'),
+      kind: ChecklistKind.finish,
+    );
+    if (targets.isEmpty || !_starListApplies) {
+      unchanged();
+      return;
+    }
     if (_starTargetPeer != state.peer?.id) {
       _starTouched.clear();
       _starKeep = const [];
@@ -6693,7 +6952,10 @@ class CommissioningController extends Notifier<CommissionState> {
       ],
       dropped: _starTouched,
     );
-    if (target.isEmpty) return;
+    if (target.isEmpty) {
+      unchanged();
+      return;
+    }
     final chosenKeys = {for (final m in picked) ?starMac(m)};
     _starKeep = [
       for (final e in target)
@@ -6737,6 +6999,13 @@ class CommissioningController extends Notifier<CommissionState> {
       starList: ok ? StarListStatus.written : StarListStatus.failed,
       starListStage: StarListStage.beforeAssign,
       message: message,
+    );
+    // The assignment goes on either way (round 27).
+    _tick(
+      (l) => ok
+          ? l.done(finishItemList, note: '${macs.length} 台')
+          : l.fail('名單沒有寫入，指派照常進行', id: finishItemList),
+      kind: ChecklistKind.finish,
     );
   }
 
@@ -7145,8 +7414,30 @@ class CommissioningController extends Notifier<CommissionState> {
           verifyCounts: Map.of(counts),
           verifyWaiting: waiting,
         );
+        final dataNote = dataCountNote(
+          min(consecutive, 3),
+          3,
+          ptus: active.length,
+        );
+        _tick(
+          (l) => l.progress(finishItemData, dataNote),
+          kind: ChecklistKind.finish,
+        );
         if (good) {
-          await _confirmServiceBeforeDone(generation);
+          try {
+            await _confirmServiceBeforeDone(generation);
+          } on GatewayFailure catch (error) {
+            // The data passed; the gateway did not say it is in service.
+            if (error.code == 'fleet_unconfirmed') {
+              _tick(
+                (l) => l
+                    .done(finishItemData, note: dataNote)
+                    .fail(checklistReason(error.message), id: finishItemJoined),
+                kind: ChecklistKind.finish,
+              );
+            }
+            rethrow;
+          }
           await backend(
             () => _request(generation, 'PATCH', '$_path/bot-monitor', {
               'enabled': true,
@@ -7158,6 +7449,10 @@ class CommissioningController extends Notifier<CommissionState> {
               ? ''
               : '\n未驗證（已略過）：${skippedIds.map((id) => "#$id").join('、')}，'
                     '請現場確認 ${skippedIds.map((id) => "PTU #$id").join('、')} 電源與位置';
+          _tick(
+            (l) => l.done(finishItemData, note: dataNote),
+            kind: ChecklistKind.finish,
+          );
           _reportBody =
               '${_link.demo ? "模擬安裝報告（非實機驗證）" : "安裝報告"}\n站點 $site / 閘道器 $gateway\n${byDeviceNumber(state.ptus).map((p) => "#${p['device_number']}  ${p['mac']}").join('\n')}${directBoundNote(state) == null ? '' : '\n${directBoundNote(state)}'}\n驗證時間：${DateTime.now().toIso8601String()}\n驗證後端：$_backend\n每台連續三次資料更新通過$skippedNote';
           state = state.copy(
@@ -7982,6 +8277,11 @@ class CommissioningController extends Notifier<CommissionState> {
     int timeout,
     Future<void> Function(int) action,
   ) async {
+    // 09-28: this run starts its own checklist (a failed one from before
+    // is not shown beside this run's error).
+    if (!state.busy && state.checklist?.kind == ChecklistKind.finish) {
+      _setChecklist(null);
+    }
     await _run(label, timeout, action, relinkStep: 5);
     // Round 23: the run is over (a run refused because another one is busy
     // leaves that one's flag alone).
