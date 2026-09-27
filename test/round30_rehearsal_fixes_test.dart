@@ -103,6 +103,11 @@ class _IdentityGateway extends _Gw1 {
   bool testModeAfterJoin = false;
   int latestReads = 0;
 
+  /// 09-28: the first [staleReads] /api/latest reads still return the row a
+  /// replaced PTU uploaded before the swap (its MAC, an older timestamp).
+  int staleReads = 0;
+  final staleMac = 'AA:BB:CC:00:99:99';
+
   @override
   Future<Map<String, dynamic>> command(
     String op, [
@@ -126,7 +131,12 @@ class _IdentityGateway extends _Gw1 {
     if (path.startsWith('/api/latest')) {
       latestReads++;
       for (final row in result['items'] as List) {
-        row['ptu'] = {'ptu_mac_addr': reportedMac};
+        if (latestReads <= staleReads) {
+          row['ptu'] = {'ptu_mac_addr': staleMac};
+          row['ts'] = DateTime(2029).toIso8601String();
+        } else {
+          row['ptu'] = {'ptu_mac_addr': reportedMac};
+        }
       }
       if (testModeAtFinish && latestReads >= 3) config['mode'] = 'test';
       if (testModeAfterJoin && latestReads >= 3) config['fleet_joined'] = false;
@@ -219,6 +229,42 @@ void main() {
         expect(fake.latestReads, greaterThanOrEqualTo(3));
       });
     }
+
+    test('09-28: a replaced PTU last row (old MAC) in the first rounds '
+        'is left out — neither counted nor a mismatch; the new PTU '
+        'rows then pass', () async {
+      final fake = _IdentityGateway()..staleReads = 2;
+      final container = _container(fake);
+      addTearDown(container.dispose);
+      final c = await _toStep7(container, fake);
+      await c.identify();
+      await c.confirmDirectPick();
+      await c.verify(_base, 'pw');
+      final s = container.read(commissionProvider);
+      expect(s.error, isNull);
+      expect(s.verified, isTrue);
+      expect(s.step, 7);
+      // Two stale rounds, then three counted rows of the new PTU.
+      expect(fake.latestReads, greaterThanOrEqualTo(5));
+    });
+
+    test('09-28: after a stale first round, a newer row with another MAC '
+        'still fails', () async {
+      final fake = _IdentityGateway()
+        ..staleReads = 1
+        ..reportedMac = 'AA:BB:CC:00:77:77';
+      final container = _container(fake);
+      addTearDown(container.dispose);
+      final c = await _toStep7(container, fake);
+      await c.identify();
+      await c.confirmDirectPick();
+      await c.verify(_base, 'pw');
+      final s = container.read(commissionProvider);
+      expect(s.verified, isFalse);
+      expect(s.error, contains('PTU 身分'));
+      expect(s.verifyCounts, isEmpty);
+      expect(fake.latestReads, 2, reason: 'failed on the first newer row');
+    });
 
     for (final late in [false, true]) {
       test('test mode blocks completion, late=$late', () async {

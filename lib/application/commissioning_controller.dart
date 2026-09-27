@@ -7039,25 +7039,50 @@ class CommissioningController extends Notifier<CommissionState> {
             .toList();
         // Device numbers can be reused. Only this selection's physical
         // PTUs may contribute to verification, including after a retry.
-        for (final ptu in chosen) {
-          final id = (ptu['device_number'] as num).toInt();
-          if (state.verifySkipped.contains(id)) continue;
-          for (final row in rows.where((r) => r['device_id'] == id)) {
-            final nested = row['ptu'];
-            final macs = [
-              row['ptu_mac'],
-              if (nested is Map) nested['ptu_mac_addr'],
-              if (nested is Map) nested['mac'],
-            ].whereType<String>().where((m) => m.isNotEmpty).toList();
-            if (macs.isEmpty || macs.any((m) => !sameMac(m, ptu['mac']))) {
-              _verifyCarry = null;
-              state = state.copy(verifyCounts: {}, verifyWaiting: {});
-              throw GatewayFailure(
-                'ptu_identity_mismatch',
-                detail:
-                    'PTU #$id: backend MAC is missing or differs from selection',
-              );
-            }
+        //
+        // 09-28: judged on rows read back in this run. The first round of
+        // a fresh verification may still return the row a replaced PTU
+        // uploaded before the swap (same number, the old MAC): such a row
+        // is left out — never counted, never failed — and its timestamp
+        // noted. A newer row whose MAC is missing or differs fails.
+        final firstRound = !resume && elapsed == start;
+        final judged = <Map<String, dynamic>>[];
+        for (final row in rows) {
+          final id = (row['device_id'] as num?)?.toInt();
+          final ptu = chosen
+              .where((p) => (p['device_number'] as num).toInt() == id)
+              .firstOrNull;
+          if (id == null || ptu == null || state.verifySkipped.contains(id)) {
+            judged.add(row);
+            continue;
+          }
+          final nested = row['ptu'];
+          final macs = [
+            row['ptu_mac'],
+            if (nested is Map) nested['ptu_mac_addr'],
+            if (nested is Map) nested['mac'],
+          ].whereType<String>().where((m) => m.isNotEmpty).toList();
+          if (macs.isNotEmpty && macs.every((m) => sameMac(m, ptu['mac']))) {
+            judged.add(row);
+            continue;
+          }
+          final stamp = DateTime.tryParse(row['ts']?.toString() ?? '');
+          final seen = previous[id];
+          final fresh =
+              !firstRound &&
+              stamp != null &&
+              (seen == null || stamp.isAfter(seen));
+          if (fresh) {
+            _verifyCarry = null;
+            state = state.copy(verifyCounts: {}, verifyWaiting: {});
+            throw GatewayFailure(
+              'ptu_identity_mismatch',
+              detail:
+                  'PTU #$id: backend MAC is missing or differs from selection',
+            );
+          }
+          if (stamp != null && (seen == null || stamp.isAfter(seen))) {
+            previous[id] = stamp;
           }
         }
         // Round 26: a heartbeat with the upload paused is no upload.
@@ -7068,7 +7093,7 @@ class CommissioningController extends Notifier<CommissionState> {
         final before = Map<int, DateTime>.of(previous);
         verifyTally(
           ids: ids,
-          rows: rows,
+          rows: judged,
           previous: previous,
           counts: counts,
           lastNew: lastNew,
