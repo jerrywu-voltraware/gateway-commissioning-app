@@ -61,9 +61,10 @@ class _Gateway extends DemoSystem {
 }
 
 Future<(ProviderContainer, CommissioningController)> _connect(
-  _Gateway fake,
-) async {
-  SharedPreferences.setMockInitialValues({});
+  _Gateway fake, {
+  Map<String, Object> prefs = const {},
+}) async {
+  SharedPreferences.setMockInitialValues(prefs);
   final container = ProviderContainer(
     overrides: [
       linkProvider.overrideWithValue(fake),
@@ -315,6 +316,68 @@ void main() {
       expect(button().onPressed, isNotNull);
       expect(find.text(calibrationNeedsOwnText), findsNothing);
     });
+
+    // 2026-09 decision: 「一對一模式：確認『是這台』後預設把 PTU 綁定到閘道
+    // 器」 — 「確認後綁定 PTU」 now defaults on; turning it off shows the
+    // consequence (a neighbouring pile's PTU may be picked up instead).
+    testWidgets('「確認後綁定 PTU」 defaults on; turning it off warns about a '
+        'neighbouring pile taking over', (tester) async {
+      final fake = _Gateway();
+      late ProviderContainer container;
+      await tester.runAsync(() async {
+        (container, _) = await _connect(fake);
+      });
+      addTearDown(container.dispose);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(home: Scaffold(body: DirectSettingsSheet())),
+        ),
+      );
+      SwitchListTile tile() => tester.widget<SwitchListTile>(
+        find.byKey(const Key('direct-bind-on-confirm')),
+      );
+      expect(tile().value, isTrue);
+      expect(find.textContaining('之後只連這台'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('direct-bind-on-confirm')));
+      await tester.pump();
+      expect(container.read(topologyProvider).directBindOnConfirm, isFalse);
+      expect(tile().value, isFalse);
+      expect(find.textContaining('可能改連鄰近樁的 PTU'), findsOneWidget);
+    });
+
+    testWidgets(
+      'an install that already saved 「確認後綁定 PTU」 off opens the sheet '
+      'with it off (the new default never overrides a saved preference)',
+      (tester) async {
+        final fake = _Gateway();
+        late ProviderContainer container;
+        await tester.runAsync(() async {
+          (container, _) = await _connect(
+            fake,
+            prefs: {'direct_bind_on_confirm': false},
+          );
+        });
+        addTearDown(container.dispose);
+        await tester.pumpWidget(
+          UncontrolledProviderScope(
+            container: container,
+            child: const MaterialApp(
+              home: Scaffold(body: DirectSettingsSheet()),
+            ),
+          ),
+        );
+        expect(
+          tester
+              .widget<SwitchListTile>(
+                find.byKey(const Key('direct-bind-on-confirm')),
+              )
+              .value,
+          isFalse,
+        );
+      },
+    );
   });
 
   group('identify confirmation (firmware 1.7.25)', () {

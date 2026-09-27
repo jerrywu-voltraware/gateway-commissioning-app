@@ -118,6 +118,32 @@ Future<(ProviderContainer, CommissioningController)> _toStep7(
   return (container, c);
 }
 
+/// Like [_toStep7] but leaves 「確認後綁定 PTU」 at whatever a fresh install
+/// defaults to, instead of forcing it — for testing that real default
+/// (2026-09: on) rather than an explicit override.
+Future<(ProviderContainer, CommissioningController)> _toStep7Default(
+  PickGateway fake, {
+  GatewayTopology topology = GatewayTopology.direct,
+}) async {
+  SharedPreferences.setMockInitialValues({});
+  final container = ProviderContainer(
+    overrides: [
+      linkProvider.overrideWithValue(fake),
+      apiProvider.overrideWithValue(fake),
+    ],
+  );
+  final topo = container.read(topologyProvider.notifier);
+  await topo.ready;
+  await topo.setTopology(topology);
+  final c = container.read(commissionProvider.notifier);
+  await c.prepare('https://example.invalid', '', offline: true);
+  await c.scan();
+  await c.connect(container.read(commissionProvider).peers.single);
+  await c.chooseStation(newStation: false);
+  fake.config.putIfAbsent('upload_paused', () => true);
+  return (container, c);
+}
+
 Widget _panel(ProviderContainer container) => UncontrolledProviderScope(
   container: container,
   child: const MaterialApp(
@@ -218,6 +244,30 @@ void main() {
       final (container, c) = await _toStep7(fake, bindOnConfirm: true);
       addTearDown(container.dispose);
       // Round 15b: 是這台 needs 辨識此樁 first.
+      await c.identify();
+      await c.confirmDirectPick();
+      final s = container.read(commissionProvider);
+      expect(s.step, 6);
+      expect(
+        fake.sent('set_config'),
+        anyElement(equals({'direct_bind_mac': _pick})),
+      );
+      expect(
+        fake.indexOf('set_config', (p) => p['direct_bind_mac'] == _pick),
+        lessThan(fake.indexOf('join_fleet')),
+      );
+      expect(directBoundNote(s), contains(_pick));
+    });
+
+    // 2026-09 decision: 「一對一模式：確認『是這台』後預設把 PTU 綁定到閘道
+    // 器」 — the setting itself now defaults on (was off), so a fresh
+    // install binds without the installer ever touching the toggle.
+    test('fresh install, 「確認後綁定 PTU」 left at its default (on): 是這台 '
+        'also binds that MAC before join_fleet', () async {
+      final fake = PickGateway();
+      final (container, c) = await _toStep7Default(fake);
+      addTearDown(container.dispose);
+      expect(container.read(topologyProvider).directBindOnConfirm, isTrue);
       await c.identify();
       await c.confirmDirectPick();
       final s = container.read(commissionProvider);

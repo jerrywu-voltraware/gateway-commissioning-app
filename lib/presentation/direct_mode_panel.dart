@@ -1174,11 +1174,17 @@ class _DirectSettingsSheetState extends ConsumerState<DirectSettingsSheet> {
                   : controller.setDirectBind,
             ),
             // Round 15: applied by 「是這台，開始監控」 (not at once).
+            // 2026-09: default on — off 的後果要讓現場人員看得到（本樁 PTU
+            // 關機時，閘道器可能改連鄰近樁的 PTU）。
             SwitchListTile(
               key: const Key('direct-bind-on-confirm'),
               contentPadding: EdgeInsets.zero,
               title: const Text('確認後綁定 PTU'),
-              subtitle: const Text('按「是這台，開始監控」時把該 PTU 的 MAC 存進閘道器，之後只連這台'),
+              subtitle: Text(
+                ref.watch(topologyProvider).directBindOnConfirm
+                    ? '按「是這台，開始監控」時把該 PTU 的 MAC 存進閘道器，之後只連這台'
+                    : '關閉後不會鎖定 MAC：本樁 PTU 關機或斷線時，閘道器可能改連鄰近樁的 PTU',
+              ),
               value: ref.watch(topologyProvider).directBindOnConfirm,
               onChanged: ref
                   .read(topologyProvider.notifier)

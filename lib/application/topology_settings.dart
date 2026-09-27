@@ -8,7 +8,7 @@ class TopologySettingsState {
   const TopologySettingsState({
     this.topology = GatewayTopology.star,
     this.starCount = defaultStarPtuCount,
-    this.directBindOnConfirm = false,
+    this.directBindOnConfirm = true,
     this.loaded = false,
   });
   final GatewayTopology topology;
@@ -16,7 +16,12 @@ class TopologySettingsState {
 
   /// Direct mode (firmware 1.7.20+): 「是這台，開始監控」 also binds the
   /// gateway to that PTU's MAC (`direct_bind_mac`), so it never connects a
-  /// neighbouring pile's PTU later. Off by default (the firmware default).
+  /// neighbouring pile's PTU later. On by default since 2026-09: once the
+  /// installer confirms 「是這台」 the identity is settled, so the gateway
+  /// should stay with that PTU (the firmware itself still defaults this
+  /// off — the APP opts in). Turning it off lets the gateway free-roam
+  /// again: if this pile's PTU is powered off, it may pick up a
+  /// neighbouring pile's PTU instead.
   final bool directBindOnConfirm;
 
   /// Saved values have been read from SharedPreferences.
