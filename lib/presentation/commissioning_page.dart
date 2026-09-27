@@ -345,6 +345,12 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     final c = ref.read(commissionProvider.notifier);
     final site = int.tryParse(_site.text) ?? 0;
     var gw = int.tryParse(_gateway.text) ?? 0;
+    // Round 30: a kept Wi-Fi ([keptWifiSsid]) is sent without a password
+    // (an old one typed before is not used).
+    final kept = keptWifiSsid(ref.read(commissionProvider));
+    if (!wifiOnly && !_customWifi && kept != null && _ssid.text == kept) {
+      _wifi.clear();
+    }
     // 上次「取代舊機」在後台已成功，只差寫入裝置失敗：直接以同樣的取代設定
     // 重試，不必再跳一次確認對話框（也不必重打一次 reserve-identity）。
     if (!wifiOnly && c.pendingReplace) {
@@ -1740,6 +1746,11 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             ),
           ];
         }
+        // Round 30 (user rehearsal 09-27, C): the Wi-Fi the gateway is
+        // already on (MQTT up) is kept — no password, no set_wifi.
+        final keptSsid = keptWifiSsid(s);
+        final keepingWifi =
+            keptSsid != null && !_customWifi && _ssid.text == keptSsid;
         return [
           const Padding(
             padding: EdgeInsets.only(bottom: 12),
@@ -1759,45 +1770,77 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             _gatewayAssignment(),
           ],
           const SizedBox(height: 16),
-          Text(
-            '目前 Wi-Fi：${(s.config['wifi_ssid']?.toString() ?? '').isEmpty ? '尚未設定' : s.config['wifi_ssid']}',
-          ),
-          const SizedBox(height: 16),
-          const Text('要連接的 Wi-Fi'),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              const Icon(Icons.wifi),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  _customWifi
-                      ? '自訂網路'
-                      : _ssid.text.isEmpty
-                      ? '尚未選擇'
-                      : _ssid.text,
-                ),
+          if (keepingWifi) ...[
+            _markedText(
+              CheckLine('✓', wifiKeptText(keptSsid), StatusTone.ok),
+              key: const Key('wifi-keep'),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '不必輸入 Wi-Fi 密碼，閘道器不會斷線重連。',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
-              const SizedBox(width: 8),
-              TextButton(
+            ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                key: const Key('wifi-change'),
+                icon: const Icon(Icons.wifi_find, size: 20),
                 onPressed: enabled && !_scanningWifi ? _chooseWifi : null,
-                child: Text(_scanningWifi ? '掃描中…' : '更換'),
+                label: Text(_scanningWifi ? '掃描中…' : '改用其他 Wi-Fi'),
               ),
-            ],
-          ),
-          if (_customWifi) field(_ssid, '自訂 Wi-Fi 名稱'),
-          const SizedBox(height: 16),
-          field(_wifi, 'Wi-Fi 密碼', secret: true),
-          button(
-            '儲存並連接 WiFi',
-            () => _saveWifi(s.config['wifi_only'] == true),
-            enabled &&
-                (s.config['wifi_only'] == true || !_gatewaySubmitBlocked),
-          ),
-          TextButton(
-            onPressed: enabled ? c.backToNetworkCheck : null,
-            child: const Text('返回網路體檢'),
-          ),
+            ),
+            button(
+              '儲存站點，沿用此 Wi-Fi',
+              () => _saveWifi(false),
+              enabled && !_gatewaySubmitBlocked,
+            ),
+            TextButton(
+              onPressed: enabled ? c.backToNetworkCheck : null,
+              child: const Text('返回網路體檢'),
+            ),
+          ] else ...[
+            Text(
+              '目前 Wi-Fi：${(s.config['wifi_ssid']?.toString() ?? '').isEmpty ? '尚未設定' : s.config['wifi_ssid']}',
+            ),
+            const SizedBox(height: 16),
+            const Text('要連接的 Wi-Fi'),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Icon(Icons.wifi),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    _customWifi
+                        ? '自訂網路'
+                        : _ssid.text.isEmpty
+                        ? '尚未選擇'
+                        : _ssid.text,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                TextButton(
+                  onPressed: enabled && !_scanningWifi ? _chooseWifi : null,
+                  child: Text(_scanningWifi ? '掃描中…' : '更換'),
+                ),
+              ],
+            ),
+            if (_customWifi) field(_ssid, '自訂 Wi-Fi 名稱'),
+            const SizedBox(height: 16),
+            field(_wifi, 'Wi-Fi 密碼', secret: true),
+            button(
+              '儲存並連接 WiFi',
+              () => _saveWifi(s.config['wifi_only'] == true),
+              enabled &&
+                  (s.config['wifi_only'] == true || !_gatewaySubmitBlocked),
+            ),
+            TextButton(
+              onPressed: enabled ? c.backToNetworkCheck : null,
+              child: const Text('返回網路體檢'),
+            ),
+          ],
         ];
       case 3:
         final check = networkCheck(state: s, env: env);
@@ -1811,14 +1854,12 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             const SizedBox(height: 12),
             field(_login, '若要確認後端，請輸入${env.label}的登入密碼', secret: true),
           ],
-          button(
-            '確認上線',
-            () => c.online(
-              base: env.base,
-              environment: environment.name,
-              password: _login.text,
-            ),
-            enabled,
+          // Round 30: 「下一步：確認上線」 is in the bottom bar ([_checkNext]).
+          const SizedBox(height: 8),
+          Text(
+            '請按下方「$confirmOnlineLabel」。',
+            key: const Key('online-next-hint'),
+            style: const TextStyle(fontWeight: FontWeight.w700),
           ),
           TextButton(
             onPressed: enabled ? () => c.online(skip: true) : null,
@@ -2701,6 +2742,18 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     CommissioningController c,
     BackendEnvState env,
   ) {
+    // Round 30 (user rehearsal 09-27, E: 110 s at 確認資料上傳 and a help
+    // request): its 「下一步」 is in the bottom bar too, always on screen.
+    if (s.step == 3) {
+      return (
+        confirmOnlineLabel,
+        () => c.online(
+          base: env.base,
+          environment: env.environment.name,
+          password: _login.text,
+        ),
+      );
+    }
     if (s.step != 2 || s.checkPassed) return null;
     if (!networkCheck(state: s, env: env).ready) return null;
     // Round 26: after a Wi-Fi reset the station is chosen again.

@@ -5,6 +5,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../application/backend_environment.dart';
 import '../application/commissioning_controller.dart';
 import '../core/gateway_identity.dart';
+import '../core/gateway_proximity.dart';
 import '../core/protocol.dart';
 import '../data/contracts.dart';
 import '../data/recent_gateways.dart';
@@ -31,7 +32,11 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
   List<RecentGateway> _recent = [];
   List<GatewayPeer> _found = [];
   String _query = "";
-  final _order = <String, int>{};
+
+  /// Round 30 (user rehearsal 09-27, D): the phone's signal ranks the list.
+  final _ranker = GatewaySignalRanker();
+  var _ranked = <String>[];
+  ({String nearest, bool close})? _nearest;
   List<dynamic> _fleet = [];
   DateTime? _backendAt;
   String? _error;
@@ -178,14 +183,18 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
         // Round 26: gateways heard here are never PTUs (another gateway's
         // advertisement was listed and picked as one in the field).
         ref.read(commissionProvider.notifier).noteGatewayPeers(peers);
+        final now = DateTime.now();
         for (final peer in peers) {
-          _order.putIfAbsent(peer.id, () => _order.length);
+          _ranker.add(peer.id, peer.rssi, now);
         }
-        setState(
-          () =>
-              _found = [...peers]
-                ..sort((a, b) => _order[a.id]!.compareTo(_order[b.id]!)),
-        );
+        final ids = [for (final peer in peers) peer.id];
+        final ranked = _ranker.rank(ids, now);
+        final nearest = _ranker.nearest(ids, now);
+        setState(() {
+          _ranked = ranked;
+          _nearest = nearest;
+          _found = [...peers]..sort((a, b) => _rankOf(a.id) - _rankOf(b.id));
+        });
       }
     }
 
@@ -214,6 +223,12 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
       }
       if (mounted && epoch == _epoch) setState(() => _scanning = false);
     }
+  }
+
+  /// Position in the signal ranking; gateways not heard after all heard.
+  int _rankOf(String id) {
+    final at = _ranked.indexOf(id);
+    return at < 0 ? _ranked.length : at;
   }
 
   Future<void> _connect(GatewayPeer peer, {bool identify = false}) async {
@@ -261,23 +276,32 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
         key: ValueKey(peer.id),
         dense: true,
         contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-        title: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        // Round 30: a Wrap — the wider 〔辨識閘道器〕 must not squeeze the
+        // signal off the row at 360 dp and large text.
+        title: Wrap(
+          spacing: 6,
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            Expanded(
-              child: Text(
-                title,
-                key: ValueKey('gateway-title-${peer.id}'),
-                style: const TextStyle(fontWeight: FontWeight.w700),
-              ),
+            Text(
+              title,
+              key: ValueKey('gateway-title-${peer.id}'),
+              style: const TextStyle(fontWeight: FontWeight.w700),
             ),
-            const SizedBox(width: 6),
             Text(signal, style: theme.labelMedium),
           ],
         ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (found != null && _nearest?.nearest == peer.id)
+              Text(
+                gatewayNearestLabel,
+                key: ValueKey('gateway-nearest-${peer.id}'),
+                style: theme.labelMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.primary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             Wrap(
               spacing: 8,
               children: [if (title != name) Text(name), Text(tail ?? peer.id)],
@@ -297,7 +321,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
                 onPressed: widget.enabled && !_selecting
                     ? () => _connect(found ?? peer, identify: true)
                     : null,
-                child: const Text('辨識'),
+                child: const Text('辨識閘道器'),
               ),
         onTap: widget.enabled && !_selecting
             ? () => _connect(found ?? peer)
@@ -322,10 +346,20 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
                 '${gatewayWifiMac(bleId: peer.id) ?? ''}'
             .toLowerCase()
             .contains(_query);
-    final recent = _recent.where((r) => matches(r.peer)).toList();
+    // Round 30: both lists by the phone's signal, strongest first (a
+    // recent gateway not heard keeps its place after the heard ones).
+    final recent =
+        [
+          for (final (i, r) in _recent.indexed)
+            if (matches(r.peer)) (i, r),
+        ]..sort((a, b) {
+          final c = _rankOf(a.$2.peer.id) - _rankOf(b.$2.peer.id);
+          return c != 0 ? c : a.$1 - b.$1;
+        });
     final nearby = _found
         .where((p) => !recentIds.contains(p.id) && matches(p))
         .toList();
+    final nearest = _nearest;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -371,9 +405,39 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
         ),
         if (_query.isNotEmpty && recent.isEmpty && nearby.isEmpty)
           const Text('沒有符合的裝置'),
+        if (nearest != null)
+          Container(
+            key: const Key('gateway-nearest-hint'),
+            margin: const EdgeInsets.symmetric(vertical: 6),
+            padding: const EdgeInsets.all(10),
+            color: Theme.of(context).colorScheme.secondaryContainer,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  gatewayNearestHint,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSecondaryContainer,
+                  ),
+                ),
+                if (nearest.close)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      '⚠ $gatewayCloseHint',
+                      key: const Key('gateway-close-hint'),
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
         if (recent.isNotEmpty) ...[
           const Text('最近使用'),
-          ...recent.map((r) => _tile(r.peer, recent: r)),
+          ...recent.map((r) => _tile(r.$2.peer, recent: r.$2)),
         ],
         if (nearby.isNotEmpty) ...[
           Text('附近裝置（${nearby.length}）'),

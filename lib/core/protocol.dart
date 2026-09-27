@@ -281,6 +281,9 @@ class GatewayFailure implements Exception {
     // Round 28: 〔先完成配置〕 did not end with the gateway in service.
     'direct_defer_unconfirmed' =>
       '閘道器沒有回報已加入運作並恢復上傳，配置尚未完成。請再按一次「先完成配置」；若仍不行，請按「請後台協助」。',
+    // Round 30 (user rehearsal 09-27): the data passed, but the gateway
+    // did not report `fleet_joined` even after the APP sent join_fleet.
+    'fleet_unconfirmed' => fleetUnconfirmedText,
     'direct_switch_failed' =>
       '閘道器在等待時限內還沒改連這台 PTU（已暫時綁定它）。連上後畫面會自動更新；也可確認這台 PTU 已上電並靠近，或改選其他 PTU。',
     'identify_unsupported' => '此韌體尚未支援辨識燈號，請先更新韌體。連線時的呼吸燈仍可協助辨識。',
@@ -298,6 +301,9 @@ class GatewayFailure implements Exception {
     'new_site_required' => '請輸入與目前站點不同的新站點 ID。',
     // Firmware 1.7.32 tells why (wifi_last_disc_reason, see [wifiFailedDetail]).
     'wifi_failed' => wifiSetFailedText(wifiFailedReason(detail)),
+    // Round 30: the Wi-Fi to keep was gone by 「儲存」 (no password given).
+    'wifi_password_needed' =>
+      '閘道器目前沒有連上這個 Wi-Fi，無法沿用。請輸入 Wi-Fi 密碼後再按「儲存並連接 WiFi」。',
     'no_devices' => '未找到 PTU。請確認已上電並靠近閘道器後重掃。',
     // Round 26: an old gateway in test mode never scans PTUs.
     'test_mode' => testModeText,
@@ -318,6 +324,13 @@ class GatewayFailure implements Exception {
       '${endpoint == null ? '' : ', $endpoint'}'
       '${detail == null ? '' : ', $detail'})';
 }
+
+/// Round 30 (user rehearsal 09-27, P0 candidate A): step 9 found the
+/// gateway not in service (`fleet_joined` false) and join_fleet sent once
+/// did not change it — no done page.
+const fleetUnconfirmedText =
+    '資料已上傳，但閘道器沒有回報「已加入監控」（APP 已自動補送一次），開通尚未完成。'
+    '請靠近閘道器後按「開始資料驗證」重試；若仍不行，請按「請後台協助」。';
 
 /// Step 8: the phone's BLE link to the gateway dropped (not a PTU failure).
 const phoneLinkLostText = '手機與閘道器的藍牙連線中斷，請靠近閘道器後按「重新連線並繼續」';

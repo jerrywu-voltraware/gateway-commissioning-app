@@ -138,6 +138,32 @@ bool isStep8LinkLoss(Object? error, bool current) =>
         (error.code == 'bluetooth_off' ||
             (current && error.code == 'cancelled')));
 
+/// Round 30 (user rehearsal 09-27, C: set_wifi with the SSID the gateway
+/// was already on dropped its Wi-Fi and MQTT for 16 s and asked for the
+/// password on site): the SSID the station form keeps without set_wifi —
+/// the gateway reports it joined (get_net_status `wifi_state` got_ip with
+/// an IP and `ssid`) and MQTT connected. Null otherwise: firmware without
+/// get_net_status, not joined, MQTT down, or 「保留站點，重設 Wi-Fi」 (a
+/// reset on purpose).
+String? keptWifiSsid(CommissionState s) {
+  if (!s.netCheckSupported || s.config['wifi_only'] == true) return null;
+  final ssid = s.net['ssid'];
+  if (s.net['wifi_state'] != 'got_ip' ||
+      (s.net['ip']?.toString() ?? '').isEmpty ||
+      ssid is! String ||
+      ssid.isEmpty ||
+      s.config['mqtt_connected'] != true) {
+    return null;
+  }
+  return ssid;
+}
+
+/// Round 30: the station form's line when [keptWifiSsid] is kept.
+String wifiKeptText(String ssid) => '閘道器已連上 $ssid，沿用';
+
+/// Round 30: after 「儲存站點，沿用此 Wi-Fi」.
+String wifiKeptDoneText(String ssid) => '沿用 Wi-Fi $ssid（未重新連線），下一步確認後端看得到閘道器';
+
 const gatewayNetKeys = [
   'wifi_state',
   'ip',
@@ -3492,13 +3518,29 @@ class CommissioningController extends Notifier<CommissionState> {
         newGateway < 1 ||
         newGateway > kMaxGatewayId ||
         utf8.encode(ssid).isEmpty ||
-        utf8.encode(ssid).length > 32 ||
-        utf8.encode(password).length < 8 ||
-        utf8.encode(password).length > 63) {
+        utf8.encode(ssid).length > 32) {
       throw const GatewayFailure('wifi_failed');
     }
     if (state.config['otp_enabled'] == true) {
       throw const GatewayFailure('otp_enabled');
+    }
+    // Round 30 (user rehearsal 09-27, C): the gateway already on [ssid]
+    // with MQTT up keeps it — no set_wifi (it dropped the Wi-Fi and MQTT
+    // for 16 s for nothing), no password. Read once more first: gone
+    // since the form was shown → the Wi-Fi is set as before.
+    var keepWifi = keptWifiSsid(state) == ssid;
+    if (keepWifi) {
+      final net = await _command(generation, 'get_net_status');
+      _absorbTarget(net);
+      _absorbNet(net);
+      keepWifi = keptWifiSsid(state) == ssid;
+    }
+    if (!keepWifi &&
+        (utf8.encode(password).length < 8 ||
+            utf8.encode(password).length > 63)) {
+      throw GatewayFailure(
+        password.isEmpty ? 'wifi_password_needed' : 'wifi_failed',
+      );
     }
     if (_loggedIn && !wifiOnly && !replaceExisting) {
       final check = await _request(
@@ -3536,7 +3578,8 @@ class CommissioningController extends Notifier<CommissionState> {
       // is left. A failure past this point must not re-run the reserve.
       _pendingReplace = true;
     }
-    if (newSite != site || newGateway != gateway) {
+    final identityChanged = newSite != site || newGateway != gateway;
+    if (identityChanged) {
       try {
         _expectReboot();
         await _command(generation, 'set_site_identity', {
@@ -3557,24 +3600,30 @@ class CommissioningController extends Notifier<CommissionState> {
       }
     }
     final wifiDeadline = Stopwatch()..start();
-    // Once sent, even a lost ACK may mean the network has changed. Do not
-    // retain a successful check from the previous Wi-Fi while reading back.
-    state = state.copy(
-      config: {...state.config}..remove('mqtt_connected'),
-      net: const {},
-      uploadLate: false,
-    );
-    _startWifiGrace();
-    await _command(generation, 'set_wifi', {
-      'ssid': ssid,
-      'password': password,
-    });
+    if (!keepWifi || identityChanged) {
+      // Once sent, even a lost ACK may mean the network has changed (a
+      // kept Wi-Fi is joined again after the restart). Do not retain a
+      // successful check from before while reading back.
+      state = state.copy(
+        config: {...state.config}..remove('mqtt_connected'),
+        net: const {},
+        uploadLate: false,
+      );
+      _startWifiGrace();
+    }
+    if (!keepWifi) {
+      await _command(generation, 'set_wifi', {
+        'ssid': ssid,
+        'password': password,
+      });
+    }
     final current =
         profileFor(state.config['fw_version']?.toString() ?? '') ==
         ProtocolProfile.current;
-    if (!current) await _wait(16, generation);
-    bool connected = false;
-    while (wifiDeadline.elapsed < const Duration(seconds: 60)) {
+    if (!current && !keepWifi) await _wait(16, generation);
+    // Kept and no restart (set_site_identity): joined a moment ago.
+    bool connected = keepWifi && !identityChanged;
+    while (!connected && wifiDeadline.elapsed < const Duration(seconds: 60)) {
       try {
         await _wait(
           3,
@@ -3634,9 +3683,12 @@ class CommissioningController extends Notifier<CommissionState> {
       );
     }
     // The MQTT client reconnects over the new Wi-Fi: an earlier
-    // mqtt_connected no longer applies until it is read again.
+    // mqtt_connected no longer applies until it is read again (a kept
+    // Wi-Fi without a restart never dropped it).
     state = state.copy(
-      config: {...state.config, 'wifi_ssid': ssid}..remove('mqtt_connected'),
+      config: keepWifi && !identityChanged
+          ? {...state.config, 'wifi_ssid': ssid}
+          : ({...state.config, 'wifi_ssid': ssid}..remove('mqtt_connected')),
       uploadLate: false,
     );
     if (wifiOnly) {
@@ -3656,7 +3708,10 @@ class CommissioningController extends Notifier<CommissionState> {
       );
     }
     _pendingReplace = false;
-    state = state.copy(step: 3, message: 'WiFi 已連線，下一步確認後端看得到閘道器');
+    state = state.copy(
+      step: 3,
+      message: keepWifi ? wifiKeptDoneText(ssid) : 'WiFi 已連線，下一步確認後端看得到閘道器',
+    );
   });
   Future<Map<String, dynamic>?> _fleet(int generation) async {
     final response = await _request(
@@ -3853,20 +3908,44 @@ class CommissioningController extends Notifier<CommissionState> {
   }
 
   /// Round 26: before the done page — the gateway itself must not be
-  /// paused (the data rows just came in; a pause since is resumed). Never
-  /// blocks the completion: a lost phone link leaves it to the back office
-  /// data, which already passed.
-  Future<void> _confirmUploadBeforeDone(int generation) async {
+  /// paused (the data rows just came in; a pause since is resumed).
+  ///
+  /// Round 30 (user rehearsal 09-27, P0 candidate A: 「開通驗證通過」 with
+  /// the firmware's `fleet_joined` still false): the gateway must also be
+  /// in service. get_config is read; `fleet_joined` false → join_fleet is
+  /// sent once and get_config read again; still false → no done page but
+  /// the retryable `fleet_unconfirmed` (「開始資料驗證」 again; the data
+  /// progress is kept). A read the phone link cannot make falls back to
+  /// what this run already confirmed (a join_fleet acked, or a get_config
+  /// read, since the connect); nothing confirmed → the same error.
+  Future<void> _confirmServiceBeforeDone(int generation) async {
     if (state.peer == null) return;
+    Map<String, dynamic> config;
     try {
-      final config = await _command(generation, 'get_config');
+      config = await _command(generation, 'get_config');
+      if (config['fleet_joined'] != true) {
+        await _command(generation, 'join_fleet');
+        config = await _command(generation, 'get_config');
+      }
       if (config['upload_paused'] == true) {
         await _command(generation, 'set_data_upload', {'enabled': true});
-        await _command(generation, 'get_config');
+        config = await _command(generation, 'get_config');
       }
     } catch (error) {
       if (error is GatewayFailure && error.code == 'cancelled') rethrow;
       _check(generation);
+      if (state.config['fleet_joined'] == true) return;
+      throw GatewayFailure('fleet_unconfirmed', detail: error.toString());
+    }
+    state = state.copy(config: {...state.config, ...config});
+    if (config['fleet_joined'] != true) {
+      throw GatewayFailure(
+        'fleet_unconfirmed',
+        detail:
+            'fleet_joined=${config['fleet_joined']} '
+            'upload_paused=${config['upload_paused']} '
+            'ble_enabled=${config['ble_enabled']}',
+      );
     }
   }
 
@@ -6010,7 +6089,15 @@ class CommissioningController extends Notifier<CommissionState> {
 
   /// After a resume with nothing left to assign: true (and step 9) when the
   /// gateway already reports every chosen PTU connected, BLE on, upload not
-  /// paused and the monitoring limit set.
+  /// paused, the monitoring limit set — and in service (`fleet_joined`).
+  ///
+  /// Round 30 (user rehearsal 09-27, P0 candidate A: the back office's
+  /// 〔恢復上傳〕 at step 5 plus step 7's set_ble_enabled made a gateway
+  /// that had left the fleet look monitored here; set_config/join_fleet
+  /// were skipped, the firmware kept `fleet_joined` false — its data
+  /// watchdog off, no upload after an OTA restart — while the APP and the
+  /// back office both showed it fine): without `fleet_joined` true the
+  /// full set_config + join_fleet runs.
   Future<bool> _alreadyMonitoring(
     int generation,
     List<Map<String, dynamic>> chosen,
@@ -6027,7 +6114,8 @@ class CommissioningController extends Notifier<CommissionState> {
     if (!allConnected) return false;
     final config = await _command(generation, 'get_config');
     final limit = monitorLimit(ref.read(topologyProvider).topology.isStar);
-    if (config['upload_paused'] == true ||
+    if (config['fleet_joined'] != true ||
+        config['upload_paused'] == true ||
         config['ble_enabled'] == false ||
         config['max_connections'] != limit) {
       return false;
@@ -6129,8 +6217,9 @@ class CommissioningController extends Notifier<CommissionState> {
     }
     // Round 9: back at step 4 (「返回選擇 PTU」) and 「配置」 pressed again
     // without new failures — if the gateway already reports every chosen
-    // PTU connected with the right max_connections (join_fleet done, per
-    // the existing _alreadyMonitoring check), skip re-sending
+    // PTU connected with the right max_connections and in service
+    // (round 30: `fleet_joined` read back, never inferred from the upload
+    // and BLE flags a back office 〔恢復上傳〕 also sets), skip re-sending
     // set_config/join_fleet and go straight to step 9; only PTUs newly
     // assigned this round (not yet reflected there) fall through to the
     // full flow below.
@@ -6933,7 +7022,7 @@ class CommissioningController extends Notifier<CommissionState> {
           verifyWaiting: waiting,
         );
         if (good) {
-          await _confirmUploadBeforeDone(generation);
+          await _confirmServiceBeforeDone(generation);
           await backend(
             () => _request(generation, 'PATCH', '$_path/bot-monitor', {
               'enabled': true,
@@ -6966,7 +7055,10 @@ class CommissioningController extends Notifier<CommissionState> {
         await _wait(verifyPollSeconds, generation);
       }
     } on GatewayFailure catch (error) {
-      if (error.code == 'backend_unavailable') {
+      // Round 30: 「開始資料驗證」 again after `fleet_unconfirmed` goes
+      // straight to the in-service check (the data already passed).
+      if (error.code == 'backend_unavailable' ||
+          error.code == 'fleet_unconfirmed') {
         _verifyCarry = (
           ids: ids,
           previous: previous,

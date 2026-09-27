@@ -153,9 +153,11 @@ RescueCode? rescueCodeOf(
   if (code == 'cancelled') return null;
   if (rebooted) return RescueCode.gwRebooted;
   // Round 28: 〔先完成配置〕 not confirmed by the gateway.
+  // Round 30: step 9's in-service check (fleet_joined) did not pass.
   if (safe == false ||
       code == 'monitor_unconfirmed' ||
-      code == 'direct_defer_unconfirmed') {
+      code == 'direct_defer_unconfirmed' ||
+      code == 'fleet_unconfirmed') {
     return RescueCode.monitorUnconfirmed;
   }
   if (code == 'bluetooth_off') return RescueCode.phoneBtOff;
