@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'contracts.dart';
@@ -58,21 +59,63 @@ class RecentGateways {
 
 /// Only a previously BLE-verified UID can associate a row with backend status.
 /// Never infer hardware identity from the advertising name or Android BLE MAC.
-String backendPresence(String? uid, List<dynamic> fleet) {
+///
+/// r31: 「後端狀態未知」 says why (no record / several / conflict), and a
+/// station archived in the back office ([archived], fleet-status
+/// `archived_gateways`) reads [gatewayArchivedLabel].
+String backendPresence(
+  String? uid,
+  List<dynamic> fleet, {
+  List<dynamic> archived = const [],
+}) {
   final normalized = gatewayUid(uid);
   if (normalized.length != 12) return '後端狀態未知・連線後確認身分';
-  final matches = fleet
-      .whereType<Map>()
-      .where((r) => gatewayUid(r['last_seen_mac']) == normalized)
-      .toList();
-  if (matches.length != 1 ||
-      matches.single['conflict_flag'] == true ||
-      matches.single['conflict_flag'] == 1) {
-    return '後端狀態未知・尚無唯一紀錄';
+  final matches = _matching(normalized, fleet);
+  if (matches.isEmpty && _matching(normalized, archived).isNotEmpty) {
+    return gatewayArchivedLabel;
   }
+  if (matches.isEmpty) return '後端狀態未知・後台沒有這個 MAC 的心跳紀錄';
+  if (matches.length > 1) {
+    return '後端狀態未知・後台有 ${matches.length} 筆相同 MAC 的紀錄';
+  }
+  if (_conflict(matches.single)) return '後端狀態未知・後台標示身分衝突';
   return switch (matches.single['online']) {
     true => '後端回報在線上',
     false => '後端回報離線',
     _ => '後端狀態未知',
   };
 }
+
+/// r31: the mark of a station archived in the back office.
+const gatewayArchivedLabel = '已封存（後台已移除）';
+
+/// r31: the mark of a gateway already configured (known to the back office).
+const gatewayConfiguredLabel = '已配置';
+
+/// r31: a gateway already configured — its verified [uid] is exactly one
+/// fleet row without a conflict. Such a gateway is still listed but is not
+/// marked 「最近」 nor ranked first.
+bool gatewayConfigured(String? uid, List<dynamic> fleet) {
+  final normalized = gatewayUid(uid);
+  if (normalized.length != 12) return false;
+  final matches = _matching(normalized, fleet);
+  return matches.length == 1 && !_conflict(matches.single);
+}
+
+/// r31: why the back-office query failed, for 「後端狀態未知・…」.
+String backendQueryFailedText(Object error) {
+  final text = error.toString();
+  if (error is TimeoutException || text.contains('Timeout')) {
+    return '後端狀態未知・查詢逾時（8 秒）';
+  }
+  final short = text.length > 40 ? '${text.substring(0, 40)}…' : text;
+  return '後端狀態未知・查詢失敗（$short）';
+}
+
+List<Map> _matching(String uid, List<dynamic> rows) => rows
+    .whereType<Map>()
+    .where((r) => gatewayUid(r['last_seen_mac']) == uid)
+    .toList();
+
+bool _conflict(Map row) =>
+    row['conflict_flag'] == true || row['conflict_flag'] == 1;

@@ -37,10 +37,23 @@ String? directBoundMacOf(Map<String, dynamic> source) {
 }
 
 class DirectCandidate {
-  const DirectCandidate(this.mac, this.rssiPeak, this.deviceNumber);
+  const DirectCandidate(
+    this.mac,
+    this.rssiPeak,
+    this.deviceNumber, {
+    this.reason = '',
+    this.rssiMed,
+  });
   final String mac;
   final int? rssiPeak;
   final int? deviceNumber;
+
+  /// Firmware 1.7.40 `reason` (`ok`／`denied`／`below_threshold_median`…);
+  /// `""` from older firmware.
+  final String reason;
+
+  /// Firmware 1.7.40 window median (`rssi_med`).
+  final int? rssiMed;
 
   /// Round 17: 0 (not read yet) is no reading either.
   String get rssiText =>
@@ -96,22 +109,38 @@ String directPickRssiText(
   DirectStatus direct, {
   Object? rowRssi,
   String? ptuText,
+  bool stale = false,
+  int? lastAdv,
 }) {
   if (_validRssi(rowRssi) && ptuText != null) return ptuText;
   if (_validRssi(direct.ptuRssi)) return rssiLabel(direct.ptuRssi);
+  final adv =
+      directPickAdvRssi(direct) ?? (_validRssi(lastAdv) ? lastAdv : null);
+  if (adv == null) return directRssiReadingText;
+  return stale ? directAdvStaleText(adv) : directAdvRssiText(adv);
+}
+
+/// r31: the link RSSI still unread after [directLinkRssiWait]: the last
+/// pick / advertising RSSI, marked as such (not 「讀取中」 forever).
+String directAdvStaleText(int rssi) => '$rssi dBm（廣播值）';
+
+/// r31: how long 「連線訊號讀取中」 may show before [directAdvStaleText].
+const directLinkRssiWait = Duration(seconds: 15);
+
+/// The pick's advertising RSSI in [direct] (`self_adv_rssi_med`, else its
+/// selection-window peak), null when none.
+int? directPickAdvRssi(DirectStatus direct) {
   final mac = direct.pickedMac;
-  final adv = _validRssi(direct.selfAdvRssiMed)
-      ? direct.selfAdvRssiMed
-      : direct.candidates
-            .where(
-              (c) =>
-                  mac != null &&
-                  DirectStatus._same(c.mac, mac) &&
-                  _validRssi(c.rssiPeak),
-            )
-            .firstOrNull
-            ?.rssiPeak;
-  return adv == null ? directRssiReadingText : directAdvRssiText(adv);
+  if (_validRssi(direct.selfAdvRssiMed)) return direct.selfAdvRssiMed;
+  return direct.candidates
+      .where(
+        (c) =>
+            mac != null &&
+            DirectStatus._same(c.mac, mac) &&
+            _validRssi(c.rssiPeak),
+      )
+      .firstOrNull
+      ?.rssiPeak;
 }
 
 enum DirectState {
@@ -252,6 +281,8 @@ class DirectStatus {
                 row['mac'].toString(),
                 whole(row['rssi_peak']),
                 whole(row['device_number']),
+                reason: row['reason']?.toString() ?? '',
+                rssiMed: whole(row['rssi_med']),
               ),
       ],
       selfAdvReported: source.containsKey('self_adv_rssi_med'),

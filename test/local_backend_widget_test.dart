@@ -83,8 +83,9 @@ void main() {
     );
     expect(hostText(tester), '192.168.1.187');
     expect(find.text('將連線：http://192.168.1.187:18000'), findsOneWidget);
-    expect(find.text('http://'), findsOneWidget);
-    expect(find.text(':18000'), findsOneWidget);
+    // r31: no prefix / suffix squeezing the IP (「192.168.0.:18000」).
+    expect(find.text('http://'), findsNothing);
+    expect(find.text(':18000'), findsNothing);
     // 09-28: no password (nor a shown test password); the build carries
     // the backend credential.
     expect(find.textContaining('本地測試密碼'), findsNothing);
@@ -207,7 +208,7 @@ void main() {
     await tester.enterText(find.byType(TextField).last, '9000');
     await tester.tap(find.text('確定'));
     await tester.pumpAndSettle();
-    expect(find.text(':9000'), findsOneWidget);
+    expect(find.text('進階：連接埠 9000'), findsOneWidget);
     expect(find.text('將連線：http://192.168.0.12:9000'), findsOneWidget);
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getString('backend_local_url'), 'http://192.168.0.12:9000');

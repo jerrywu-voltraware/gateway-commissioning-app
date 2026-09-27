@@ -500,7 +500,7 @@ void main() {
       }
       // The strongest PTU it heard is named with its peak (not taken).
       expect(
-        find.textContaining('峰值 -61 dBm），未達門檻', findRichText: true),
+        find.textContaining('訊號太弱（-61 dBm', findRichText: true),
         findsOneWidget,
       );
       for (final key in ['no-ptu-rescan', 'no-ptu-defer', 'no-ptu-help']) {
@@ -754,9 +754,8 @@ void main() {
       expect(lines, hasLength(5));
       expect(lines[0], contains('上電'));
       expect(lines[1], contains('機殼'));
-      expect(lines[2], contains('-55 dBm'));
+      expect(lines[2], contains('訊號太弱（-61 dBm，門檻 -55）'));
       expect(lines[2], contains('90:5F:E8:9A:96:00'));
-      expect(lines[2], contains('峰值 -61 dBm'));
       expect(lines[2], contains('請不要為了連上而放寬門檻'));
       expect(lines[3], contains('請後台協助'));
       expect(lines[4], contains(deferFinishLabel));
@@ -765,7 +764,36 @@ void main() {
         directNoPtuCauses(
           DirectStatus.from({'state': 'no_candidate', 'min_rssi': -50}),
         )[2],
-        contains('目前完全沒有聽到任何 PTU'),
+        contains('沒有聽到任何 PTU，請確認本樁 PTU 電源'),
+      );
+      // r31: heard, but bound to another pile (denied) is not 「沒有聽到」.
+      final denied = directNoPtuCauses(
+        DirectStatus.from({
+          'state': 'no_candidate',
+          'min_rssi': -55,
+          'candidates': [
+            {'mac': '90:5F:E8:9A:96:00', 'rssi_peak': -56, 'reason': 'denied'},
+          ],
+        }),
+      )[2];
+      expect(denied, contains('附近的 PTU 已綁定給其他充電樁（已自動略過）'));
+      expect(denied, isNot(contains('沒有聽到')));
+      expect(
+        directNoPtuCauses(
+          DirectStatus.from({
+            'state': 'no_candidate',
+            'min_rssi': -55,
+            'candidates': [
+              {
+                'mac': '90:5F:E8:9A:96:00',
+                'rssi_peak': -54,
+                'rssi_med': -56,
+                'reason': 'below_threshold_median',
+              },
+            ],
+          }),
+        )[2],
+        contains('訊號太弱（-56 dBm，門檻 -55）'),
       );
       expect(
         directNoPtuCauses(
@@ -802,6 +830,8 @@ void main() {
         code: RescueCode.directPick,
       );
       expect(body['error_code'], 'DIRECT_PICK');
+      // r31: the gateway's direct reason, not fail_code null.
+      expect(body['fail_code'], 'direct_no_ptu');
       expect(body['error_message'], directPickMessage(s.direct));
       // With a pick: nothing to report.
       expect(

@@ -44,6 +44,39 @@ class DirectStatusPanel extends ConsumerStatefulWidget {
 class _DirectStatusPanelState extends ConsumerState<DirectStatusPanel> {
   bool _others = false;
 
+  // r31: 「連線訊號讀取中」 for longer than [directLinkRssiWait] → the last
+  // pick / advertising RSSI marked 「（廣播值）」.
+  String? _pickMac;
+  DateTime? _pickSince;
+  int? _lastAdv;
+  Timer? _staleTimer;
+
+  @override
+  void dispose() {
+    _staleTimer?.cancel();
+    super.dispose();
+  }
+
+  bool _trackPick(DirectStatus? direct) {
+    final mac = direct?.pickedMac;
+    if (mac == null || !sameMac(mac, _pickMac)) {
+      _pickMac = mac;
+      _pickSince = mac == null ? null : DateTime.now();
+      _lastAdv = null;
+      _staleTimer?.cancel();
+      if (mac != null) {
+        _staleTimer = Timer(directLinkRssiWait, () {
+          if (mounted) setState(() {});
+        });
+      }
+    }
+    final adv = direct == null ? null : directPickAdvRssi(direct);
+    if (adv != null) _lastAdv = adv;
+    final since = _pickSince;
+    return since != null &&
+        DateTime.now().difference(since) >= directLinkRssiWait;
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(commissionProvider);
@@ -59,6 +92,7 @@ class _DirectStatusPanelState extends ConsumerState<DirectStatusPanel> {
     final row = picked == null
         ? null
         : state.ptus.where((p) => sameMac(p['mac'], picked)).firstOrNull;
+    final stale = _trackPick(direct);
     final hint = direct?.state.hint;
     final others = [for (final c in direct?.candidates ?? const []) c.mac];
     final warnFg = dark ? Colors.amber.shade200 : Colors.brown.shade900;
@@ -100,6 +134,8 @@ class _DirectStatusPanelState extends ConsumerState<DirectStatusPanel> {
                       direct,
                       rowRssi: row?['rssi'],
                       ptuText: row == null ? null : ptuRssiText(row),
+                      stale: stale,
+                      lastAdv: _lastAdv,
                     ),
                     key: const Key('direct-rssi'),
                     style: text.titleMedium,
@@ -397,19 +433,31 @@ const directNoPtuTitle = '找不到本樁 PTU：可能原因與處理';
 List<String> directNoPtuCauses(DirectStatus? direct) {
   final min = direct?.minRssi ?? defaultDirectRssi;
   final bound = direct?.boundMac;
-  final heard = direct?.candidates
-      .where((c) => c.rssiPeak != null && c.rssiPeak! < 0)
+  bool valid(int? r) => r != null && r < 0;
+  final rows = direct?.candidates ?? const <DirectCandidate>[];
+  // r31: a PTU the gateway heard but skipped because it is bound to
+  // another pile (`denied`) is not 「沒有聽到」.
+  final weak = rows
+      .where(
+        (c) =>
+            c.reason != 'denied' &&
+            (valid(c.rssiMed) || valid(c.rssiPeak)) &&
+            (c.reason.startsWith('below_threshold') || c.reason.isEmpty),
+      )
       .firstOrNull;
+  final denied = rows.any((c) => c.reason == 'denied');
   final String threshold;
   if (bound != null) {
     threshold = '已綁定 PTU ${formatMac(bound)}：閘道器只連這台。若本樁已更換 PTU，請按「解除綁定」後重新搜尋。';
-  } else if (heard != null) {
+  } else if (weak != null) {
+    final rssi = valid(weak.rssiMed) ? weak.rssiMed : weak.rssiPeak;
     threshold =
-        '門檻：閘道器只連訊號強於 $min dBm 的 PTU。附近最強的是 PTU '
-        '${formatMac(heard.mac)}（峰值 ${heard.rssiPeak} dBm），未達門檻，'
-        '可能是鄰近樁的 PTU——請不要為了連上而放寬門檻。';
+        '附近 PTU 訊號太弱（$rssi dBm，門檻 $min）：PTU '
+        '${formatMac(weak.mac)} 可能是鄰近樁的 PTU——請不要為了連上而放寬門檻。';
+  } else if (denied) {
+    threshold = '附近的 PTU 已綁定給其他充電樁（已自動略過）；本樁 PTU 可能尚未上電。';
   } else {
-    threshold = '門檻：閘道器只連訊號強於 $min dBm 的 PTU；目前完全沒有聽到任何 PTU。';
+    threshold = '沒有聽到任何 PTU，請確認本樁 PTU 電源（門檻 $min dBm）。';
   }
   return [
     '本樁 PTU 沒有上電：確認 PTU 電源開啟、指示燈有亮。',

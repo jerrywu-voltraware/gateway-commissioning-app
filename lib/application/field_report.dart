@@ -311,16 +311,44 @@ String sessionStatusOf(FieldInput i, {bool help = false, bool quiet = false}) {
   return s.busy ? 'running' : 'idle';
 }
 
+/// r31: the gateway's direct reason as a session `fail_code` (the field
+/// already exists in the contract, so older back offices accept it):
+/// `direct_bound_missing`, `direct_ambiguous`, `direct_no_ptu` (nothing
+/// eligible heard), else null.
+String? directReasonFailCode(DirectStatus? d) {
+  if (d == null) return null;
+  if (d.state == DirectState.boundMissing) return 'direct_bound_missing';
+  if (d.selectReason == 'ambiguous') return 'direct_ambiguous';
+  if (d.state == DirectState.noCandidate ||
+      d.state == DirectState.scanning ||
+      d.selectReason == 'none') {
+    return 'direct_no_ptu';
+  }
+  return null;
+}
+
+/// r31: the name the gateway advertises now — the scan's name is from
+/// before a site / gateway number change (`GIOS-S56-GW01` after 56→80):
+/// a `GIOS-S{site}-GW{nn}` name is rebuilt from the current numbers; any
+/// other name is kept.
+String? currentGatewayName(String? scanned, int? site, int? gw) {
+  if (scanned == null || site == null || gw == null) return scanned;
+  if (!RegExp(r'^GIOS-S\d+-GW\d+$').hasMatch(scanned)) return scanned;
+  return 'GIOS-S$site-GW${gw.toString().padLeft(2, '0')}';
+}
+
 /// Site / gateway / MAC / name / firmware / mode / target count, `null`
 /// when unknown or outside the contract's range.
 Map<String, dynamic> fieldIdentity(FieldInput i) {
   final s = i.state;
   final c = s.config;
+  final site = _inRange(c['site_id'], 1, 65535);
+  final gw = _inRange(c['gateway_id'], 1, 50);
   return {
-    'site_id': _inRange(c['site_id'], 1, 65535),
-    'gateway_id': _inRange(c['gateway_id'], 1, 50),
+    'site_id': site,
+    'gateway_id': gw,
     'gateway_mac': _cut(c['gateway_uid'], 32),
-    'gateway_name': _cut(s.peer?.name, 32),
+    'gateway_name': _cut(currentGatewayName(s.peer?.name, site, gw), 32),
     'fw_version': _cut(c['fw_version'], 16),
     'mode': i.directMode ? 'direct' : 'star',
     'target_ptu_count': _inRange(i.targetCount, 1, 5),
@@ -374,7 +402,16 @@ Map<String, dynamic> buildSessionReport({
     'status': status,
     'busy_label': s.busy ? _cut(s.message, 120) : null,
     'error_code': code?.wire,
-    'fail_code': _cut(failure?.code, 48),
+    // r31: a 直連選台 help without a failure carried fail_code null (the
+    // back office then leaned on heartbeats alone): the gateway's own
+    // direct reason instead ([directReasonFailCode]).
+    'fail_code': _cut(
+      failure?.code ??
+          (code == RescueCode.directPick
+              ? directReasonFailCode(s.direct)
+              : null),
+      48,
+    ),
     // Round 28 (field round 28: 「（APP 沒有提供錯誤文字）」 for a pile
     // without its PTU): the step 7 line the installer reads.
     'error_message': _cut(

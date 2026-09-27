@@ -38,6 +38,8 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
   var _ranked = <String>[];
   ({String nearest, bool close})? _nearest;
   List<dynamic> _fleet = [];
+  List<dynamic> _archived = [];
+  String? _backendError;
   DateTime? _backendAt;
   String? _error;
   bool _scanning = false, _selecting = false;
@@ -85,6 +87,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
       setState(() {
         _found = [];
         _fleet = [];
+        _backendError = null;
         _backendAt = null;
       });
       _refresh?.cancel();
@@ -109,6 +112,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
       if (mounted) {
         setState(() {
           _fleet = [];
+          _backendError = null;
           _backendAt = null;
         });
       }
@@ -118,7 +122,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     try {
       final result = await ref
           .read(apiProvider)
-          .request('GET', '/api/gateways/fleet-status')
+          .request('GET', '/api/gateways/fleet-status?include_archived=true')
           .timeout(const Duration(seconds: 8));
       if (!mounted ||
           epoch != _backendEpoch ||
@@ -128,12 +132,16 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
       }
       setState(() {
         _fleet = result['gateways'] as List? ?? [];
+        _archived = result['archived_gateways'] as List? ?? [];
+        _backendError = null;
         _backendAt = DateTime.now();
       });
-    } catch (_) {
+    } catch (error) {
       if (mounted && epoch == _backendEpoch) {
         setState(() {
           _fleet = [];
+          _archived = [];
+          _backendError = backendQueryFailedText(error);
           _backendAt = null;
         });
       }
@@ -189,7 +197,11 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
         }
         final ids = [for (final peer in peers) peer.id];
         final ranked = _ranker.rank(ids, now);
-        final nearest = _ranker.nearest(ids, now);
+        // r31: a gateway already configured is not 「最近」.
+        final nearest = _ranker.nearest([
+          for (final id in ids)
+            if (!_configured(id)) id,
+        ], now);
         setState(() {
           _ranked = ranked;
           _nearest = nearest;
@@ -231,6 +243,13 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     return at < 0 ? _ranked.length : at;
   }
 
+  /// r31: a remembered gateway the back office already knows (configured).
+  bool _configured(String id) {
+    if (_backendAt == null) return false;
+    final uid = _recent.where((r) => r.peer.id == id).firstOrNull?.uid;
+    return gatewayConfigured(uid, _fleet);
+  }
+
   Future<void> _connect(GatewayPeer peer, {bool identify = false}) async {
     if (_selecting || !widget.enabled) return;
     setState(() => _selecting = true);
@@ -249,10 +268,13 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
         recent ?? _recent.where((r) => r.peer.id == peer.id).firstOrNull;
     final status = !ref.watch(commissionProvider).loggedIn
         ? '後端狀態未知・尚未登入'
+        : _backendAt == null && _backendError != null
+        ? _backendError!
         : _backendAt == null ||
               DateTime.now().difference(_backendAt!).inSeconds > 30
         ? '後端狀態未知・尚未取得最新資料'
-        : backendPresence(last?.uid, _fleet);
+        : backendPresence(last?.uid, _fleet, archived: _archived);
+    final configured = _configured(peer.id);
     final signal = found == null
         ? '未收到廣播'
         : found.rssi <= -127
@@ -293,7 +315,13 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (found != null && _nearest?.nearest == peer.id)
+            if (configured)
+              Text(
+                gatewayConfiguredLabel,
+                key: ValueKey('gateway-configured-${peer.id}'),
+                style: theme.labelMedium?.copyWith(fontWeight: FontWeight.w700),
+              )
+            else if (found != null && _nearest?.nearest == peer.id)
               Text(
                 gatewayNearestLabel,
                 key: ValueKey('gateway-nearest-${peer.id}'),
@@ -336,6 +364,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
       _backendEpoch++;
       setState(() {
         _fleet = [];
+        _backendError = null;
         _backendAt = null;
       });
     });
@@ -353,6 +382,11 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
           for (final (i, r) in _recent.indexed)
             if (matches(r.peer)) (i, r),
         ]..sort((a, b) {
+          // r31: configured gateways after the others.
+          final done =
+              (_configured(a.$2.peer.id) ? 1 : 0) -
+              (_configured(b.$2.peer.id) ? 1 : 0);
+          if (done != 0) return done;
           final c = _rankOf(a.$2.peer.id) - _rankOf(b.$2.peer.id);
           return c != 0 ? c : a.$1 - b.$1;
         });

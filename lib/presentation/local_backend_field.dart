@@ -267,15 +267,15 @@ class _LocalBackendFieldState extends ConsumerState<LocalBackendField> {
                     onChanged: (_) {
                       if (_status != null) _setStatus(null);
                     },
-                    decoration: InputDecoration(
+                    // r31: no `http://` prefix / `:port` suffix inside the
+                    // field — on a narrow phone they squeezed the IP to
+                    // 「http://192.168.0.:18000」; the full URL is the line
+                    // below (「將連線：…」).
+                    decoration: const InputDecoration(
                       labelText: '電腦 IP 位址',
                       hintText: '192.168.1.187',
                       floatingLabelBehavior: FloatingLabelBehavior.always,
-                      prefixText: 'http://',
-                      suffixText: ':${widget.port}',
-                      errorText: error,
-                      errorMaxLines: 3,
-                    ),
+                    ).copyWith(errorText: error, errorMaxLines: 3),
                   ),
                   const SizedBox(height: 8),
                   Text(
