@@ -17,6 +17,7 @@
 // 4. E — 「✓ 已連上後台；PTU 資料上傳暫停中…」 read as a fault (95 s
 //    wait, a help request): says the pause is normal and to press next;
 //    step 3's 「下一步：確認上線」 is in the bottom bar.
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -26,7 +27,6 @@ import 'package:gateway_commissioning/application/commissioning_controller.dart'
 import 'package:gateway_commissioning/application/local_backend_finder.dart';
 import 'package:gateway_commissioning/application/network_check.dart';
 import 'package:gateway_commissioning/application/topology_settings.dart';
-import 'package:gateway_commissioning/core/gateway_identity.dart';
 import 'package:gateway_commissioning/core/gateway_proximity.dart';
 import 'package:gateway_commissioning/core/gateway_topology.dart';
 import 'package:gateway_commissioning/core/protocol.dart';
@@ -66,12 +66,18 @@ class _Gw1 extends PickGateway {
 
   /// join_fleet acks ok but the gateway stays out of service.
   bool joinIgnored = false;
+  bool rejectOnlineCheck = false;
+  int rejectedOnlineChecks = 0;
 
   @override
   Future<Map<String, dynamic>> command(
     String op, [
     Map<String, dynamic> params = const {},
   ]) async {
+    if (op == 'heartbeat_boost' && rejectOnlineCheck) {
+      rejectedOnlineChecks++;
+      throw const GatewayFailure.gateway('not_ready');
+    }
     final before = config['fleet_joined'];
     final result = await super.command(op, params);
     if (op == 'join_fleet' && joinIgnored) config['fleet_joined'] = before;
@@ -90,6 +96,44 @@ ProviderContainer _container(PickGateway fake) => ProviderContainer(
     apiProvider.overrideWithValue(fake),
   ],
 );
+
+class _IdentityGateway extends _Gw1 {
+  String? reportedMac = _ownPtu;
+  bool testModeAtFinish = false;
+  bool testModeAfterJoin = false;
+  int latestReads = 0;
+
+  @override
+  Future<Map<String, dynamic>> command(
+    String op, [
+    Map<String, dynamic> params = const {},
+  ]) async {
+    final result = await super.command(op, params);
+    if (op == 'join_fleet' && testModeAfterJoin && latestReads >= 3) {
+      config['mode'] = 'test';
+      config['upload_paused'] = true;
+    }
+    return result;
+  }
+
+  @override
+  Future<Map<String, dynamic>> request(
+    String method,
+    String path, [
+    Map<String, dynamic>? body,
+  ]) async {
+    final result = await super.request(method, path, body);
+    if (path.startsWith('/api/latest')) {
+      latestReads++;
+      for (final row in result['items'] as List) {
+        row['ptu'] = {'ptu_mac_addr': reportedMac};
+      }
+      if (testModeAtFinish && latestReads >= 3) config['mode'] = 'test';
+      if (testModeAfterJoin && latestReads >= 3) config['fleet_joined'] = false;
+    }
+    return result;
+  }
+}
 
 /// Connected, the network check passed: the station form.
 Future<CommissioningController> _toStationForm(
@@ -135,6 +179,68 @@ void main() {
     directPollInterval = const Duration(milliseconds: 1);
   });
   tearDown(() => directPollInterval = keepPoll);
+
+  group('R27 verification identity and mode', () {
+    test('test mode read after join blocks upload and completion', () async {
+      final fake = _IdentityGateway()..testModeAfterJoin = true;
+      final container = _container(fake);
+      addTearDown(container.dispose);
+      final c = await _toStep7(container, fake);
+      await c.identify();
+      await c.confirmDirectPick();
+      final uploads = fake.count('set_data_upload');
+      await c.verify(_base, 'pw');
+      final s = container.read(commissionProvider);
+      expect(s.step, 6);
+      expect(s.verified, isFalse);
+      expect(s.testMode, isTrue);
+      expect(fake.count('set_data_upload'), uploads);
+    });
+    for (final mac in <String?>[null, 'AA:BB:CC:00:99:99']) {
+      test('missing or foreign MAC cannot complete: $mac', () async {
+        final fake = _IdentityGateway()..reportedMac = mac;
+        final container = _container(fake);
+        addTearDown(container.dispose);
+        final c = await _toStep7(container, fake);
+        await c.identify();
+        await c.confirmDirectPick();
+        await c.verify(_base, 'pw');
+        var s = container.read(commissionProvider);
+        expect(s.step, 6);
+        expect(s.verified, isFalse);
+        expect(s.error, contains('PTU 身分'));
+        expect(s.verifyCounts, isEmpty);
+        fake.reportedMac = 'aa-bb-cc-00-00-01';
+        fake.latestReads = 0;
+        await c.verify(_base, 'pw');
+        s = container.read(commissionProvider);
+        expect(s.error, isNull);
+        expect(s.verified, isTrue);
+        expect(fake.latestReads, greaterThanOrEqualTo(3));
+      });
+    }
+
+    for (final late in [false, true]) {
+      test('test mode blocks completion, late=$late', () async {
+        final fake = _IdentityGateway();
+        final container = _container(fake);
+        addTearDown(container.dispose);
+        final c = await _toStep7(container, fake);
+        await c.identify();
+        await c.confirmDirectPick();
+        if (late) {
+          fake.testModeAtFinish = true;
+        } else {
+          fake.config['mode'] = 'test';
+        }
+        await c.verify(_base, 'pw');
+        final s = container.read(commissionProvider);
+        expect(s.step, 6);
+        expect(s.verified, isFalse);
+        expect(s.error, contains('測試模式'));
+      });
+    }
+  });
 
   group('1. P0 A: never done while the gateway is not in service', () {
     test('the back office resumed the upload first: step 8 still sends '
@@ -301,6 +407,53 @@ void main() {
       expect(keptWifiSsid(s), isNull, reason: 'the form asks again');
     });
 
+    testWidgets('automatic online failure waits for explicit retry', (
+      tester,
+    ) async {
+      final fake = _Gw1();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            linkProvider.overrideWithValue(fake),
+            apiProvider.overrideWithValue(fake),
+            localBackendProberProvider.overrideWithValue(_Prober()),
+          ],
+          child: const GatewayApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(GatewayApp)),
+      );
+      final c = container.read(commissionProvider.notifier);
+      await tester.runAsync(
+        () => container.read(backendEnvProvider.notifier).ready,
+      );
+      await tester.runAsync(
+        () => c.prepare(container.read(backendEnvProvider).base, 'pw'),
+      );
+      unawaited(c.scan());
+      await tester.pumpAndSettle();
+      unawaited(c.connect(container.read(commissionProvider).peers.single));
+      await tester.pumpAndSettle();
+      expect(container.read(commissionProvider).checkPassed, isTrue);
+      fake.rejectOnlineCheck = true;
+      unawaited(c.configureWifi(80, 1, 'Xiaomi_WU', ''));
+      await tester.pumpAndSettle();
+      expect(container.read(commissionProvider).step, 3);
+      expect(container.read(commissionProvider).error, isNotNull);
+      expect(fake.rejectedOnlineChecks, 1);
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      expect(fake.rejectedOnlineChecks, 1, reason: 'no automatic retry loop');
+      fake.rejectOnlineCheck = false;
+      await tester.tap(find.byKey(const Key('check-next')));
+      await tester.pumpAndSettle();
+      expect(container.read(commissionProvider).error, isNull);
+      expect(container.read(commissionProvider).step, 4);
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('360x640: 「閘道器已連上 Xiaomi_WU，沿用」, no password field, '
         '〔改用其他 Wi-Fi〕; saved without set_wifi; then step 5 wording and '
         '「下一步：確認上線」 in the bottom bar', (tester) async {
@@ -326,6 +479,11 @@ void main() {
       await tester.runAsync(
         () => container.read(backendEnvProvider.notifier).ready,
       );
+      await tester.runAsync(() async {
+        final topology = container.read(topologyProvider.notifier);
+        await topology.ready;
+        await topology.setTopology(GatewayTopology.direct);
+      });
       await tester.runAsync(
         () => container
             .read(commissionProvider.notifier)
@@ -342,7 +500,6 @@ void main() {
       // The gateway list: tap the gateway (fills the forms).
       await tap(find.byKey(const ValueKey('demo-gateway')));
       expect(container.read(commissionProvider).step, 2);
-      await tap(find.byKey(const Key('check-next')));
       expect(container.read(commissionProvider).checkPassed, isTrue);
       expect(
         tester
@@ -357,22 +514,27 @@ void main() {
       await tap(find.text('儲存站點，沿用此 Wi-Fi'));
       var now = container.read(commissionProvider);
       expect(now.error, isNull);
-      expect(now.step, 3);
+      expect(now.step, 4);
       expect(fake.sent('set_wifi'), isEmpty);
-      // E: step 5 (確認資料上傳) — the wording and the bottom bar.
-      expect(find.textContaining(uploadHeldText), findsOneWidget);
-      final next = find.byKey(const Key('check-next'));
-      expect(next, findsOneWidget);
-      expect(
-        find.descendant(of: next, matching: find.text(confirmOnlineLabel)),
-        findsOneWidget,
-      );
-      expect(tester.getBottomLeft(next).dy, lessThanOrEqualTo(640));
-      await tester.tap(next);
-      await tester.pumpAndSettle();
+      // The online check and PTU search ran without another tap.
+      expect(find.byKey(const Key('check-next')), findsNothing);
+      expect(fake.sent('heartbeat_boost'), isNotEmpty);
       now = container.read(commissionProvider);
       expect(now.error, isNull);
       expect(now.step, 4);
+      // Human identification remains mandatory, then the rest is automatic.
+      expect(fake.count('join_fleet'), 0);
+      await tap(find.text('辨識此樁'));
+      await tap(find.text('是這台，開始監控'));
+      now = container.read(commissionProvider);
+      expect(now.error, isNull);
+      expect(now.step, 7);
+      expect(now.verified, isTrue);
+      expect(now.config['fleet_joined'], isTrue);
+      final joins = fake.count('join_fleet');
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      expect(fake.count('join_fleet'), joins);
       expect(tester.takeException(), isNull);
     });
   });
@@ -537,7 +699,10 @@ void main() {
         state: s,
         env: const BackendEnvState(loaded: true),
       );
-      expect(check.upload.line, '✓ 後台連線正常。PTU 資料會在完成配置後自動開始上傳（目前暫停是正常的），請按下一步');
+      expect(
+        check.upload.line,
+        '✓ 後台連線正常。PTU 資料會在完成配置後自動開始上傳（目前暫停是正常的），APP 會自動繼續',
+      );
       expect(check.upload.line, isNot(contains('暫停中')));
       expect(check.uploadOk, isTrue);
       expect(check.ready, isTrue, reason: '「下一步」 in the bottom bar');

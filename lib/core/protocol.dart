@@ -307,6 +307,8 @@ class GatewayFailure implements Exception {
     'no_devices' => '未找到 PTU。請確認已上電並靠近閘道器後重掃。',
     // Round 26: an old gateway in test mode never scans PTUs.
     'test_mode' => testModeText,
+    'ptu_identity_mismatch' =>
+      '後台資料的 PTU 身分與本次選擇不符，或缺少 MAC，尚未完成驗證。請返回確認本樁 PTU；若仍不符，請後台協助。',
     'test_mode_stuck' => '閘道器重新開機後仍在測試模式，請再按一次「$leaveTestModeLabel」；若仍不行，請按求助。',
     'upload_paused' => '閘道器仍回報資料上傳暫停，請再按一次「$resumeUploadLabel」；若仍不行，請按求助。',
     'gateway_full' => '本機已滿，請連另一台閘道器。',

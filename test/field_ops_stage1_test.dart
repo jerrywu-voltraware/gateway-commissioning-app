@@ -653,16 +653,13 @@ void main() {
       final fake = FieldGateway()..netExtra = {'rssi': -82};
       final container = await pumpApp(tester, fake);
       await connect(tester);
-      final weak = find.byKey(const Key('check-wifi-weak'));
+      expect(container.read(commissionProvider).checkPassed, isTrue);
+      final weak = find.byKey(const Key('status-wifi-weak'));
       expect(weak, findsOneWidget);
       final red = Theme.of(tester.element(weak)).colorScheme.error;
       final text = tester.widget<Text>(weak);
       expect(text.data, contains('Wi-Fi 訊號偏弱（-82 dBm'));
       expect(text.style?.color, red);
-      expect(find.byKey(const Key('status-wifi-weak')), findsNothing);
-
-      unawaited(container.read(commissionProvider.notifier).passNetworkCheck());
-      await tester.pumpAndSettle();
       final panel = find.byKey(const Key('status-wifi-weak'));
       expect(panel, findsOneWidget);
       expect(tester.widget<Text>(panel).style?.color, red);

@@ -1,5 +1,7 @@
 # AGENTS.md — APP_v2（前線配置 APP，Flutter／Android）
 
+**09-27 Codex 本輪更新（優先於下方歷史現況）**：使用者已要求實作自動推進。網路檢查通過自動到站點、已登入且非離線時自動確認上線、保留站點與本樁辨識確認；加入前景／對話框／返回查看保護與操作指引。R27-1 已處理：後台資料 MAC 缺失或與選取 PTU 不符時不通過；測試模式不通過。驗證詳見 `..\docs\APP_AUTOMATION_REVIEW_2026-09-27.md` 與 `..\docs\test_results\app_automation_full_final.log`；新 APK 尚未安裝，手機仍是原版本。使用者已確認 56 是刻意填寫，維持 56/1。
+
 先讀 `..\HANDBOOK_CODEX.md`（唯一正式版手冊：§0 目前狀況、§3.2 本 repo 指令、§5.4 對帳規則、§5.8 一對一流程、§6 紅線、§7.4.5 建置安裝）與 `..\AGENTS.md`。`..\HANDBOOK_CODEX_2026-09-27.md` 已被取代，只供歷史查閱。
 現況（09-27 21:55 查證，22:30 獨立核對）：分支 `wip/network-check`，程式 **`78a9bda`**（其後的 commit 只改 `AGENTS.md`，`git diff --stat 78a9bda HEAD` 應只列出它；在 HEAD 重建的 APK 檔名用 HEAD 的 hash，程式相同），手機（adb `ce08171898c05cdd0c7e`）裝的就是 `app_78a9bda_local.apk`（SHA-256 比對）。近期：`e140ae9`/`f548e59` 一對一〔先完成配置〕、`ebfc894`/`b8701d5` 完成頁〔完成〕／〔配置下一台〕、`c52d573`/`78a9bda` 使用者演練修正（完成前核對 `fleet_joined` 並補 `join_fleet`、同 SSID 不送 `set_wifi`、閘道器清單依訊號排序標最近、第 5 步文字）；773 tests、`flutter analyze` 0（紀錄值）。第二次使用者演練 2 分 27 秒完成、無 P0；**待辦**：`fleet_joined` 補送路徑本輪未被觸發需另測；第 6 步〔設定新站點與 Wi-Fi〕會清空站號、無新站提醒（backlog K，使用者演練誤填 56 的可能成因，先問使用者）。本 repo 沒有 remote。舊版 `..\APP\` 已於 09-27 依使用者要求刪除（程式碼在 GitHub 與 Azure 遠端）。
 

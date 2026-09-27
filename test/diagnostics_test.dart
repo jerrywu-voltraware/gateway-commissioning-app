@@ -65,6 +65,7 @@ class StaleBackend extends DemoSystem {
         'items': [
           {
             'device_id': 2,
+            'ptu': {'ptu_mac_addr': 'AA:BB:CC:00:00:02'},
             'online': false,
             'lag_seconds': 400,
             'error_num': 0,
@@ -72,6 +73,7 @@ class StaleBackend extends DemoSystem {
           },
           {
             'device_id': 3,
+            'ptu': {'ptu_mac_addr': 'AA:BB:CC:00:00:03'},
             'online': true,
             'lag_seconds': 1,
             'error_num': 7,

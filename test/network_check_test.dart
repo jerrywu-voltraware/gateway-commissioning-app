@@ -756,11 +756,9 @@ void main() {
       expect(title(tester), '1 / 10   準備');
 
       await connect(tester);
-      expect(title(tester), '5 / 10   確認資料上傳');
-      expect(find.text('✓ Gateway 已連上 Wi-Fi「Office-2G」'), findsOneWidget);
-      expect(find.text('沿用目前站點'), findsNothing, reason: 'check first');
-      await tap(tester, find.text('下一步：選擇站點'));
       expect(title(tester), '6 / 10   站點選擇');
+      expect(find.text('沿用目前站點'), findsOneWidget);
+      expect(find.byKey(const Key('check-next')), findsNothing);
       await tap(tester, find.text('沿用目前站點'));
       expect(title(tester), '7 / 10   選擇 PTU');
       expect(fake.commands, contains('scan_ble_discover'));
@@ -883,12 +881,10 @@ void main() {
         container.read(commissionProvider),
         container.read(backendEnvProvider),
       );
-      expect(stepLabels[shown()], '確認資料上傳');
+      expect(stepLabels[shown()], '站點選擇');
       // Let the 「正在把 Gateway 切到…」 snack bar go away first.
       await tester.pump(const Duration(seconds: 5));
       await tester.pumpAndSettle();
-      await reveal(find.text('下一步：選擇站點'));
-      await tap(tester, find.text('下一步：選擇站點'));
       expect(stepLabels[shown()], '站點選擇');
       expect(tester.takeException(), isNull);
     });

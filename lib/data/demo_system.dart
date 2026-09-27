@@ -606,6 +606,7 @@ class DemoSystem implements GatewayLink, GatewayApi, ForeignAcks {
             .map(
               (d) => {
                 'device_id': d['device_number'],
+                'ptu': {'ptu_mac_addr': d['mac']},
                 'online': true,
                 'lag_seconds': 0,
                 'error_num': 0,

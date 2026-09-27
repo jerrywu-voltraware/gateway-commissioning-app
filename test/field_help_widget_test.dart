@@ -298,7 +298,7 @@ void main() {
     expect(status, startsWith('⚠ 目前送不出去（沒有網路或後台沒有回應）'));
     expect(status, contains('請在電話中直接唸下面的資訊'));
     expect(find.text('請唸給後台：'), findsOneWidget);
-    expect(find.textContaining(RegExp(r'目前第 [3-5] 步：')), findsOneWidget);
+    expect(find.textContaining('目前第 6 步：'), findsOneWidget);
     expect(find.textContaining('等待超時'), findsWidgets);
     expect(find.textContaining('韌體'), findsOneWidget);
     final resend = find.byKey(const Key('field-help-resend'));

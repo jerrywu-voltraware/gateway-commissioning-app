@@ -547,6 +547,71 @@ void main() {
     String title(WidgetTester tester) =>
         tester.widget<Text>(find.byKey(const Key('step-title'))).data!;
 
+    testWidgets('automatic check waits in background and resumes once', (
+      tester,
+    ) async {
+      final fake = WifiGateway.station();
+      final container = await pumpCheckApp(tester, fake);
+      await tap(tester, find.text('檢查並開始'));
+      final c = container.read(commissionProvider.notifier);
+      unawaited(c.scan());
+      await tester.pumpAndSettle();
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      unawaited(c.connect(container.read(commissionProvider).peers.single));
+      await tester.pumpAndSettle();
+      expect(container.read(commissionProvider).checkPassed, isFalse);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+      expect(container.read(commissionProvider).checkPassed, isTrue);
+      final count = fake.commands.length;
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
+      expect(container.read(commissionProvider).step, 2);
+      expect(
+        fake.commands.length,
+        count,
+        reason: 'waiting for the site choice',
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('dialog blocks automatic check until dismissed', (
+      tester,
+    ) async {
+      final fake = WifiGateway.station();
+      final container = await pumpCheckApp(tester, fake);
+      await tap(tester, find.text('檢查並開始'));
+      unawaited(container.read(commissionProvider.notifier).scan());
+      await tester.pumpAndSettle();
+      final context = tester.element(find.byKey(const Key('step-title')));
+      unawaited(
+        showDialog<void>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Review'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Close'),
+              ),
+            ],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      unawaited(
+        container
+            .read(commissionProvider.notifier)
+            .connect(container.read(commissionProvider).peers.single),
+      );
+      await tester.pumpAndSettle();
+      expect(container.read(commissionProvider).checkPassed, isFalse);
+      await tester.tap(find.text('Close'));
+      await tester.pumpAndSettle();
+      expect(container.read(commissionProvider).checkPassed, isTrue);
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('360x640 at scale 1.1: connected from a scrolled gateway list, '
         '下一步：選擇站點 is on screen without a swipe and stays put', (tester) async {
       _phoneView(tester);
@@ -562,28 +627,29 @@ void main() {
       await tester.tap(gateway);
       await tester.pumpAndSettle();
 
-      expect(title(tester), '5 / 10   確認資料上傳');
-      final next = find.byKey(const Key('check-next'));
-      expect(next.hitTestable(), findsOneWidget, reason: 'no swipe needed');
-      expect(
-        find.descendant(of: next, matching: find.text('下一步：選擇站點')),
-        findsOneWidget,
-      );
-      // One 下一步 only: the card no longer carries its own copy.
-      expect(find.text('下一步：選擇站點'), findsOneWidget);
-      expect(tester.widget<FilledButton>(next).onPressed, isNotNull);
-      final rect = tester.getRect(next);
-      expect(rect.bottom, lessThanOrEqualTo(_phone.height));
+      expect(title(tester), '6 / 10   站點選擇');
+      expect(read().checkPassed, isTrue);
+      expect(find.byKey(const Key('check-next')), findsNothing);
       // The page itself starts from the step title (the connect's jump to
       // the top, from where the gateway list was scrolled to).
       expect(tester.widget<Scrollable>(_page).controller!.offset, 0);
       expect(scrolled, greaterThan(0));
       expect(find.byKey(const Key('step-title')).hitTestable(), findsOneWidget);
-      // Scrolling the check does not move the button.
-      await tester.drag(_page, const Offset(0, -400));
+      // Explicitly reviewing the check must not bounce straight forward.
+      await tester.scrollUntilVisible(
+        find.text('回到網路體檢'),
+        120,
+        scrollable: _page,
+      );
+      await tap(tester, find.text('回到網路體檢'));
+      expect(read().checkPassed, isFalse);
+      await tester.pump(const Duration(seconds: 2));
       await tester.pumpAndSettle();
-      expect(tester.getRect(next), rect);
+      expect(read().checkPassed, isFalse);
+      final next = find.byKey(const Key('check-next'));
       expect(next.hitTestable(), findsOneWidget);
+      final rect = tester.getRect(next);
+      expect(rect.bottom, lessThanOrEqualTo(_phone.height));
       expect(tester.takeException(), isNull);
 
       await tester.tap(next);
@@ -591,6 +657,10 @@ void main() {
       // The title may be scrolled away (the list builds lazily).
       expect(stepLabels[displayStep(read(), readEnv())], '站點選擇');
       expect(find.byKey(const Key('check-next')), findsNothing);
+      // A later check on the same peer is automatic again.
+      container.read(commissionProvider.notifier).backToNetworkCheck();
+      await tester.pumpAndSettle();
+      expect(read().checkPassed, isTrue);
       expect(tester.takeException(), isNull);
     });
 

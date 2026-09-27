@@ -55,6 +55,11 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   final _site = TextEditingController(text: '1'),
       _gateway = TextEditingController(text: '1');
   bool _offline = false;
+  bool _foreground = true;
+  bool _connectingPeer = false;
+  bool _autoCheckPaused = false;
+  bool _autoOnlineStarted = false;
+  bool _autoFlowScheduled = false;
 
   /// Read-only auto-numbering shown next to the site ID field: how the last
   /// [_refreshGatewaySuggestion] answered (online / BLE-name fallback / the
@@ -162,23 +167,29 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
 
   /// Connects to [peer] from the gateway list and fills the forms.
   Future<void> _connectPeer(CommissioningController c, GatewayPeer peer) async {
-    await c.connect(peer);
-    if (mounted && _pageScroll.hasClients) _pageScroll.jumpTo(0);
-    if (mounted) {
-      final next = ref.read(commissionProvider);
-      _site.text =
-          '${next.config['suggested_site_id'] ?? next.config['site_id'] ?? 1}';
-      _gateway.text =
-          '${next.config['suggested_gateway_id'] ?? next.config['gateway_id'] ?? 1}';
-      _gatewayKind = next.config['suggested_offline'] == true
-          ? GatewaySuggestKind.offline
-          : GatewaySuggestKind.online;
-      _ssid.text = next.config['wifi_ssid']?.toString() ?? '';
-      _customWifi = false;
-      // Remembered environment: sync the gateway to it.
-      if (next.error == null && next.step >= 2) {
-        await _syncGateway(explicit: false);
+    _connectingPeer = true;
+    _autoCheckPaused = false;
+    try {
+      await c.connect(peer);
+      if (mounted && _pageScroll.hasClients) _pageScroll.jumpTo(0);
+      if (mounted) {
+        final next = ref.read(commissionProvider);
+        _site.text =
+            '${next.config['suggested_site_id'] ?? next.config['site_id'] ?? 1}';
+        _gateway.text =
+            '${next.config['suggested_gateway_id'] ?? next.config['gateway_id'] ?? 1}';
+        _gatewayKind = next.config['suggested_offline'] == true
+            ? GatewaySuggestKind.offline
+            : GatewaySuggestKind.online;
+        _ssid.text = next.config['wifi_ssid']?.toString() ?? '';
+        _customWifi = false;
+        // Remembered environment: sync the gateway to it.
+        if (next.error == null && next.step >= 2) {
+          await _syncGateway(explicit: false);
+        }
       }
+    } finally {
+      if (mounted) setState(() => _connectingPeer = false);
     }
   }
 
@@ -537,6 +548,85 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   /// Step 6 already started its automatic verification for this entry.
   bool _autoVerifyStarted = false;
 
+  bool get _canAutoAct =>
+      mounted &&
+      _foreground &&
+      !_connectingPeer &&
+      (ModalRoute.of(context)?.isCurrent ?? false);
+
+  /// Queue at most one action, then re-read state after the frame. Never
+  /// reuse a captured state after a back action, disconnect, or dialog.
+  void _scheduleAutoFlow(CommissionState s) {
+    if (s.step != 3) _autoOnlineStarted = false;
+    if (s.step != 6) _autoVerifyStarted = false;
+    if (_autoFlowScheduled || !_canAutoAct) return;
+    final action = _automaticAction(s);
+    if (action == null) return;
+    final peer = s.peer;
+    final base = ref.read(backendEnvProvider).base;
+    _autoFlowScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      _autoFlowScheduled = false;
+      if (!_canAutoAct) return;
+      final current = ref.read(commissionProvider);
+      if (current.peer != peer ||
+          ref.read(backendEnvProvider).base != base ||
+          _automaticAction(current) != action) {
+        return;
+      }
+      final c = ref.read(commissionProvider.notifier);
+      if (action == 2) {
+        await c.passNetworkCheck();
+      } else if (action == 3) {
+        _autoOnlineStarted = true;
+        final env = ref.read(backendEnvProvider);
+        await c.online(
+          base: env.base,
+          environment: env.environment.name,
+          password: _login.text,
+        );
+      } else {
+        _autoVerifyStarted = true;
+        await _startVerify();
+      }
+      if (mounted) setState(() {});
+    });
+  }
+
+  int? _automaticAction(CommissionState s) {
+    if (s.busy ||
+        s.error != null ||
+        s.peer == null ||
+        s.relinking ||
+        s.resumePending ||
+        s.reconnectFailed ||
+        s.savedResume ||
+        s.gatewayReboot != null) {
+      return null;
+    }
+    if (s.step == 2 &&
+        !s.checkPassed &&
+        !_autoCheckPaused &&
+        networkCheck(state: s, env: ref.read(backendEnvProvider)).ready) {
+      return 2;
+    }
+    if (s.step == 3 && !_autoOnlineStarted && s.loggedIn && !s.offline) {
+      return 3;
+    }
+    if (s.step == 6 &&
+        !_autoVerifyStarted &&
+        s.loggedIn &&
+        s.ptus.any((p) => s.selected.contains(p['mac']))) {
+      return 6;
+    }
+    return null;
+  }
+
+  void _reviewNetworkCheck() {
+    _autoCheckPaused = true;
+    ref.read(commissionProvider.notifier).backToNetworkCheck();
+  }
+
   /// Round 29 (field drill: the done page opened scrolled down, on the
   /// 連線狀態 panel and the 「切回正式站」 box): the done page starts at its
   /// summary.
@@ -547,24 +637,49 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     });
   }
 
-  /// Entering step 6 (驗證資料) starts one verification by itself when logged
-  /// in; the manual button stays for re-runs.
-  void _maybeAutoVerify(CommissionState? previous, CommissionState next) {
-    if (next.step != 6) {
-      _autoVerifyStarted = false;
-      return;
+  String _actionHint(CommissionState s) {
+    if (s.error != null) return '請先依下方提示處理問題，再按重試；已完成的進度會保留。';
+    if (s.busy || s.relinking) return '正在處理，請稍候；成功後會自動繼續。';
+    switch (s.step) {
+      case 0:
+        return '請確認設備已通電，選擇連線環境並登入，再按「檢查並開始」。';
+      case 1:
+        return '請選擇眼前這台閘道器；不確定時，請用「辨識」確認。';
+      case 2:
+        if (!s.checkPassed) {
+          final check = networkCheck(
+            state: s,
+            env: ref.read(backendEnvProvider),
+          );
+          if (_autoCheckPaused && check.ready) return '你正在查看網路檢查結果；看完請按下方按鈕繼續。';
+          if (check.wifiProblem) return '請按「設定 Wi-Fi」或「重設 Wi-Fi」，選擇現場網路並輸入密碼。';
+          if (!check.targetOk) return '請確認資料應送往下方顯示的後台，再依提示切換。';
+          return '正在檢查網路與上傳狀態，通過後會自動繼續。';
+        }
+        if (s.config['choose_station'] == true) {
+          return '目前站號是 ${s.config['site_id']}。本站請選「沿用目前站點」；不同站請選「設定新站點與 Wi-Fi」。';
+        }
+        if (s.config['wifi_only'] == true) {
+          return '請選擇現場的 2.4 GHz Wi-Fi 並輸入密碼，站號會保留。';
+        }
+        return '請填寫本站站號，確認 Wi-Fi 後儲存；閘道器編號由 APP 分配。';
+      case 3:
+        return s.offline
+            ? '目前為離線配置，可確認上線或選擇稍後驗證。'
+            : !s.loggedIn
+            ? '請輸入後端登入密碼，開始確認資料上傳。'
+            : '正在自動確認後台收到心跳，請稍候。';
+      case 4:
+        return ref.read(commissionProvider.notifier).directFlow
+            ? '請按「辨識此樁」並確認眼前設備；確認是這台後，APP 會自動完成設定與資料驗證。'
+            : '請選擇本閘道器負責的 PTU，再按下方配置按鈕；之後會自動驗證資料。';
+      case 5:
+        return '正在完成設備設定，接著會自動確認資料上傳。';
+      case 6:
+        return s.loggedIn ? '正在確認資料持續更新，通過後會顯示配置結果。' : '請登入後台，開始驗證資料。';
+      default:
+        return '請查看配置結果，選擇完成或配置下一台。';
     }
-    if (_autoVerifyStarted ||
-        next.busy ||
-        !next.loggedIn ||
-        next.error != null ||
-        !next.ptus.any((p) => next.selected.contains(p['mac']))) {
-      return;
-    }
-    _autoVerifyStarted = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) unawaited(_startVerify());
-    });
   }
 
   Future<void> _startVerify() async {
@@ -594,7 +709,6 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   void initState() {
     super.initState();
     ref.listenManual(backendEnvProvider, _onEnvironment, fireImmediately: true);
-    ref.listenManual(commissionProvider, _maybeAutoVerify);
     ref.listenManual(commissionProvider, _showDoneFromTop);
     ref.listenManual(commissionProvider, _showRemoteIdentify);
     _host.addListener(() => _envController.setLocalHost(_host.text));
@@ -606,9 +720,12 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   }
 
   @override
-  void didChangeAppLifecycleState(AppLifecycleState state) => ref
-      .read(commissionProvider.notifier)
-      .setForeground(state == AppLifecycleState.resumed);
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _foreground = state == AppLifecycleState.resumed;
+    ref.read(commissionProvider.notifier).setForeground(_foreground);
+    if (mounted) setState(() {});
+  }
+
   @override
   void dispose() {
     _pageScroll.dispose();
@@ -728,6 +845,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     final demo = ref.watch(demoProvider),
         colors = Theme.of(context).colorScheme;
     final env = ref.watch(backendEnvProvider);
+    _scheduleAutoFlow(state);
     final topologySettings = ref.watch(topologyProvider);
     final topology = topologySettings.topology;
     final targetPtuCount = topologySettings.targetCount;
@@ -1004,19 +1122,6 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                         ),
                       ),
                     ),
-                  if (!selectingPtus && !done) ...[
-                    const SizedBox(height: 20),
-                    Text(
-                      '讓每一台裝置，都確實上線。',
-                      style: Theme.of(context).textTheme.headlineSmall,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '依照步驟完成網路、裝置配置與資料驗證。',
-                      style: TextStyle(color: colors.onSurfaceVariant),
-                    ),
-                    const SizedBox(height: 24),
-                  ],
                   if (!done) ...[
                     LinearProgressIndicator(
                       value: shown / (stepLabels.length - 1),
@@ -1028,6 +1133,14 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                     const SizedBox(height: 8),
+                    if (!selectingPtus) ...[
+                      Text(
+                        _actionHint(state),
+                        key: const Key('flow-guidance'),
+                        style: Theme.of(context).textTheme.bodyLarge,
+                      ),
+                      const SizedBox(height: 8),
+                    ],
                   ],
                   if (!selectingPtus && !done) StepList(current: shown),
                   SizedBox(height: selectingPtus ? 4 : 16),
@@ -1741,7 +1854,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               _wifi.clear();
             }, enabled),
             TextButton(
-              onPressed: enabled ? c.backToNetworkCheck : null,
+              onPressed: enabled ? _reviewNetworkCheck : null,
               child: const Text('回到網路體檢'),
             ),
           ];
@@ -1797,7 +1910,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               enabled && !_gatewaySubmitBlocked,
             ),
             TextButton(
-              onPressed: enabled ? c.backToNetworkCheck : null,
+              onPressed: enabled ? _reviewNetworkCheck : null,
               child: const Text('返回網路體檢'),
             ),
           ] else ...[
@@ -1837,7 +1950,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                   (s.config['wifi_only'] == true || !_gatewaySubmitBlocked),
             ),
             TextButton(
-              onPressed: enabled ? c.backToNetworkCheck : null,
+              onPressed: enabled ? _reviewNetworkCheck : null,
               child: const Text('返回網路體檢'),
             ),
           ],
@@ -1857,7 +1970,15 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           // Round 30: 「下一步：確認上線」 is in the bottom bar ([_checkNext]).
           const SizedBox(height: 8),
           Text(
-            '請按下方「$confirmOnlineLabel」。',
+            s.busy
+                ? '正在確認後台收到心跳，成功後會自動尋找 PTU，請稍候。'
+                : s.error != null
+                ? '檢查尚未通過。請依提示修正後，按下方按鈕重新檢查。'
+                : !s.loggedIn
+                ? '請輸入後端登入密碼，再按下方按鈕開始檢查。'
+                : s.offline
+                ? '目前為離線配置，請選擇確認上線或稍後驗證。'
+                : '即將自動確認上線，請稍候。',
             key: const Key('online-next-hint'),
             style: const TextStyle(fontWeight: FontWeight.w700),
           ),
@@ -2745,6 +2866,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     // Round 30 (user rehearsal 09-27, E: 110 s at 確認資料上傳 and a help
     // request): its 「下一步」 is in the bottom bar too, always on screen.
     if (s.step == 3) {
+      if (s.error == null && s.loggedIn && !s.offline && !_autoOnlineStarted) {
+        return null;
+      }
       return (
         confirmOnlineLabel,
         () => c.online(
@@ -2756,13 +2880,20 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     }
     if (s.step != 2 || s.checkPassed) return null;
     if (!networkCheck(state: s, env: env).ready) return null;
+    if (!_autoCheckPaused && s.error == null) return null;
     // Round 26: after a Wi-Fi reset the station is chosen again.
     final label = s.config['wifi_only'] == true
         ? '下一步：確認站點'
         : s.config['fleet_joined'] == true
         ? '下一步：選擇站點'
         : '下一步：設定身份與 Wi-Fi';
-    return (label, () => c.passNetworkCheck());
+    return (
+      label,
+      () {
+        _autoCheckPaused = false;
+        c.passNetworkCheck();
+      },
+    );
   }
 
   /// 「Gateway 網路體檢」 → 「對準上傳目標」 → 「確認資料上傳」 (step 2

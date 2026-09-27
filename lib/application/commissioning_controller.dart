@@ -3920,24 +3920,35 @@ class CommissioningController extends Notifier<CommissionState> {
   /// read, since the connect); nothing confirmed → the same error.
   Future<void> _confirmServiceBeforeDone(int generation) async {
     if (state.peer == null) return;
+    Future<Map<String, dynamic>> readConfig() async {
+      final value = await _command(generation, 'get_config');
+      state = state.copy(config: {...state.config, ...value});
+      if (isTestMode(value)) throw const GatewayFailure('test_mode');
+      return value;
+    }
+
     Map<String, dynamic> config;
     try {
-      config = await _command(generation, 'get_config');
+      config = await readConfig();
       if (config['fleet_joined'] != true) {
         await _command(generation, 'join_fleet');
-        config = await _command(generation, 'get_config');
+        config = await readConfig();
       }
       if (config['upload_paused'] == true) {
         await _command(generation, 'set_data_upload', {'enabled': true});
-        config = await _command(generation, 'get_config');
+        config = await readConfig();
       }
     } catch (error) {
-      if (error is GatewayFailure && error.code == 'cancelled') rethrow;
+      if (error is GatewayFailure &&
+          (error.code == 'cancelled' || error.code == 'test_mode')) {
+        rethrow;
+      }
       _check(generation);
       if (state.config['fleet_joined'] == true) return;
       throw GatewayFailure('fleet_unconfirmed', detail: error.toString());
     }
     state = state.copy(config: {...state.config, ...config});
+    if (isTestMode(config)) throw const GatewayFailure('test_mode');
     if (config['fleet_joined'] != true) {
       throw GatewayFailure(
         'fleet_unconfirmed',
@@ -6815,6 +6826,7 @@ class CommissioningController extends Notifier<CommissionState> {
   /// continues it instead of starting from 0/3.
   ({
     Set<int> ids,
+    Map<int, String> macs,
     Map<int, DateTime> previous,
     Map<int, int> counts,
     Map<int, int> lastNew,
@@ -6832,6 +6844,9 @@ class CommissioningController extends Notifier<CommissionState> {
       state = state.copy(step: 4, verified: false, report: '');
       throw const GatewayFailure('no_devices');
     }
+    // Also check fresh fleet data in every polling round and read back
+    // the gateway before completion. Verification can survive BLE loss.
+    if (state.testMode) throw const GatewayFailure('test_mode');
     _backend = describeBackend(Uri.tryParse(base.trim()));
     final wanted = _checkUploadTarget(base, environment);
     final running = parseMqttTarget(state.config);
@@ -6917,10 +6932,15 @@ class CommissioningController extends Notifier<CommissionState> {
     // Round 13: continue the progress a backend outage interrupted.
     final carry = _verifyCarry;
     _verifyCarry = null;
+    final expectedMacs = {
+      for (final ptu in chosen)
+        (ptu['device_number'] as num).toInt(): ptu['mac'].toString(),
+    };
     final resume =
         carry != null &&
         carry.ids.length == ids.length &&
-        carry.ids.containsAll(ids);
+        carry.ids.containsAll(ids) &&
+        expectedMacs.entries.every((e) => sameMac(carry.macs[e.key], e.value));
     final previous = resume ? carry.previous : <int, DateTime>{};
     // Per PTU (round 8: one PTU without a new row reset everyone to 0/3).
     final counts = resume ? carry.counts : <int, int>{};
@@ -6942,6 +6962,12 @@ class CommissioningController extends Notifier<CommissionState> {
       for (; elapsed < start + _verifyWindow; elapsed += verifyPollSeconds) {
         final (fleet, install, latest) = await backend(() async {
           final fleet = await _fleet(generation);
+          if (fleet != null && isTestMode(fleet)) {
+            state = state.copy(
+              config: {...state.config, 'mode': fleet['mode']},
+            );
+            throw const GatewayFailure('test_mode');
+          }
           if (fleet?['upload_paused'] == true) {
             await _command(generation, 'set_data_upload', {'enabled': true});
           }
@@ -6961,6 +6987,29 @@ class CommissioningController extends Notifier<CommissionState> {
         final rows = (latest['items'] as List? ?? [])
             .map((p) => Map<String, dynamic>.from(p as Map))
             .toList();
+        // Device numbers can be reused. Only this selection's physical
+        // PTUs may contribute to verification, including after a retry.
+        for (final ptu in chosen) {
+          final id = (ptu['device_number'] as num).toInt();
+          if (state.verifySkipped.contains(id)) continue;
+          for (final row in rows.where((r) => r['device_id'] == id)) {
+            final nested = row['ptu'];
+            final macs = [
+              row['ptu_mac'],
+              if (nested is Map) nested['ptu_mac_addr'],
+              if (nested is Map) nested['mac'],
+            ].whereType<String>().where((m) => m.isNotEmpty).toList();
+            if (macs.isEmpty || macs.any((m) => !sameMac(m, ptu['mac']))) {
+              _verifyCarry = null;
+              state = state.copy(verifyCounts: {}, verifyWaiting: {});
+              throw GatewayFailure(
+                'ptu_identity_mismatch',
+                detail:
+                    'PTU #$id: backend MAC is missing or differs from selection',
+              );
+            }
+          }
+        }
         // Round 26: a heartbeat with the upload paused is no upload.
         if ((fleet?['online'] == true && fleet?['upload_paused'] != true) ||
             backendRowsFresh(rows)) {
@@ -7061,6 +7110,7 @@ class CommissioningController extends Notifier<CommissionState> {
           error.code == 'fleet_unconfirmed') {
         _verifyCarry = (
           ids: ids,
+          macs: expectedMacs,
           previous: previous,
           counts: counts,
           lastNew: lastNew,

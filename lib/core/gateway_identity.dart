@@ -250,7 +250,7 @@ bool uploadHeldUntilJoin(Map<String, dynamic> config) =>
 /// Round 30 (user rehearsal 09-27, E: 「✓ 已連上後台；PTU 資料上傳暫停中…」
 /// — a ✓ beside 「暫停」 read as a fault; the installer waited 95 s and
 /// asked for help): says the pause is normal and what to press.
-const uploadHeldText = '後台連線正常。PTU 資料會在完成配置後自動開始上傳（目前暫停是正常的），請按下一步';
+const uploadHeldText = '後台連線正常。PTU 資料會在完成配置後自動開始上傳（目前暫停是正常的），APP 會自動繼續';
 
 /// Round 30: 確認資料上傳's (controller step 3) 「下一步」, in the bottom bar.
 const confirmOnlineLabel = '下一步：確認上線';

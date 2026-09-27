@@ -150,8 +150,13 @@ Future<void> _connectGateway(WidgetTester tester) async {
 
 /// The network check shown right after connecting has passed: go on to the
 /// station choice.
-Future<void> _passCheck(WidgetTester tester) =>
-    _tap(tester, find.text('下一步：選擇站點'));
+Future<void> _passCheck(WidgetTester tester) async {
+  await tester.pumpAndSettle();
+  final container = ProviderScope.containerOf(
+    tester.element(find.byType(GatewayApp)),
+  );
+  expect(container.read(commissionProvider).checkPassed, isTrue);
+}
 
 Future<void> _chooseInSheet(WidgetTester tester, BackendEnv env) async {
   await tester.tap(_chip);
@@ -249,10 +254,9 @@ void main() {
     final container = await _pumpApp(tester, fake);
     await _connectGateway(tester);
     // Right after connecting: the network check, all passed.
-    expect(find.text('5 / 10   確認資料上傳'), findsOneWidget);
-    expect(find.text('下一步：設定身份與 Wi-Fi'), findsOneWidget);
+    expect(find.text('6 / 10   站點選擇'), findsOneWidget);
+    expect(container.read(commissionProvider).checkPassed, isTrue);
     expect(fake.targetRequests, isEmpty, reason: 'already on 正式站');
-    expect(find.text('✓ 正式站：手機與 Gateway 都已連上'), findsOneWidget);
     expect(container.read(commissionProvider).loggedIn, isTrue);
 
     await _chooseInSheet(tester, BackendEnv.local);
@@ -271,7 +275,7 @@ void main() {
     final state = container.read(commissionProvider);
     expect(parseMqttTarget(state.config)!.host, '192.168.1.50');
     expect(state.step, 2);
-    expect(state.message, '已連線。先做網路體檢，再設定身份與 Wi-Fi。');
+    expect(state.checkPassed, isTrue);
     expect(state.error, isNull);
     expect(state.busy, isFalse);
     expect(
@@ -469,7 +473,7 @@ void main() {
     await _tap(tester, find.text('重新連線並驗證'));
     state = container.read(commissionProvider);
     expect(state.error, isNull);
-    expect(state.step, 3);
+    expect(state.step, 4);
     expect(tester.takeException(), isNull);
   });
 
@@ -496,7 +500,7 @@ void main() {
     expect(fake.logins.last, (productionApiBase, 'vps-secret'));
     expect(state.error, isNull);
     expect(state.loggedIn, isTrue);
-    expect(state.step, 3);
+    expect(state.step, 4);
   });
 
   testWidgets('其他網址 on step 6 is applied after typing pauses', (tester) async {
