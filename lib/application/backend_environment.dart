@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../core/backend_key.dart';
 import '../core/local_backend_address.dart';
 import '../core/mqtt_target.dart';
 import '../data/local_backend_probe.dart';
@@ -51,7 +52,9 @@ const _localDefaultUrl = String.fromEnvironment(
   defaultValue: 'http://192.168.0.12:18000',
 );
 
-const localTestPassword = '54974211';
+/// The backend credential this build logs in with ([buildBackendKey]);
+/// tests override it.
+final backendKeyProvider = Provider<String>((ref) => buildBackendKey);
 
 class BackendEnvState {
   const BackendEnvState({

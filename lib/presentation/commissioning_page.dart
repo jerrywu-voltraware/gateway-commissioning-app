@@ -9,6 +9,7 @@ import '../application/connection_status.dart';
 import '../application/network_check.dart';
 import '../application/topology_settings.dart';
 import '../core/assign_progress.dart';
+import '../core/backend_key.dart';
 import '../core/direct_calibration.dart';
 import '../core/direct_mode.dart';
 import '../core/gateway_identity.dart';
@@ -52,9 +53,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   /// Mirrors the selected backend URL (editable only for 其他網址); the
   /// source of truth is [backendEnvProvider].
   final _base = TextEditingController(text: productionApiBase);
-  final _login = TextEditingController(),
-      _ssid = TextEditingController(),
-      _wifi = TextEditingController();
+  final _ssid = TextEditingController(), _wifi = TextEditingController();
   final _site = TextEditingController(text: '1'),
       _gateway = TextEditingController(text: '1');
   bool _offline = false;
@@ -187,13 +186,6 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       _baseTyping = null;
       _base.text = next.base;
     }
-    if (previous == null ||
-        previous.environment != next.environment ||
-        previous.loaded != next.loaded) {
-      _login.text = next.environment == BackendEnv.local
-          ? localTestPassword
-          : '';
-    }
     if (previous != null && previous.base != next.base) {
       ref.read(commissionProvider.notifier).backendChanged(next.base);
     }
@@ -273,18 +265,18 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     _flushBase();
     await _envController.select(choice);
     if (!mounted) return;
-    // Mid-flow the old login no longer applies; the local test host has a
-    // known password, so log in again right away (other sites ask later).
+    // Mid-flow the old login no longer applies; on the local test host log
+    // in again right away with the build's credential (other sites log in
+    // when they are needed).
     final env = ref.read(backendEnvProvider);
     final state = ref.read(commissionProvider);
     if (state.step >= 1 &&
         !state.loggedIn &&
         !_offline &&
         env.environment == BackendEnv.local &&
-        env.localValid) {
-      await ref
-          .read(commissionProvider.notifier)
-          .login(env.base, localTestPassword);
+        env.localValid &&
+        ref.read(backendKeyProvider).isNotEmpty) {
+      await ref.read(commissionProvider.notifier).login(env.base);
       if (!mounted) return;
     }
     await _syncGateway(explicit: true, announce: fromSheet);
@@ -639,11 +631,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       } else if (action == 3) {
         _autoOnlineStarted = true;
         final env = ref.read(backendEnvProvider);
-        await c.online(
-          base: env.base,
-          environment: env.environment.name,
-          password: _login.text,
-        );
+        await c.online(base: env.base, environment: env.environment.name);
       } else {
         _autoVerifyStarted = true;
         await _startVerify();
@@ -764,27 +752,14 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     }
   }
 
+  /// 09-28: no password field; an empty password logs in with the build's
+  /// backend credential (commissioning_controller `_passwordFor`).
   Future<void> _startVerify() async {
     _flushBase();
     final current = ref.read(backendEnvProvider);
     await ref
         .read(commissionProvider.notifier)
-        .verify(
-          current.base,
-          _login.text,
-          environment: current.environment.name,
-        );
-    _afterLogin();
-  }
-
-  /// Round 13: a failed login (Bluetooth off, backend restarted, wrong
-  /// password) never empties the password field, and the local test host
-  /// keeps its known password; other backends clear it once logged in (the
-  /// controller keeps it in memory to renew an expired session).
-  void _afterLogin() {
-    if (!mounted || !ref.read(commissionProvider).loggedIn) return;
-    if (ref.read(backendEnvProvider).environment == BackendEnv.local) return;
-    _login.clear();
+        .verify(current.base, '', environment: current.environment.name);
   }
 
   @override
@@ -816,7 +791,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     _baseTyping?.cancel();
     _suggestTyping?.cancel();
     WidgetsBinding.instance.removeObserver(this);
-    for (final c in [_base, _host, _login, _ssid, _wifi, _site, _gateway]) {
+    for (final c in [_base, _host, _ssid, _wifi, _site, _gateway]) {
       c.dispose();
     }
     super.dispose();
@@ -1475,7 +1450,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                     Padding(
                       padding: const EdgeInsets.only(bottom: 12),
                       child: Text(
-                        '尚未登入${env.label}：站號衝突檢查會先略過，之後需要時會請你輸入密碼。',
+                        '尚未登入${env.label}：站號衝突檢查會先略過，之後需要時會自動登入。',
                         style: TextStyle(color: colors.onSurfaceVariant),
                       ),
                     ),
@@ -2151,55 +2126,32 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   }
 
   /// Saved resume skips steps 5/6, so log in first when the rest needs the
-  /// backend (star auto-reset, step 9 verify); cancel continues manually.
+  /// backend (star auto-reset, step 9 verify); without a login it continues
+  /// manually.
   ///
   /// Round 17: the session token saved by the last login is used first;
-  /// the password is asked only without one (the local test host keeps
-  /// its known password prefilled, and renews a refused token with it).
+  /// 09-28: else the build's backend credential logs in by itself (no
+  /// password dialog any more; a build without one says so).
   Future<void> _resumeSaved(CommissioningController c) async {
     if (c.savedResumeNeedsLogin) {
       final env = ref.read(backendEnvProvider);
-      final restored = await c.restoreSession(
-        env.base,
-        fallbackPassword: env.environment == BackendEnv.local
-            ? _login.text
-            : null,
-      );
+      final restored = await c.restoreSession(env.base);
       if (!mounted) return;
       if (restored) {
         await c.resumeSaved();
         return;
       }
-      final password = await showDialog<String>(
-        context: context,
-        builder: (context) => AlertDialog(
-          key: const Key('resume-login'),
-          title: const Text('登入後端'),
-          content: field(_login, '${env.label}的登入密碼', secret: true),
-          actions: [
-            TextButton(
-              key: const Key('resume-login-cancel'),
-              onPressed: () => Navigator.pop(context),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              key: const Key('resume-login-ok'),
-              onPressed: () => Navigator.pop(context, _login.text),
-              child: const Text('登入'),
-            ),
-          ],
-        ),
-      );
-      if (!mounted) return;
-      if (password == null) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text(resumeWithoutLoginText)));
+      if (!ref.read(demoProvider) && ref.read(backendKeyProvider).isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            key: Key('resume-missing-key'),
+            content: Text('$missingBackendKeyText。\n$resumeWithoutLoginText'),
+          ),
+        );
       } else {
-        await c.login(env.base, password);
+        await c.login(env.base);
         if (!mounted) return;
         if (!ref.read(commissionProvider).loggedIn) return;
-        _afterLogin();
       }
     }
     await c.resumeSaved();
@@ -2338,12 +2290,22 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               child: Text(env.base),
             ),
           if (environment == BackendEnv.local)
-            const Text(
-              '本地測試密碼：$localTestPassword。手機與電腦需連同一個 Wi-Fi；電腦 IP 若變更，可在上方修改或按「自動尋找」。',
-            )
+            const Text('手機與電腦需連同一個 Wi-Fi；電腦 IP 若變更，可在上方修改或按「自動尋找」。')
           else if (environment == BackendEnv.production)
-            const Text('請輸入 VPS 網頁的登入密碼。正式網址目前仍待部署確認。'),
-          field(_login, '後端登入密碼', secret: true),
+            const Text('正式網址目前仍待部署確認。'),
+          // 09-28: no password field; the build carries the credential.
+          if (!demo && ref.read(backendKeyProvider).isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                missingBackendKeyText,
+                key: const Key('missing-backend-key'),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.error,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
           CheckboxListTile(
             contentPadding: EdgeInsets.zero,
             value: _offline,
@@ -2362,8 +2324,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                 return;
               }
             }
-            await c.prepare(current.base, _login.text, offline: _offline);
-            _afterLogin();
+            await c.prepare(current.base, '', offline: _offline);
           }, enabled),
         ];
       case 1:
@@ -2406,10 +2367,6 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           const Text('確認閘道器不只連上 WiFi，後端也持續收到心跳。'),
           const SizedBox(height: 8),
           Text('Gateway 自己回報：${check.upload.line}'),
-          if (!s.loggedIn) ...[
-            const SizedBox(height: 12),
-            field(_login, '若要確認後端，請輸入${env.label}的登入密碼', secret: true),
-          ],
           // Round 30: its retry is in the bottom bar ([_checkNext]).
           const SizedBox(height: 8),
           Text(
@@ -2419,8 +2376,10 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                 ? rejoinHintText
                 : s.error != null
                 ? '檢查尚未通過。請依提示修正後，按下方按鈕重新檢查。'
+                : !s.loggedIn && !demo && ref.read(backendKeyProvider).isEmpty
+                ? missingBackendKeyText
                 : !s.loggedIn
-                ? '請輸入後端登入密碼，再按下方按鈕開始檢查。'
+                ? '請按下方按鈕開始檢查。'
                 : s.offline
                 ? '目前為離線配置，請選擇確認上線或稍後驗證。'
                 : '即將自動確認上線，請稍候。',
@@ -2708,8 +2667,6 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                 '${environment == BackendEnv.local ? '（這台電腦上的測試主機）' : ''}',
               ),
             ),
-          if (!s.loggedIn && !autoRunning)
-            field(_login, '若尚未登入，請輸入登入密碼', secret: true),
           // Round 8: listed in scan order (#1, #2, #4, #3); by number now.
           ...byDeviceNumber(s.ptus).map((ptu) {
             final id = (ptu['device_number'] as num?)?.toInt() ?? 0;
@@ -2844,18 +2801,13 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           // After a switch of environment: log in there to check the data.
           if (!s.loggedIn && !deferred) ...[
             const SizedBox(height: 16),
-            field(_login, '${env.label}的登入密碼', secret: true),
             OutlinedButton(
               key: const Key('done-login'),
               onPressed: enabled
                   ? () async {
-                      if (!_passwordReady(demo)) return;
-                      await c.login(
-                        ref.read(backendEnvProvider).base,
-                        _login.text,
-                      );
+                      if (!_credentialReady(demo)) return;
+                      await c.login(ref.read(backendEnvProvider).base);
                       if (mounted && ref.read(commissionProvider).loggedIn) {
-                        _afterLogin();
                         await c.refreshHealth();
                       }
                     }
@@ -2883,14 +2835,8 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                   ? () async {
                       if (s.loggedIn) {
                         await c.repair();
-                      } else if (_passwordReady(demo)) {
-                        await c.repair(
-                          base: ref.read(backendEnvProvider).base,
-                          password: _login.text,
-                        );
-                        if (mounted && ref.read(commissionProvider).loggedIn) {
-                          _afterLogin();
-                        }
+                      } else if (_credentialReady(demo)) {
+                        await c.repair(base: ref.read(backendEnvProvider).base);
                       }
                     }
                   : null,
@@ -3292,10 +3238,11 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     );
   }
 
-  /// Step 7 without a login: the password field must be filled in first.
-  bool _passwordReady(bool demo) {
-    if (demo || _login.text.isNotEmpty) return true;
-    _snack('請先輸入${ref.read(backendEnvProvider).label}的登入密碼。');
+  /// Step 7 without a login: the build must carry a backend credential
+  /// (09-28: there is no password field to fill in).
+  bool _credentialReady(bool demo) {
+    if (demo || ref.read(backendKeyProvider).isNotEmpty) return true;
+    _snack(missingBackendKeyText);
     return false;
   }
 
@@ -3338,7 +3285,6 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           () => c.rejoinArchived(
             base: env.base,
             environment: env.environment.name,
-            password: _login.text,
           ),
         );
       }
@@ -3347,11 +3293,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       }
       return (
         confirmOnlineLabel,
-        () => c.online(
-          base: env.base,
-          environment: env.environment.name,
-          password: _login.text,
-        ),
+        () => c.online(base: env.base, environment: env.environment.name),
       );
     }
     if (s.step != 2 || s.checkPassed) return null;

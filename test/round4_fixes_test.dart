@@ -9,7 +9,7 @@ import 'package:gateway_commissioning/data/contracts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'link_loss_test.dart'
-    show DroppingLink, manualRelinkOnly, pumpApp, ready;
+    show DroppingLink, manualRelinkOnly, pumpApp, pumpWithoutCredential, ready;
 
 /// Firmware 1.7.15 style ack. [writeTo] makes the gateway write another PTU
 /// than requested (the round-4 mix-up); [ackOverride] replaces ack fields;
@@ -135,15 +135,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('saved-resume')));
-      await tester.pumpAndSettle();
-      await tester.enterText(
-        find.descendant(
-          of: find.byKey(const Key('resume-login')),
-          matching: find.byType(TextField),
-        ),
-        'secret',
-      );
-      await tester.tap(find.byKey(const Key('resume-login-ok')));
+      // 09-28: logs in by itself (no password dialog).
       await settle(tester, container, (s) => s.step == 7);
       final s = container.read(commissionProvider);
       expect(s.step, 7, reason: 'no tap on 開始資料驗證 needed');
@@ -156,7 +148,9 @@ void main() {
     ) async {
       final fake = DroppingLink();
       fake.devices.first['device_number'] = 1;
-      final container = await pumpApp(
+      // 09-28: manual mode is what a build without a backend credential
+      // gets (the password dialog and its 取消 are gone).
+      final container = await pumpWithoutCredential(
         tester,
         fake,
         prefs: savedProgress(fake),
@@ -166,13 +160,10 @@ void main() {
       );
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('saved-resume')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('resume-login-cancel')));
       await settle(tester, container, (s) => s.step == 6 && !s.busy);
       expect(container.read(commissionProvider).step, 6);
       // A PTU without a number (the field case): verify fails at once.
       container.read(commissionProvider).ptus.last['device_number'] = 0;
-      await tester.enterText(find.byType(TextField).first, 'secret');
       await tester.ensureVisible(find.text('開始資料驗證'));
       await tester.tap(find.text('開始資料驗證'));
       await settle(tester, container, (s) => !s.busy);

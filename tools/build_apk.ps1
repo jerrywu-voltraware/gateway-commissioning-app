@@ -18,6 +18,14 @@
                it never produces an unsigned APK, nor a prod APK signed with
                the debug key.
 
+  Backend credential (09-28: field staff never type a backend password):
+  .secrets\<env>.env (git-ignored) must hold a line APP_BACKEND_KEY=<value>,
+  the backend's APP_API_KEY for that environment. It reaches flutter as
+  --dart-define APP_BACKEND_KEY through a temporary --dart-define-from-file
+  JSON under build\ (deleted right after the build), so the value is never
+  on the command line nor in this script's output. Missing -> the script
+  stops before building.
+
   Gradle's release output stays unsigned (android/app/build.gradle.kts has
   signingConfig = null); this script signs it with apksigner, runs
   `apksigner verify --print-certs` and exits non-zero on any failure.
@@ -44,12 +52,16 @@ param(
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
 
+# Temporary --dart-define-from-file JSON holding the backend credential.
+$DefineFile = $null
+
 # Certificate of the round 19/20 field-test APKs (debug.keystore).
 $FieldTestCertSha256 = 'bea4c874f88d713ecf3893e4a73235c495b296a79804a538719174222a2325ef'
 
 function Fail([string]$Message) {
     Remove-Item Env:\GIOS_BUILD_KS_PASS -ErrorAction SilentlyContinue
     Remove-Item Env:\GIOS_BUILD_KEY_PASS -ErrorAction SilentlyContinue
+    if ($script:DefineFile) { Remove-Item -LiteralPath $script:DefineFile -Force -ErrorAction SilentlyContinue }
     Write-Host ''
     Write-Host "BUILD FAILED: $Message" -ForegroundColor Red
     exit 1
@@ -192,6 +204,22 @@ if ($Env -eq 'local') {
     if ((Split-Path -Leaf $ks) -ieq 'debug.keystore') { Fail 'prod must not be signed with debug.keystore.' }
     $ks = (Resolve-Path -LiteralPath $ks).Path
 }
+# ---------------------------------------------------------------- backend credential
+# Resolved before building too: an APK without it would ask nobody for a
+# password and just say it lacks the credential.
+$secretsFile = Join-Path $Root ".secrets\$Env.env"
+if (-not (Test-Path -LiteralPath $secretsFile)) {
+    Fail (".secrets\$Env.env not found. Create it (git-ignored) with one line " +
+        "APP_BACKEND_KEY=<the backend APP_API_KEY for $Env>; see README.")
+}
+$secrets = Read-Properties $secretsFile
+if (-not $secrets.ContainsKey('APP_BACKEND_KEY') -or -not $secrets['APP_BACKEND_KEY']) {
+    Fail ".secrets\$Env.env has no APP_BACKEND_KEY value."
+}
+$backendKey = $secrets['APP_BACKEND_KEY']
+if ($backendKey -match '\s') { Fail 'APP_BACKEND_KEY must not contain spaces.' }
+Write-Host "backend credential: .secrets\$Env.env ($($backendKey.Length) chars, value not shown)"
+
 # Passwords reach apksigner through the environment, not the command line.
 $env:GIOS_BUILD_KS_PASS = $ksPass
 $env:GIOS_BUILD_KEY_PASS = $keyPass
@@ -202,6 +230,13 @@ $flutterArgs = @('build', 'apk', '--release')
 # Field rescue v1: the build the back office sees in every report (app.build).
 $flutterArgs += "--dart-define=APP_BUILD=$hash"
 if ($Env -eq 'local') { $flutterArgs += '--dart-define=LOCAL_DEVELOPMENT=true' }
+# The credential goes through a file (UTF-8 without BOM), never argv.
+$buildDir = Join-Path $Root 'build'
+if (-not (Test-Path -LiteralPath $buildDir)) { New-Item -ItemType Directory -Path $buildDir | Out-Null }
+$DefineFile = Join-Path $buildDir ".app_backend_key_$PID.json"
+$defineJson = (@{ APP_BACKEND_KEY = $backendKey } | ConvertTo-Json -Compress)
+[System.IO.File]::WriteAllText($DefineFile, $defineJson, (New-Object System.Text.UTF8Encoding($false)))
+$flutterArgs += "--dart-define-from-file=$DefineFile"
 $gradleOut = Join-Path $Root 'build\app\outputs\flutter-apk\app-release.apk'
 # Never sign a leftover from an earlier build.
 if (Test-Path -LiteralPath $gradleOut) { Remove-Item -LiteralPath $gradleOut -Force }
@@ -213,6 +248,8 @@ try {
     $buildExit = $LASTEXITCODE
 } finally {
     Pop-Location
+    Remove-Item -LiteralPath $DefineFile -Force -ErrorAction SilentlyContinue
+    $DefineFile = $null
 }
 if ($buildExit -ne 0) { Fail "flutter build exited with $buildExit." }
 if (-not (Test-Path -LiteralPath $gradleOut)) { Fail "build output missing: $gradleOut" }
@@ -269,6 +306,7 @@ $envNote = if ($Env -eq 'local') { 'LOCAL_DEVELOPMENT=true' } else { 'HTTPS only
 Step 'Done'
 Write-Host "APK    : $final"
 Write-Host "env    : $Env ($envNote)"
+Write-Host "key    : APP_BACKEND_KEY from .secrets\$Env.env"
 Write-Host "cert   : $cert"
 Write-Host "sha256 : $sha"
 exit 0

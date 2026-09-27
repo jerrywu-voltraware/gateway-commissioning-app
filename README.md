@@ -1,6 +1,6 @@
 # GIOS Commissioning
 
-後端選單為「VPS 正式站／本地測試站／其他網址」。本地預設 `http://192.168.0.12:18000`，手機與電腦連同一區域網路即可，不需USB。網址可修改並記住；密碼為 `54974211`。本地版建置需 `--dart-define=LOCAL_DEVELOPMENT=true`，只允許私有IPv4／loopback使用HTTP，正式站仍使用HTTPS。電腦IP改變時需更新本地網址。Windows若阻擋手機連線，請以系統管理員PowerShell執行後端 `tools/allow_local_api_lan.ps1`；僅放行本地子網的TCP 18000。
+後端選單為「VPS 正式站／本地測試站／其他網址」。本地預設 `http://192.168.0.12:18000`，手機與電腦連同一區域網路即可，不需USB。網址可修改並記住。APP 不再請派工人員輸入後台密碼：後台憑證在建置時注入（見下方「後台憑證」），沒有注入的建置會顯示「此建置缺少後台憑證，請重新建置」。本地版建置需 `--dart-define=LOCAL_DEVELOPMENT=true`，只允許私有IPv4／loopback使用HTTP，正式站仍使用HTTPS。電腦IP改變時需更新本地網址。Windows若阻擋手機連線，請以系統管理員PowerShell執行後端 `tools/allow_local_api_lan.ps1`；僅放行本地子網的TCP 18000。
 
 Gateway 上傳目標（韌體 1.7.3 起，契約見韌體 docs/mqtt_target.md）：連上 Gateway 後會顯示「Gateway 上傳目標」卡片，比對 Gateway 的 MQTT 目標與 APP 連線環境（正式站→production；本地測試站→後端網址主機，須為私有 IPv4，port 8883；其他網址→私有 IPv4 為本地、正式網域為正式站，其餘僅顯示）。不一致時可經確認後以 BLE `set_mqtt_target` 切換（OTP 規則同 set_wifi），Gateway 重開機後 APP 自動重連並讀回確認。第 7 步若 Gateway 已知目標與 APP 環境不一致會立即停止並說明原因。舊韌體無此欄位時只顯示不支援提示。本地後端需同時開放 TCP 8883（MQTT TLS）。
 
@@ -30,9 +30,23 @@ powershell -ExecutionPolicy Bypass -File tools\build_apk.ps1 -Env prod -OutDir <
 - `prod`：讀 `android\key.properties`（`storeFile`、`storePassword`、`keyAlias`、`keyPassword`；`storeFile` 相對路徑以 `android\app` 為基準；此檔已在 .gitignore）或環境變數 `GIOS_KEYSTORE`、`GIOS_KEYSTORE_PASS`、`GIOS_KEY_ALIAS`、`GIOS_KEY_PASS`。沒有設定就在建置前直接失敗並提示，不會產出未簽章 APK，也拒絕用 debug 憑證簽正式版。密碼經環境變數交給 apksigner，不出現在命令列。
 - 交付前自行核對：`apksigner verify --print-certs <apk>`（Android SDK `build-tools\<版本>\apksigner.bat`）。
 
+### 後台憑證（`.secrets\<env>.env`，不進 git）
+
+現場 APP 不再輸入後台密碼（09-28）。`build_apk.ps1` 從 `APP_v2\.secrets\local.env`（`-Env local`）或 `APP_v2\.secrets\prod.env`（`-Env prod`）讀取憑證，缺檔或缺值就在建置前失敗。`.secrets/` 已在 .gitignore；值不要寫進任何進 git 的檔案、log 或報告。
+
+```text
+# APP_v2\.secrets\local.env（KEY=VALUE，一行一個；# 開頭為註解）
+APP_BACKEND_KEY=<後台 .env.local 的 APP_API_KEY>
+```
+
+- `prod.env` 同格式，值為正式站 `.env` 的 `APP_API_KEY`。值不可含空白。
+- 腳本把值寫進 `build\` 下的暫存 JSON，以 `--dart-define-from-file` 交給 flutter（等同 `--dart-define=APP_BACKEND_KEY=...`，但值不出現在命令列與輸出），建置後立即刪除。
+- APP 用它向 `POST /api/auth/app-login` 換 token，token 照舊存安全儲存區（12 小時）。後台 `APP_API_KEY` 只放行 APP 配置用到的端點（dashboard-api `app_key_auth.py`），其他管理端點回 403。
+- 自己 `flutter run` 測真後台時可加 `--dart-define=APP_BACKEND_KEY=<值>`；不加就是「缺少後台憑證」的畫面。
+
 `DEMO_MODE=true` 完全使用模擬BLE／API，安裝報告會標示模擬。不加此旗標即使用真實BLE。通訊套件已改為 `universal_ble 2.3.0`（BSD-3-Clause，允許免費商用），不再需要 FBP 商用授權旗標。授權全文保存在 `THIRD_PARTY_NOTICES.md`，發佈時應隨附。
 
-API預設 `https://dashboard.voltraware.com`，可在畫面改設定。僅系統TLS信任，不繞過憑證。`LOCAL_DEVELOPMENT=true` 才允許localhost／127.0.0.1／Android emulator localhost的HTTP；真機連本機可用adb reverse測試。WiFi密碼不落地；登入取得的API key存安全儲存區。
+API預設 `https://dashboard.voltraware.com`，可在畫面改設定。僅系統TLS信任，不繞過憑證。`LOCAL_DEVELOPMENT=true` 才允許localhost／127.0.0.1／Android emulator localhost的HTTP；真機連本機可用adb reverse測試。WiFi密碼不落地；以建置憑證換得的 token 存安全儲存區。
 
 
 Android minSdk24，Gradle release 輸出不簽章，交付 APK 由 `tools/build_apk.ps1` 簽章並驗證（見上）。正式keystore與發佈程序仍待備妥；目前只能產出 local 版作開發測試。

@@ -2051,9 +2051,9 @@ class CommissioningController extends Notifier<CommissionState> {
     }
   }
 
-  /// Round 13: the password that last logged in to a backend (memory only,
-  /// never saved). A session the backend dropped (401, e.g. after the API
-  /// was restarted) is renewed with it once before the installer is asked.
+  /// Round 13: the credential that last logged in to a backend (memory
+  /// only, never saved). A session the backend dropped (401, e.g. after the
+  /// API was restarted) is renewed with it once.
   (String, String)? _credentials;
 
   /// A successful login to [base] with [password].
@@ -2066,30 +2066,36 @@ class CommissioningController extends Notifier<CommissionState> {
     unawaited(_field.flush());
   }
 
-  /// [password] as typed, or — left empty — the one that last logged in to
-  /// this same [base].
+  /// [password] when given (tests, older callers), else the one that last
+  /// logged in to this same [base], else — 09-28, no password field any
+  /// more — this build's backend credential ([backendKeyProvider]; empty
+  /// when the APK was built without one).
   String _passwordFor(String base, String? password) {
     if ((password ?? '').isNotEmpty) return password!;
     final saved = _credentials;
-    return saved != null && saved.$1 == base.trim() ? saved.$2 : '';
+    if (saved != null && saved.$1 == base.trim() && saved.$2.isNotEmpty) {
+      return saved.$2;
+    }
+    return ref.read(backendKeyProvider);
   }
 
   /// Runs a backend [call]; a 401 on a session believed valid logs in again
-  /// once with the stored password and repeats it. Only a refused re-login
-  /// ends the session (「登入失敗或已失效」, the password field kept).
+  /// once with the stored credential (or this build's, e.g. after a restored
+  /// token) and repeats it. Only a refused re-login ends the session.
   Future<T> _withRelogin<T>(Future<T> Function() call) async {
     try {
       return await call();
     } on GatewayFailure catch (error) {
-      final saved = _credentials;
+      final base = _loginBase;
+      final secret = base == null ? '' : _passwordFor(base, null);
       if (error.code != 'authentication' ||
           !_loggedIn ||
-          saved == null ||
-          saved.$1 != _loginBase) {
+          base == null ||
+          secret.isEmpty) {
         rethrow;
       }
       try {
-        await _api.login(saved.$1, saved.$2);
+        await _api.login(base, secret);
       } on GatewayFailure catch (failure) {
         // Unreachable backend: keep the session and let the caller retry.
         if (failure.code == 'authentication') {
@@ -7666,11 +7672,10 @@ class CommissioningController extends Notifier<CommissionState> {
   }
 
   /// Round 17: 「重新連線並繼續」 after the APP was killed uses the session
-  /// token the last login to [base] saved (never the password) before
-  /// asking for the password (field round 17: a login dialog on every
-  /// resume). A 401 later ends it like any expired session — renewed with
-  /// [fallbackPassword] when given (the local test host's known password),
-  /// else the installer is asked again. False when there is none.
+  /// token the last login to [base] saved (never the credential) before
+  /// logging in again (field round 17: a login dialog on every resume). A
+  /// 401 later is renewed with [fallbackPassword] when given, else with
+  /// this build's credential ([_withRelogin]). False when there is none.
   Future<bool> restoreSession(String base, {String? fallbackPassword}) async {
     final trimmed = base.trim();
     if (_loggedIn && _loginBase == trimmed) return true;
@@ -7693,13 +7698,15 @@ class CommissioningController extends Notifier<CommissionState> {
     return true;
   }
 
-  /// Logs in to [base] outside a step (after switching environments).
-  Future<void> login(String base, String password) =>
+  /// Logs in to [base] outside a step (after switching environments);
+  /// an empty [password] uses this build's credential.
+  Future<void> login(String base, [String password = '']) =>
       _sideTask('登入後端', 30, (generation) async {
-        await _api.login(base.trim(), password);
+        final secret = _passwordFor(base, password);
+        await _api.login(base.trim(), secret);
         _check(generation);
         _backend = describeBackend(Uri.tryParse(base.trim()));
-        _loginOk(base, password);
+        _loginOk(base, secret);
       });
 
   // ---- Background upload-state polling ----

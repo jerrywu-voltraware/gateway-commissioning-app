@@ -714,7 +714,7 @@ void main() {
       var accept = true;
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       server.listen((req) async {
-        if (req.uri.path == '/api/auth/login') {
+        if (req.uri.path == '/api/auth/app-login') {
           req.response.write(jsonEncode({'api_key': 'k-123'}));
         } else if (accept && req.headers.value('X-API-Key') == 'k-123') {
           req.response.write(jsonEncode({'ok': true}));
@@ -758,7 +758,7 @@ void main() {
         isNull,
       );
 
-      // Refused (401): dropped, the next start asks for the password.
+      // Refused (401): dropped, the next start logs in again.
       await DashboardApi().login(base, 'secret-pw');
       final refused = DashboardApi();
       expect(await refused.restoreSession(base), isTrue);
@@ -818,9 +818,8 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
 
-    testWidgets('no saved token: the password dialog as before', (
-      tester,
-    ) async {
+    testWidgets('no saved token: the build credential logs in (09-28: no '
+        'password dialog)', (tester) async {
       final fake = _TokenGateway()..hasSession = false;
       final container = await pumpApp(
         tester,
@@ -845,17 +844,18 @@ void main() {
       await tester.tap(find.byKey(const Key('saved-resume')));
       await tester.pumpAndSettle();
       expect(fake.restored, hasLength(1));
-      expect(find.byKey(const Key('resume-login')), findsOneWidget);
-      await tester.tap(find.byKey(const Key('resume-login-cancel')));
+      expect(find.byKey(const Key('resume-login')), findsNothing);
       await tester.runAsync(
         () => Future<void>.delayed(const Duration(seconds: 1)),
       );
       await tester.pumpAndSettle();
+      expect(container.read(commissionProvider).loggedIn, isTrue);
+      expect(find.text(resumeWithoutLoginText), findsNothing);
       await tester.pumpWidget(const SizedBox());
     });
 
-    test('a refused restored token is renewed with the known local '
-        'password (the existing automatic re-login)', () async {
+    test('a refused restored token is renewed with the given fallback '
+        '(the existing automatic re-login)', () async {
       SharedPreferences.setMockInitialValues({});
       final fake = _RefusedToken();
       final container = ProviderContainer(
@@ -868,12 +868,12 @@ void main() {
       final c = container.read(commissionProvider.notifier);
       const base = 'http://192.168.0.12:18000';
       expect(
-        await c.restoreSession(base, fallbackPassword: localTestPassword),
+        await c.restoreSession(base, fallbackPassword: 'fallback-key'),
         isTrue,
       );
       expect(container.read(commissionProvider).loggedIn, isTrue);
       await c.refreshHealth();
-      expect(fake.logins, [(base, localTestPassword)]);
+      expect(fake.logins, [(base, 'fallback-key')]);
       expect(fake.refuse, 0);
       expect(container.read(commissionProvider).loggedIn, isTrue);
 

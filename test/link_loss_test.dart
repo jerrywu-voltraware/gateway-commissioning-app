@@ -5,11 +5,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:universal_ble/universal_ble.dart';
+import 'package:gateway_commissioning/application/backend_environment.dart';
 import 'package:gateway_commissioning/application/commissioning_controller.dart';
+import 'package:gateway_commissioning/application/local_backend_finder.dart';
+import 'package:gateway_commissioning/core/backend_key.dart';
 import 'package:gateway_commissioning/core/protocol.dart';
 import 'package:gateway_commissioning/data/ble_gateway_link.dart';
 import 'package:gateway_commissioning/data/contracts.dart';
 import 'package:gateway_commissioning/data/demo_system.dart';
+import 'package:gateway_commissioning/data/local_backend_probe.dart';
 import 'package:gateway_commissioning/gateway_app.dart';
 
 /// Demo gateway whose phone BLE link drops after [dropAfterAssigns]
@@ -108,6 +112,40 @@ Future<ProviderContainer> pumpApp(
   container.read(demoProvider.notifier).set(true);
   await tester.pumpAndSettle();
   return container;
+}
+
+/// 09-28: a real (not demo) build that carries no backend credential;
+/// [fake] stands in for the Bluetooth link and the backend.
+Future<ProviderContainer> pumpWithoutCredential(
+  WidgetTester tester,
+  DemoSystem fake, {
+  Map<String, Object> prefs = const {},
+}) async {
+  tester.view.physicalSize = const Size(800, 2400);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+  SharedPreferences.setMockInitialValues(prefs);
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        linkProvider.overrideWithValue(fake),
+        apiProvider.overrideWithValue(fake),
+        backendKeyProvider.overrideWithValue(''),
+        localBackendProberProvider.overrideWithValue(_HealthyProber()),
+        phoneIpv4Provider.overrideWithValue(() async => '192.168.1.23'),
+      ],
+      child: const GatewayApp(),
+    ),
+  );
+  await tester.pumpAndSettle();
+  return ProviderScope.containerOf(tester.element(find.byType(GatewayApp)));
+}
+
+class _HealthyProber implements LocalBackendProber {
+  @override
+  Future<ProbeResult> probe(Uri base, {Duration? connectTimeout}) async =>
+      const ProbeResult(ProbeOutcome.healthy, status: 200);
 }
 
 /// Round 13: step 8 (like step 7) reconnects by itself after a phone link
@@ -476,22 +514,13 @@ void main() {
     return container;
   }
 
-  testWidgets('saved resume without login asks to log in first', (
-    tester,
-  ) async {
+  testWidgets('saved resume without login logs in by itself (09-28: no '
+      'password dialog)', (tester) async {
     final container = await savedApp(tester, DroppingLink());
     expect(container.read(commissionProvider).loggedIn, isFalse);
     await tester.tap(find.byKey(const Key('saved-resume')));
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('resume-login')), findsOneWidget);
-    await tester.enterText(
-      find.descendant(
-        of: find.byKey(const Key('resume-login')),
-        matching: find.byType(TextField),
-      ),
-      'secret',
-    );
-    await tester.tap(find.byKey(const Key('resume-login-ok')));
+    expect(find.byKey(const Key('resume-login')), findsNothing);
     await tester.runAsync(
       () => Future<void>.delayed(const Duration(seconds: 1)),
     );
@@ -503,15 +532,34 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('saved resume: cancelling login continues in manual mode', (
-    tester,
-  ) async {
-    final container = await savedApp(tester, DroppingLink());
-    await tester.tap(find.byKey(const Key('saved-resume')));
+  testWidgets('saved resume on a build without a backend credential says so '
+      'and continues in manual mode', (tester) async {
+    final container = await pumpWithoutCredential(
+      tester,
+      DroppingLink(),
+      prefs: {
+        'demo_progress': jsonEncode({
+          'step': 5,
+          'site': 1,
+          'gateway': 1,
+          'peer': 'demo-gateway',
+          'peer_name': 'GIOS-S1-GW01',
+          'selected': ['A', 'B', 'C'],
+          'done': {'A': 1, 'B': 2},
+          'assignments': [],
+        }),
+      },
+    );
+    await tester.runAsync(
+      () => container.read(commissionProvider.notifier).restore(),
+    );
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('resume-login-cancel')));
+    await tester.tap(find.byKey(const Key('saved-resume')));
     await tester.pump();
-    expect(find.text(resumeWithoutLoginText), findsOneWidget);
+    expect(find.byKey(const Key('resume-login')), findsNothing);
+    expect(find.byKey(const Key('resume-missing-key')), findsOneWidget);
+    expect(find.textContaining(missingBackendKeyText), findsWidgets);
+    expect(find.textContaining(resumeWithoutLoginText), findsOneWidget);
     await tester.runAsync(
       () => Future<void>.delayed(const Duration(seconds: 1)),
     );

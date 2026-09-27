@@ -85,8 +85,10 @@ void main() {
     expect(find.text('將連線：http://192.168.1.187:18000'), findsOneWidget);
     expect(find.text('http://'), findsOneWidget);
     expect(find.text(':18000'), findsOneWidget);
-    // Local password autofill is kept.
-    expect(find.text('54974211'), findsWidgets);
+    // 09-28: no password (nor a shown test password); the build carries
+    // the backend credential.
+    expect(find.textContaining('本地測試密碼'), findsNothing);
+    expect(find.textContaining('登入密碼'), findsNothing);
 
     await tester.enterText(hostField, '8.8.8.8');
     await tester.pump();

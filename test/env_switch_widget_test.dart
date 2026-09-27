@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:gateway_commissioning/application/backend_environment.dart';
 import 'package:gateway_commissioning/application/commissioning_controller.dart';
 import 'package:gateway_commissioning/application/local_backend_finder.dart';
+import 'package:gateway_commissioning/core/backend_key.dart';
 import 'package:gateway_commissioning/core/mqtt_target.dart';
 import 'package:gateway_commissioning/core/protocol.dart';
 import 'package:gateway_commissioning/data/contracts.dart';
@@ -106,12 +107,16 @@ const _productionPrefs = {
   'backend_local_url': 'http://192.168.1.50:18000',
 };
 
+/// 09-28: the backend credential a build carries (no password field).
+const _buildKey = 'build-key-env';
+
 Future<ProviderContainer> _pumpApp(
   WidgetTester tester,
   SimGateway fake, {
   Map<String, Object> prefs = _productionPrefs,
   EnvSwitchPolicy policy = _debug,
   _Prober? prober,
+  String backendKey = _buildKey,
 }) async {
   SharedPreferences.setMockInitialValues(prefs);
   await tester.pumpWidget(
@@ -119,6 +124,7 @@ Future<ProviderContainer> _pumpApp(
       overrides: [
         linkProvider.overrideWithValue(fake),
         apiProvider.overrideWithValue(fake),
+        backendKeyProvider.overrideWithValue(backendKey),
         envSwitchPolicyProvider.overrideWithValue(policy),
         localBackendProberProvider.overrideWithValue(prober ?? _Prober()),
         phoneIpv4Provider.overrideWithValue(() async => '192.168.1.23'),
@@ -292,7 +298,7 @@ void main() {
     expect(
       state.loggedIn,
       isTrue,
-      reason: 'logged in again to the local test host (known password)',
+      reason: 'logged in again to the local test host (build credential)',
     );
     expect(
       find.text('同時切換 Gateway？'),
@@ -300,14 +306,14 @@ void main() {
       reason: 'debug: no dialog',
     );
 
-    // And back: 正式站 needs its password, so the old login is dropped.
+    // And back: 正式站 logs in when it is needed, so the old login is dropped.
     await _chooseInSheet(tester, BackendEnv.production);
     expect(fake.targetRequests.last, {'target': 'production'});
     final back = container.read(commissionProvider);
     expect(parseMqttTarget(back.config)!.isLocal, isFalse);
     expect(back.loggedIn, isFalse);
     expect(back.step, 2);
-    expect(find.text('尚未登入正式站：站號衝突檢查會先略過，之後需要時會請你輸入密碼。'), findsOneWidget);
+    expect(find.text('尚未登入正式站：站號衝突檢查會先略過，之後需要時會自動登入。'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -462,24 +468,18 @@ void main() {
     // log in on this page.
     expect(find.text('開通驗證通過，已恢復自動監控'), findsNothing);
     expect(find.text(backendSwitchedDoneText), findsOneWidget);
-    final password = find.widgetWithText(TextField, '正式站的登入密碼');
-    expect(password, findsOneWidget);
+    // 09-28: no password field; 「登入並確認資料」 uses the build credential.
+    expect(find.widgetWithText(TextField, '正式站的登入密碼'), findsNothing);
+    expect(find.byKey(const Key('done-login')), findsOneWidget);
     expect(find.text('更新健康狀態'), findsNothing);
 
-    // No password yet: say so instead of 「登入失敗」.
-    await _tap(tester, find.text('重新連線並驗證'));
-    expect(find.text('請先輸入正式站的登入密碼。'), findsOneWidget);
-    expect(container.read(commissionProvider).error, isNull);
-    expect(container.read(commissionProvider).step, 7);
-
-    await tester.enterText(password, 'vps-secret');
     await _tap(tester, find.text('登入並確認資料'));
     state = container.read(commissionProvider);
-    expect(fake.logins.last, (productionApiBase, 'vps-secret'));
+    expect(fake.logins.last, (productionApiBase, _buildKey));
     expect(state.loggedIn, isTrue);
     expect(state.error, isNull);
     expect(state.message, '資料持續更新');
-    expect(find.widgetWithText(TextField, '正式站的登入密碼'), findsNothing);
+    expect(find.byKey(const Key('done-login')), findsNothing);
     expect(find.text('更新健康狀態'), findsOneWidget);
 
     await _tap(tester, find.text('重新連線並驗證'));
@@ -489,7 +489,39 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('step 7: the password can go straight to 重新連線並驗證', (
+  testWidgets('step 7: a build without a backend credential says so instead '
+      'of asking for a password (09-28)', (tester) async {
+    tester.view.physicalSize = const Size(800, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final fake = SimGateway.commissioned();
+    final container = await _pumpApp(
+      tester,
+      fake,
+      prefs: _localPrefs,
+      backendKey: '',
+    );
+    expect(find.byKey(const Key('missing-backend-key')), findsOneWidget);
+    expect(find.text(missingBackendKeyText), findsOneWidget);
+    await _connectGateway(tester);
+    await _passCheck(tester);
+    await _tap(tester, find.text('使用此站點'));
+    await _tap(tester, find.text('配置 3 台並開始監控'));
+    await _tap(tester, find.text(devShipSwitchLabel));
+    expect(container.read(commissionProvider).loggedIn, isFalse);
+    final logins = fake.logins.length;
+
+    expect(find.widgetWithText(TextField, '正式站的登入密碼'), findsNothing);
+    await _tap(tester, find.text('重新連線並驗證'));
+    expect(find.text(missingBackendKeyText), findsOneWidget);
+    final state = container.read(commissionProvider);
+    expect(fake.logins, hasLength(logins), reason: 'nothing sent');
+    expect(state.error, isNull);
+    expect(state.step, 7);
+  });
+
+  testWidgets('step 7: 重新連線並驗證 logs in with the build credential', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(800, 2400);
@@ -503,13 +535,9 @@ void main() {
     await _tap(tester, find.text('使用此站點'));
     await _tap(tester, find.text('配置 3 台並開始監控'));
     await _tap(tester, find.text(devShipSwitchLabel));
-    await tester.enterText(
-      find.widgetWithText(TextField, '正式站的登入密碼'),
-      'vps-secret',
-    );
     await _tap(tester, find.text('重新連線並驗證'));
     final state = container.read(commissionProvider);
-    expect(fake.logins.last, (productionApiBase, 'vps-secret'));
+    expect(fake.logins.last, (productionApiBase, _buildKey));
     expect(state.error, isNull);
     expect(state.loggedIn, isTrue);
     expect(state.step, 4);
@@ -569,13 +597,10 @@ void main() {
     // Typed and started at once: the new URL is used, not the old one.
     await tester.enterText(url, 'https://final.example');
     await tester.pump();
-    await tester.enterText(
-      find.widgetWithText(TextField, '若尚未登入，請輸入登入密碼'),
-      'pw',
-    );
+    expect(find.widgetWithText(TextField, '若尚未登入，請輸入登入密碼'), findsNothing);
     await tester.tap(find.text('開始資料驗證'));
     await tester.pumpAndSettle();
-    expect(fake.logins.last, ('https://final.example', 'pw'));
+    expect(fake.logins.last, ('https://final.example', _buildKey));
     expect(prober.probed, isNot(contains('https://a.example')));
     expect(tester.takeException(), isNull);
   });

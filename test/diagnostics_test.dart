@@ -223,7 +223,7 @@ void main() {
       FlutterSecureStorage.setMockInitialValues({});
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       server.listen((req) async {
-        if (req.uri.path == '/api/auth/login') {
+        if (req.uri.path == '/api/auth/app-login') {
           req.response.write(jsonEncode({'api_key': 'k'}));
         } else {
           req.response.statusCode = 404;

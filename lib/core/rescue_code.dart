@@ -195,7 +195,9 @@ RescueCode? rescueCodeOf(
     return RescueCode.fwTooOld;
   }
   if (code == 'incomplete') return RescueCode.verifyIncomplete;
-  if (code == 'authentication') return RescueCode.backendAuth;
+  if (code == 'authentication' || code == 'missing_backend_key') {
+    return RescueCode.backendAuth;
+  }
   // 09-28: the station is archived in the back office (GC 刪除).
   if (f.gatewayNotFound || code == 'identity_archived') {
     return RescueCode.gwNotInBackend;

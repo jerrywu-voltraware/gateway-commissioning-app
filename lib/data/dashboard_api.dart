@@ -19,13 +19,13 @@ bool isLocalApiHost(String host) {
 
 /// Round 17: how long a stored session token is used after its login
 /// (the backend's key itself does not expire; this bounds how long a
-/// phone keeps working without the password).
+/// phone keeps working without logging in again).
 const sessionTokenTtl = Duration(hours: 12);
 
 /// Secure-storage key of the session of [base] (its origin).
 String sessionStorageKey(Uri base) => 'session:${base.origin}';
 
-/// [base] when the APP may send a password / key to it: https, or plain
+/// [base] when the APP may send a credential / key to it: https, or plain
 /// http to a local host in debug and LOCAL_DEVELOPMENT builds.
 Uri? _apiBase(String base) {
   final uri = Uri.tryParse(base.trim());
@@ -52,7 +52,7 @@ class DashboardApi
   String? _key;
 
   /// Field rescue v1.1: the account name the login answered with (none
-  /// today: the backend login is one shared password), kept with the
+  /// today: the APP logs in with its build credential), kept with the
   /// session token.
   String? _operator;
 
@@ -65,22 +65,27 @@ class DashboardApi
   @override
   String? get origin => _base?.origin;
 
+  /// 09-28: [credential] is the build's backend key (`APP_BACKEND_KEY`;
+  /// field staff never type a password), exchanged for a session token at
+  /// `POST /api/auth/app-login`. An empty one means the APK was built
+  /// without `.secrets/<env>.env`: said so, nothing is sent.
   @override
-  Future<void> login(String base, String password) async {
+  Future<void> login(String base, String credential) async {
     final uri = _apiBase(base);
     if (uri == null) throw const GatewayFailure('https_required');
+    if (credential.isEmpty) throw const GatewayFailure('missing_backend_key');
     _key = null;
     _operator = null;
     _base = uri;
-    final result = await request('POST', '/api/auth/login', {
-      'password': password,
+    final result = await request('POST', '/api/auth/app-login', {
+      'app_key': credential,
     });
     _key = result['api_key'] as String?;
     if (_key == null || _key!.isEmpty) {
       throw const GatewayFailure('authentication');
     }
     _operator = operatorNameOf(result['operator_name'] ?? result['username']);
-    // Round 17: the token (not the password) with its expiry, so 「重新連線
+    // Round 17: the token (not the credential) with its expiry, so 「重新連線
     // 並繼續」 after the APP was killed needs no login. A storage failure
     // never fails the login itself.
     try {
@@ -165,7 +170,7 @@ class DashboardApi
     }
     if (res.statusCode == 401) {
       // Round 17: a refused (saved) token is not tried again; a refused
-      // password (no key sent) leaves the stored session alone.
+      // credential (no key sent) leaves the stored session alone.
       if (_key != null) {
         try {
           await _storage.delete(key: sessionStorageKey(base));

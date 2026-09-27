@@ -564,9 +564,8 @@ void main() {
       expect(s.error, const GatewayFailure('authentication').message);
     });
 
-    testWidgets('Bluetooth off at 檢查並開始 keeps the local password', (
-      tester,
-    ) async {
+    testWidgets('Bluetooth off at 檢查並開始: no password field; the build '
+        'credential logs in once Bluetooth is on (09-28)', (tester) async {
       tester.view.physicalSize = const Size(800, 2400);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
@@ -583,6 +582,7 @@ void main() {
             apiProvider.overrideWithValue(fake),
             localBackendProberProvider.overrideWithValue(_Prober()),
             phoneIpv4Provider.overrideWithValue(() async => '192.168.1.23'),
+            backendKeyProvider.overrideWithValue('build-key-13'),
           ],
           child: const GatewayApp(),
         ),
@@ -591,16 +591,15 @@ void main() {
       final container = ProviderScope.containerOf(
         tester.element(find.byType(GatewayApp)),
       );
-      final password = find.widgetWithText(TextField, '後端登入密碼');
-      String text() => tester.widget<TextField>(password).controller!.text;
-      expect(text(), localTestPassword);
+      expect(find.widgetWithText(TextField, '後端登入密碼'), findsNothing);
+      expect(find.textContaining('本地測試密碼'), findsNothing);
+      expect(find.byKey(const Key('missing-backend-key')), findsNothing);
 
       final start = find.text('檢查並開始');
       await tester.ensureVisible(start);
       await tester.tap(start);
       await tester.pumpAndSettle();
       expect(container.read(commissionProvider).error, '請開啟手機藍牙後重試。');
-      expect(text(), localTestPassword);
       expect(fake.logins, isEmpty);
 
       fake.bluetoothOff = false;
@@ -611,7 +610,7 @@ void main() {
       expect(s.error, isNull);
       expect(s.step, 1);
       expect(s.loggedIn, isTrue);
-      expect(fake.logins, [localTestPassword]);
+      expect(fake.logins, ['build-key-13']);
       await tester.pumpWidget(const SizedBox());
     });
   });
