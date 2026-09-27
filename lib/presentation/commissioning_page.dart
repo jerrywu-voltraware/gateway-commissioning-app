@@ -25,6 +25,7 @@ import 'direct_calibration_sheet.dart';
 import 'direct_mode_panel.dart';
 import 'environment_switch.dart';
 import 'field_help_sheet.dart';
+import 'install_report_panel.dart';
 import 'local_backend_field.dart';
 import 'progress_checklist.dart';
 import 'ptu_selection_tile.dart';
@@ -2867,6 +2868,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           if (ref.read(envSwitchPolicyProvider).localBuild &&
               parseMqttTarget(s.config)?.isLocal == true)
             _devShipNote(enabled),
+          // 09-28: the report goes to the back office on its own; its status
+          // (sent / queued / failed with 〔重送〕) is shown above the report.
+          InstallReportStatusLine(enabled: enabled),
           _reportTile(s, enabled),
           if (s.loggedIn && !deferred)
             TextButton(
@@ -3162,7 +3166,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       childrenPadding: const EdgeInsets.only(bottom: 8),
       expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
       title: Text(s.report.startsWith('模擬') ? '模擬安裝報告' : '安裝報告'),
-      subtitle: const Text('可分享或複製給後台'),
+      subtitle: const Text('全文；也可分享或複製'),
       children: [
         SelectableText(s.report),
         Wrap(

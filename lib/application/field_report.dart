@@ -36,6 +36,7 @@ import '../data/network_watch.dart';
 import 'backend_environment.dart';
 import 'commissioning_controller.dart';
 import 'field_journal.dart';
+import 'install_report.dart';
 import 'network_check.dart';
 
 // ---- Build info (no package_info dependency) ----
@@ -778,7 +779,7 @@ class OutboxItem {
     this.transient = false,
   }) : bytes = _jsonBytes(body);
 
-  /// `session` or `diag`.
+  /// `session`, `diag` or `install` (09-28: the install report).
   final String kind;
   Map<String, dynamic> body;
   final int createdMs;
@@ -789,7 +790,11 @@ class OutboxItem {
   final bool transient;
   final int bytes;
 
-  String get path => kind == 'diag' ? fieldDiagnosticsPath : fieldSessionsPath;
+  String get path => switch (kind) {
+    'diag' => fieldDiagnosticsPath,
+    'install' => installReportsPath,
+    _ => fieldSessionsPath,
+  };
   String? get sessionId => body['session_id'] as String?;
   String? get event => body['event'] as String?;
   String? get trigger => body['trigger'] as String?;
@@ -806,7 +811,7 @@ class OutboxItem {
   static OutboxItem? fromJson(Object? raw) {
     if (raw is! Map) return null;
     final kind = raw['kind'], body = raw['body'], created = raw['created_ms'];
-    if ((kind != 'session' && kind != 'diag') ||
+    if ((kind != 'session' && kind != 'diag' && kind != 'install') ||
         body is! Map ||
         created is! int) {
       return null;
@@ -823,10 +828,20 @@ class OutboxItem {
 
 /// §2.8 caps, applied whenever the outbox changes: 24 h expiry, 50 events
 /// per session (status events go first), 5 packages (help kept longest),
-/// 256 KiB in all.
+/// 256 KiB in all. 09-28: install reports expire after
+/// [installReportMaxAge], at most [outboxInstallLimit] of them, and are the
+/// last to go when the outbox is too big.
 void pruneOutbox(List<OutboxItem> items, DateTime now) {
   final nowMs = now.millisecondsSinceEpoch;
-  items.removeWhere((i) => nowMs - i.createdMs > outboxMaxAge.inMilliseconds);
+  items.removeWhere(
+    (i) =>
+        nowMs - i.createdMs >
+        (i.kind == 'install' ? installReportMaxAge : outboxMaxAge)
+            .inMilliseconds,
+  );
+  while (items.where((i) => i.kind == 'install').length > outboxInstallLimit) {
+    items.remove(items.firstWhere((i) => i.kind == 'install'));
+  }
   final sessions = {
     for (final i in items)
       if (i.kind == 'session') i.sessionId,
@@ -850,11 +865,14 @@ void pruneOutbox(List<OutboxItem> items, DateTime now) {
   while (items.isNotEmpty && size() > outboxMaxBytes) {
     final plainDiag = items.where((i) => i.kind == 'diag' && !i.isHelp);
     final status = items.where((i) => i.event == 'status');
+    final other = items.where((i) => i.kind != 'install');
     items.remove(
       plainDiag.isNotEmpty
           ? plainDiag.first
           : status.isNotEmpty
           ? status.first
+          : other.isNotEmpty
+          ? other.first
           : items.first,
     );
   }
@@ -935,6 +953,12 @@ final fieldReporterProvider = Provider<FieldReporter>((ref) {
         ref.read(fieldHelpProvider.notifier).set(value);
       } catch (_) {}
     },
+    onInstall: (value) {
+      if (!ref.mounted) return;
+      try {
+        ref.read(installReportProvider.notifier).set(value);
+      } catch (_) {}
+    },
   );
   ref.onDispose(reporter.dispose);
   return reporter;
@@ -978,6 +1002,7 @@ class FieldReporter {
     required this._enabled,
     FieldReporterConfig config = const FieldReporterConfig(),
     this._onHelp,
+    this._onInstall,
   }) : _config = config,
        _now = config.now ?? DateTime.now,
        _random = config.random ?? _secureRandom(),
@@ -1002,6 +1027,7 @@ class FieldReporter {
   final bool _enabled;
   final FieldReporterConfig _config;
   final void Function(FieldHelpState)? _onHelp;
+  final void Function(InstallReportStatus)? _onInstall;
   final DateTime Function() _now;
   final Random _random;
 
@@ -1020,6 +1046,14 @@ class FieldReporter {
   bool _lastBusy = false, _checkFailed = false, _assignFailed = false;
   FieldFailure? _failure;
   FieldHelpState _help = const FieldHelpState();
+
+  /// 09-28: the install report of the done page on screen ([_installId]
+  /// is its `report_id`, [_installBody] kept for 〔重送〕 after a refusal,
+  /// [_installText] the report text it was made from — the same completion
+  /// is sent once).
+  InstallReportStatus _install = const InstallReportStatus();
+  String? _installId, _installText;
+  Map<String, dynamic>? _installBody;
   Map<String, dynamic> _phone = const {};
   String? _lastOrigin;
 
@@ -1042,6 +1076,7 @@ class FieldReporter {
   bool get enabled => _enabled;
   FieldSession? get session => _session;
   FieldHelpState get help => _help;
+  InstallReportStatus get install => _install;
 
   /// Queued uploads (oldest first); for tests and the help sheet.
   List<OutboxItem> get outbox => List.unmodifiable(_items);
@@ -1140,6 +1175,11 @@ class FieldReporter {
     _onHelp?.call(value);
   }
 
+  void _setInstall(InstallReportStatus value) {
+    _install = value;
+    _onInstall?.call(value);
+  }
+
   // ---- persistence ----
 
   Future<void> _load() async {
@@ -1160,6 +1200,20 @@ class FieldReporter {
     _items.addAll(_early);
     _early.clear();
     pruneOutbox(_items, _now());
+    // 09-28: an install report left from before the APP was closed is still
+    // on its way; the done page (if shown again) says so.
+    final install = _items.where((i) => i.kind == 'install').lastOrNull;
+    if (install != null && _installId == null) {
+      _installId = install.body['report_id'] as String?;
+      _installBody = install.body;
+      _installText = install.body['report_text'] as String?;
+      _setInstall(
+        InstallReportStatus(
+          phase: InstallReportPhase.queued,
+          reportId: _installId,
+        ),
+      );
+    }
     if (_items.isNotEmpty) _ensureRetryTimer();
   }
 
@@ -1264,6 +1318,8 @@ class FieldReporter {
   /// The session ended: `completed` (step 10 verified) or `abandoned`
   /// (cancel / 重新開始).
   void end(String status) => _guard(() {
+    // 09-28: the done page's install report goes to the back office.
+    if (status == 'completed') _queueInstallReport();
     final session = _session;
     if (!_enabled || session == null) return;
     final i = _read();
@@ -1357,6 +1413,14 @@ class FieldReporter {
     if (session == null) {
       if (completed || s.step < 1 || step < 2) return;
       session = _startSession();
+      // A new commissioning (not 〔請後台協助〕 on the done page): the last
+      // done page's report status is not this one's (a report still queued
+      // goes out on its own).
+      _installId = null;
+      _installBody = null;
+      if (_install.phase != InstallReportPhase.idle) {
+        _setInstall(const InstallReportStatus());
+      }
     }
     if (completed) {
       end('completed');
@@ -1727,6 +1791,20 @@ class FieldReporter {
     _backoffUntil = null;
     _backoffStep = 0;
     _persist();
+    final id = _installId;
+    if (id != null &&
+        _install.reportId == id &&
+        (_install.phase == InstallReportPhase.sending ||
+            _install.phase == InstallReportPhase.queued) &&
+        !_installQueued(id)) {
+      _setInstall(
+        InstallReportStatus(
+          phase: InstallReportPhase.failed,
+          reportId: id,
+          reason: '已切換後台，報告沒有送出',
+        ),
+      );
+    }
   });
 
   // ---- help ----
@@ -1794,6 +1872,141 @@ class FieldReporter {
     );
   }
 
+  // ---- install report (09-28) ----
+
+  /// The done page is on screen: its report is queued and sent (once per
+  /// completion; demo: [InstallReportPhase.disabled]).
+  void _queueInstallReport() {
+    if (!_enabled) {
+      _setInstall(
+        const InstallReportStatus(phase: InstallReportPhase.disabled),
+      );
+      return;
+    }
+    final i = _read();
+    if (i == null || _disposed) return;
+    final report = i.state.report;
+    if (report.isEmpty || report == _installText) return;
+    final now = _now();
+    final body = buildInstallReport(
+      reportId: newSessionId(_random),
+      input: i,
+      now: now,
+      app: _app(i),
+      phone: _phone,
+      sessionId: _session?.id,
+      secrets: journal.secrets,
+    );
+    if (body == null) return;
+    _installText = report;
+    _installId = body['report_id'] as String;
+    _installBody = body;
+    _setInstall(
+      InstallReportStatus(
+        phase: InstallReportPhase.sending,
+        reportId: _installId,
+      ),
+    );
+    _enqueue(
+      OutboxItem(
+        kind: 'install',
+        body: body,
+        createdMs: now.millisecondsSinceEpoch,
+        origin: _originFor(i),
+      ),
+    );
+  }
+
+  bool _installQueued(String id) => [
+    ..._items,
+    ..._early,
+  ].any((it) => it.kind == 'install' && it.body['report_id'] == id);
+
+  /// 〔重送〕 on the done page: now, without waiting for the back-off (a
+  /// refused report is queued again — the same `report_id`, so the backend
+  /// keeps one row).
+  Future<void> resendInstallReport() async {
+    if (!_enabled || _disposed) return;
+    try {
+      await _loaded;
+      final id = _installId, body = _installBody;
+      if (id == null || body == null) return;
+      if (!_installQueued(id)) {
+        final i = _read();
+        _enqueue(
+          OutboxItem(
+            kind: 'install',
+            body: body,
+            createdMs: _now().millisecondsSinceEpoch,
+            origin: i == null ? _lastOrigin : _originFor(i),
+          ),
+        );
+      }
+      _backoffUntil = null;
+      _backoffStep = 0;
+      _disabledUntil.remove(_originKey);
+      _setInstall(
+        InstallReportStatus(phase: InstallReportPhase.sending, reportId: id),
+      );
+      await flush().timeout(_config.helpWait, onTimeout: () {});
+      _setInstall(_installOutcome());
+    } catch (_) {}
+  }
+
+  /// Where the report on the done page is after a try (sent / failed are
+  /// set when the answer comes).
+  InstallReportStatus _installOutcome() {
+    final id = _installId;
+    final current = _install;
+    if (id == null ||
+        current.reportId != id ||
+        current.phase == InstallReportPhase.sent ||
+        current.phase == InstallReportPhase.failed) {
+      return current;
+    }
+    if (!_installQueued(id)) {
+      return InstallReportStatus(
+        phase: InstallReportPhase.failed,
+        reportId: id,
+        reason: '已從手機的待送清單移除',
+      );
+    }
+    final until = _disabledUntil[_originKey];
+    if (until != null && _now().isBefore(until)) {
+      return InstallReportStatus(
+        phase: InstallReportPhase.failed,
+        reportId: id,
+        reason: '後台尚未支援（請更新後台）',
+      );
+    }
+    final api = _api;
+    final noLogin = api is SessionInfo && !(api as SessionInfo).hasSession;
+    return InstallReportStatus(
+      phase: InstallReportPhase.queued,
+      reportId: id,
+      reason: noLogin ? '尚未登入後台' : '沒有網路或後台沒有回應',
+    );
+  }
+
+  /// The answer to an install report: sent, or refused ([reason]).
+  void _installAnswered(OutboxItem item, {String? reason}) {
+    final id = item.body['report_id'];
+    if (id != _installId) return;
+    _setInstall(
+      reason == null
+          ? InstallReportStatus(
+              phase: InstallReportPhase.sent,
+              sentAt: _now(),
+              reportId: id as String?,
+            )
+          : InstallReportStatus(
+              phase: InstallReportPhase.failed,
+              reportId: id as String?,
+              reason: reason,
+            ),
+    );
+  }
+
   // ---- outbox ----
 
   void _enqueue(OutboxItem item) {
@@ -1852,6 +2065,10 @@ class FieldReporter {
       }
       // A queued help went out on a later try: the sheet says so.
       if (_help.phase == FieldHelpPhase.queued) _setHelp(_helpOutcome());
+      if (_install.phase == InstallReportPhase.sending ||
+          _install.phase == InstallReportPhase.queued) {
+        _setInstall(_installOutcome());
+      }
     }();
     _draining = future;
     return future;
@@ -1860,6 +2077,10 @@ class FieldReporter {
   OutboxItem? _next() {
     for (final i in _items) {
       if (i.kind == 'session') return i;
+    }
+    // 09-28: the install report before packages.
+    for (final i in _items) {
+      if (i.kind == 'install') return i;
     }
     return _items.isEmpty ? null : _items.first;
   }
@@ -1902,6 +2123,7 @@ class FieldReporter {
         _items.remove(item);
         _backoffStep = 0;
         _backoffUntil = null;
+        if (item.kind == 'install') _installAnswered(item);
         if (item.kind == 'diag') {
           debugPrint(
             'FIELD diag sent ${item.trigger} #${item.body['diag_seq']} '
@@ -1913,6 +2135,13 @@ class FieldReporter {
         // failure: kept and tried again after the back-off.
         if (item.transient) _items.remove(item);
         if (f.code == 'authentication') break;
+        // 09-28: a backend without install reports (older than the APP)
+        // refuses only this one; the rescue uploads keep going.
+        if (item.kind == 'install' && f.code == 'api' && f.status == 404) {
+          _items.remove(item);
+          _installAnswered(item, reason: '後台尚未支援（請更新後台）');
+          continue;
+        }
         if (f.code == 'api' && f.status == 404) {
           _disabledUntil[origin ?? _originKey] = _now().add(
             fieldDisableAfter404,
@@ -1922,6 +2151,9 @@ class FieldReporter {
         if (f.code == 'api' && (f.status == 413 || f.status == 422)) {
           _items.remove(item);
           debugPrint('FIELD dropped ${item.kind}: HTTP ${f.status}');
+          if (item.kind == 'install') {
+            _installAnswered(item, reason: '後台拒收（HTTP ${f.status}）');
+          }
           continue;
         }
         item.tries++;
