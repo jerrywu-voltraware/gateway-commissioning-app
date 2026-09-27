@@ -9,6 +9,13 @@
                alias androiddebugkey) - the same certificate as the field-test
                APKs of rounds 19/20 (SHA-256 bea4c874...), so `adb install -r`
                updates the installed APP without an uninstall.
+  -Env prodtest : TRANSITIONAL. Like local's signing (debug keystore, so it
+               installs over the field-test APP) but WITHOUT LOCAL_DEVELOPMENT
+               (HTTPS only), for end-to-end tests against the production
+               server while it has only an IP and a self-signed certificate
+               (.secrets\prodtest.env sets API_BASE and API_CERT_SHA256).
+               Not a release: the real production APK still needs -Env prod
+               and the release keystore.
   -Env prod  : flutter build apk --release (no LOCAL_DEVELOPMENT: HTTPS only),
                signed with the release keystore from android\key.properties
                (storeFile / storePassword / keyAlias / keyPassword; a relative
@@ -25,6 +32,11 @@
   JSON under build\ (deleted right after the build), so the value is never
   on the command line nor in this script's output. Missing -> the script
   stops before building.
+  Optional lines in the same file: API_BASE=<https url> (production API
+  base, --dart-define API_BASE) and API_CERT_SHA256=<64 hex digits, colons
+  allowed> (pin the production server certificate, --dart-define
+  API_CERT_SHA256). Absent -> not passed (defaults: dashboard.voltraware.com,
+  system trust).
 
   Gradle's release output stays unsigned (android/app/build.gradle.kts has
   signingConfig = null); this script signs it with apksigner, runs
@@ -39,7 +51,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('local', 'prod')]
+    [ValidateSet('local', 'prodtest', 'prod')]
     [string]$Env,
 
     [string]$OutDir = '',
@@ -166,7 +178,7 @@ if (-not $flutter) { Fail 'flutter not found on PATH.' }
 
 # ---------------------------------------------------------------- signing
 # Resolved before building: a missing key fails fast, never an unsigned APK.
-if ($Env -eq 'local') {
+if ($Env -eq 'local' -or $Env -eq 'prodtest') {
     $ks = Join-Path $env:USERPROFILE '.android\debug.keystore'
     if (-not (Test-Path -LiteralPath $ks)) {
         Fail ("debug keystore not found: $ks. Copy the field-test debug.keystore " +
@@ -219,6 +231,21 @@ if (-not $secrets.ContainsKey('APP_BACKEND_KEY') -or -not $secrets['APP_BACKEND_
 $backendKey = $secrets['APP_BACKEND_KEY']
 if ($backendKey -match '\s') { Fail 'APP_BACKEND_KEY must not contain spaces.' }
 Write-Host "backend credential: .secrets\$Env.env ($($backendKey.Length) chars, value not shown)"
+$defines = @{ APP_BACKEND_KEY = $backendKey }
+if ($secrets.ContainsKey('API_BASE') -and $secrets['API_BASE']) {
+    if ($secrets['API_BASE'] -notmatch '^https://[^\s/]+/?$') { Fail 'API_BASE must be https://<host>[:port].' }
+    $defines['API_BASE'] = $secrets['API_BASE'].TrimEnd('/')
+    Write-Host "API_BASE: $($defines['API_BASE'])"
+}
+if ($secrets.ContainsKey('API_CERT_SHA256') -and $secrets['API_CERT_SHA256']) {
+    $pin = ($secrets['API_CERT_SHA256'] -replace ':', '').ToLower()
+    if ($pin -notmatch '^[0-9a-f]{64}$') { Fail 'API_CERT_SHA256 must be 64 hex digits.' }
+    $defines['API_CERT_SHA256'] = $pin
+    Write-Host "API_CERT_SHA256: $pin"
+}
+if ($Env -eq 'prodtest' -and -not $defines.ContainsKey('API_BASE')) {
+    Fail '.secrets\prodtest.env has no API_BASE.'
+}
 
 # Passwords reach apksigner through the environment, not the command line.
 $env:GIOS_BUILD_KS_PASS = $ksPass
@@ -234,7 +261,7 @@ if ($Env -eq 'local') { $flutterArgs += '--dart-define=LOCAL_DEVELOPMENT=true' }
 $buildDir = Join-Path $Root 'build'
 if (-not (Test-Path -LiteralPath $buildDir)) { New-Item -ItemType Directory -Path $buildDir | Out-Null }
 $DefineFile = Join-Path $buildDir ".app_backend_key_$PID.json"
-$defineJson = (@{ APP_BACKEND_KEY = $backendKey } | ConvertTo-Json -Compress)
+$defineJson = ($defines | ConvertTo-Json -Compress)
 [System.IO.File]::WriteAllText($DefineFile, $defineJson, (New-Object System.Text.UTF8Encoding($false)))
 $flutterArgs += "--dart-define-from-file=$DefineFile"
 $gradleOut = Join-Path $Root 'build\app\outputs\flutter-apk\app-release.apk'
@@ -302,7 +329,7 @@ try {
 }
 
 $sha = (Get-FileHash -LiteralPath $final -Algorithm SHA256).Hash.ToLower()
-$envNote = if ($Env -eq 'local') { 'LOCAL_DEVELOPMENT=true' } else { 'HTTPS only' }
+$envNote = if ($Env -eq 'local') { 'LOCAL_DEVELOPMENT=true' } elseif ($Env -eq 'prodtest') { 'HTTPS only, debug-signed, NOT a release' } else { 'HTTPS only' }
 Step 'Done'
 Write-Host "APK    : $final"
 Write-Host "env    : $Env ($envNote)"

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../core/protocol.dart';
+import 'cert_pin.dart';
 import 'contracts.dart';
 
 bool isLocalApiHost(String host) {
@@ -47,7 +48,11 @@ class DashboardApi
 
   final DateTime Function() _now;
   final _storage = const FlutterSecureStorage();
-  final _http = HttpClient()..connectionTimeout = const Duration(seconds: 10);
+  // One client per API origin: the production host may be pinned
+  // (API_CERT_SHA256, cert_pin.dart); every other origin uses system trust.
+  final _clients = <String, HttpClient>{};
+  HttpClient _httpFor(Uri base) =>
+      _clients.putIfAbsent(base.origin, () => apiHttpClientFor(base));
   Uri? _base;
   String? _key;
 
@@ -143,7 +148,7 @@ class DashboardApi
     HttpClientResponse res;
     String text;
     try {
-      final req = await _http
+      final req = await _httpFor(base)
           .openUrl(method, base.resolve(path))
           .timeout(const Duration(seconds: 10));
       req.followRedirects = false;
