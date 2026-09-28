@@ -1,0 +1,567 @@
+// 1.0.0+5 「閘道器狀態」: after the done page is gone the installer can
+// still open 〔查看最近資料〕 — a page with the gateways this phone
+// finished (kept in SharedPreferences, at most 10) and the back office's
+// fleet-status list; every row opens RecentDataPage.
+// 1. The store: newest first, one entry per site / gateway, cut to 10,
+//    bad rows ignored.
+// 2. finishDone writes an entry (demo and real runs apart).
+// 3. The fleet model reads fleet-status's fields; the line's words.
+// 4. The page: list / empty / error (+〔重試〕) / loading; a tap opens the
+//    recent-data page of that gateway.
+// 5. Entries: the start page's 〔閘道器狀態〕 and the topology menu item.
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:gateway_commissioning/application/backend_environment.dart';
+import 'package:gateway_commissioning/application/commissioning_controller.dart';
+import 'package:gateway_commissioning/application/local_backend_finder.dart';
+import 'package:gateway_commissioning/core/protocol.dart';
+import 'package:gateway_commissioning/data/contracts.dart';
+import 'package:gateway_commissioning/data/demo_system.dart';
+import 'package:gateway_commissioning/data/fleet_status_api.dart';
+import 'package:gateway_commissioning/data/local_backend_probe.dart';
+import 'package:gateway_commissioning/data/recent_commissions.dart';
+import 'package:gateway_commissioning/gateway_app.dart';
+import 'package:gateway_commissioning/presentation/gateway_status_page.dart';
+import 'package:gateway_commissioning/presentation/recent_data_page.dart';
+
+/// The backend as the page sees it: [mode] `data` answers [fleet],
+/// `empty` no gateways, `network` fails; the recent-data endpoint answers
+/// one row. Records the paths asked.
+class _Api implements GatewayApi {
+  _Api(this.mode);
+  String mode;
+  List<Map<String, dynamic>> fleet = const [];
+  final paths = <String>[];
+  Completer<void>? gate;
+
+  @override
+  Future<void> login(String base, String password) async {}
+
+  @override
+  Future<Map<String, dynamic>> request(
+    String method,
+    String path, [
+    Map<String, dynamic>? body,
+  ]) async {
+    paths.add('$method $path');
+    if (gate != null) await gate!.future;
+    if (path.startsWith('/api/app/recent/')) {
+      return {
+        'site_id': 56,
+        'gateway_id': 1,
+        'count': 1,
+        'items': [
+          {
+            'ts': DateTime.now().toIso8601String(),
+            'ptu_mac': '90:5F:E8:9A:96:00',
+            'ptu_state': 'POWER_TRANSFER',
+            'input_mv': 5000,
+            'input_ma': 120,
+            'temp_c': 31,
+          },
+        ],
+      };
+    }
+    switch (mode) {
+      case 'empty':
+        return {'gateways': [], 'total': 0, 'online_count': 0};
+      case 'network':
+        throw GatewayFailure.network(
+          endpoint: '$method $path',
+          detail: 'Connection refused',
+          backend: '後端 https://example.invalid',
+        );
+    }
+    return {'gateways': fleet, 'total': fleet.length};
+  }
+}
+
+Map<String, dynamic> _gw(
+  int site,
+  int gateway, {
+  bool online = true,
+  int ble = 1,
+  Map<String, dynamic>? direct,
+  String? dataAt,
+  String? heartbeatAt,
+}) => {
+  'site_id': site,
+  'gateway_id': gateway,
+  'online': online,
+  'ble_connected': ble,
+  'max_connections': direct != null ? 1 : 5,
+  'direct': ?direct,
+  'device_last_seen': dataAt,
+  'last_heartbeat': heartbeatAt,
+  'last_seen': dataAt ?? heartbeatAt,
+};
+
+Future<void> _pumpPage(
+  WidgetTester tester,
+  _Api api,
+  DateTime now, {
+  Map<String, Object> prefs = const {},
+}) async {
+  SharedPreferences.setMockInitialValues(prefs);
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        linkProvider.overrideWithValue(DemoSystem()),
+        apiProvider.overrideWithValue(api),
+      ],
+      child: MaterialApp(home: GatewayStatusPage(now: () => now)),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+class _Prober implements LocalBackendProber {
+  @override
+  Future<ProbeResult> probe(Uri base, {Duration? connectTimeout}) async =>
+      const ProbeResult(ProbeOutcome.healthy, status: 200);
+}
+
+/// The APP at the start page (demo link, no key needed).
+Future<ProviderContainer> _pumpApp(WidgetTester tester, DemoSystem fake) async {
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        linkProvider.overrideWithValue(fake),
+        apiProvider.overrideWithValue(fake),
+        envSwitchPolicyProvider.overrideWithValue(
+          const EnvSwitchPolicy(
+            autoSyncDefault: false,
+            confirmGatewaySwitch: true,
+            localBuild: false,
+          ),
+        ),
+        localBackendProberProvider.overrideWithValue(_Prober()),
+        phoneIpv4Provider.overrideWithValue(() async => '192.168.1.23'),
+      ],
+      child: const GatewayApp(),
+    ),
+  );
+  await tester.pumpAndSettle();
+  final container = ProviderScope.containerOf(
+    tester.element(find.byType(GatewayApp)),
+  );
+  await tester.runAsync(
+    () => container.read(backendEnvProvider.notifier).ready,
+  );
+  await tester.pumpAndSettle();
+  return container;
+}
+
+/// Star: station 80 / gateway 1 commissioned and verified — the done page.
+Future<ProviderContainer> _pumpStarDone(
+  WidgetTester tester,
+  DemoSystem fake,
+) async {
+  final container = await _pumpApp(tester, fake);
+  await tester.runAsync(() async {
+    final c = container.read(commissionProvider.notifier);
+    final base = container.read(backendEnvProvider).base;
+    await c.prepare(base, 'pw');
+    await c.scan();
+    await c.connect(container.read(commissionProvider).peers.single);
+    await c.configureWifi(80, 1, 'Office-2G', 'pw123456');
+    await c.online();
+    await c.discover();
+    await c.configurePtus();
+    await c.verify('https://example.invalid', '');
+  });
+  await tester.pumpAndSettle();
+  final s = container.read(commissionProvider);
+  expect(s.step, 7, reason: 'done page');
+  return container;
+}
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  group('store', () {
+    test(
+      'newest first, one per gateway, cut to 10, bad rows ignored',
+      () async {
+        SharedPreferences.setMockInitialValues({});
+        expect(await RecentCommissions.load(false), isEmpty);
+        final t0 = DateTime(2026, 9, 28, 14, 0);
+        for (var i = 1; i <= 12; i++) {
+          await RecentCommissions.remember(
+            false,
+            RecentCommission(
+              site: 56,
+              gateway: i,
+              gatewayName: 'GW-$i',
+              doneAt: t0.add(Duration(minutes: i)),
+            ),
+          );
+        }
+        var rows = await RecentCommissions.load(false);
+        expect(rows, hasLength(10));
+        expect(rows.first.gateway, 12, reason: 'newest first');
+        expect(rows.last.gateway, 3, reason: 'the two oldest dropped');
+        expect(rows.first.gatewayName, 'GW-12');
+        expect(rows.first.doneAt, t0.add(const Duration(minutes: 12)));
+        // The same gateway again: moved to the top, not doubled.
+        await RecentCommissions.remember(
+          false,
+          RecentCommission(
+            site: 56,
+            gateway: 5,
+            gatewayName: 'GW-5b',
+            doneAt: t0.add(const Duration(hours: 1)),
+          ),
+        );
+        rows = await RecentCommissions.load(false);
+        expect(rows, hasLength(10));
+        expect(rows.first.gateway, 5);
+        expect(rows.first.gatewayName, 'GW-5b');
+        expect(rows.where((r) => r.gateway == 5), hasLength(1));
+        // Demo runs are kept apart.
+        expect(await RecentCommissions.load(true), isEmpty);
+        // Bad rows and a bad store read as nothing / are skipped.
+        SharedPreferences.setMockInitialValues({
+          'recent_commissions':
+              '[{"site":1,"gateway":2,"done_at":"2026-09-28T10:00:00"},'
+              '{"site":"x"},{"gateway":3},42,'
+              '{"site":4,"gateway":5,"done_at":"bad"}]',
+        });
+        rows = await RecentCommissions.load(false);
+        expect(rows, hasLength(1));
+        expect(rows.single.site, 1);
+        expect(rows.single.gatewayName, '');
+        SharedPreferences.setMockInitialValues({'recent_commissions': '{oops'});
+        expect(await RecentCommissions.load(false), isEmpty);
+        expect(RecentCommissions.key(false), 'recent_commissions');
+        expect(RecentCommissions.key(true), 'demo_recent_commissions');
+      },
+    );
+  });
+
+  group('done page', () {
+    testWidgets('〔完成〕 remembers the gateway on the phone', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final fake = DemoSystem();
+      final container = await _pumpStarDone(tester, fake);
+      expect(await RecentCommissions.load(true), isEmpty, reason: 'not yet');
+      await tester.tap(find.byKey(const Key('done-finish')));
+      await tester.pumpAndSettle();
+      expect(container.read(commissionProvider).step, 0);
+      final rows = await RecentCommissions.load(true);
+      expect(rows, hasLength(1), reason: 'the demo link → the demo key');
+      expect(rows.single.site, 80);
+      expect(rows.single.gateway, 1);
+      expect(rows.single.gatewayName, isNotEmpty, reason: 'the BLE name');
+      expect(
+        DateTime.now().difference(rows.single.doneAt).inMinutes,
+        lessThan(5),
+      );
+      expect(await RecentCommissions.load(false), isEmpty);
+      // The start page's 〔閘道器狀態〕 lists it.
+      await tester.tap(find.byKey(const Key('home-gateway-status')));
+      await tester.pumpAndSettle();
+      expect(find.byType(GatewayStatusPage), findsOneWidget);
+      expect(find.byKey(const Key('gs-recent-80-1')), findsOneWidget);
+      expect(find.text('站 80 閘道器 1'), findsWidgets);
+    });
+  });
+
+  group('fleet model', () {
+    test('reads fleet-status fields; the line', () {
+      final now = DateTime(2026, 9, 28, 13, 0, 10);
+      String iso(Duration ago) => now.subtract(ago).toIso8601String();
+      final rows = [
+        _gw(
+          80,
+          2,
+          online: false,
+          ble: 0,
+          heartbeatAt: iso(const Duration(minutes: 20)),
+        ),
+        _gw(
+          56,
+          1,
+          ble: 0,
+          direct: {'label': '已綁定', 'connected': true},
+          dataAt: iso(const Duration(seconds: 7)),
+          heartbeatAt: iso(const Duration(seconds: 3)),
+        ),
+        _gw(56, 3, ble: 2, dataAt: iso(const Duration(seconds: 61))),
+        {'gateway_id': 9},
+        'junk',
+      ];
+      final parsed = rows
+          .whereType<Map>()
+          .map(FleetGateway.fromJson)
+          .whereType<FleetGateway>()
+          .toList();
+      expect(parsed, hasLength(3));
+      final direct = parsed.firstWhere((g) => g.gateway == 1);
+      expect(direct.site, 56);
+      expect(direct.online, isTrue);
+      expect(direct.ptuConnected, isTrue, reason: 'direct.connected');
+      expect(direct.directLabel, '已綁定');
+      expect(direct.lastData, isNotNull);
+      expect(gatewayStatusLine(direct, now), '在線・PTU 已連線・最近資料 7 秒前');
+      final offline = parsed.firstWhere((g) => g.gateway == 2);
+      expect(offline.ptuConnected, isFalse);
+      expect(offline.lastData, isNull);
+      expect(
+        gatewayStatusLine(offline, now),
+        '離線・PTU 未連線・最近心跳 20 分鐘前',
+        reason: 'no PTU row yet → the heartbeat',
+      );
+      final star = parsed.firstWhere((g) => g.gateway == 3);
+      expect(star.ptuConnected, isTrue, reason: 'ble_connected 2');
+      expect(star.directLabel, '');
+      expect(gatewayStatusLine(star, now), '在線・PTU 已連線・最近資料 1 分鐘前');
+      expect(
+        gatewayStatusLine(
+          const FleetGateway(
+            site: 1,
+            gateway: 1,
+            online: false,
+            ptuConnected: false,
+          ),
+          now,
+        ),
+        '離線・PTU 未連線・尚無資料',
+      );
+      expect(
+        gatewayStatusDoneText(DateTime(2026, 9, 8, 9, 5)),
+        '09-08 09:05 完成',
+      );
+    });
+
+    test('fetch asks the fixed path and sorts by site then gateway', () async {
+      final api = _Api('data')..fleet = [_gw(80, 2), _gw(56, 3), _gw(56, 1)];
+      final rows = await fetchFleetStatus(api);
+      expect(api.paths.single, 'GET /api/gateways/fleet-status');
+      expect(rows.map((g) => '${g.site}/${g.gateway}'), [
+        '56/1',
+        '56/3',
+        '80/2',
+      ]);
+      expect(await fetchFleetStatus(_Api('empty')), isEmpty);
+      expect(fetchFleetStatus(_Api('network')), throwsA(isA<GatewayFailure>()));
+    });
+  });
+
+  group('page', () {
+    testWidgets(
+      'list: recent commissions and the fleet; a tap opens the data',
+      (tester) async {
+        final now = DateTime(2026, 9, 28, 13, 0, 10);
+        final api = _Api('data')
+          ..fleet = [
+            _gw(
+              56,
+              1,
+              direct: {'label': '已綁定', 'connected': true},
+              dataAt: now
+                  .subtract(const Duration(seconds: 7))
+                  .toIso8601String(),
+            ),
+            _gw(
+              80,
+              2,
+              online: false,
+              ble: 0,
+              heartbeatAt: now
+                  .subtract(const Duration(minutes: 3))
+                  .toIso8601String(),
+            ),
+          ];
+        await _pumpPage(
+          tester,
+          api,
+          now,
+          prefs: {
+            'demo_recent_commissions':
+                '[{"site":56,"gateway":1,"gateway_name":"GW-56A",'
+                '"done_at":"2026-09-28T12:30:00"}]',
+          },
+        );
+        expect(find.text(gatewayStatusLabel), findsOneWidget);
+        expect(find.text(gatewayStatusRecentTitle), findsOneWidget);
+        expect(find.text(gatewayStatusFleetTitle), findsOneWidget);
+        // Top: the phone's own list.
+        expect(find.byKey(const Key('gs-recent-56-1')), findsOneWidget);
+        expect(find.text('GW-56A・09-28 12:30 完成'), findsOneWidget);
+        expect(find.byKey(const Key('gs-recent-empty')), findsNothing);
+        // Bottom: the fleet, one line each.
+        expect(find.byKey(const Key('gs-fleet-56-1')), findsOneWidget);
+        expect(find.byKey(const Key('gs-fleet-80-2')), findsOneWidget);
+        expect(
+          tester.widget<Text>(find.byKey(const Key('gs-fleet-56-1-line'))).data,
+          '在線・PTU 已連線・最近資料 7 秒前',
+        );
+        expect(
+          tester.widget<Text>(find.byKey(const Key('gs-fleet-80-2-line'))).data,
+          '離線・PTU 未連線・最近心跳 3 分鐘前',
+        );
+        expect(find.byKey(const Key('gs-error')), findsNothing);
+        expect(find.byKey(const Key('gs-loading')), findsNothing);
+        expect(api.paths, ['GET /api/gateways/fleet-status']);
+        // 〔重新整理〕: one more request.
+        await tester.tap(find.byKey(const Key('gs-refresh')));
+        await tester.pumpAndSettle();
+        expect(api.paths, hasLength(2));
+        // A fleet row opens the recent data of that gateway.
+        await tester.tap(find.byKey(const Key('gs-fleet-80-2')));
+        await tester.pumpAndSettle();
+        expect(find.byType(RecentDataPage), findsOneWidget);
+        expect(find.text('站 80 閘道器 2 最近資料'), findsOneWidget);
+        expect(api.paths.last, 'GET /api/app/recent/80/2?limit=20');
+        await tester.pageBack();
+        await tester.pumpAndSettle();
+        expect(find.byType(GatewayStatusPage), findsOneWidget);
+        // A recent-commission row too.
+        await tester.tap(find.byKey(const Key('gs-recent-56-1')));
+        await tester.pumpAndSettle();
+        expect(find.text('站 56 閘道器 1 最近資料'), findsOneWidget);
+        expect(api.paths.last, 'GET /api/app/recent/56/1?limit=20');
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets('empty: both sections say so', (tester) async {
+      final now = DateTime(2026, 9, 28, 13, 0, 10);
+      await _pumpPage(tester, _Api('empty'), now);
+      expect(find.byKey(const Key('gs-recent-empty')), findsOneWidget);
+      expect(find.text(gatewayStatusRecentEmptyText), findsOneWidget);
+      expect(find.byKey(const Key('gs-fleet-empty')), findsOneWidget);
+      expect(find.text(gatewayStatusFleetEmptyText), findsOneWidget);
+      expect(find.byType(ListTile), findsNothing);
+      expect(find.byKey(const Key('gs-error')), findsNothing);
+    });
+
+    testWidgets('error: words and 〔重試〕; retry recovers; recent list kept', (
+      tester,
+    ) async {
+      final now = DateTime(2026, 9, 28, 13, 0, 10);
+      final api = _Api('network')..fleet = [_gw(56, 1)];
+      await _pumpPage(
+        tester,
+        api,
+        now,
+        prefs: {
+          'demo_recent_commissions':
+              '[{"site":56,"gateway":1,"done_at":"2026-09-28T12:30:00"}]',
+        },
+      );
+      expect(find.byKey(const Key('gs-error')), findsOneWidget);
+      final text = tester
+          .widget<Text>(find.byKey(const Key('gs-error-text')))
+          .data!;
+      expect(text, contains('Connection refused'));
+      expect(find.byKey(const Key('gs-retry')), findsOneWidget);
+      expect(find.byKey(const Key('gs-fleet-56-1')), findsNothing);
+      // The phone's own list is still there and still opens.
+      expect(find.byKey(const Key('gs-recent-56-1')), findsOneWidget);
+      api.mode = 'data';
+      await tester.tap(find.byKey(const Key('gs-retry')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('gs-error')), findsNothing);
+      expect(find.byKey(const Key('gs-fleet-56-1')), findsOneWidget);
+    });
+
+    testWidgets('loading: progress bar, refresh disabled', (tester) async {
+      final now = DateTime(2026, 9, 28, 13, 0, 10);
+      final api = _Api('data')
+        ..fleet = [_gw(56, 1)]
+        ..gate = Completer<void>();
+      SharedPreferences.setMockInitialValues({});
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            linkProvider.overrideWithValue(DemoSystem()),
+            apiProvider.overrideWithValue(api),
+          ],
+          child: MaterialApp(home: GatewayStatusPage(now: () => now)),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      expect(find.byKey(const Key('gs-loading')), findsOneWidget);
+      expect(find.byKey(const Key('gs-progress')), findsOneWidget);
+      expect(
+        tester
+            .widget<IconButton>(find.byKey(const Key('gs-refresh')))
+            .onPressed,
+        isNull,
+      );
+      api.gate!.complete();
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('gs-loading')), findsNothing);
+      expect(find.byKey(const Key('gs-progress')), findsNothing);
+      expect(find.byKey(const Key('gs-fleet-56-1')), findsOneWidget);
+    });
+
+    testWidgets('fits a 360 dp phone', (tester) async {
+      tester.view.physicalSize = const Size(360, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final now = DateTime(2026, 9, 28, 13, 0, 10);
+      final api = _Api('data')
+        ..fleet = [
+          _gw(
+            56,
+            1,
+            direct: {'label': '已綁定', 'connected': true},
+            dataAt: now.subtract(const Duration(seconds: 7)).toIso8601String(),
+          ),
+        ];
+      await _pumpPage(tester, api, now);
+      expect(find.byKey(const Key('gs-fleet-56-1')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('entries', () {
+    testWidgets('start page button and topology menu item open the page', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues({});
+      final fake = DemoSystem();
+      await _pumpApp(tester, fake);
+      // (b) the start page's secondary button, below 〔檢查並開始〕.
+      final button = find.byKey(const Key('home-gateway-status'));
+      await tester.scrollUntilVisible(
+        button,
+        250,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(button, findsOneWidget);
+      expect(find.text(gatewayStatusLabel), findsOneWidget);
+      final start = tester.getRect(find.text('檢查並開始'));
+      expect(tester.getRect(button).top, greaterThan(start.bottom));
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      expect(find.byType(GatewayStatusPage), findsOneWidget);
+      expect(find.byKey(const Key('gs-recent-empty')), findsOneWidget);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(find.byType(GatewayStatusPage), findsNothing);
+      // (a) the topology menu's item.
+      await tester.tap(find.byKey(const Key('topology-menu')));
+      await tester.pumpAndSettle();
+      final item = find.byKey(const Key('gateway-status-menu'));
+      expect(item, findsOneWidget);
+      await tester.tap(item);
+      await tester.pumpAndSettle();
+      expect(find.byType(GatewayStatusPage), findsOneWidget);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      // The flow is where it was.
+      expect(find.text('檢查並開始'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  });
+}

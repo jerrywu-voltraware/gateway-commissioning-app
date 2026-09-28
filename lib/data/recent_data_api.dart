@@ -41,8 +41,16 @@ class RecentItem {
   final String ptuMac, ptuState;
   final num? inputMv, inputMa, busMv, tempC;
 
-  /// The PTU's last 4 hex digits (`90:5F:E8:9A:96:00` → `9600`).
+  /// The PTU's last 4 hex digits (`90:5F:E8:9A:96:00` → `9600`; widget
+  /// keys).
   String get ptuTail => ptuMacTail(ptuMac);
+
+  /// The PTU's last 3 groups (`90:5F:E8:9A:96:00` → `9A:96:00`; what the
+  /// installer sees, 1.0.0+5).
+  String get ptuShort => ptuMacShort(ptuMac);
+
+  /// The PTU's whole MAC as `AA:BB:CC:DD:EE:FF` (empty when none).
+  String get ptuMacText => ptuMacFull(ptuMac);
 
   /// `input_mv` in volts with two decimals, or `--`.
   String get inputVoltsText =>
@@ -127,6 +135,33 @@ String ptuMacTail(String mac) {
   return hex.length <= 4 ? hex : hex.substring(hex.length - 4);
 }
 
+/// The hex digits of a MAC, upper case, no separators.
+String _macHex(String mac) =>
+    mac.replaceAll(RegExp(r'[^0-9A-Fa-f]'), '').toUpperCase();
+
+/// The last 3 groups of a MAC with colons (`90:5F:E8:9A:96:00` →
+/// `9A:96:00`; `905fe89a9600` too). Fewer than 6 hex digits: all of
+/// them, grouped from the right; empty for none.
+String ptuMacShort(String mac) {
+  final hex = _macHex(mac);
+  final tail = hex.length <= 6 ? hex : hex.substring(hex.length - 6);
+  return _grouped(tail);
+}
+
+/// The whole MAC with colons (`905fe89a9600` → `90:5F:E8:9A:96:00`).
+String ptuMacFull(String mac) => _grouped(_macHex(mac));
+
+String _grouped(String hex) {
+  final groups = <String>[];
+  var end = hex.length;
+  while (end > 0) {
+    final start = end - 2 < 0 ? 0 : end - 2;
+    groups.insert(0, hex.substring(start, end));
+    end = start;
+  }
+  return groups.join(':');
+}
+
 /// `HH:mm:ss` of a local time; `--:--:--` for none.
 String recentClockText(DateTime? ts) {
   if (ts == null) return '--:--:--';
@@ -165,8 +200,7 @@ Future<RecentData> fetchRecentData(
 
 /// Words for a failed fetch: the failure's own text, or a generic one.
 String recentDataErrorText(Object error) => switch (error) {
-  GatewayFailure(code: 'authentication') =>
-    'APP 尚未登入後台，請回到完成頁按「登入並確認資料」後再試。',
+  GatewayFailure(code: 'authentication') => 'APP 尚未登入後台，請回到完成頁按「登入並確認資料」後再試。',
   GatewayFailure f => f.message,
   _ => '無法取得最近資料：$error',
 };

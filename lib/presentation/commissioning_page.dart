@@ -31,6 +31,7 @@ import 'local_backend_field.dart';
 import 'progress_checklist.dart';
 import 'ptu_selection_tile.dart';
 import 'recent_data_page.dart';
+import 'gateway_status_page.dart';
 import 'gateway_signal.dart';
 import 'gateway_discovery.dart';
 import 'gateway_mode_card.dart';
@@ -1075,9 +1076,18 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                     isScrollControlled: true,
                     builder: (_) => const DirectSettingsSheet(),
                   );
+                } else if (value == 'status') {
+                  GatewayStatusPage.open(context);
                 }
               },
               itemBuilder: (_) => [
+                // 1.0.0+5: 「閘道器狀態」 from any page (the flow untouched).
+                const PopupMenuItem(
+                  key: Key('gateway-status-menu'),
+                  value: 'status',
+                  child: Text('$gatewayStatusLabel…'),
+                ),
+                const PopupMenuDivider(),
                 for (final t in GatewayTopology.values)
                   CheckedPopupMenuItem(
                     value: 'topology:${t.name}',
@@ -2568,6 +2578,18 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             }
             await c.prepare(current.base, '', offline: _offline);
           }, enabled),
+          // 1.0.0+5: 〔閘道器狀態〕 — the gateways finished on this phone and
+          // the back office's list, each opening 〔查看最近資料〕. Secondary
+          // to 〔檢查並開始〕; the flow itself is untouched.
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: OutlinedButton.icon(
+              key: const Key('home-gateway-status'),
+              onPressed: enabled ? () => GatewayStatusPage.open(context) : null,
+              icon: const Icon(Icons.router_outlined, size: 20),
+              label: const Text(gatewayStatusLabel),
+            ),
+          ),
         ];
       case 1:
         return [
@@ -3510,7 +3532,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     final theme = Theme.of(context);
     final mac = s.ptuMissingMac!;
     final back = s.ptuMissingBack;
-    final fg = back ? Colors.green.shade900 : theme.colorScheme.onErrorContainer;
+    final fg = back
+        ? Colors.green.shade900
+        : theme.colorScheme.onErrorContainer;
     final bg = back ? Colors.green.shade100 : theme.colorScheme.errorContainer;
     return Card(
       key: const Key('ptu-missing'),

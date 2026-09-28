@@ -91,17 +91,27 @@ Wi-Fi 名稱下方可掃描手機周邊的 2.4 GHz 網路，依訊號排序，�
 - **現場回報**：卡片出現時送一筆 `status` 事件，`error_message` 為「本樁 PTU 不在場：閘道器綁定 …」（`FieldReporter.noteDirectPtuMissing`），後台救援頁時間軸看得到。
 - 測試：`test/round34_ptu_missing_test.dart`。
 
-## 完成頁〔查看最近資料〕（09-28，APP 1.0.0+3；畫面改版 1.0.0+4）
+## 完成頁〔查看最近資料〕（09-28，APP 1.0.0+3；畫面改版 1.0.0+4；使用者實機回饋修正 1.0.0+5）
 
 現場人員配置完想確認資料真的進了後台，不必登入後台網頁、不必給 key：完成頁底部多一顆〔查看最近資料〕（`Key('done-recent')`），開新頁「站 S 閘道器 G 最近資料」，用 APP 自己的低權限 session 查後台唯讀端點。
 
 - **後台契約**：`GET {API_BASE}/api/app/recent/{site_id}/{gateway_id}?limit=20`，header `X-API-Key`（沿用 `DashboardApi.request`，正式站走 `cert_pin.dart` 的 CA 信任）；回 `{site_id, gateway_id, count, items:[{ts, seq, device_id, ptu_mac, ptu_state, input_mv, input_ma, bus_mv, temp_c}]}`。`count` 0 ＝ 後台尚未收到資料；非 2xx／連不上 ＝ 錯誤。
-- **畫面**（`lib/presentation/recent_data_page.dart`，1.0.0+4 改版：現場人員只要看「資料有沒有進來、最新一筆、PTU 正不正常」），由上到下：
-  1. **狀態橫幅**（`Key('recent-banner')`，icon key `recent-banner-<kind>`）：最近一筆 <30 秒 → 綠「資料正常上傳中」；30 秒～10 分鐘 → 黃「最近 N 秒／分鐘沒有新資料」；≥10 分鐘 → 紅同句；count 0 → 灰「後台尚未收到這台閘道器的資料，請稍等 20 秒再重新整理」＋〔重新整理〕；錯誤 → 紅人話＋〔重試〕（`recentBanner`）。
-  2. **最新一筆大字卡**（`Key('recent-latest')`）：`input_mv/1000` V（一位小數）、`input_ma/1000` A（兩位小數）、`temp_c` °C 三個大數字，下一行「PTU 後 4 碼・狀態中文・HH:mm:ss（N 秒前）」。`ptu_state` 中文對照 `ptuStateLabels`，來源韌體 `ble_multi_wifi_gateway/main/http/mqtt_uploader.c` `ptu_state_to_string`（CONFIGURATION 設定中、POWER_SAVE 省電、LOW_POWER 低功率、POWER_TRANSFER 充電中、LATCH_FAULT／LATCHING_FAULT 鎖定故障、LOCAL_FAULT 本地故障、OTA_MODE、COOLING 冷卻中、EXCEEDED_RANGE PRU 超出範圍、UNKNOWN 未知；其他照原字串，空／NULL 顯示 `--`）。`*_FAULT` 狀態卡片邊框轉紅並加一行「PTU 回報故障」（`Key('recent-latest-fault')`）。星狀多台 PTU 時依 `ptu_mac`（無則 `device_id`）分組，每台一張小卡 `Key('recent-latest-<後4碼>')`（`recentLatestPerDevice`）。
-  3. **趨勢**：「最近 N 筆・跨 N 秒・平均每秒 X 筆」（`recentTrendText`）＋電流 mA 折線圖（`RecentSparklinePainter`，`CustomPainter` 自畫、無套件、高 60、左舊右新、多台 PTU 全部點畫同一條）。
-  4. **最近資料**（`ExpansionTile` 預設收合）：展開為 `DataTable`（時間 HH:mm:ss｜PTU｜V｜A｜°C｜狀態中文），單行不換行、tabular figures。
-  5. 右上〔重新整理〕；載入中 AppBar 下方進度條、按鈕停用。不自動輪詢；仍取 `limit=20`。
-- **資料層**：`lib/data/recent_data_api.dart`（`RecentData`／`RecentItem`／`fetchRecentData`）；練習模式 `DemoSystem` 回每台已連線 PTU 一列。
+- **畫面**（`lib/presentation/recent_data_page.dart`，1.0.0+4 改版：現場人員只要看「資料有沒有進來、最新一筆、PTU 正不正常」；1.0.0+5 依使用者實機回饋：拔掉折線圖、表格 360 dp 不再被切、PTU 改顯示 MAC 後 3 組），由上到下：
+  1. **狀態橫幅**（`Key('recent-banner')`，icon key `recent-banner-<kind>`）：最近一筆 <30 秒 → 綠「資料正常上傳中」；30 秒～10 分鐘 → 黃「最近 N 秒／分鐘沒有新資料」；≥10 分鐘 → 紅同句；count 0 → 灰「後台尚未收到這台閘道器的資料，請稍等 20 秒再重新整理」＋〔重新整理〕；錯誤 → 紅人話＋〔重試〕（`recentBanner`）。橫幅下方一行小字「最近 N 筆・跨 N 秒・平均每秒 X 筆」（`Key('recent-trend')`，`recentTrendText`）。
+  2. **最新一筆大字卡**（`Key('recent-latest')`）：`input_mv/1000` V（一位小數）、`input_ma/1000` A（兩位小數）、`temp_c` °C 三個大數字，下一行「PTU 9A:96:00・狀態中文・HH:mm:ss（N 秒前）」（PTU 為 MAC 後 3 組、保留冒號，`RecentItem.ptuShort`／`ptuMacShort`；1.0.0+4 的「PTU 9600」後 4 碼看不懂），卡片底部小字「MAC 90:5F:E8:9A:96:00」（`Key('recent-latest-mac')`，`ptuMacFull`）。`ptu_state` 中文對照 `ptuStateLabels`，來源韌體 `ble_multi_wifi_gateway/main/http/mqtt_uploader.c` `ptu_state_to_string`（CONFIGURATION 設定中、POWER_SAVE 省電、LOW_POWER 低功率、POWER_TRANSFER 充電中、LATCH_FAULT／LATCHING_FAULT 鎖定故障、LOCAL_FAULT 本地故障、OTA_MODE、COOLING 冷卻中、EXCEEDED_RANGE PRU 超出範圍、UNKNOWN 未知；其他照原字串，空／NULL 顯示 `--`）。`*_FAULT` 狀態卡片邊框轉紅並加一行「PTU 回報故障」（`Key('recent-latest-fault')`）。星狀多台 PTU 時依 `ptu_mac`（無則 `device_id`）分組，每台一張小卡 `Key('recent-latest-<後4碼>')`（key 仍用後 4 碼；`recentLatestPerDevice`）。
+  3. **最近資料**（`ExpansionTile` 預設收合）：1.0.0+5 改為固定欄寬、整列單行不換行的自製表格（`Key('recent-table')`；1.0.0+4 的 `DataTable` 在手機寬度最後一欄「狀態」被截斷）。一對一（所有列同一 PTU）：時間 66｜V 42｜A 42｜°C 30｜狀態 58 dp，含左右 16 dp 邊距共 286 dp，360 dp 螢幕不需橫向捲動、無 PTU 欄；多台 PTU 才加 PTU 欄（MAC 後 3 組，72 dp）並包 `SingleChildScrollView(scrollDirection: horizontal)`（`Key('recent-table-scroll')`）。狀態欄用短標籤 `ptuStateShortLabels`／`ptuStateShort`（充電／待機（IDLE）／省電／低功率／設定／冷卻／超範圍／故障（所有 `*_FAULT`）／OTA／未知；其他截 4 字，空／NULL `--`）。
+  4. 右上〔重新整理〕；載入中 AppBar 下方進度條、按鈕停用。不自動輪詢；仍取 `limit=20`。
+  5. 1.0.0+5 移除電流 mA 折線圖與趨勢卡（`RecentSparklinePainter`，使用者不需要）。
+- **資料層**：`lib/data/recent_data_api.dart`（`RecentData`／`RecentItem`／`fetchRecentData`／`ptuMacShort`／`ptuMacFull`）；練習模式 `DemoSystem` 回每台已連線 PTU 一列。
 - **現場回報**：進入此頁呼叫 `FieldReporter.noteRecentDataViewed()`（`status` 事件、`error_message`「查看最近資料」）。完成頁出現時 session 已以 `completed` 結束（`FieldReporter.end`），所以從完成頁進入不會送出；只有 session 仍開著時才送。
-- 測試：`test/recent_data_test.dart`。
+- 測試：`test/recent_data_test.dart`（含 360×800、devicePixelRatio 1 的表格無 overflow 測試、PTU 後 3 組格式、短狀態標籤）。
+
+## 「閘道器狀態」——完成後也能看（1.0.0+5）
+
+完成頁按〔完成〕後就沒有入口再看〔查看最近資料〕；1.0.0+5 加一頁「閘道器狀態」（`lib/presentation/gateway_status_page.dart`，`GatewayStatusPage`），**不改配置流程本身**。
+
+- **入口**：(a) 首頁（第 0 步）〔檢查並開始〕下方一顆次要按鈕〔閘道器狀態〕（`Key('home-gateway-status')`，`OutlinedButton`）；(b) AppBar 拓撲選單（`Key('topology-menu')`，hub 圖示）第一項「閘道器狀態…」（`Key('gateway-status-menu')`），任何步驟都可開（操作進行中選單本來就停用）。
+- **上半「最近配置（這支手機）」**：本機記住這支手機最近完成配置的閘道器（`lib/data/recent_commissions.dart`，`RecentCommission{site, gateway, gatewayName(BLE 名稱), doneAt}`；`SharedPreferences` key `recent_commissions`／練習模式 `demo_recent_commissions`，與 `recent_gateways` 同一方式），最多 10 筆、同站同閘道器只留最新一筆；`CommissioningController.finishDone`（〔完成〕／〔配置下一台〕／完成頁的系統返回）在清狀態前寫入一筆。每列「站 S 閘道器 G」＋「BLE 名稱・MM-DD HH:mm 完成」，`Key('gs-recent-<S>-<G>')`。
+- **下半「後台在線閘道器」**：`GET /api/gateways/fleet-status`（APP key 白名單已允許；`lib/data/fleet_status_api.dart`，`FleetGateway`／`fetchFleetStatus`），每列讀 `site_id`、`gateway_id`、`online`、`ble_connected`、`direct.connected`／`direct.label`（一對一才有）、`device_last_seen`（PTU 最後一筆，r34）、`last_heartbeat`；fleet-status 沒有閘道器名稱欄位。顯示「站 S 閘道器 G」＋「在線／離線・PTU 已連線／未連線・最近資料 N 秒前」（`gatewayStatusLine`；PTU 已連線＝`direct.connected` 或 `ble_connected>0`；沒有 `device_last_seen` 時退回「最近心跳 N 秒前」，兩者皆無「尚無資料」），`Key('gs-fleet-<S>-<G>')`，依站、閘道器排序。
+- 每列點進去 → `RecentDataPage.open(context, site, gateway)`。右上〔重新整理〕（`Key('gs-refresh')`），載入中進度條＋「正在向後台查詢…」（`Key('gs-loading')`），錯誤紅字＋〔重試〕（`Key('gs-error')`／`gs-retry`；本機清單仍顯示、仍可點），空清單文案「這支手機還沒有完成過配置。」／「後台目前沒有任何閘道器。」（`gs-recent-empty`／`gs-fleet-empty`）。
+- 測試：`test/gateway_status_test.dart`（儲存規則、finishDone 寫入、fleet 欄位解析、三態＋點列導向、360 dp、兩個入口）。

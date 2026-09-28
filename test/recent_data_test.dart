@@ -3,9 +3,12 @@
 // the APP's own session (GET /api/app/recent/{site}/{gateway}?limit=20).
 // 1. The model parses the fixed contract (local time, PTU tail, volts).
 // 2. The page, top to bottom: the status banner (green / yellow / red /
-//    grey, red with 〔重試〕 on an error), the newest row per PTU in big
-//    digits (red border on a fault; one tile per PTU in the star mode),
-//    the trend line, the collapsed table; 〔重新整理〕 at the top right.
+//    grey, red with 〔重試〕 on an error) with the 「最近 N 筆」 line under
+//    it, the newest row per PTU in big digits (MAC's last 3 groups, whole
+//    MAC in small print; red border on a fault; one tile per PTU in the
+//    star mode), the collapsed table (1.0.0+5: fixed columns that fit
+//    360 dp with one PTU, a PTU column and a sideways scroll with more;
+//    no chart any more); 〔重新整理〕 at the top right.
 // 3. The done page has 〔查看最近資料〕 next to 〔完成〕／〔配置下一台〕 and
 //    opens the page for the finished station / gateway.
 // 4. Opening the page reports 「查看最近資料」 while a session is open, and
@@ -239,6 +242,8 @@ void main() {
       expect(first.deviceId, 1);
       expect(first.ptuMac, '90:5F:E8:9A:96:00');
       expect(first.ptuTail, '9600');
+      expect(first.ptuShort, '9A:96:00');
+      expect(first.ptuMacText, '90:5F:E8:9A:96:00');
       expect(first.ptuState, 'POWER_TRANSFER');
       expect(first.inputMv, 5000);
       expect(first.inputVoltsText, '5.00');
@@ -284,6 +289,22 @@ void main() {
       expect(parseRecentTs(null), isNull);
       expect(parseRecentTs(42), isNull);
       expect(ptuMacTail('90-5f-e8-9a-96-0a'), '960A');
+    });
+
+    test('PTU short form: the last 3 groups with colons (1.0.0+5)', () {
+      expect(ptuMacShort('90:5F:E8:9A:96:00'), '9A:96:00');
+      expect(ptuMacShort('90-5f-e8-9a-96-0a'), '9A:96:0A');
+      expect(ptuMacShort('905FE89A9600'), '9A:96:00');
+      expect(ptuMacShort('9A:96:00'), '9A:96:00');
+      expect(ptuMacShort('AB'), 'AB');
+      expect(ptuMacShort('ABC'), 'A:BC');
+      expect(ptuMacShort(''), '');
+      expect(ptuMacFull('905fe89a9600'), '90:5F:E8:9A:96:00');
+      expect(ptuMacFull(''), '');
+      expect(
+        RecentItem.fromJson({'ptu_mac': '90:5F:E8:9A:96:00'}).ptuShort,
+        '9A:96:00',
+      );
     });
 
     test('summary and clock text', () {
@@ -351,6 +372,29 @@ void main() {
       expect(ptuStateIsFault('LATCH_FAULT'), isTrue);
       expect(ptuStateIsFault('POWER_TRANSFER'), isFalse);
       expect(ptuStateIsFault(''), isFalse);
+    });
+
+    test('short state words for the table (1.0.0+5)', () {
+      expect(ptuStateShort('POWER_TRANSFER'), '充電');
+      expect(ptuStateShort('IDLE'), '待機');
+      expect(ptuStateShort('POWER_SAVE'), '省電');
+      expect(ptuStateShort('LOW_POWER'), '低功率');
+      expect(ptuStateShort('CONFIGURATION'), '設定');
+      expect(ptuStateShort('COOLING'), '冷卻');
+      expect(ptuStateShort('EXCEEDED_RANGE'), '超範圍');
+      expect(ptuStateShort('LATCH_FAULT'), '故障');
+      expect(ptuStateShort('LATCHING_FAULT'), '故障');
+      expect(ptuStateShort('LOCAL_FAULT'), '故障');
+      expect(ptuStateShort('OTA_MODE'), 'OTA');
+      expect(ptuStateShort('UNKNOWN'), '未知');
+      expect(ptuStateShort('power_transfer'), '充電', reason: 'case');
+      expect(ptuStateShort('SOME_FAULT'), '故障', reason: 'any fault');
+      expect(ptuStateShort('WHATEVER'), 'WHAT', reason: 'cut to 4');
+      expect(ptuStateShort(''), '--');
+      expect(ptuStateShort('NULL'), '--');
+      for (final key in ptuStateLabels.keys) {
+        expect(ptuStateShortLabels, contains(key), reason: key);
+      }
     });
 
     test('numbers: amps, volts, temperature, age', () {
@@ -449,7 +493,10 @@ void main() {
       expect(latest.first.ptuState, 'LOW_POWER', reason: 'the newest of 9602');
       expect(recentChronological(data).map((i) => i.inputMa), [500, 1612, 10]);
       expect(recentTrendText(data), '最近 3 筆・跨 4 秒・平均每秒 0.8 筆');
-      expect(recentLatestLine(latest.last, now), 'PTU 9601・充電中・13:00:08（2 秒前）');
+      expect(
+        recentLatestLine(latest.last, now),
+        'PTU 9A:96:01・充電中・13:00:08（2 秒前）',
+      );
       // One row: no span.
       final one = RecentData.fromJson(_rowsAt(now, const [Duration.zero]));
       expect(recentLatestPerDevice(one), hasLength(1));
@@ -466,13 +513,13 @@ void main() {
       expect(recentTrendText(byId), '最近 3 筆');
       expect(
         recentLatestLine(byId.items[1], now),
-        'PTU ----・--・--:--:--（時間不明）',
+        'PTU --:--:--・--・--:--:--（時間不明）',
       );
     });
   });
 
   group('page', () {
-    testWidgets('fresh data: green banner, big card, trend, table; refresh', (
+    testWidgets('fresh data: green banner, summary, big card, table; refresh', (
       tester,
     ) async {
       final now = DateTime(2026, 9, 28, 13, 0, 10);
@@ -493,11 +540,17 @@ void main() {
       expect(cardFinder, findsOneWidget);
       expect(find.byKey(const Key('recent-latest-grid')), findsNothing);
       expect(find.byKey(const Key('recent-latest-fault')), findsNothing);
-      expect(find.text('PTU 9600・充電中・13:00:05（5 秒前）'), findsOneWidget);
+      expect(find.text('PTU 9A:96:00・充電中・13:00:05（5 秒前）'), findsOneWidget);
       final line = tester.widget<Text>(
         find.byKey(const Key('recent-latest-line')),
       );
-      expect(line.data, 'PTU 9600・充電中・13:00:05（5 秒前）');
+      expect(line.data, 'PTU 9A:96:00・充電中・13:00:05（5 秒前）');
+      expect(find.text('PTU 9600・充電中・13:00:05（5 秒前）'), findsNothing);
+      // The whole MAC in small print under the line.
+      expect(
+        tester.widget<Text>(find.byKey(const Key('recent-latest-mac'))).data,
+        'MAC 90:5F:E8:9A:96:00',
+      );
       final big = find.descendant(
         of: cardFinder,
         matching: find.byType(RichText),
@@ -511,17 +564,14 @@ void main() {
       final side = (card.shape! as RoundedRectangleBorder).side;
       final colors = Theme.of(tester.element(cardFinder)).colorScheme;
       expect(side.color, isNot(colors.error));
-      // 3. Trend line and chart.
+      // 3. The summary line under the banner; no chart (1.0.0+5).
       expect(find.text('最近 2 筆・跨 20 秒・平均每秒 0.1 筆'), findsOneWidget);
-      final chart = find.byKey(const Key('recent-trend-chart'));
-      expect(chart, findsOneWidget);
-      final painter =
-          tester.widget<CustomPaint>(chart).painter! as RecentSparklinePainter;
-      expect(painter.points.map((p) => p.$2), [
-        120.0,
-        1612.0,
-      ], reason: 'oldest first');
-      // 4. Table collapsed, then expanded with words for the state.
+      final trend = tester.getRect(find.byKey(const Key('recent-trend')));
+      final bannerRect = tester.getRect(find.byKey(const Key('recent-banner')));
+      expect(trend.top, greaterThanOrEqualTo(bannerRect.bottom));
+      expect(trend.bottom, lessThanOrEqualTo(tester.getRect(cardFinder).top));
+      expect(find.byKey(const Key('recent-trend-chart')), findsNothing);
+      // 4. Table collapsed, then expanded with short words for the state.
       expect(find.byKey(const Key('recent-table-tile')), findsOneWidget);
       expect(find.text('最近資料（2 筆）'), findsOneWidget);
       expect(find.byKey(const Key('recent-table')), findsNothing);
@@ -534,8 +584,11 @@ void main() {
       expect(find.byKey(const Key('recent-table')), findsOneWidget);
       expect(find.text('13:00:05'), findsOneWidget);
       expect(find.text('12:59:45'), findsOneWidget);
-      expect(find.text('充電中'), findsNWidgets(2));
+      expect(find.text('充電'), findsNWidgets(2));
       expect(find.text('POWER_TRANSFER'), findsNothing);
+      // One PTU: no PTU column, no sideways scroll.
+      expect(find.text('PTU'), findsNothing);
+      expect(find.byKey(const Key('recent-table-scroll')), findsNothing);
       expect(find.byKey(const Key('recent-empty')), findsNothing);
       expect(find.byKey(const Key('recent-error')), findsNothing);
       expect(api.paths, ['GET /api/app/recent/80/1?limit=20']);
@@ -598,8 +651,73 @@ void main() {
       expect(find.byKey(const Key('recent-latest-9603')), findsOneWidget);
       expect(find.byKey(const Key('recent-latest-9602-fault')), findsOneWidget);
       expect(find.byKey(const Key('recent-latest-9601-fault')), findsNothing);
-      expect(find.textContaining('PTU 9603・低功率'), findsOneWidget);
-      expect(find.byKey(const Key('recent-trend-chart')), findsOneWidget);
+      expect(find.textContaining('PTU 9A:96:03・低功率'), findsOneWidget);
+      expect(find.byKey(const Key('recent-latest-9603-mac')), findsOneWidget);
+      expect(find.byKey(const Key('recent-trend-chart')), findsNothing);
+      // Several PTUs: the PTU column and a sideways scroll.
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('recent-table-tile')),
+        200,
+      );
+      await tester.tap(find.byKey(const Key('recent-table-tile')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('recent-table-scroll')), findsOneWidget);
+      expect(find.text('PTU'), findsOneWidget);
+      expect(find.text('9A:96:01'), findsOneWidget);
+      expect(find.text('9A:96:02'), findsOneWidget);
+      expect(find.text('9A:96:03'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('table at 360 dp: every column visible, no overflow', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(360, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final now = DateTime(2026, 9, 28, 13, 0, 10);
+      final api = _Api('data')
+        ..answer = _rowsAt(
+          now,
+          const [
+            Duration(seconds: 1),
+            Duration(seconds: 2),
+            Duration(seconds: 3),
+            Duration(seconds: 4),
+          ],
+          states: const [
+            'POWER_TRANSFER',
+            'EXCEEDED_RANGE',
+            'LOW_POWER',
+            'LOCAL_FAULT',
+          ],
+          ma: const [1612, 12345, 0, 7],
+        );
+      await _pumpPage(tester, api, now);
+      expect(tester.takeException(), isNull);
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('recent-table-tile')),
+        200,
+      );
+      await tester.tap(find.byKey(const Key('recent-table-tile')));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull, reason: 'no overflow');
+      expect(find.byKey(const Key('recent-table')), findsOneWidget);
+      expect(find.byKey(const Key('recent-table-scroll')), findsNothing);
+      // The last column (狀態) ends inside the 360 dp screen, for the
+      // header and for every row.
+      for (final label in ['狀態', '充電', '超範圍', '低功率', '故障']) {
+        final rect = tester.getRect(find.text(label));
+        expect(rect.right, lessThanOrEqualTo(360), reason: label);
+        expect(rect.left, greaterThanOrEqualTo(0), reason: label);
+      }
+      // A row's cells are one line: the state text is not wrapped.
+      final state = tester.widget<Text>(find.text('超範圍'));
+      expect(state.maxLines, 1);
+      expect(state.softWrap, isFalse);
+      expect(find.text('12.35'), findsOneWidget, reason: 'a wide A value');
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('count 0: grey banner, refresh then shows data', (
@@ -618,7 +736,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('recent-empty')), findsNothing);
       expect(find.text(recentDataOkText), findsOneWidget);
-      expect(find.text('PTU 9600・充電中・13:00:08（2 秒前）'), findsOneWidget);
+      expect(find.text('PTU 9A:96:00・充電中・13:00:08（2 秒前）'), findsOneWidget);
     });
 
     testWidgets('error: red banner with 〔重試〕; retry recovers', (tester) async {
@@ -708,7 +826,8 @@ void main() {
       // The demo backend answers one row per connected PTU (just sent).
       expect(find.byKey(const Key('recent-body')), findsOneWidget);
       expect(find.text(recentDataOkText), findsOneWidget);
-      expect(find.byKey(const Key('recent-trend-chart')), findsOneWidget);
+      expect(find.byKey(const Key('recent-trend')), findsOneWidget);
+      expect(find.byKey(const Key('recent-trend-chart')), findsNothing);
       // Back: the done page, its buttons untouched.
       await tester.pageBack();
       await tester.pumpAndSettle();

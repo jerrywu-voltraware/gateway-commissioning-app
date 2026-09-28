@@ -19,6 +19,7 @@ import '../core/rescue_code.dart';
 import '../core/star_allow_list.dart';
 import '../data/ble_gateway_link.dart';
 import '../data/contracts.dart';
+import '../data/recent_commissions.dart';
 import '../data/recent_gateways.dart';
 import '../data/dashboard_api.dart';
 import '../data/demo_system.dart';
@@ -907,8 +908,7 @@ const bindLaterLabel = '辨識並綁定';
 String ptuMissingTitle(String mac) =>
     '本樁 PTU 不在場（綁定 MAC 後 4 碼 ${macTail4(mac)}）';
 
-const ptuMissingHint =
-    '請確認 PTU 已上電；若已更換 PTU，按〔$replacePtuLabel〕解除綁定後重新配對。';
+const ptuMissingHint = '請確認 PTU 已上電；若已更換 PTU，按〔$replacePtuLabel〕解除綁定後重新配對。';
 
 /// r34: the same card once the re-check found the PTU connected
 /// ([CommissionState.ptuMissingBack]).
@@ -8960,6 +8960,19 @@ class CommissioningController extends Notifier<CommissionState> {
         gateway,
         ptuDeferred: state.ptuDeferred,
       );
+      // 1.0.0+5 「閘道器狀態」: remember this gateway on the phone so
+      // 〔查看最近資料〕 can be opened again after the done page is gone.
+      try {
+        await RecentCommissions.remember(
+          _link.demo,
+          RecentCommission(
+            site: doneSite,
+            gateway: gateway,
+            gatewayName: state.peer?.name ?? '',
+            doneAt: DateTime.now(),
+          ),
+        );
+      } catch (_) {}
       _generation++;
       _health?.cancel();
       _verifyCarry = null;

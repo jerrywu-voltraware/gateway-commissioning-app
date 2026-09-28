@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -56,6 +54,35 @@ String ptuStateLabel(String state) {
 
 /// A fault state (`*_FAULT`).
 bool ptuStateIsFault(String state) => state.toUpperCase().contains('FAULT');
+
+/// 1.0.0+5: the table's short state words (the 「狀態」 column must fit
+/// a 360 dp phone with the other columns). Same keys as [ptuStateLabels];
+/// `IDLE` reads 「待機」; any other `*_FAULT` 「故障」; the rest as sent,
+/// cut to 4 characters.
+const ptuStateShortLabels = <String, String>{
+  'CONFIGURATION': '設定',
+  'POWER_SAVE': '省電',
+  'LOW_POWER': '低功率',
+  'POWER_TRANSFER': '充電',
+  'IDLE': '待機',
+  'LATCH_FAULT': '故障',
+  'LATCHING_FAULT': '故障',
+  'LOCAL_FAULT': '故障',
+  'OTA_MODE': 'OTA',
+  'COOLING': '冷卻',
+  'EXCEEDED_RANGE': '超範圍',
+  'UNKNOWN': '未知',
+};
+
+/// The short state word for the table; `--` for none.
+String ptuStateShort(String state) {
+  final s = state.trim();
+  if (s.isEmpty || s.toUpperCase() == 'NULL') return '--';
+  final known = ptuStateShortLabels[s.toUpperCase()];
+  if (known != null) return known;
+  if (ptuStateIsFault(s)) return '故障';
+  return s.length > 4 ? s.substring(0, 4) : s;
+}
 
 // ---------------------------------------------------------------------------
 // Pure view helpers (tested without widgets)
@@ -147,14 +174,15 @@ List<RecentItem> recentLatestPerDevice(RecentData data) {
   return out;
 }
 
-/// The rows with a time, oldest first (the chart's x axis).
+/// The rows with a time, oldest first (the summary's span).
 List<RecentItem> recentChronological(RecentData data) {
   final rows = data.items.where((i) => i.ts != null).toList();
   rows.sort((a, b) => a.ts!.compareTo(b.ts!));
   return rows;
 }
 
-/// 「最近 20 筆・跨 N 秒・平均每秒 X 筆」.
+/// 「最近 20 筆・跨 N 秒・平均每秒 X 筆」 — the small line under the
+/// banner (1.0.0+5: the mA chart is gone, the installer did not use it).
 String recentTrendText(RecentData data) {
   final rows = recentChronological(data);
   final n = data.items.length;
@@ -166,9 +194,10 @@ String recentTrendText(RecentData data) {
   return '最近 $n 筆・跨 ${recentAgeText(span)}・平均每秒 $rateText 筆';
 }
 
-/// 「PTU 9600・充電中・13:00:03（7 秒前）」.
+/// 「PTU 9A:96:00・充電中・13:00:03（7 秒前）」 (1.0.0+5: the MAC's last 3
+/// groups — 「PTU 9600」 meant nothing to the installer).
 String recentLatestLine(RecentItem item, DateTime now) {
-  final tail = item.ptuTail.isEmpty ? '----' : item.ptuTail;
+  final tail = item.ptuShort.isEmpty ? '--:--:--' : item.ptuShort;
   final ts = item.ts;
   final ago = ts == null ? '時間不明' : '${recentAgeText(now.difference(ts))}前';
   return 'PTU $tail・${ptuStateLabel(item.ptuState)}・${recentClockText(ts)}（$ago）';
@@ -179,10 +208,10 @@ String recentLatestLine(RecentItem item, DateTime now) {
 // ---------------------------------------------------------------------------
 
 /// 09-28 〔查看最近資料〕 (one thing, one page): is the data coming in, what
-/// is the newest row, is the PTU fine. Top to bottom: the status banner,
-/// the newest row per PTU in big digits, the trend line (mA), and the last
-/// rows as a collapsed table. No polling: 〔重新整理〕 at the top right,
-/// 〔重試〕 on an error.
+/// is the newest row, is the PTU fine. Top to bottom: the status banner
+/// with the 「最近 N 筆」 summary under it, the newest row per PTU in big
+/// digits, and the last rows as a collapsed table (1.0.0+5: no chart).
+/// No polling: 〔重新整理〕 at the top right, 〔重試〕 on an error.
 class RecentDataPage extends ConsumerStatefulWidget {
   const RecentDataPage({
     super.key,
@@ -350,18 +379,26 @@ class _RecentDataPageState extends ConsumerState<RecentDataPage> {
       children: [
         _Banner(kind: banner.kind, text: banner.text),
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: Text(
+            recentTrendText(data),
+            key: const Key('recent-trend'),
+            style: Theme.of(context).textTheme.bodySmall
+                ?.merge(_tabular)
+                .copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
           child: latest.length == 1
               ? _LatestCard(item: latest.single, now: now, big: true)
               : _LatestGrid(items: latest, now: now),
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-          child: _TrendCard(data: data),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-          child: _RecentTable(data: data),
+          child: _RecentTable(data: data, singlePtu: latest.length == 1),
         ),
       ],
     );
@@ -451,8 +488,9 @@ class _Banner extends StatelessWidget {
 
 const _tabular = TextStyle(fontFeatures: [FontFeature.tabularFigures()]);
 
-/// The newest row of one PTU: three big numbers, then the PTU / state /
-/// time line. A fault state turns the border red and adds a warning line.
+/// The newest row of one PTU: three big numbers, the PTU / state / time
+/// line, and the PTU's whole MAC in small print. A fault state turns the
+/// border red and adds a warning line.
 class _LatestCard extends StatelessWidget {
   const _LatestCard({required this.item, required this.now, required this.big});
   final RecentItem item;
@@ -517,6 +555,18 @@ class _LatestCard extends StatelessWidget {
                       .copyWith(color: colors.onSurfaceVariant),
               maxLines: 2,
             ),
+            if (item.ptuMacText.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                'MAC ${item.ptuMacText}',
+                key: Key('$key-mac'),
+                style: theme.textTheme.bodySmall
+                    ?.merge(_tabular)
+                    .copyWith(color: colors.onSurfaceVariant),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
             if (fault) ...[
               const SizedBox(height: 6),
               Row(
@@ -579,7 +629,7 @@ class _BigNumber extends StatelessWidget {
   }
 }
 
-/// Star mode: one tile per PTU (last 4 digits, three numbers, state).
+/// Star mode: one tile per PTU (MAC's last 3 groups, three numbers, state).
 class _LatestGrid extends StatelessWidget {
   const _LatestGrid({required this.items, required this.now});
   final List<RecentItem> items;
@@ -609,155 +659,79 @@ class _LatestGrid extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// 3. Trend
+// 3. Recent rows table (collapsed)
 // ---------------------------------------------------------------------------
 
-class _TrendCard extends StatelessWidget {
-  const _TrendCard({required this.data});
-  final RecentData data;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final rows = recentChronological(data);
-    return Card(
-      margin: EdgeInsets.zero,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: theme.colorScheme.outlineVariant),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              recentTrendText(data),
-              key: const Key('recent-trend'),
-              style: theme.textTheme.bodyMedium?.merge(_tabular),
-            ),
-            const SizedBox(height: 8),
-            SizedBox(
-              height: 60,
-              child: CustomPaint(
-                key: const Key('recent-trend-chart'),
-                painter: RecentSparklinePainter(
-                  points: [
-                    for (final r in rows)
-                      if (r.inputMa != null)
-                        (
-                          r.ts!.millisecondsSinceEpoch.toDouble(),
-                          r.inputMa!.toDouble(),
-                        ),
-                  ],
-                  color: theme.colorScheme.primary,
-                  grid: theme.colorScheme.outlineVariant,
-                ),
-                child: const SizedBox.expand(),
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '電流 mA（左舊右新）',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// A line of `input_ma` over time, no package: x by time (oldest left),
-/// y from the rows' min to max with a little headroom, a dot on the newest.
-class RecentSparklinePainter extends CustomPainter {
-  const RecentSparklinePainter({
-    required this.points,
-    required this.color,
-    required this.grid,
-  });
-
-  /// `(time in ms, mA)` pairs, oldest first.
-  final List<(double, double)> points;
-  final Color color, grid;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final gridPaint = Paint()
-      ..color = grid
-      ..strokeWidth = 1;
-    canvas.drawLine(
-      Offset(0, size.height - 0.5),
-      Offset(size.width, size.height - 0.5),
-      gridPaint,
-    );
-    if (points.isEmpty) return;
-    var minY = points.first.$2, maxY = points.first.$2;
-    var minX = points.first.$1, maxX = points.first.$1;
-    for (final (x, y) in points) {
-      minY = math.min(minY, y);
-      maxY = math.max(maxY, y);
-      minX = math.min(minX, x);
-      maxX = math.max(maxX, x);
-    }
-    if (maxY == minY) {
-      minY -= 1;
-      maxY += 1;
-    }
-    final pad = (maxY - minY) * 0.1;
-    minY -= pad;
-    maxY += pad;
-    const inset = 4.0;
-    Offset at(int i) {
-      final (x, y) = points[i];
-      final fx = maxX == minX
-          ? i / math.max(points.length - 1, 1)
-          : (x - minX) / (maxX - minX);
-      final fy = (y - minY) / (maxY - minY);
-      return Offset(
-        inset + fx * (size.width - 2 * inset),
-        inset + (1 - fy) * (size.height - 2 * inset),
-      );
-    }
-
-    final path = Path()..moveTo(at(0).dx, at(0).dy);
-    for (var i = 1; i < points.length; i++) {
-      final p = at(i);
-      path.lineTo(p.dx, p.dy);
-    }
-    canvas.drawPath(
-      path,
-      Paint()
-        ..color = color
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2
-        ..strokeJoin = StrokeJoin.round,
-    );
-    canvas.drawCircle(at(points.length - 1), 3.5, Paint()..color = color);
-  }
-
-  @override
-  bool shouldRepaint(RecentSparklinePainter old) =>
-      old.points != points || old.color != color || old.grid != grid;
-}
-
-// ---------------------------------------------------------------------------
-// 4. Recent rows table (collapsed)
-// ---------------------------------------------------------------------------
-
+/// 1.0.0+5: fixed column widths, one line per row, no wrapping. One PTU
+/// (the direct mode): 時間｜V｜A｜°C｜狀態, 286 dp with the margins — it fits
+/// a 360 dp phone without a horizontal scroll (the 「狀態」 column was cut
+/// off before). Several PTUs: a 「PTU」 column (MAC's last 3 groups) is
+/// added and the table scrolls sideways.
 class _RecentTable extends StatelessWidget {
-  const _RecentTable({required this.data});
+  const _RecentTable({required this.data, required this.singlePtu});
   final RecentData data;
+  final bool singlePtu;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cell = theme.textTheme.bodyMedium?.merge(_tabular);
     final head = theme.textTheme.labelLarge;
-    DataCell text(String s, {TextAlign align = TextAlign.left}) => DataCell(
-      Text(s, style: cell, maxLines: 1, softWrap: false, textAlign: align),
+    const gap = 8.0;
+    final columns = <_Col>[
+      const _Col('時間', 66),
+      if (!singlePtu) const _Col('PTU', 72),
+      const _Col('V', 42, numeric: true),
+      const _Col('A', 42, numeric: true),
+      const _Col('°C', 30, numeric: true),
+      const _Col('狀態', 58),
+    ];
+    Widget text(String s, _Col col, TextStyle? style) => SizedBox(
+      width: col.width,
+      child: Text(
+        s,
+        style: style,
+        maxLines: 1,
+        softWrap: false,
+        overflow: TextOverflow.clip,
+        textAlign: col.numeric ? TextAlign.right : TextAlign.left,
+      ),
+    );
+    Widget row(List<String> values, TextStyle? style, {Key? key}) => Padding(
+      key: key,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final (i, col) in columns.indexed) ...[
+            if (i > 0) const SizedBox(width: gap),
+            text(values[i], col, style),
+          ],
+        ],
+      ),
+    );
+    final table = Column(
+      key: const Key('recent-table'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        row([for (final c in columns) c.title], head),
+        const Divider(height: 1),
+        for (final (i, item) in data.items.indexed)
+          row(
+            [
+              recentClockText(item.ts),
+              if (!singlePtu)
+                item.ptuShort.isEmpty ? '--:--:--' : item.ptuShort,
+              item.inputVoltsText,
+              recentAmpsText(item.inputMa),
+              recentTempText(item.tempC),
+              ptuStateShort(item.ptuState),
+            ],
+            cell,
+            key: ValueKey('recent-row-$i'),
+          ),
+      ],
     );
     return Card(
       margin: EdgeInsets.zero,
@@ -771,45 +745,25 @@ class _RecentTable extends StatelessWidget {
         initiallyExpanded: false,
         title: Text('$recentDataTableTitle（${data.items.length} 筆）'),
         childrenPadding: const EdgeInsets.only(bottom: 8),
+        expandedCrossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: DataTable(
-              key: const Key('recent-table'),
-              columnSpacing: 14,
-              horizontalMargin: 16,
-              headingRowHeight: 36,
-              dataRowMinHeight: 32,
-              dataRowMaxHeight: 32,
-              columns: [
-                DataColumn(label: Text('時間', style: head)),
-                DataColumn(label: Text('PTU', style: head)),
-                DataColumn(label: Text('V', style: head), numeric: true),
-                DataColumn(label: Text('A', style: head), numeric: true),
-                DataColumn(label: Text('°C', style: head), numeric: true),
-                DataColumn(label: Text('狀態', style: head)),
-              ],
-              rows: [
-                for (final (i, item) in data.items.indexed)
-                  DataRow(
-                    key: ValueKey('recent-row-$i'),
-                    cells: [
-                      text(recentClockText(item.ts)),
-                      text(item.ptuTail.isEmpty ? '----' : item.ptuTail),
-                      text(item.inputVoltsText, align: TextAlign.right),
-                      text(
-                        recentAmpsText(item.inputMa),
-                        align: TextAlign.right,
-                      ),
-                      text(recentTempText(item.tempC), align: TextAlign.right),
-                      text(ptuStateLabel(item.ptuState)),
-                    ],
-                  ),
-              ],
+          if (singlePtu)
+            table
+          else
+            SingleChildScrollView(
+              key: const Key('recent-table-scroll'),
+              scrollDirection: Axis.horizontal,
+              child: table,
             ),
-          ),
         ],
       ),
     );
   }
+}
+
+class _Col {
+  const _Col(this.title, this.width, {this.numeric = false});
+  final String title;
+  final double width;
+  final bool numeric;
 }
