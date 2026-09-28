@@ -1155,10 +1155,13 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                     ),
                   const PopupMenuDivider(),
                   // 1.0.0+5: 「閘道器狀態」 from any page (the flow untouched).
-                  const PopupMenuItem(
-                    key: Key('gateway-status-menu'),
+                  // 1.0.0+10: greyed while a run is busy or a gateway is
+                  // connected ([gatewayStatusMenuEnabled]).
+                  PopupMenuItem(
+                    key: const Key('gateway-status-menu'),
                     value: 'status',
-                    child: Text('$gatewayStatusLabel…'),
+                    enabled: gatewayStatusMenuEnabled(state),
+                    child: Text(gatewayStatusMenuText(state)),
                   ),
                   const PopupMenuDivider(),
                   PopupMenuItem<String>(
@@ -3582,14 +3585,24 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   /// the binding and goes to step 7, 〔PTU 已上電，重新檢查〕 reads again;
   /// green 「PTU 已連線」 once the re-check found it
   /// ([CommissionState.ptuMissingBack]).
+  ///
+  /// 1.0.0+10: texts, tone and buttons from [ptuCardView] — neutral
+  /// 「正在尋找本樁 PTU…」 with 〔重新檢查〕 only while the gateway is still
+  /// looking.
   Widget _ptuMissingCard(CommissionState s, CommissioningController c) {
     final theme = Theme.of(context);
     final mac = s.ptuMissingMac!;
-    final back = s.ptuMissingBack;
-    final fg = back
-        ? Colors.green.shade900
-        : theme.colorScheme.onErrorContainer;
-    final bg = back ? Colors.green.shade100 : theme.colorScheme.errorContainer;
+    final view = ptuCardView(s)!;
+    final fg = switch (view.tone) {
+      PtuCardTone.ok => Colors.green.shade900,
+      PtuCardTone.searching => theme.colorScheme.onSurface,
+      PtuCardTone.missing => theme.colorScheme.onErrorContainer,
+    };
+    final bg = switch (view.tone) {
+      PtuCardTone.ok => Colors.green.shade100,
+      PtuCardTone.searching => theme.colorScheme.surfaceContainerHighest,
+      PtuCardTone.missing => theme.colorScheme.errorContainer,
+    };
     return Card(
       key: const Key('ptu-missing'),
       color: bg,
@@ -3600,16 +3613,13 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             macRichText(
-              back ? ptuBackTitle(mac) : ptuMissingTitle(mac),
+              view.title,
               key: const Key('ptu-missing-title'),
               style: TextStyle(color: fg, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 4),
-            Text(
-              back ? ptuBackHint : ptuMissingHint,
-              style: TextStyle(color: fg),
-            ),
-            if (!back) ...[
+            Text(view.hint, style: TextStyle(color: fg)),
+            if (view.replace) ...[
               const SizedBox(height: 8),
               FilledButton.icon(
                 key: const Key('ptu-missing-replace'),
@@ -3617,12 +3627,14 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                 onPressed: s.busy ? null : () => _replacePtu(c, mac),
                 label: const Text(replacePtuLabel),
               ),
-              const SizedBox(height: 4),
+            ],
+            if (view.recheck.isNotEmpty) ...[
+              SizedBox(height: view.replace ? 4 : 8),
               OutlinedButton.icon(
                 key: const Key('ptu-missing-recheck'),
                 icon: const Icon(Icons.refresh, size: 20),
                 onPressed: s.busy ? null : c.recheckBoundPtu,
-                label: const Text(recheckPtuLabel),
+                label: Text(view.recheck),
               ),
             ],
           ],

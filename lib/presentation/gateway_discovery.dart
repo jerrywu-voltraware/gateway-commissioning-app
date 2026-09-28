@@ -32,9 +32,10 @@ class GatewayDiscovery extends ConsumerStatefulWidget {
   final bool enabled;
   final Future<void> Function(GatewayPeer) onConnect;
 
-  /// 「辨識」 on a row: connect to it (the link stays open and the flow
-  /// continues) and blink it. Null hides the button.
-  final Future<void> Function(GatewayPeer)? onIdentify;
+  /// 「辨識」 on a row: blink it and stay on the list (1.0.0+9). Answers
+  /// whether the identify was really sent (1.0.0+10: 「已閃燈」 only then —
+  /// not after a cancel or a failure). Null hides the button.
+  final Future<bool> Function(GatewayPeer)? onIdentify;
   @override
   ConsumerState<GatewayDiscovery> createState() => _GatewayDiscoveryState();
 }
@@ -61,6 +62,18 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
   Timer? _identifiedTimer;
   int _epoch = 0, _backendEpoch = 0;
   StreamSubscription<List<GatewayPeer>>? _scan;
+
+  /// 1.0.0+10: a live scan is wanted (started and not stopped by the
+  /// installer) — resumed when this page is on top again after another
+  /// page (「閘道器狀態」's own scan) ended it.
+  bool _liveWanted = false;
+
+  /// 1.0.0+10: [_resumeScan] is waiting (the list disabled, busy or not on
+  /// top); tried again when that ends.
+  bool _resumePending = false;
+
+  /// 1.0.0+10: whether this list's route was on top at the last check.
+  bool? _routeCurrent;
   GatewayLink? _activeLink;
   Timer? _refresh;
   Future<void>? _stopping;
@@ -77,6 +90,50 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     _refresh = Timer.periodic(const Duration(seconds: 15), (_) {
       if (mounted) _loadBackend();
     });
+  }
+
+  /// 1.0.0+10 (review P2-5): back on top (e.g. from 「閘道器狀態」, whose
+  /// scan stopped this one) — the live scan starts again when it was
+  /// wanted.
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final current = ModalRoute.of(context)?.isCurrent ?? true;
+    final was = _routeCurrent;
+    _routeCurrent = current;
+    if (was == false && current) _resumeScan();
+  }
+
+  @override
+  void didUpdateWidget(covariant GatewayDiscovery oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // The run that disabled the list (e.g. 〔辨識〕) is over.
+    if (widget.enabled && !oldWidget.enabled && _resumePending) _resumeScan();
+  }
+
+  /// Starts the live scan again when one is wanted and none runs; waits
+  /// (see [_resumePending]) while the list is disabled, busy or covered.
+  void _resumeScan() {
+    if (!_liveWanted || _scanning) return;
+    _resumePending = true;
+    if (!widget.enabled ||
+        _selecting ||
+        _background ||
+        _routeCurrent == false) {
+      return;
+    }
+    unawaited(() async {
+      await _stopping;
+      if (!mounted || !_resumePending || _scanning) return;
+      await _start(keep: true);
+    }());
+  }
+
+  /// 〔停止搜尋〕: the installer stopped it — not resumed by itself.
+  Future<void> _stopByUser() {
+    _liveWanted = false;
+    _resumePending = false;
+    return _stop();
   }
 
   @override
@@ -183,7 +240,9 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     }
   }
 
-  Future<void> _start() async {
+  /// [keep] (1.0.0+10, a resumed scan): the rows heard before stay until
+  /// the scan's first answer — the list does not flash empty.
+  Future<void> _start({bool keep = false}) async {
     if (!widget.enabled ||
         _scanning ||
         _selecting ||
@@ -194,9 +253,11 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     final epoch = ++_epoch;
     final link = ref.read(linkProvider);
     _activeLink = link;
+    _liveWanted = link is GatewayScanner;
+    _resumePending = false;
     setState(() {
       _scanning = true;
-      _found = [];
+      if (!keep) _found = [];
       _error = null;
     });
     unawaited(_loadBackend());
@@ -279,19 +340,23 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
   }
 
   /// 1.0.0+9: 〔辨識〕 blinks [peer] ([GatewayDiscovery.onIdentify]) and the
-  /// list stays; 「已閃燈」 on its row for [identifiedHintFor] when the
-  /// controller reports no error.
+  /// list stays; 「已閃燈」 on its row for [identifiedHintFor].
+  ///
+  /// 1.0.0+10: the hint only when the identify was really sent (not after
+  /// 〔取消操作〕 or a failure); a live scan running before starts again
+  /// afterwards.
   Future<void> _identify(GatewayPeer peer) async {
     final action = widget.onIdentify;
     if (_selecting || !widget.enabled || action == null) return;
+    final resume = _scanning && _liveWanted;
     setState(() {
       _selecting = true;
       _identified = null;
     });
     try {
       await _stop();
-      if (mounted) await action(peer);
-      if (mounted && ref.read(commissionProvider).error == null) {
+      final blinked = mounted && await action(peer);
+      if (mounted && blinked) {
         _identifiedTimer?.cancel();
         setState(() => _identified = peer.id);
         _identifiedTimer = Timer(identifiedHintFor, () {
@@ -301,6 +366,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     } finally {
       if (mounted) setState(() => _selecting = false);
     }
+    if (mounted && resume) _resumeScan();
   }
 
   Widget _tile(GatewayPeer peer, {RecentGateway? recent}) {
@@ -520,7 +586,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
           children: [
             FilledButton.icon(
               onPressed: widget.enabled && !_selecting
-                  ? (_scanning ? _stop : _start)
+                  ? (_scanning ? _stopByUser : _start)
                   : null,
               icon: Icon(_scanning ? Icons.stop : Icons.search),
               label: Text(_scanning ? '停止搜尋' : '重新搜尋'),

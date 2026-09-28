@@ -76,9 +76,15 @@ class RecentData {
     required this.gatewayId,
     required this.count,
     required this.items,
+    this.serverOffset,
   });
 
   final int siteId, gatewayId;
+
+  /// 1.0.0+10: the back office's clock minus the phone's, from its answer's
+  /// `Date` header ([ServerClock]); null when unknown (the phone's clock
+  /// is used).
+  final Duration? serverOffset;
 
   /// Rows the backend has (`count`); 0 = nothing received yet.
   final int count;
@@ -102,6 +108,7 @@ class RecentData {
     Map<String, dynamic> json, {
     int site = 0,
     int gateway = 0,
+    Duration? serverOffset,
   }) {
     final raw = json['items'];
     final items = raw is List
@@ -115,6 +122,7 @@ class RecentData {
       gatewayId: (json['gateway_id'] as num?)?.toInt() ?? gateway,
       count: (json['count'] as num?)?.toInt() ?? items.length,
       items: items,
+      serverOffset: serverOffset,
     );
   }
 }
@@ -195,7 +203,16 @@ Future<RecentData> fetchRecentData(
     'GET',
     recentDataPath(site, gateway, limit: limit),
   );
-  return RecentData.fromJson(json, site: site, gateway: gateway);
+  // 1.0.0+10: the back office's clock as its answer's `Date` said.
+  final offset = api is ServerClock
+      ? (api as ServerClock).serverClockOffset
+      : null;
+  return RecentData.fromJson(
+    json,
+    site: site,
+    gateway: gateway,
+    serverOffset: offset,
+  );
 }
 
 /// Words for a failed fetch: 「連不上後台（原因）」. 1.0.0+7: the pages log

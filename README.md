@@ -143,3 +143,13 @@ Wi-Fi 名稱下方可掃描手機周邊的 2.4 GHz 網路，依訊號排序，�
 - 測試：`test/ui_trim_test.dart`（無客戶字樣、無 demo 開關、無下拉、無自動同步開關、`autoSyncDefault` false 且忽略舊存值、清單 tile ≤ 72 dp 且 4 台入屏、完整 MAC、標題無省略且有效字級 ≥ 14）；`env_switch_widget_test`／`local_backend_widget_test`／`network_check_test`／`recent_data_test`／`round30_rehearsal_fixes_test`／`widget_test` 依新介面調整。
 
 ### 1.0.0+9（09-29 實機截圖）：AppBar 標題不再用 `FittedBox` 縮小（`LayoutBuilder`：放得下用 titleLarge，否則 titleMedium，不縮放不省略），拓撲選單（直連／星狀／每台 PTU 數／直連進階設定）與主題併入 ⋮（`Key('topology-menu')` 不變，主題預設淺色 `defaultThemeMode`），「● 正式站」chip 緊湊（字 12）；第 2 步清單 tile 改自訂排版（不用 `ListTile`，避免小標籤與第二行重疊）——第一行 `Wrap`「站 81・閘道器 1」＋「已配置／未配置」小標籤＋訊號最強的「最近」實心 chip（`gatewayNearestLabel`，卡片描邊、排第一，<6 dB 仍有「差距小」提示）＋「-39 dBm」，第二行單一 `Text`「GIOS-S81-GW01 · …3A00 · 後端在線」（`backendPresenceShort`：在線／離線／無紀錄／已封存／未知）一個省略號；燈泡〔辨識〕改為只閃燈（`CommissioningController.identifyPeer`：連線→get_config→identify both／gateway→斷線，step 不變，tile 顯示「已閃燈」3 秒），點整列才選擇；測試 `test/ui_trim_test.dart`（載入 SDK Roboto 量寬）。
+
+### 1.0.0+10（邏輯修正）：審查 1.0.0+9（d308987）後的邏輯修正，版面未動（版號由下一輪與版面調整一起升）
+- 清單〔辨識〕（`CommissioningController.identifyPeer`）：時間上限改為 `identifyPeerTimeout`＝`reconnectBudget`（80 秒；BLE 連線最壞 53 秒）；指令走 `_commandBusy`（閘道器回 busy 會重送，`absorb: false` 不寫入流程 config），舊韌體（沒有 `identify_ptu_supported`）送不帶 target 的 identify；只有仍是目前 generation、且流程沒有選其他閘道器時才斷線（`connect()` 先 `_generation++`），逾時後立即斷線收掉背景連線；結束後還原清單原本的提示（如〔配置下一台〕的「預設沿用站 X」）；回傳是否真的送出，「已閃燈」只在送出時顯示；辨識中按〔取消操作〕只中止辨識（不顯示「已取消…」、不結束現場 session）。
+- 〔更換 PTU〕（`replaceBoundPtu`）：先過網路體檢與「沿用目前站點」的所有條件（`_reuseStationBlocked`：網路未就緒／上傳暫停／測試模式／不能沿用站點），全部通過才在進第 7 步前一刻送 `direct_bind_mac: ""`；送出前記 `tempBoundMac = ""`（`replacedBindMarker`）與 `tempRestoreMac = 舊 MAC`，第 7 步取消／結束／〔先完成配置〕由 `_releaseTempBind` 還原舊綁定，按「是這台」才換成新 PTU；`_goBindLater` 任何停下都在紅框說明原因。
+- 綁定 PTU 是否在場（`boundPtuPresence`）：`connected` 且 `ptu_mac` 等於綁定 MAC 才算在場，不同時顯示紅卡「連到的不是綁定的 PTU」；`scanning`／`connecting` 且開機 `uptime_sec` 未滿 90 秒（`boundPtuSettle`）或狀態剛變化時，顯示中性卡「正在尋找本樁 PTU…」＋〔重新檢查〕（不回報後台）；沒有 uptime 時只對 `connecting` 顯示中性。卡片的色調、文字與按鈕由 `ptuCardView` 決定。
+- 清單掃描：〔辨識〕結束後、從其他頁面（例如「閘道器狀態」）返回清單時，原本在掃描就自動恢復（保留舊的列直到新結果回來）；使用者自己按〔停止搜尋〕則不自動恢復。
+- ⋮「閘道器狀態…」在操作進行中（busy）或已連上閘道器（step ≥ 2）時停用，顯示「閘道器狀態（配置進行中不可用）」（`gatewayStatusMenuEnabled`）。
+- 最近資料：`recentAgeText` 加上「N 小時」「N 天」；負的年齡當 0 秒；後台回應帶 `Date` header 時（`ServerClock`，`DashboardApi` 記錄時鐘差），新鮮度以後台時間判斷（`recentServerNow`），手機時鐘快 30 秒也不會誤判黃色。
+- 第 9 步驗證通過時（安裝報告送出的同一刻）就寫入「閘道器狀態」的本機紀錄，不必等按〔完成〕（同站同閘道器只保留一筆）。
+- 測試：新增 `test/logic_fixes_v10_test.dart`（18 項）；`test/gateway_status_test.dart` 改為驗證按〔完成〕前已有紀錄；清單測試的假掃描改為 broadcast（掃描會重新訂閱）。

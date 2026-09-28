@@ -97,6 +97,13 @@ String? operatorNameOf(Object? value) {
   return name.length > 64 ? name.substring(0, 64) : name;
 }
 
+/// 1.0.0+10: an API that knows the back office's clock — the last answer's
+/// `Date` header minus the phone's time when it arrived; null before any
+/// such answer.
+abstract class ServerClock {
+  Duration? get serverClockOffset;
+}
+
 abstract class GatewayApi {
   Future<void> login(String base, String password);
   Future<Map<String, dynamic>> request(

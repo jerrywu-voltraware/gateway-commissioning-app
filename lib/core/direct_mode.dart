@@ -423,6 +423,10 @@ const directStrayBindHint = '這個綁定不是在本機確認過的：保留則
 String directUnbindFailedText(Object? mac, [Object? restore]) => restore == null
     ? '已取消，但閘道器的暫時綁定（PTU ${formatMac(mac)}）未能解除；'
           '下次進入第 7 步會再詢問是否解除。'
+    // 1.0.0+10: 〔更換 PTU〕 left the gateway unbound (no temporary MAC).
+    : (mac?.toString() ?? '').isEmpty
+    ? '已取消，但閘道器的 PTU 綁定未能還原成原本的 ${formatMac(restore)}；'
+          '請重新連線這台閘道器確認綁定。'
     : '已取消，但閘道器的暫時綁定（PTU ${formatMac(mac)}）未能還原成原本的'
           '綁定 ${formatMac(restore)}；下次進入第 7 步會再詢問。';
 

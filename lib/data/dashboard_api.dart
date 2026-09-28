@@ -43,7 +43,12 @@ Uri? _apiBase(String base) {
 }
 
 class DashboardApi
-    implements GatewayApi, SessionStore, SessionInfo, OperatorInfo {
+    implements
+        GatewayApi,
+        SessionStore,
+        SessionInfo,
+        OperatorInfo,
+        ServerClock {
   DashboardApi({DateTime Function()? now}) : _now = now ?? DateTime.now;
 
   final DateTime Function() _now;
@@ -134,6 +139,20 @@ class DashboardApi
     }
   }
 
+  Duration? _serverOffset;
+
+  @override
+  Duration? get serverClockOffset => _serverOffset;
+
+  /// 1.0.0+10: an answer's `Date` header (RFC 1123) as the back office's
+  /// clock offset; a missing or unreadable one keeps the last.
+  void _noteServerDate(String? value) {
+    if (value == null) return;
+    try {
+      _serverOffset = HttpDate.parse(value).difference(_now());
+    } catch (_) {}
+  }
+
   @override
   Future<Map<String, dynamic>> request(
     String method,
@@ -156,6 +175,7 @@ class DashboardApi
       if (_key != null) req.headers.set('X-API-Key', _key!);
       if (body != null) req.write(jsonEncode(body));
       res = await req.close().timeout(const Duration(seconds: 15));
+      _noteServerDate(res.headers.value(HttpHeaders.dateHeader));
       text = await utf8.decoder
           .bind(res)
           .join()

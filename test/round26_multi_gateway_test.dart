@@ -220,7 +220,7 @@ void main() {
                   child: GatewayDiscovery(
                     enabled: true,
                     onConnect: (_) async {},
-                    onIdentify: (_) async {},
+                    onIdentify: (_) async => true,
                   ),
                 ),
               ),

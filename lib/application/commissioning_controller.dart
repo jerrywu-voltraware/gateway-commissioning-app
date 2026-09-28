@@ -42,6 +42,13 @@ final demoSystemProvider = Provider((ref) => DemoSystem());
 /// 1.0.0+9: the busy message of [CommissioningController.identifyPeer].
 const identifyPeerLabel = '辨識閘道器（閃燈）';
 
+/// 1.0.0+10 (review: 20 s ended a weak-signal list 〔辨識〕 in 「等待超時」
+/// and a field report, while the link's own connect may take 53 s,
+/// ble_gateway_link.dart): the list 〔辨識〕's overall limit is the
+/// reconnect budget ([reconnectBudget], 80 s). Tests shorten it (whole
+/// seconds, at least 1).
+Duration identifyPeerTimeout = reconnectBudget;
+
 final linkProvider = Provider<GatewayLink>(
   (ref) => ref.watch(demoProvider)
       ? ref.watch(demoSystemProvider)
@@ -935,11 +942,147 @@ const replacePtuConfirmTitle = '更換 PTU：解除綁定並重新配對？';
 /// r34: the confirm body of 〔更換 PTU〕.
 String replacePtuConfirmText(String mac) =>
     '會解除閘道器對 PTU ${formatMac(mac)} 的綁定（站點與 Wi-Fi 不變），'
-    '然後沿用目前站點到「選擇 PTU」，由閘道器重新搜尋本樁的新 PTU。';
+    '然後沿用目前站點到「選擇 PTU」，由閘道器重新搜尋本樁的新 PTU；'
+    '按「是這台」之前取消或結束，會還原原本的綁定。';
 
 /// r34: the busy texts.
 const replacingPtuText = '正在解除 PTU 綁定';
 const recheckingPtuText = '正在重新檢查 PTU';
+
+/// 1.0.0+10 (review P2-8): ⋮「閘道器狀態…」 — its own BLE scan and back
+/// office reads — only while nothing runs and no gateway is connected
+/// (the start page and the gateway list).
+bool gatewayStatusMenuEnabled(CommissionState s) => !s.busy && s.step < 2;
+
+/// 1.0.0+10: why ⋮「閘道器狀態…」 is greyed.
+const gatewayStatusBusyText = '配置進行中不可用';
+
+/// 1.0.0+10: the menu item's text ([gatewayStatusMenuEnabled]).
+String gatewayStatusMenuText(CommissionState s) =>
+    gatewayStatusMenuEnabled(s) ? '閘道器狀態…' : '閘道器狀態（$gatewayStatusBusyText）';
+
+/// 1.0.0+10 (review P2-3): a bound PTU the gateway is still looking for
+/// (scanning / connecting) this soon after a boot is not called missing.
+const boundPtuSettle = Duration(seconds: 90);
+
+/// 1.0.0+10: the bound PTU of a one-to-one gateway, as `get_status` says.
+enum BoundPtuPresence {
+  /// Connected, and to the bound MAC.
+  present,
+
+  /// Scanning / connecting within [boundPtuSettle] of a boot or right after
+  /// a change of state — the neutral card, not red yet.
+  searching,
+
+  /// Connected, but to another PTU (「連到的不是綁定的 PTU」).
+  other,
+
+  /// Not connected (red).
+  missing,
+}
+
+/// 1.0.0+10 (review P2-3): [report] (`get_status.direct`) read for the
+/// PTU bound to [bound]. Connected counts only with the bound MAC
+/// (`ptu_mac`; firmware without it — the gateway connects nothing but its
+/// binding — counts as present). `scanning` / `connecting` is
+/// [BoundPtuPresence.searching] while `uptime_sec` ([uptimeSec]) is under
+/// [boundPtuSettle] or the state has just [changed]; without an uptime,
+/// `connecting` only. Everything else is missing.
+BoundPtuPresence boundPtuPresence(
+  DirectStatus report,
+  String bound, {
+  Object? uptimeSec,
+  bool changed = false,
+}) {
+  if (report.state == DirectState.connected) {
+    final mac = report.ptuMac;
+    return mac == null || sameMac(mac, bound)
+        ? BoundPtuPresence.present
+        : BoundPtuPresence.other;
+  }
+  if (report.state == DirectState.scanning ||
+      report.state == DirectState.connecting) {
+    final fresh = uptimeSec is num
+        ? uptimeSec < boundPtuSettle.inSeconds
+        : report.state == DirectState.connecting;
+    if (fresh || changed) return BoundPtuPresence.searching;
+  }
+  return BoundPtuPresence.missing;
+}
+
+/// 1.0.0+10: the neutral card (the gateway still looking for its PTU).
+const ptuSearchingTitle = '正在尋找本樁 PTU…';
+
+String ptuSearchingHint(String mac) =>
+    '閘道器剛開機或狀態剛變化，正在連線綁定的 PTU（MAC 後 4 碼 ${macTail4(mac)}），'
+    '通常 1 分鐘內會連上；請稍候再按〔$ptuSearchingRecheckLabel〕。';
+
+const ptuSearchingRecheckLabel = '重新檢查';
+
+/// 1.0.0+10: connected, but not to the bound PTU.
+String ptuOtherTitle(String bound, String other) =>
+    '連到的不是綁定的 PTU（綁定 MAC 後 4 碼 ${macTail4(bound)}，'
+    '目前連 ${macTail4(other)}）';
+
+/// 1.0.0+10: the PTU-missing card's colour.
+enum PtuCardTone { ok, searching, missing }
+
+/// 1.0.0+10: what the PTU-missing card ([CommissionState.ptuMissingMac])
+/// shows — its tone, texts, whether 〔更換 PTU〕 is offered and the
+/// re-check button's label (empty: none). Null: no card.
+({PtuCardTone tone, String title, String hint, bool replace, String recheck})?
+ptuCardView(CommissionState s) {
+  final mac = s.ptuMissingMac;
+  if (mac == null) return null;
+  if (s.ptuMissingBack) {
+    return (
+      tone: PtuCardTone.ok,
+      title: ptuBackTitle(mac),
+      hint: ptuBackHint,
+      replace: false,
+      recheck: '',
+    );
+  }
+  if (s.ptuMissingSearching) {
+    return (
+      tone: PtuCardTone.searching,
+      title: ptuSearchingTitle,
+      hint: ptuSearchingHint(mac),
+      replace: false,
+      recheck: ptuSearchingRecheckLabel,
+    );
+  }
+  final other = s.ptuMissingOther;
+  return (
+    tone: PtuCardTone.missing,
+    title: other == null ? ptuMissingTitle(mac) : ptuOtherTitle(mac, other),
+    hint: ptuMissingHint,
+    replace: true,
+    recheck: recheckPtuLabel,
+  );
+}
+
+/// 1.0.0+10: [CommissionState.tempBoundMac] of 〔更換 PTU〕 — the gateway
+/// unbound for now (the old binding in [CommissionState.tempRestoreMac],
+/// put back by 取消 / 結束 unless 「是這台」 binds the new PTU).
+const replacedBindMarker = '';
+
+/// 1.0.0+10: 〔辨識並綁定〕 / 〔更換 PTU〕 could not go on to 「選擇 PTU」 and
+/// nothing else said why.
+const bindLaterBlockedText = '目前無法進入「選擇 PTU」，請先完成網路體檢後再按一次。';
+
+/// 1.0.0+10: the gateway has no station to keep (「沿用目前站點」 is not
+/// offered).
+const bindLaterNoStationText = '這台閘道器目前不能沿用站點，請先完成站點與 Wi-Fi 設定。';
+
+/// 1.0.0+10: another action is still running.
+const busyTryAgainText = '另一個動作還在進行，請等它結束後再按一次。';
+
+/// 1.0.0+10: 〔更換 PTU〕 cleared the binding, step 7 was refused after
+/// all, and putting [old] back failed too.
+String replaceRestoreFailedText(String old) =>
+    '無法進入「選擇 PTU」，且閘道器的 PTU 綁定未能還原成 ${formatMac(old)}：'
+    '請重新連線這台閘道器確認綁定。';
 
 /// r34: the field report line (the rescue page's timeline).
 String ptuMissingReportText(String mac) =>
@@ -1243,6 +1386,8 @@ class CommissionState {
     this.bindLaterDeferred = false,
     this.ptuMissingMac,
     this.ptuMissingBack = false,
+    this.ptuMissingSearching = false,
+    this.ptuMissingOther,
     this.savedGateway = '',
     this.checklist,
     this.identityArchived = false,
@@ -1259,6 +1404,16 @@ class CommissionState {
   /// r34: the re-check found the bound PTU connected — the card turns
   /// green (「PTU 已連線」) instead of vanishing.
   final bool ptuMissingBack;
+
+  /// 1.0.0+10 (review P2-3): the gateway is still looking for its bound PTU
+  /// (scanning / connecting right after a boot or a change,
+  /// [BoundPtuPresence.searching]) — the card is neutral 「正在尋找本樁
+  /// PTU…」 with 〔重新檢查〕, not red yet.
+  final bool ptuMissingSearching;
+
+  /// 1.0.0+10: the gateway is connected, but to this PTU, not the bound
+  /// one ([BoundPtuPresence.other]) — still not in place.
+  final String? ptuMissingOther;
 
   /// 09-28: the automatic step running (or just failed) as a checklist
   /// ([Checklist]) — ticked on real events; the page shows it where it
@@ -1658,6 +1813,8 @@ class CommissionState {
     bool? bindLaterDeferred,
     Object? ptuMissingMac = _keep,
     bool? ptuMissingBack,
+    bool? ptuMissingSearching,
+    Object? ptuMissingOther = _keep,
     String? savedGateway,
     Object? checklist = _keep,
     bool? identityArchived,
@@ -1666,6 +1823,10 @@ class CommissionState {
         ? this.ptuMissingMac
         : ptuMissingMac as String?,
     ptuMissingBack: ptuMissingBack ?? this.ptuMissingBack,
+    ptuMissingSearching: ptuMissingSearching ?? this.ptuMissingSearching,
+    ptuMissingOther: identical(ptuMissingOther, _keep)
+        ? this.ptuMissingOther
+        : ptuMissingOther as String?,
     checklist: identical(checklist, _keep)
         ? this.checklist
         : checklist as Checklist?,
@@ -2212,12 +2373,15 @@ class CommissioningController extends Notifier<CommissionState> {
   ]) => _commandBusy(generation, op, params);
 
   /// [_command]; [onBusy] runs each time the gateway answers 'busy' (before
-  /// the command is sent again).
+  /// the command is sent again). [absorb] false (1.0.0+10: the list's
+  /// 〔辨識〕 of a gateway not chosen) keeps the answer out of the flow's
+  /// config.
   Future<Map<String, dynamic>> _commandBusy(
     int generation,
     String op,
     Map<String, dynamic> params, {
     void Function()? onBusy,
+    bool absorb = true,
   }) async {
     _check(generation);
     if (sensitiveOps.contains(op) && state.config['otp_enabled'] == true) {
@@ -2242,7 +2406,7 @@ class CommissioningController extends Notifier<CommissionState> {
           answered = true;
           _journalBle(op, params, 'ok', watch, result: result);
           _check(generation);
-          _absorbGatewayState(op, params, result);
+          if (absorb) _absorbGatewayState(op, params, result);
           return result;
         } on GatewayFailure catch (error) {
           if (!answered) {
@@ -3179,31 +3343,98 @@ class CommissioningController extends Notifier<CommissionState> {
   /// when the PTU side is not connected — same fallback as [_identify]),
   /// then disconnects. The step, the chosen peer and the config are
   /// untouched; a tap on the row afterwards connects as usual.
-  Future<void> identifyPeer(GatewayPeer peer) async {
+  ///
+  /// 1.0.0+10 (review):
+  ///   * the limit is [identifyPeerTimeout] (the link's own connect alone
+  ///     may take 53 s);
+  ///   * the commands go through the busy-retry wrapper ([_commandBusy],
+  ///     nothing absorbed into the flow's config) and firmware without
+  ///     `identify_ptu_supported` gets the bare op, as in [_identify];
+  ///   * only the identify still current closes its link — one timed out,
+  ///     cancelled or superseded by a connect (another row) never
+  ///     disconnects the gateway chosen since;
+  ///   * the list's guidance text (e.g. 〔配置下一台〕's 「預設沿用站 X」)
+  ///     comes back afterwards ([_sideTask]);
+  ///   * 〔取消操作〕 during it only stops the blink ([cancel]).
+  /// Returns whether the identify was sent and acked (the list's
+  /// 「已閃燈」).
+  Future<bool> identifyPeer(GatewayPeer peer) async {
+    if (state.busy) return false;
     _noteGatewayMac(peer.id);
-    await _run(identifyPeerLabel, 20, (generation) async {
-      await _link.connect(peer);
-      try {
-        _check(generation);
-        final config = await _link.command('get_config');
-        _check(generation);
-        if (config['identify_supported'] != true) {
-          throw const GatewayFailure('identify_unsupported');
-        }
+    var blinked = false;
+    _identifyingPeer = peer;
+    try {
+      await _sideTask(identifyPeerLabel, identifyPeerTimeout.inSeconds, (
+        generation,
+      ) async {
         try {
-          await _link.command('identify', {'target': 'both'});
-        } on GatewayFailure catch (e) {
-          if (!e.fromGateway || e.code != 'not_connected') rethrow;
-          await _link.command('identify', {'target': 'gateway'});
+          await _link.connect(peer);
+          try {
+            _check(generation);
+            Future<Map<String, dynamic>> send(
+              String op, [
+              Map<String, dynamic> params = const {},
+            ]) => _commandBusy(generation, op, params, absorb: false);
+            final config = await send('get_config');
+            if (config['identify_supported'] != true) {
+              throw const GatewayFailure('identify_unsupported');
+            }
+            if (!identifyPtuSupported(config)) {
+              await send('identify');
+            } else {
+              try {
+                await send('identify', {'target': 'both'});
+              } on GatewayFailure catch (e) {
+                if (!e.fromGateway || e.code != 'not_connected') rethrow;
+                await send('identify', {'target': 'gateway'});
+              }
+            }
+            _check(generation);
+            blinked = true;
+          } finally {
+            if (_identifyStillOwns(generation, peer)) {
+              await _link.disconnect();
+            }
+          }
+        } catch (error) {
+          // Cancelled, timed out or superseded meanwhile: whatever the
+          // link says now is that, not a failure of this identify.
+          if (!ref.mounted || generation != _generation) {
+            throw const GatewayFailure('cancelled');
+          }
+          rethrow;
         }
-      } finally {
+      });
+    } finally {
+      if (identical(_identifyingPeer, peer)) _identifyingPeer = null;
+    }
+    // Timed out (the connect may still be pending in the link): nothing of
+    // the flow uses the link here, so close it now — the late connect
+    // ends too instead of leaving the gateway connected.
+    if (!blinked && ref.mounted && !state.busy && state.peer == null) {
+      try {
         await _link.disconnect();
-      }
-    });
+      } catch (_) {}
+    }
+    return blinked && ref.mounted;
   }
+
+  /// 1.0.0+10: the list 〔辨識〕 of [peer] ([identifyPeer]) running now.
+  GatewayPeer? _identifyingPeer;
+
+  /// 1.0.0+10: [identifyPeer]'s run [generation] may still close the link
+  /// it opened — still current, and no gateway of the flow chosen since
+  /// (other than [peer]).
+  bool _identifyStillOwns(int generation, GatewayPeer peer) =>
+      ref.mounted &&
+      generation == _generation &&
+      (state.peer == null || state.peer!.id == peer.id);
 
   Future<void> connect(GatewayPeer peer) async {
     if (state.busy) return;
+    // 1.0.0+10: a list 〔辨識〕 still finishing in the background (timed
+    // out) is superseded — it no longer closes the link opened here.
+    _generation++;
     _noteGatewayMac(peer.id);
     _stopWatch(UploadWatch.idle);
     _settleTimer?.cancel();
@@ -3240,6 +3471,8 @@ class CommissioningController extends Notifier<CommissionState> {
       bindLaterDeferred: false,
       ptuMissingMac: null,
       ptuMissingBack: false,
+      ptuMissingSearching: false,
+      ptuMissingOther: null,
       net: const {},
       // A notice from before is not repeated; [_connect] compares again.
       gatewayReboot: null,
@@ -6231,44 +6464,65 @@ class CommissioningController extends Notifier<CommissionState> {
   /// r34: 〔PTU 已上電，重新檢查〕 on the PTU-missing card: reads get_status
   /// again; the bound PTU connected turns the card green
   /// ([CommissionState.ptuMissingBack]), else it stays.
+  ///
+  /// 1.0.0+10 (review P2-3): green only for the bound MAC; the neutral
+  /// 「正在尋找本樁 PTU…」 while the gateway is still looking
+  /// ([boundPtuPresence]), red (and reported) once it is not.
   Future<void> recheckBoundPtu() async {
-    if (state.busy || state.step != 2 || state.ptuMissingMac == null) return;
+    final bound = state.ptuMissingMac;
+    if (state.busy || state.step != 2 || bound == null) return;
     await _sideTask(recheckingPtuText, 20, (generation) async {
       final status = await _command(generation, 'get_status');
       final report = _directReport(status['direct']);
-      if (report?.state == DirectState.connected) {
-        state = state.copy(ptuMissingBack: true);
+      if (report == null) return;
+      final seen = _boundPtuSeen;
+      _boundPtuSeen = report.state;
+      final presence = boundPtuPresence(
+        report,
+        bound,
+        uptimeSec: status['uptime_sec'],
+        changed: seen != null && seen != report.state,
+      );
+      final wasRed = !state.ptuMissingSearching && !state.ptuMissingBack;
+      state = state.copy(
+        ptuMissingBack: presence == BoundPtuPresence.present,
+        ptuMissingSearching: presence == BoundPtuPresence.searching,
+        ptuMissingOther: presence == BoundPtuPresence.other
+            ? report.ptuMac
+            : null,
+      );
+      if (!wasRed &&
+          (presence == BoundPtuPresence.missing ||
+              presence == BoundPtuPresence.other)) {
+        _field.noteDirectPtuMissing(ptuMissingReportText(bound));
       }
     });
   }
 
-  /// r34: 〔更換 PTU〕 (confirmed on the page): clears the binding
-  /// (`set_config direct_bind_mac: ""`, cmd_contract.md Level 3), then the
-  /// bind-later path — one-to-one, the network check, 「沿用目前站點」 and
-  /// step 7, where the gateway picks the new PTU and 「是這台」 binds it.
+  /// r34: 〔更換 PTU〕 (confirmed on the page): the bind-later path —
+  /// one-to-one, the network check, 「沿用目前站點」 and step 7, where the
+  /// gateway picks the new PTU and 「是這台」 binds it.
+  ///
+  /// 1.0.0+10 (review P1-2: the binding was cleared first, and a blocked
+  /// station choice then left the gateway unbound on site — free to take
+  /// a neighbouring pile's PTU by its signal): the binding is cleared
+  /// (`set_config direct_bind_mac: ""`, cmd_contract.md Level 3) only once
+  /// nothing stands between it and step 7, as a temporary change — the
+  /// old MAC is what 取消 / 結束 / 〔先完成配置〕 put back
+  /// ([_releaseTempBind]); only 「是這台」 makes the new PTU count.
   Future<void> replaceBoundPtu() async {
-    if (state.busy || state.step != 2 || state.ptuMissingMac == null) return;
-    await _sideTask(replacingPtuText, 30, (generation) async {
-      await _command(generation, 'set_config', {'direct_bind_mac': ''});
-      state = state.copy(
-        config: {...state.config, 'direct_bind_mac': ''},
-        ptuMissingMac: null,
-        ptuMissingBack: false,
-        strayBindMac: null,
-        tempBoundMac: null,
-        tempRestoreMac: null,
-      );
-      await _rememberBind(null);
-    });
-    if (!ref.mounted || state.error != null || state.ptuMissingMac != null) {
-      return;
-    }
-    await _goBindLater();
+    final old = state.ptuMissingMac;
+    if (state.busy || state.step != 2 || old == null) return;
+    await _goBindLater(replacing: old);
   }
 
   /// Round 28 / r34: from step 2 to step 7 on the current station, binding
   /// on 「是這台」 whatever 「確認後綁定 PTU」 says.
-  Future<void> _goBindLater() async {
+  ///
+  /// 1.0.0+10: every stop on the way says why ([bindLaterBlockedText]
+  /// when nothing else did); [replacing] (〔更換 PTU〕: the bound MAC)
+  /// clears the binding right before step 7 ([_unbindForReplace]).
+  Future<void> _goBindLater({String? replacing}) async {
     if (!ref.read(topologyProvider).topology.isDirect) {
       await ref
           .read(topologyProvider.notifier)
@@ -6278,10 +6532,83 @@ class CommissioningController extends Notifier<CommissionState> {
     _bindLaterRun = true;
     if (!state.checkPassed) {
       await passNetworkCheck();
-      if (!ref.mounted || !state.checkPassed || state.error != null) return;
+      if (!ref.mounted) return;
+      if (!state.checkPassed || state.error != null) {
+        _bindLaterBlocked(state.error);
+        return;
+      }
     }
-    if (state.config['choose_station'] != true) return;
+    final blocked = _reuseStationBlocked();
+    if (blocked != null) {
+      _bindLaterBlocked(blocked);
+      return;
+    }
+    if (replacing != null && !await _unbindForReplace(replacing)) return;
     await chooseStation(newStation: false);
+    if (!ref.mounted || replacing == null || state.step == 4) return;
+    // Refused after all (the state changed meanwhile): the old binding
+    // goes back at once — never left unbound at step 2.
+    final reason = state.error;
+    final failure = await _releaseTempBind();
+    if (!ref.mounted) return;
+    if (failure == null) state = state.copy(ptuMissingMac: replacing);
+    _bindLaterBlocked(
+      failure == null ? reason : replaceRestoreFailedText(replacing),
+    );
+  }
+
+  /// 1.0.0+10: why 「沿用目前站點」 ([chooseStation] newStation false)
+  /// would refuse now — the same gates, checked before anything is sent;
+  /// null when it would go on.
+  String? _reuseStationBlocked() {
+    if (state.busy) return busyTryAgainText;
+    if (state.config['choose_station'] != true) return bindLaterNoStationText;
+    if (state.testMode) return testModeText;
+    if (!state.networkReady) {
+      _field.noteErrorCode(_notReadyCode());
+      return reuseBlockedText;
+    }
+    if (state.uploadPaused) return uploadPausedText;
+    return null;
+  }
+
+  /// 1.0.0+10: [_goBindLater] stopped — [reason] (or
+  /// [bindLaterBlockedText]) in the red box; the step is kept.
+  void _bindLaterBlocked(String? reason) {
+    state = state.copy(error: reason ?? bindLaterBlockedText);
+  }
+
+  /// 1.0.0+10: 〔更換 PTU〕 clears the binding [old] — recorded first as a
+  /// temporary change ([CommissionState.tempBoundMac] [replacedBindMarker]
+  /// = unbound, [CommissionState.tempRestoreMac] [old]) so a lost ack is
+  /// still put back by a cancel. False when it failed (the red box says
+  /// why).
+  Future<bool> _unbindForReplace(String old) async {
+    await _sideTask(replacingPtuText, 30, (generation) async {
+      state = state.copy(
+        tempBoundMac: replacedBindMarker,
+        tempRestoreMac: old,
+        strayBindMac: null,
+      );
+      try {
+        await _command(generation, 'set_config', {'direct_bind_mac': ''});
+      } on GatewayFailure catch (error) {
+        // Refused by the gateway, or never sent: the binding is unchanged,
+        // nothing to put back.
+        if (error.fromGateway || error.code == 'otp_enabled') {
+          state = state.copy(tempBoundMac: null, tempRestoreMac: null);
+        }
+        rethrow;
+      }
+      state = state.copy(
+        config: {...state.config, 'direct_bind_mac': ''},
+        ptuMissingMac: null,
+        ptuMissingBack: false,
+        ptuMissingSearching: false,
+        ptuMissingOther: null,
+      );
+    });
+    return ref.mounted && state.error == null && state.ptuMissingMac == null;
   }
 
   /// Round 28: after a connect — a gateway in service, one-to-one
@@ -6325,24 +6652,45 @@ class CommissioningController extends Notifier<CommissionState> {
   /// PTU-missing card ([CommissionState.ptuMissingMac]) and reports it to
   /// the back office. Advisory: a failed or unparsable read shows nothing;
   /// connected shows nothing (the ordinary step 2).
+  ///
+  /// 1.0.0+10 (review P2-3): read with [boundPtuPresence] — connected to
+  /// another MAC is not in place either (「連到的不是綁定的 PTU」); still
+  /// looking right after a boot is the neutral card (not reported).
   Future<void> _checkBoundPtu(String bound) async {
     final peer = state.peer;
+    _boundPtuSeen = null;
     DirectStatus? report;
+    Object? uptime;
     try {
       final status = await _rawCommand('get_status');
       report = _directReport(status['direct']);
+      uptime = status['uptime_sec'];
     } catch (_) {}
     if (!ref.mounted || !identical(state.peer, peer) || state.step != 2) {
       return;
     }
-    if (report == null || report.state == DirectState.connected) return;
+    if (report == null) return;
+    _boundPtuSeen = report.state;
+    final presence = boundPtuPresence(report, bound, uptimeSec: uptime);
+    if (presence == BoundPtuPresence.present) return;
     state = state.copy(
       ptuMissingMac: bound,
       ptuMissingBack: false,
+      ptuMissingSearching: presence == BoundPtuPresence.searching,
+      ptuMissingOther: presence == BoundPtuPresence.other
+          ? report.ptuMac
+          : null,
       error: state.error,
     );
-    _field.noteDirectPtuMissing(ptuMissingReportText(bound));
+    if (presence != BoundPtuPresence.searching) {
+      _field.noteDirectPtuMissing(ptuMissingReportText(bound));
+    }
   }
+
+  /// 1.0.0+10: `direct.state` of the last step-2 read of the bound PTU
+  /// ([_checkBoundPtu] / [recheckBoundPtu]); another state now is 「剛變化」
+  /// ([boundPtuPresence] changed).
+  DirectState? _boundPtuSeen;
 
   /// The `direct` object of a get_status, gateways left out (round 26);
   /// null when absent or unparsable.
@@ -6404,7 +6752,13 @@ class CommissioningController extends Notifier<CommissionState> {
       if (remembered == null || !sameMac(remembered, bound)) stray = bound;
     }
     // The temporary binding is gone (or replaced): nothing to undo later.
-    final keep = temp != null && bound != null && sameMac(temp, bound);
+    // 1.0.0+10: 〔更換 PTU〕's temporary 「unbound」 ([replacedBindMarker])
+    // stands while the gateway is unbound.
+    final keep =
+        temp != null &&
+        (temp == replacedBindMarker
+            ? bound == null
+            : bound != null && sameMac(temp, bound));
     state = state.copy(
       strayBindMac: stray,
       tempBoundMac: keep ? temp : null,
@@ -7846,6 +8200,10 @@ class CommissioningController extends Notifier<CommissionState> {
             message: verifiedText,
           );
           _field.end('completed');
+          // 1.0.0+10 (review P2-10): verified (the install report goes out
+          // now) — on the phone's 「閘道器狀態」 list at once, not only after
+          // 〔完成〕 (same site / gateway kept once).
+          await _rememberCommission(site);
           _health?.cancel();
           _abnormalStreak = 0;
           _health = Timer.periodic(
@@ -8928,6 +9286,12 @@ class CommissioningController extends Notifier<CommissionState> {
   });
 
   Future<void> cancel() async {
+    // 1.0.0+10 (review #6): 〔取消操作〕 while the list's 〔辨識〕 runs only
+    // stops the blink — the list stays, no 「已取消…監控會話…」, the field
+    // session is not ended.
+    if (state.step <= 1 && state.busy && _identifyingPeer != null) {
+      return _cancelIdentifyPeer();
+    }
     // 09-29: at the gateway list with nothing running (a stray tap, the
     // direct panel) there is no run to report as cancelled — no 「已取消」
     // note; 〔結束配置〕 there is [leaveList].
@@ -8966,6 +9330,8 @@ class CommissioningController extends Notifier<CommissionState> {
         bindLaterDeferred: false,
         ptuMissingMac: null,
         ptuMissingBack: false,
+        ptuMissingSearching: false,
+        ptuMissingOther: null,
         identifiedMac: null,
         tempBoundMac: null,
         tempRestoreMac: null,
@@ -8991,6 +9357,16 @@ class CommissioningController extends Notifier<CommissionState> {
       // Field rescue: 「結束並重新選擇閘道器」 ends this session.
       _field.end('abandoned');
     }
+  }
+
+  /// 1.0.0+10: stops [identifyPeer] — its run is superseded (it ends
+  /// quietly as cancelled, its guidance text restored by [_sideTask]) and
+  /// the link it opened is closed. Nothing else changes.
+  Future<void> _cancelIdentifyPeer() async {
+    _generation++;
+    try {
+      await _link.disconnect();
+    } catch (_) {}
   }
 
   /// 09-29 (field: the gateway list had no way back — the system 返回 left
@@ -9049,17 +9425,7 @@ class CommissioningController extends Notifier<CommissionState> {
       );
       // 1.0.0+5 「閘道器狀態」: remember this gateway on the phone so
       // 〔查看最近資料〕 can be opened again after the done page is gone.
-      try {
-        await RecentCommissions.remember(
-          _link.demo,
-          RecentCommission(
-            site: doneSite,
-            gateway: gateway,
-            gatewayName: state.peer?.name ?? '',
-            doneAt: DateTime.now(),
-          ),
-        );
-      } catch (_) {}
+      await _rememberCommission(doneSite);
       _generation++;
       _health?.cancel();
       _verifyCarry = null;
@@ -9102,6 +9468,23 @@ class CommissioningController extends Notifier<CommissionState> {
     } finally {
       _finishing = false;
     }
+  }
+
+  /// 1.0.0+5 / 1.0.0+10: this gateway ([doneSite] / [gateway]) on the
+  /// phone's 「閘道器狀態」 list ([RecentCommissions], an older entry of
+  /// the same site / gateway dropped). Never throws.
+  Future<void> _rememberCommission(int doneSite) async {
+    try {
+      await RecentCommissions.remember(
+        _link.demo,
+        RecentCommission(
+          site: doneSite,
+          gateway: gateway,
+          gatewayName: state.peer?.name ?? '',
+          doneAt: DateTime.now(),
+        ),
+      );
+    } catch (_) {}
   }
 
   // ---- Field rescue v1 (PLAN_2026-09-26_FIELD_RESCUE.md §5) ----

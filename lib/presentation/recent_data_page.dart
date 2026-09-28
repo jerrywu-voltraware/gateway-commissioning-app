@@ -99,10 +99,24 @@ String recentVoltsBigText(num? mv) =>
 /// `temp_c` as an integer, or `--`.
 String recentTempText(num? c) => c == null ? '--' : c.round().toString();
 
-/// 「N 秒」 under a minute, 「N 分鐘」 from then on (never negative).
+/// 「N 秒」 under a minute, 「N 分鐘」 under an hour, 「N 小時」 under a
+/// day, then 「N 天」 (1.0.0+10); never negative (a phone clock behind the
+/// back office's reads as 0 秒).
 String recentAgeText(Duration age) {
   final s = age.inSeconds < 0 ? 0 : age.inSeconds;
-  return s < 60 ? '$s 秒' : '${s ~/ 60} 分鐘';
+  if (s < 60) return '$s 秒';
+  if (s < 3600) return '${s ~/ 60} 分鐘';
+  if (s < 86400) return '${s ~/ 3600} 小時';
+  return '${s ~/ 86400} 天';
+}
+
+/// 1.0.0+10 (review P2-9: a phone clock 30 s fast read fresh data as
+/// yellow): 「now」 for the ages of [data] — the phone's [phoneNow] moved to
+/// the back office's clock when its answer carried a `Date`
+/// ([RecentData.serverOffset]), else the phone's own.
+DateTime recentServerNow(RecentData data, DateTime phoneNow) {
+  final offset = data.serverOffset;
+  return offset == null ? phoneNow : phoneNow.add(offset);
 }
 
 enum RecentBannerKind { ok, stale, stopped, empty, error, unknown }
@@ -134,7 +148,9 @@ RecentBanner recentBanner(RecentData data, DateTime now) {
   if (latest == null) {
     return const RecentBanner(RecentBannerKind.unknown, '最近一筆的時間不明');
   }
-  final age = now.difference(latest);
+  // 1.0.0+10: a row newer than now (clock skew) is 0 s old.
+  final raw = now.difference(latest);
+  final age = raw.isNegative ? Duration.zero : raw;
   if (age < recentFreshAge) {
     return const RecentBanner(RecentBannerKind.ok, recentDataOkText);
   }
@@ -387,7 +403,7 @@ class _RecentDataPageState extends ConsumerState<RecentDataPage> {
         ],
       );
     }
-    final now = (widget.now ?? DateTime.now)();
+    final now = recentServerNow(data, (widget.now ?? DateTime.now)());
     final banner = recentBanner(data, now);
     final latest = recentLatestPerDevice(data);
     return ListView(

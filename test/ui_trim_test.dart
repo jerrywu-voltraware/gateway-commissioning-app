@@ -39,7 +39,9 @@ class _Prober implements LocalBackendProber {
 }
 
 class _LiveLink extends DemoSystem implements GatewayScanner {
-  final events = StreamController<List<GatewayPeer>>();
+  // 1.0.0+10: broadcast — the list listens again when its scan resumes
+  // (after 〔辨識〕, or back from 「閘道器狀態」).
+  final events = StreamController<List<GatewayPeer>>.broadcast();
   @override
   Stream<List<GatewayPeer>> scanLive() => events.stream;
   @override
@@ -303,7 +305,10 @@ void main() {
                 child: GatewayDiscovery(
                   enabled: true,
                   onConnect: (peer) async => connected = peer,
-                  onIdentify: (peer) async => identified = peer,
+                  onIdentify: (peer) async {
+                    identified = peer;
+                    return true;
+                  },
                 ),
               ),
             ),
@@ -445,7 +450,7 @@ void main() {
                 child: GatewayDiscovery(
                   enabled: true,
                   onConnect: (peer) async {},
-                  onIdentify: (peer) async {},
+                  onIdentify: (peer) async => true,
                 ),
               ),
             ),

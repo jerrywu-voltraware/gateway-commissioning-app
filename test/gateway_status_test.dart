@@ -307,7 +307,12 @@ void main() {
       SharedPreferences.setMockInitialValues({});
       final fake = DemoSystem();
       final container = await _pumpStarDone(tester, fake);
-      expect(await RecentCommissions.load(true), isEmpty, reason: 'not yet');
+      // 1.0.0+10 (review P2-10): already kept when the verification
+      // passed; 〔完成〕 keeps it once (same site / gateway).
+      final verified = await RecentCommissions.load(true);
+      expect(verified, hasLength(1), reason: 'kept at the verification');
+      expect(verified.single.site, 80);
+      expect(verified.single.gateway, 1);
       await tester.tap(find.byKey(const Key('done-finish')));
       await tester.pumpAndSettle();
       expect(container.read(commissionProvider).step, 0);
