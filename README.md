@@ -106,6 +106,15 @@ Wi-Fi 名稱下方可掃描手機周邊的 2.4 GHz 網路，依訊號排序，�
 - **現場回報**：進入此頁呼叫 `FieldReporter.noteRecentDataViewed()`（`status` 事件、`error_message`「查看最近資料」）。完成頁出現時 session 已以 `completed` 結束（`FieldReporter.end`），所以從完成頁進入不會送出；只有 session 仍開著時才送。
 - 測試：`test/recent_data_test.dart`（含 360×800、devicePixelRatio 1 的表格無 overflow 測試、PTU 後 3 組格式、短狀態標籤）。
 
+## 閘道器清單頁的出路（09-29，APP 1.0.0+6）
+
+現場回饋：閘道器清單頁（第 1 步）沒有回首頁的路——系統返回鍵直接退出 APP；〔結束並重新選擇閘道器〕只是原地寫「已取消」；而 `cancel()` 斷線後沒清 `peer`，紅框「手機與閘道器的藍牙已斷線」把 APP 自己斷的線當成斷線事故。1.0.0+6 修正（`lib/application/commissioning_controller.dart` `leaveList`／`cancel`、`lib/presentation/commissioning_page.dart`）：
+
+- 清單頁按鈕改為〔結束配置〕（`leaveListLabel`，仍是 `Key('page-cancel')`）→ 問一次「結束這次配置並回首頁？」（`Key('leave-confirm')`，〔留在清單〕`leave-confirm-stay`／〔結束〕`leave-confirm-end`）→ `CommissioningController.leaveList()`：關掉殘留連線、交還監控租約、現場 session 仍開著就以 `abandoned` 結束，回第 0 步；`lastDone`（「上一台已完成：站 S 閘道器 G」）保留，已存進度不動。第 2 步起維持〔結束並重新選擇閘道器〕與原本的確認框。
+- 系統返回鍵：只有首頁（第 0 步、無操作進行中）才離開 APP（`PopScope.canPop`）；清單頁按返回＝〔結束配置〕但不問；第 2 步起維持「結束目前配置？」；完成頁維持〔完成〕。
+- `cancel()`：一律清掉 `peer`（紅框不再出現）；在清單頁且無操作進行中時不寫「已取消」訊息；其餘（回第 1 步、還原暫時綁定、`FieldReporter.end('abandoned')`）不變。`CommissionState.copy` 新增 `clearPeer`。
+- 測試：`test/list_exit_test.dart`；`round17b`／`round28` 對應更新。
+
 ## 「閘道器狀態」——完成後也能看（1.0.0+5）
 
 完成頁按〔完成〕後就沒有入口再看〔查看最近資料〕；1.0.0+5 加一頁「閘道器狀態」（`lib/presentation/gateway_status_page.dart`，`GatewayStatusPage`），**不改配置流程本身**。

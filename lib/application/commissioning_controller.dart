@@ -766,6 +766,14 @@ const directFreshWindowText = '閘道器正在重新收集附近的 PTU，請稍
 /// The page's button that ends the run and goes back to the gateway list.
 const endFlowLabel = '結束並重新選擇閘道器';
 
+/// 09-29: the gateway list's button (and the system 返回 there) — back to
+/// the start page ([CommissioningController.leaveList]); field: the list
+/// had no way out (返回 left the APP, the button said 「已取消」 in place).
+const leaveListLabel = '結束配置';
+
+/// Title of the [leaveListLabel] confirmation (the system 返回 does not ask).
+const leaveListConfirmTitle = '結束這次配置並回首頁？';
+
 /// Round 17: 「結束並重新選擇閘道器」 after step 3 asks first (field round
 /// 17: a late tap meant for 「改選其他 PTU」 landed on it once the layout
 /// moved, and ended the whole flow).
@@ -1571,6 +1579,10 @@ class CommissionState {
     int? seconds,
     List<GatewayPeer>? peers,
     GatewayPeer? peer,
+    // 09-29: `peer ?? this.peer` cannot drop the gateway; [cancel] and
+    // [leaveList] need to (a peer left behind showed a red 「藍牙已斷線」
+    // box for a link the APP cut itself).
+    bool clearPeer = false,
     Map<String, dynamic>? config,
     List<Map<String, dynamic>>? ptus,
     Set<String>? selected,
@@ -1733,7 +1745,7 @@ class CommissionState {
     error: error,
     seconds: seconds ?? this.seconds,
     peers: peers ?? this.peers,
-    peer: peer ?? this.peer,
+    peer: clearPeer ? null : (peer ?? this.peer),
     config: config ?? this.config,
     ptus: ptus ?? this.ptus,
     selected: selected ?? this.selected,
@@ -8882,6 +8894,10 @@ class CommissioningController extends Notifier<CommissionState> {
   });
 
   Future<void> cancel() async {
+    // 09-29: at the gateway list with nothing running (a stray tap, the
+    // direct panel) there is no run to report as cancelled — no 「已取消」
+    // note; 〔結束配置〕 there is [leaveList].
+    final fromList = state.step <= 1 && !state.busy;
     _generation++;
     _health?.cancel();
     _verifyCarry = null;
@@ -8905,6 +8921,9 @@ class CommissioningController extends Notifier<CommissionState> {
       _bindLaterRun = false;
       state = state.copy(
         step: 1,
+        // 09-29: the link is gone; a peer kept here made [GatewayLinkAlert]
+        // show 「手機與閘道器的藍牙已斷線」 for a disconnect the APP did itself.
+        clearPeer: true,
         net: const {},
         checkPassed: false,
         wifiGraceOver: false,
@@ -8928,7 +8947,9 @@ class CommissioningController extends Notifier<CommissionState> {
             : restore == null
             ? '暫時綁定 $tempBound 未能解除：$unbindFailure'
             : '暫時綁定 $tempBound 未能還原成 $restore：$unbindFailure',
-        message: '已取消。請重新連線核對進度；未成功恢復的監控會話最晚於到期時恢復。',
+        message: fromList
+            ? ''
+            : '已取消。請重新連線核對進度；未成功恢復的監控會話最晚於到期時恢復。',
       );
       if (!safe) {
         _field.noteErrorCode(RescueCode.monitorUnconfirmed);
@@ -8938,6 +8959,40 @@ class CommissioningController extends Notifier<CommissionState> {
       // Field rescue: 「結束並重新選擇閘道器」 ends this session.
       _field.end('abandoned');
     }
+  }
+
+  /// 09-29 (field: the gateway list had no way back — the system 返回 left
+  /// the APP at once, and 「結束並重新選擇閘道器」 there only wrote 「已取消」
+  /// under a red 「藍牙已斷線」 box): 〔結束配置〕 on the list and the system
+  /// 返回 there go to the start page. Nothing is running at the list, but
+  /// a link [cancel] may have left is closed, a monitoring lease still
+  /// held is handed back and a field session still open ends as
+  /// abandoned. [CommissionState.lastDone] stays (the start page's 「上一台
+  /// 已完成」); saved progress is untouched (its 「上次配置」 card still
+  /// offers to resume).
+  Future<void> leaveList() async {
+    if (state.step != 1 || state.busy) return;
+    _generation++;
+    _health?.cancel();
+    _verifyCarry = null;
+    _grace?.cancel();
+    _stopWatch(UploadWatch.idle);
+    try {
+      await _safeStop();
+    } catch (_) {}
+    try {
+      await _link.disconnect();
+    } catch (_) {}
+    if (_lease) {
+      try {
+        await _api.request('PATCH', '$_path/bot-monitor', {'enabled': true});
+        _lease = false;
+      } catch (_) {}
+    }
+    if (!ref.mounted) return;
+    // No-op without a session ([FieldReporter.end] returns at once).
+    _field.end('abandoned');
+    state = state.copy(step: 0, clearPeer: true, message: '', error: null);
   }
 
   /// Round 29 (field drill: the done page had no way to end it — its

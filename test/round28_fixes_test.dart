@@ -895,7 +895,7 @@ void main() {
 
   group('4b. the system 返回 asks first', () {
     testWidgets('step 7: 「結束目前配置？」 — 繼續配置 stays, 結束 ends; the '
-        'gateway list leaves the APP', (tester) async {
+        'gateway list goes to the start page (09-29)', (tester) async {
       _phone(tester, size: const Size(411, 891));
       final fake = _PileB();
       final container = await _pumpPileB(tester, fake);
@@ -916,10 +916,14 @@ void main() {
       await tester.pumpAndSettle();
       expect(container.read(commissionProvider).step, 1);
 
-      // The gateway list: nothing running, 返回 does not ask.
+      // The gateway list: nothing running, 返回 does not ask — 09-29: it
+      // is 〔結束配置〕, the start page (the list had no way back).
       await tester.runAsync(() => tester.binding.handlePopRoute());
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('end-confirm')), findsNothing);
+      expect(find.byKey(const Key('leave-confirm')), findsNothing);
+      expect(container.read(commissionProvider).step, 0);
+      expect(find.byType(GatewayApp), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
     });
   });

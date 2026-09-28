@@ -495,15 +495,20 @@ void main() {
       final s = container.read(commissionProvider);
       expect(s.step, 1);
       expect(displayStep(s, container.read(backendEnvProvider)), lessThan(3));
+      // 09-29: on the gateway list the button is 〔結束配置〕 (its own short
+      // question, then the start page) — never 「結束目前配置？」.
+      expect(find.text(leaveListLabel), findsOneWidget);
       await tester.tap(find.byKey(const Key('page-cancel')));
-      await tester.pump();
+      await tester.pumpAndSettle();
       expect(find.byKey(const Key('end-confirm')), findsNothing);
+      expect(find.byKey(const Key('leave-confirm')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('leave-confirm-end')));
       await tester.runAsync(
-        () => _until(
-          () => container.read(commissionProvider).message.startsWith('已取消'),
-        ),
+        () => _until(() => container.read(commissionProvider).step == 0),
       );
-      expect(container.read(commissionProvider).message, startsWith('已取消'));
+      await tester.pump();
+      expect(container.read(commissionProvider).step, 0);
+      expect(container.read(commissionProvider).message, isEmpty);
     });
   });
 

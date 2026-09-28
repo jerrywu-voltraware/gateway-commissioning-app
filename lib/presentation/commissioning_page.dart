@@ -1035,7 +1035,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       // 配置？」 first, like 「結束並重新選擇閘道器」 ([_backPressed]); 結束
       // then also puts back a temporary 「不是這台？」 binding (round 15b).
       // Round 29: on the done page 返回 is 〔完成〕 (nothing to ask).
-      canPop: state.step <= 1 && !state.busy,
+      // 09-29: the gateway list no longer leaves the APP — 返回 there is
+      // 〔結束配置〕 (back to the start page, no question asked).
+      canPop: state.step == 0 && !state.busy,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) _backPressed(controller);
       },
@@ -1569,6 +1571,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                   // bottom bar's last row instead ([DirectPickActions]),
                   // where the card above can no longer move it.
                   // Round 29: not on the done page (〔完成〕／〔配置下一台〕).
+                  // 09-29: on the gateway list it is 〔結束配置〕 — back to
+                  // the start page ([_leaveList]); 「結束並重新選擇閘道器」
+                  // there only wrote 「已取消」 in place.
                   if (state.step > 0 &&
                       !done &&
                       !directPicking &&
@@ -1581,8 +1586,16 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                           ? controller.backToSelection
                           : state.busy
                           ? () => controller.cancel()
+                          : state.step == 1
+                          ? () => _leaveList(controller)
                           : () => _endFlow(controller),
-                      child: Text(state.busy ? '取消操作' : endFlowLabel),
+                      child: Text(
+                        state.busy
+                            ? '取消操作'
+                            : state.step == 1
+                            ? leaveListLabel
+                            : endFlowLabel,
+                      ),
                     ),
                   if (state.step == 0)
                     SwitchListTile(
@@ -2316,6 +2329,33 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     await c.cancel();
   }
 
+  /// 09-29: 〔結束配置〕 on the gateway list — 「結束這次配置並回首頁？」,
+  /// 結束 goes to the start page ([CommissioningController.leaveList]),
+  /// 留在清單 changes nothing.
+  Future<void> _leaveList(CommissioningController c) async {
+    final leave = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        key: const Key('leave-confirm'),
+        title: const Text(leaveListConfirmTitle),
+        actions: [
+          TextButton(
+            key: const Key('leave-confirm-stay'),
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('留在清單'),
+          ),
+          FilledButton(
+            key: const Key('leave-confirm-end'),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('結束'),
+          ),
+        ],
+      ),
+    );
+    if (leave != true || !mounted) return;
+    await c.leaveList();
+  }
+
   /// Round 28: the system 返回 while a gateway is connected or a step runs
   /// ([PopScope] refused to leave): 「結束目前配置？」 — 結束 ends the run
   /// ([CommissioningController.cancel], as 「結束並重新選擇閘道器」 /
@@ -2323,11 +2363,19 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   ///
   /// Round 29: on the done page 返回 is 〔完成〕 — the run is finished,
   /// nothing to ask (while an action there runs: a note to wait).
+  ///
+  /// 09-29: on the gateway list (nothing running) 返回 is 〔結束配置〕
+  /// without the question — the start page; only the start page leaves
+  /// the APP.
   bool _backAsking = false;
   Future<void> _backPressed(CommissioningController c) async {
     final s = ref.read(commissionProvider);
     // The start page (checking Bluetooth / the login) has nothing to end.
-    if (_backAsking || s.step == 0 || (s.step <= 1 && !s.busy)) return;
+    if (_backAsking || s.step == 0) return;
+    if (s.step == 1) {
+      if (!s.busy) await c.leaveList();
+      return;
+    }
     if (s.step == 7) {
       if (s.busy) {
         _snack(doneBusyText);

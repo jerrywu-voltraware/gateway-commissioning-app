@@ -337,6 +337,38 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
 
+    // 09-29: 〔結束配置〕 on that gateway list keeps the note.
+    testWidgets('〔配置下一台〕 then 〔結束配置〕: the start page still says '
+        '「上一台已完成」', (tester) async {
+      _phone(tester, 1.0);
+      final fake = _Gateway();
+      final container = await _pumpStarDone(tester, fake);
+      await tester.tap(_next);
+      await _settle(tester, container);
+      expect(container.read(commissionProvider).step, 1);
+      final leave = find.byKey(const Key('page-cancel'));
+      await tester.scrollUntilVisible(
+        leave,
+        120,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.text(leaveListLabel), findsOneWidget);
+      await tester.tap(leave);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('leave-confirm-end')));
+      await _settle(tester, container);
+      final s = container.read(commissionProvider);
+      expect(s.step, 0);
+      expect(s.peer, isNull);
+      expect(s.message, isEmpty);
+      expect(s.lastDone, '上一台已完成：站 80 閘道器 1');
+      expect(find.byKey(const Key('last-done-text')), findsOneWidget);
+      expect(find.text('上一台已完成：站 80 閘道器 1'), findsOneWidget);
+      expect(find.text('檢查並開始'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    });
+
     testWidgets('〔配置下一台〕: the gateway list, the station kept for the '
         'next new gateway', (tester) async {
       _phone(tester, 1.0);
