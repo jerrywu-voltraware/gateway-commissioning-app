@@ -35,7 +35,7 @@
   Optional lines in the same file: API_BASE=<https url> (production API
   base, --dart-define API_BASE) and API_CERT_SHA256=<64 hex digits, colons
   allowed> (pin the production server certificate, --dart-define
-  API_CERT_SHA256). Absent -> not passed (defaults: dashboard.voltraware.com,
+  API_CERT_SHA256). Absent -> not passed (defaults: https://46.250.255.172,
   system trust).
 
   Gradle's release output stays unsigned (android/app/build.gradle.kts has

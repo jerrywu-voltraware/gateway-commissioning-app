@@ -21,7 +21,13 @@ class EnvSwitchPolicy {
         ? BackendEnv.local
         : BackendEnv.production,
     this.localBuild = localDevelopmentBuild,
+    this.localAllowed = kDebugMode || localDevelopmentBuild,
   });
+
+  /// r32: the APP may use the local test backend (plain http to a LAN host):
+  /// debug and `LOCAL_DEVELOPMENT` builds only, the same rule as the API
+  /// client. A prod / prodtest build shows 「本地測試」 as unavailable.
+  final bool localAllowed;
 
   /// Round 29: a local test build (`LOCAL_DEVELOPMENT=true`). Only here does
   /// the done page carry the developer note 「出貨前切回正式站」 (field
@@ -39,6 +45,12 @@ class EnvSwitchPolicy {
   /// Release builds ask once before a gateway switch; debug builds do not.
   final bool confirmGatewaySwitch;
 }
+
+/// r32: why 「本地測試」 cannot be used in a prod / prodtest build.
+const localUnavailableText = '正式版 APP 不能連本地測試站，請改用本地測試版 APK。';
+
+/// Label of 「本地測試」 where the build cannot use it.
+const localUnavailableLabel = '本地測試（此版本不可用）';
 
 /// Built with `--dart-define=LOCAL_DEVELOPMENT=true` (field test APKs).
 const localDevelopmentBuild = bool.fromEnvironment('LOCAL_DEVELOPMENT');

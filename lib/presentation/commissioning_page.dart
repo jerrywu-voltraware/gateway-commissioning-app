@@ -2245,8 +2245,10 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     final env = ref.read(backendEnvProvider);
     final environment = env.environment;
     final topology = ref.read(topologyProvider).topology;
+    final localAllowed = ref.read(envSwitchPolicyProvider).localAllowed;
     switch (s.step) {
       case 0:
+        final localBlocked = environment == BackendEnv.local && !localAllowed;
         return [
           ..._savedResume(s, c, enabled),
           const Text('先確認現場 WiFi 路由器與裝置電源已開啟。'),
@@ -2265,7 +2267,17 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                 BackendEnv.local,
                 BackendEnv.custom,
               ])
-                DropdownMenuItem(value: value, child: Text(envLabel(value))),
+                DropdownMenuItem(
+                  value: value,
+                  // r32: a prod / prodtest build cannot use the local
+                  // test backend; say so on the option itself.
+                  enabled: value != BackendEnv.local || localAllowed,
+                  child: Text(
+                    value == BackendEnv.local && !localAllowed
+                        ? localUnavailableLabel
+                        : envLabel(value),
+                  ),
+                ),
             ],
             onChanged: enabled
                 ? (value) {
@@ -2274,7 +2286,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                 : null,
           ),
           const SizedBox(height: 12),
-          if (environment == BackendEnv.local)
+          if (localBlocked)
+            const SizedBox.shrink()
+          else if (environment == BackendEnv.local)
             LocalBackendField(
               hostController: _host,
               port: env.localPort,
@@ -2289,10 +2303,10 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               padding: const EdgeInsets.only(bottom: 12),
               child: Text(env.base),
             ),
-          if (environment == BackendEnv.local)
+          if (environment == BackendEnv.local && !localBlocked)
             const Text('手機與電腦需連同一個 Wi-Fi；電腦 IP 若變更，可在上方修改或按「自動尋找」。')
           else if (environment == BackendEnv.production)
-            const Text('正式網址目前仍待部署確認。'),
+            const Text('資料送到正式站，客戶看得到。'),
           // 09-28: no password field; the build carries the credential.
           if (!demo && ref.read(backendKeyProvider).isEmpty)
             Padding(
@@ -2314,9 +2328,28 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                 ? (v) => setState(() => _offline = v ?? false)
                 : null,
           ),
+          // r32: next to the button (not the banner at the top), so the
+          // tap never looks like nothing happened.
+          if (localBlocked)
+            Padding(
+              key: const Key('local-unavailable'),
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                localUnavailableText,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.error,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
           button('檢查並開始', () async {
             _flushBase();
             final current = ref.read(backendEnvProvider);
+            if (current.environment == BackendEnv.local &&
+                !ref.read(envSwitchPolicyProvider).localAllowed) {
+              _snack(localUnavailableText);
+              return;
+            }
             if (current.environment == BackendEnv.local) {
               final error = localHostError(current.localHost);
               if (error != null) {
@@ -2820,9 +2853,6 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           if (ref.read(envSwitchPolicyProvider).localBuild &&
               parseMqttTarget(s.config)?.isLocal == true)
             _devShipNote(enabled),
-          // 09-28: the report goes to the back office on its own; its status
-          // (sent / queued / failed with 〔重送〕) is shown above the report.
-          InstallReportStatusLine(enabled: enabled),
           _reportTile(s, enabled),
           if (s.loggedIn && !deferred)
             TextButton(
@@ -2949,6 +2979,10 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               key: const Key('done-upload'),
               color: toneColor(context, upload.tone),
             ),
+            // 09-28 / r32: the report goes to the back office on its own;
+            // its status (sent / queued / failed with 〔重送〕) sits in the
+            // summary so it is on the first screen (r32: below the fold).
+            InstallReportStatusLine(enabled: !s.busy),
             if (!deferred && s.message.isNotEmpty)
               line(s.message, key: const Key('done-message')),
             // Until the first health check answers, say so instead of a

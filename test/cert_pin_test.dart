@@ -1,5 +1,6 @@
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gateway_commissioning/core/mqtt_target.dart';
 import 'package:gateway_commissioning/data/cert_pin.dart';
 
 void main() {
@@ -44,5 +45,12 @@ void main() {
     final bad = pinFor(Uri.parse(prod), pin: 'xyz', productionBase: prod);
     expect(bad, isNotNull);
     expect(certMatchesPin(der, bad!), isFalse);
+  });
+
+  test('09-28: the default production base (its IP) is the pinned one', () {
+    expect(pinFor(Uri.parse(productionApiBase), pin: pin), pin);
+    expect(pinFor(Uri.parse('https://46.250.255.172/api'), pin: pin), pin);
+    expect(pinFor(Uri.parse('https://46.250.255.172:8443'), pin: pin), isNull);
+    expect(pinFor(Uri.parse('http://46.250.255.172'), pin: pin), isNull);
   });
 }

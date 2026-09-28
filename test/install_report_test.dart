@@ -613,7 +613,8 @@ void main() {
       expect(find.byKey(const Key('install-report-status')), findsNothing);
     });
 
-    testWidgets('the done page: queued above the report, 〔重送〕 sends it, '
+    testWidgets('the done page: queued in the summary on the first screen, '
+        '〔重送〕 sends it, '
         '〔分享安裝報告〕 stays in the report', (tester) async {
       tester.view.physicalSize = const Size(360, 640);
       tester.view.devicePixelRatio = 1;
@@ -661,8 +662,22 @@ void main() {
       await tester.pumpAndSettle();
       expect(container.read(commissionProvider).step, 7);
       final line = find.byKey(const Key('install-report-status'));
-      await tester.scrollUntilVisible(line, 100);
-      await tester.pumpAndSettle();
+      // r32: the line is in the summary card, on the first screen of a
+      // 360x640 phone (no scrolling), above 〔配置下一台〕／〔完成〕.
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('done-summary')),
+          matching: line,
+        ),
+        findsOneWidget,
+      );
+      expect(
+        tester.getRect(line).bottom,
+        lessThanOrEqualTo(
+          tester.getRect(find.byKey(const Key('done-finish'))).top,
+        ),
+        reason: 'visible without scrolling',
+      );
       expect(
         tester
             .widget<Text>(find.byKey(const Key('install-report-status-text')))

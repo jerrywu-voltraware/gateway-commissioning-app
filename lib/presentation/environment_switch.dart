@@ -121,8 +121,15 @@ class _EnvironmentSheetState extends ConsumerState<_EnvironmentSheet> {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
 
-    Widget option(BackendEnv value, String description) {
+    final localAllowed = ref.read(envSwitchPolicyProvider).localAllowed;
+
+    Widget option(
+      BackendEnv value,
+      String description, {
+      bool available = true,
+    }) {
       final selected = env.environment == value;
+      final off = busy || !available;
       final color = envColor(context, value);
       return Card(
         margin: const EdgeInsets.only(bottom: 10),
@@ -136,7 +143,7 @@ class _EnvironmentSheetState extends ConsumerState<_EnvironmentSheet> {
         child: InkWell(
           key: Key('env-option-${value.name}'),
           borderRadius: BorderRadius.circular(12),
-          onTap: busy ? null : () => _choose(value),
+          onTap: off ? null : () => _choose(value),
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Row(
@@ -148,9 +155,9 @@ class _EnvironmentSheetState extends ConsumerState<_EnvironmentSheet> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        envLabel(value),
+                        available ? envLabel(value) : localUnavailableLabel,
                         style: theme.textTheme.titleMedium?.copyWith(
-                          color: busy ? colors.onSurfaceVariant : null,
+                          color: off ? colors.onSurfaceVariant : null,
                         ),
                       ),
                       const SizedBox(height: 2),
@@ -190,11 +197,16 @@ class _EnvironmentSheetState extends ConsumerState<_EnvironmentSheet> {
         ),
       option(
         BackendEnv.local,
-        env.localValid
+        !localAllowed
+            ? localUnavailableText
+            : env.localValid
             ? '資料送到這台電腦上的測試主機（${env.localHost}）'
             : '資料送到這台電腦上的測試主機（還沒設定電腦 IP）',
+        available: localAllowed,
       ),
-      if (_editing == BackendEnv.local) ...[
+      if (!localAllowed)
+        const SizedBox.shrink()
+      else if (_editing == BackendEnv.local) ...[
         Text(env.localValid ? '可修改測試主機的 IP：' : '還沒有測試主機的 IP，請按「自動尋找」或直接輸入。'),
         const SizedBox(height: 8),
         LocalBackendField(

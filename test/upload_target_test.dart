@@ -26,7 +26,10 @@ class TargetGateway extends DemoSystem {
   final paths = <String>[];
 
   @override
-  Future<void> connect(GatewayPeer peer, {void Function(String stage)? onStage}) async {
+  Future<void> connect(
+    GatewayPeer peer, {
+    void Function(String stage)? onStage,
+  }) async {
     await connectGate?.future;
     if (failConnects > 0) {
       failConnects--;
@@ -233,6 +236,12 @@ void main() {
       expect(app.target!.isLocal, isFalse);
       expect(app.error, isNull);
     });
+    test('正式站 on its IP is production, never a local target', () {
+      final app = desiredUploadTarget('production', productionApiBase);
+      expect(app.target!.isLocal, isFalse);
+      expect(app.target!.params, {'target': 'production'});
+      expect(isPrivateIpv4Literal(productionApiHost), isFalse);
+    });
     test('本地測試站 uses the host of the configured URL, port 8883', () {
       final app = desiredUploadTarget('local', 'http://192.168.0.12:18000');
       expect(app.target!.label, '本地 192.168.0.12:8883');
@@ -260,19 +269,21 @@ void main() {
         contains('無法解析主機位址'),
       );
     });
-    test('其他網址 maps private IP, production domain, else unknown', () {
+    test('其他網址 maps private IP, production IP, else unknown', () {
       expect(
         desiredUploadTarget('custom', 'http://172.20.0.5:18000').target!.label,
         '本地 172.20.0.5:8883',
       );
-      expect(
-        desiredUploadTarget(
-          'custom',
-          'https://Dashboard.Voltraware.com',
-        ).target!.isLocal,
-        isFalse,
-      );
+      // 09-28: the production site stays on its public IP (no domain).
+      expect(productionApiBase, 'https://46.250.255.172');
+      for (final url in [productionApiBase, 'https://46.250.255.172/']) {
+        final app = desiredUploadTarget('custom', url);
+        expect(app.target!.isLocal, isFalse, reason: url);
+        expect(app.target!.label, '正式站', reason: url);
+        expect(app.wantsLocal, isFalse, reason: url);
+      }
       for (final url in [
+        'https://dashboard.voltraware.com',
         'https://example.invalid',
         'http://8.8.8.8:18000',
         'http://mypc.local:18000',

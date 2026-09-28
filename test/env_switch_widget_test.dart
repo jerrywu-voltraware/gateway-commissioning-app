@@ -25,6 +25,13 @@ const _release = EnvSwitchPolicy(
   confirmGatewaySwitch: true,
 );
 
+/// r32: a prod / prodtest APK (no LOCAL_DEVELOPMENT): no local test backend.
+const _prodBuild = EnvSwitchPolicy(
+  autoSyncDefault: false,
+  confirmGatewaySwitch: true,
+  localAllowed: false,
+);
+
 class _Prober implements LocalBackendProber {
   final probed = <String>[];
   @override
@@ -631,6 +638,93 @@ void main() {
     await tester.pumpAndSettle();
     await _tap(tester, find.text('變更電腦 IP'));
     expect(find.text('自動尋找'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('09-28: 正式站 on the login page names no pending deployment', (
+    tester,
+  ) async {
+    await _pumpApp(tester, SimGateway());
+    expect(find.text(productionApiBase), findsOneWidget);
+    expect(find.text('資料送到正式站，客戶看得到。'), findsOneWidget);
+    expect(find.textContaining('待部署'), findsNothing);
+  });
+
+  testWidgets('r32: a prod build marks 本地測試 unavailable in the dropdown '
+      'and the sheet', (tester) async {
+    final container = await _pumpApp(tester, SimGateway(), policy: _prodBuild);
+    await tester.tap(find.byType(DropdownButtonFormField<BackendEnv>));
+    await tester.pumpAndSettle();
+    final item = tester.widget<DropdownMenuItem<BackendEnv>>(
+      find
+          .byWidgetPredicate(
+            (w) =>
+                w is DropdownMenuItem<BackendEnv> &&
+                w.value == BackendEnv.local,
+          )
+          .last,
+    );
+    expect(item.enabled, isFalse);
+    expect(find.text(localUnavailableLabel), findsWidgets);
+    await tester.tap(
+      find.text(localUnavailableLabel).last,
+      warnIfMissed: false,
+    );
+    await tester.pumpAndSettle();
+    expect(
+      container.read(backendEnvProvider).environment,
+      BackendEnv.production,
+    );
+    // Close the menu if it is still open.
+    if (find.byType(DropdownMenuItem<BackendEnv>).evaluate().length > 3) {
+      await tester.tapAt(const Offset(5, 5));
+      await tester.pumpAndSettle();
+    }
+
+    await tester.tap(_chip);
+    await tester.pumpAndSettle();
+    expect(find.text(localUnavailableText), findsOneWidget);
+    expect(find.text('變更電腦 IP'), findsNothing);
+    await tester.tap(
+      find.byKey(const Key('env-option-local')),
+      warnIfMissed: false,
+    );
+    await tester.pumpAndSettle();
+    expect(
+      container.read(backendEnvProvider).environment,
+      BackendEnv.production,
+    );
+    expect(find.byKey(const Key('local-backend-host')), findsNothing);
+  });
+
+  testWidgets('r32: a prod build remembering 本地測試 explains it next to '
+      '檢查並開始 and does not start', (tester) async {
+    final fake = SimGateway();
+    final container = await _pumpApp(
+      tester,
+      fake,
+      prefs: _localPrefs,
+      policy: _prodBuild,
+    );
+    final note = find.byKey(const Key('local-unavailable'));
+    expect(note, findsOneWidget);
+    expect(
+      find.descendant(of: note, matching: find.text(localUnavailableText)),
+      findsOneWidget,
+    );
+    expect(find.textContaining('HTTPS'), findsNothing);
+    final button = find.text('檢查並開始');
+    // Right above the button, not in the banner at the top.
+    expect(
+      tester.getRect(button).top - tester.getRect(note).bottom,
+      inInclusiveRange(0, 60),
+    );
+    await _tap(tester, button);
+    final state = container.read(commissionProvider);
+    expect(state.step, 0);
+    expect(state.error, isNull);
+    expect(fake.logins, isEmpty);
+    expect(find.textContaining('HTTPS'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 }

@@ -10,11 +10,15 @@ import 'dart:convert';
 const defaultMqttPort = 8883;
 
 /// Production API base; `--dart-define=API_BASE=...` overrides it.
+/// 09-28: the production site stays on its public IP (no domain name); the
+/// certificate is pinned by the build (`API_CERT_SHA256`, cert_pin.dart).
 const productionApiBase = String.fromEnvironment(
   'API_BASE',
-  defaultValue: 'https://dashboard.voltraware.com',
+  defaultValue: 'https://$productionApiHost',
 );
-const _productionApiHost = 'dashboard.voltraware.com';
+
+/// Default production API host (public IPv4, never a local target).
+const productionApiHost = '46.250.255.172';
 
 /// Keys the controller copies from `get_net_status` / `get_config` results.
 const mqttStatusKeys = [
@@ -173,7 +177,7 @@ String _host(String url) {
 bool _isProductionHost(String host) {
   final h = host.toLowerCase();
   return h.isNotEmpty &&
-      (h == _productionApiHost || h == _host(productionApiBase));
+      (h == productionApiHost || h == _host(productionApiBase));
 }
 
 /// Maps the APP backend environment (`production` / `local` / `custom`, as
