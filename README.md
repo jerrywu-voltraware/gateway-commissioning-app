@@ -91,12 +91,17 @@ Wi-Fi 名稱下方可掃描手機周邊的 2.4 GHz 網路，依訊號排序，�
 - **現場回報**：卡片出現時送一筆 `status` 事件，`error_message` 為「本樁 PTU 不在場：閘道器綁定 …」（`FieldReporter.noteDirectPtuMissing`），後台救援頁時間軸看得到。
 - 測試：`test/round34_ptu_missing_test.dart`。
 
-## 完成頁〔查看最近資料〕（09-28，APP 1.0.0+3）
+## 完成頁〔查看最近資料〕（09-28，APP 1.0.0+3；畫面改版 1.0.0+4）
 
 現場人員配置完想確認資料真的進了後台，不必登入後台網頁、不必給 key：完成頁底部多一顆〔查看最近資料〕（`Key('done-recent')`），開新頁「站 S 閘道器 G 最近資料」，用 APP 自己的低權限 session 查後台唯讀端點。
 
 - **後台契約**：`GET {API_BASE}/api/app/recent/{site_id}/{gateway_id}?limit=20`，header `X-API-Key`（沿用 `DashboardApi.request`，正式站走 `cert_pin.dart` 的 CA 信任）；回 `{site_id, gateway_id, count, items:[{ts, seq, device_id, ptu_mac, ptu_state, input_mv, input_ma, bus_mv, temp_c}]}`。`count` 0 ＝ 後台尚未收到資料；非 2xx／連不上 ＝ 錯誤。
-- **畫面**（`lib/presentation/recent_data_page.dart`）：頂部一行「最近一筆 N 秒前・共 count 筆」；每列時間（`DateTime.parse` 後 `toLocal()`，HH:mm:ss）、PTU 後 4 碼、狀態、`input_mv/1000` V、`input_ma` mA、`temp_c` °C；count 0 顯示「後台尚未收到這台閘道器的資料，請稍等 20 秒再重新整理」；錯誤顯示人話＋〔重試〕；右上〔重新整理〕。不自動輪詢。
+- **畫面**（`lib/presentation/recent_data_page.dart`，1.0.0+4 改版：現場人員只要看「資料有沒有進來、最新一筆、PTU 正不正常」），由上到下：
+  1. **狀態橫幅**（`Key('recent-banner')`，icon key `recent-banner-<kind>`）：最近一筆 <30 秒 → 綠「資料正常上傳中」；30 秒～10 分鐘 → 黃「最近 N 秒／分鐘沒有新資料」；≥10 分鐘 → 紅同句；count 0 → 灰「後台尚未收到這台閘道器的資料，請稍等 20 秒再重新整理」＋〔重新整理〕；錯誤 → 紅人話＋〔重試〕（`recentBanner`）。
+  2. **最新一筆大字卡**（`Key('recent-latest')`）：`input_mv/1000` V（一位小數）、`input_ma/1000` A（兩位小數）、`temp_c` °C 三個大數字，下一行「PTU 後 4 碼・狀態中文・HH:mm:ss（N 秒前）」。`ptu_state` 中文對照 `ptuStateLabels`，來源韌體 `ble_multi_wifi_gateway/main/http/mqtt_uploader.c` `ptu_state_to_string`（CONFIGURATION 設定中、POWER_SAVE 省電、LOW_POWER 低功率、POWER_TRANSFER 充電中、LATCH_FAULT／LATCHING_FAULT 鎖定故障、LOCAL_FAULT 本地故障、OTA_MODE、COOLING 冷卻中、EXCEEDED_RANGE PRU 超出範圍、UNKNOWN 未知；其他照原字串，空／NULL 顯示 `--`）。`*_FAULT` 狀態卡片邊框轉紅並加一行「PTU 回報故障」（`Key('recent-latest-fault')`）。星狀多台 PTU 時依 `ptu_mac`（無則 `device_id`）分組，每台一張小卡 `Key('recent-latest-<後4碼>')`（`recentLatestPerDevice`）。
+  3. **趨勢**：「最近 N 筆・跨 N 秒・平均每秒 X 筆」（`recentTrendText`）＋電流 mA 折線圖（`RecentSparklinePainter`，`CustomPainter` 自畫、無套件、高 60、左舊右新、多台 PTU 全部點畫同一條）。
+  4. **最近資料**（`ExpansionTile` 預設收合）：展開為 `DataTable`（時間 HH:mm:ss｜PTU｜V｜A｜°C｜狀態中文），單行不換行、tabular figures。
+  5. 右上〔重新整理〕；載入中 AppBar 下方進度條、按鈕停用。不自動輪詢；仍取 `limit=20`。
 - **資料層**：`lib/data/recent_data_api.dart`（`RecentData`／`RecentItem`／`fetchRecentData`）；練習模式 `DemoSystem` 回每台已連線 PTU 一列。
 - **現場回報**：進入此頁呼叫 `FieldReporter.noteRecentDataViewed()`（`status` 事件、`error_message`「查看最近資料」）。完成頁出現時 session 已以 `completed` 結束（`FieldReporter.end`），所以從完成頁進入不會送出；只有 session 仍開著時才送。
 - 測試：`test/recent_data_test.dart`。

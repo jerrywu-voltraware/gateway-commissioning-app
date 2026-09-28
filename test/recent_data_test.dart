@@ -2,12 +2,16 @@
 // shows the last rows the back office received from this gateway, through
 // the APP's own session (GET /api/app/recent/{site}/{gateway}?limit=20).
 // 1. The model parses the fixed contract (local time, PTU tail, volts).
-// 2. Three screens: rows with the summary line, count 0 (「後台尚未收到…」),
-//    an error in words with 〔重試〕; 〔重新整理〕 at the top right.
+// 2. The page, top to bottom: the status banner (green / yellow / red /
+//    grey, red with 〔重試〕 on an error), the newest row per PTU in big
+//    digits (red border on a fault; one tile per PTU in the star mode),
+//    the trend line, the collapsed table; 〔重新整理〕 at the top right.
 // 3. The done page has 〔查看最近資料〕 next to 〔完成〕／〔配置下一台〕 and
 //    opens the page for the finished station / gateway.
 // 4. Opening the page reports 「查看最近資料」 while a session is open, and
 //    nothing once it ended (the done page's case).
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -64,6 +68,9 @@ class _Api implements GatewayApi {
   Map<String, dynamic> answer = Map<String, dynamic>.from(_sample);
   final paths = <String>[];
 
+  /// When set, an answer waits for it (the loading screen's test).
+  Completer<void>? gate;
+
   @override
   Future<void> login(String base, String password) async {}
 
@@ -74,6 +81,7 @@ class _Api implements GatewayApi {
     Map<String, dynamic>? body,
   ]) async {
     paths.add('$method $path');
+    if (gate != null) await gate!.future;
     switch (mode) {
       case 'empty':
         return {'site_id': 80, 'gateway_id': 1, 'count': 0, 'items': []};
@@ -92,7 +100,13 @@ class _Api implements GatewayApi {
 
 /// Rows whose `ts` is [ago] before [now] (local), so the clock text is
 /// known whatever the test machine's time zone.
-Map<String, dynamic> _rowsAt(DateTime now, List<Duration> ago) => {
+Map<String, dynamic> _rowsAt(
+  DateTime now,
+  List<Duration> ago, {
+  bool samePtu = true,
+  List<String>? states,
+  List<num>? ma,
+}) => {
   'site_id': 80,
   'gateway_id': 1,
   'count': ago.length,
@@ -102,10 +116,10 @@ Map<String, dynamic> _rowsAt(DateTime now, List<Duration> ago) => {
         'ts': now.subtract(d).toIso8601String(),
         'seq': 100 - i,
         'device_id': 1,
-        'ptu_mac': '90:5F:E8:9A:96:0${i + 1}',
-        'ptu_state': i == 0 ? 'POWER_TRANSFER' : 'IDLE',
+        'ptu_mac': samePtu ? '90:5F:E8:9A:96:00' : '90:5F:E8:9A:96:0${i + 1}',
+        'ptu_state': states != null ? states[i] : 'POWER_TRANSFER',
         'input_mv': 5000,
-        'input_ma': 120,
+        'input_ma': ma != null ? ma[i] : 120,
         'bus_mv': 4980,
         'temp_c': 31,
       },
@@ -252,11 +266,15 @@ void main() {
       });
       expect(empty.isEmpty, isTrue);
       expect(empty.latest, isNull);
-      final odd = RecentData.fromJson({
-        'items': [
-          {'ts': 'not-a-time', 'ptu_mac': 'AB'},
-        ],
-      }, site: 56, gateway: 1);
+      final odd = RecentData.fromJson(
+        {
+          'items': [
+            {'ts': 'not-a-time', 'ptu_mac': 'AB'},
+          ],
+        },
+        site: 56,
+        gateway: 1,
+      );
       expect(odd.siteId, 56);
       expect(odd.count, 1, reason: 'falls back to the item count');
       expect(odd.items.single.ts, isNull);
@@ -312,28 +330,212 @@ void main() {
     });
   });
 
+  group('view helpers', () {
+    test('PTU state words follow the firmware table; faults detected', () {
+      expect(ptuStateLabel('CONFIGURATION'), '設定中');
+      expect(ptuStateLabel('POWER_SAVE'), '省電');
+      expect(ptuStateLabel('LOW_POWER'), '低功率');
+      expect(ptuStateLabel('POWER_TRANSFER'), '充電中');
+      expect(ptuStateLabel('LATCH_FAULT'), '鎖定故障');
+      expect(ptuStateLabel('LATCHING_FAULT'), '鎖定故障');
+      expect(ptuStateLabel('LOCAL_FAULT'), '本地故障');
+      expect(ptuStateLabel('OTA_MODE'), 'OTA 更新中');
+      expect(ptuStateLabel('COOLING'), '冷卻中');
+      expect(ptuStateLabel('EXCEEDED_RANGE'), 'PRU 超出範圍');
+      expect(ptuStateLabel('UNKNOWN'), '未知');
+      expect(ptuStateLabel('power_transfer'), '充電中', reason: 'case');
+      expect(ptuStateLabel('IDLE'), 'IDLE', reason: 'unknown: as sent');
+      expect(ptuStateLabel(''), '--');
+      expect(ptuStateLabel('NULL'), '--');
+      expect(ptuStateIsFault('LOCAL_FAULT'), isTrue);
+      expect(ptuStateIsFault('LATCH_FAULT'), isTrue);
+      expect(ptuStateIsFault('POWER_TRANSFER'), isFalse);
+      expect(ptuStateIsFault(''), isFalse);
+    });
+
+    test('numbers: amps, volts, temperature, age', () {
+      expect(recentAmpsText(1612), '1.61');
+      expect(recentAmpsText(0), '0.00');
+      expect(recentAmpsText(null), '--');
+      expect(recentVoltsBigText(52400), '52.4');
+      expect(recentVoltsBigText(null), '--');
+      expect(recentTempText(13.4), '13');
+      expect(recentTempText(null), '--');
+      expect(recentAgeText(const Duration(seconds: 7)), '7 秒');
+      expect(recentAgeText(const Duration(seconds: -3)), '0 秒');
+      expect(recentAgeText(const Duration(seconds: 59)), '59 秒');
+      expect(recentAgeText(const Duration(seconds: 60)), '1 分鐘');
+      expect(recentAgeText(const Duration(minutes: 9, seconds: 59)), '9 分鐘');
+    });
+
+    test('banner: fresh, stale, stopped, empty, unknown time', () {
+      final now = DateTime(2026, 9, 28, 13, 0, 10);
+      RecentBanner at(Duration age) =>
+          recentBanner(RecentData.fromJson(_rowsAt(now, [age])), now);
+      expect(
+        at(const Duration(seconds: 0)),
+        const RecentBanner(RecentBannerKind.ok, recentDataOkText),
+      );
+      expect(at(const Duration(seconds: 29)).kind, RecentBannerKind.ok);
+      expect(
+        at(const Duration(seconds: 30)),
+        const RecentBanner(RecentBannerKind.stale, '最近 30 秒沒有新資料'),
+      );
+      expect(
+        at(const Duration(minutes: 5)),
+        const RecentBanner(RecentBannerKind.stale, '最近 5 分鐘沒有新資料'),
+      );
+      expect(
+        at(const Duration(minutes: 9, seconds: 59)).kind,
+        RecentBannerKind.stale,
+      );
+      expect(
+        at(const Duration(minutes: 10)),
+        const RecentBanner(RecentBannerKind.stopped, '最近 10 分鐘沒有新資料'),
+      );
+      expect(
+        recentBanner(RecentData.fromJson({'count': 0, 'items': []}), now),
+        const RecentBanner(RecentBannerKind.empty, recentDataEmptyText),
+      );
+      expect(
+        recentBanner(
+          const RecentData(siteId: 1, gatewayId: 1, count: 1, items: []),
+          now,
+        ).kind,
+        RecentBannerKind.empty,
+        reason: 'no items at all',
+      );
+      expect(
+        recentBanner(
+          RecentData.fromJson({
+            'items': [
+              {'ts': 'bad', 'ptu_mac': 'AB'},
+            ],
+          }),
+          now,
+        ).kind,
+        RecentBannerKind.unknown,
+      );
+    });
+
+    test('latest per device, trend text, latest line', () {
+      final now = DateTime(2026, 9, 28, 13, 0, 10);
+      // Two PTUs, three rows: the newest of each, newest PTU first.
+      final data = RecentData.fromJson({
+        'count': 3,
+        'items': [
+          {
+            'ts': now.subtract(const Duration(seconds: 1)).toIso8601String(),
+            'ptu_mac': '90:5F:E8:9A:96:02',
+            'ptu_state': 'LOW_POWER',
+            'input_ma': 10,
+          },
+          {
+            'ts': now.subtract(const Duration(seconds: 2)).toIso8601String(),
+            'ptu_mac': '90:5F:E8:9A:96:01',
+            'ptu_state': 'POWER_TRANSFER',
+            'input_ma': 1612,
+          },
+          {
+            'ts': now.subtract(const Duration(seconds: 5)).toIso8601String(),
+            'ptu_mac': '90:5F:E8:9A:96:02',
+            'ptu_state': 'POWER_TRANSFER',
+            'input_ma': 500,
+          },
+        ],
+      });
+      final latest = recentLatestPerDevice(data);
+      expect(latest.map((i) => i.ptuTail), ['9602', '9601']);
+      expect(latest.first.ptuState, 'LOW_POWER', reason: 'the newest of 9602');
+      expect(recentChronological(data).map((i) => i.inputMa), [500, 1612, 10]);
+      expect(recentTrendText(data), '最近 3 筆・跨 4 秒・平均每秒 0.8 筆');
+      expect(recentLatestLine(latest.last, now), 'PTU 9601・充電中・13:00:08（2 秒前）');
+      // One row: no span.
+      final one = RecentData.fromJson(_rowsAt(now, const [Duration.zero]));
+      expect(recentLatestPerDevice(one), hasLength(1));
+      expect(recentTrendText(one), '最近 1 筆');
+      // Rows without a MAC group by device number; no ts → 「時間不明」.
+      final byId = RecentData.fromJson({
+        'items': [
+          {'device_id': 1, 'ptu_state': 'POWER_TRANSFER'},
+          {'device_id': 2},
+          {'device_id': 1},
+        ],
+      });
+      expect(recentLatestPerDevice(byId), hasLength(2));
+      expect(recentTrendText(byId), '最近 3 筆');
+      expect(
+        recentLatestLine(byId.items[1], now),
+        'PTU ----・--・--:--:--（時間不明）',
+      );
+    });
+  });
+
   group('page', () {
-    testWidgets('rows with the summary line; refresh asks again', (
+    testWidgets('fresh data: green banner, big card, trend, table; refresh', (
       tester,
     ) async {
       final now = DateTime(2026, 9, 28, 13, 0, 10);
       final api = _Api('data')
-        ..answer = _rowsAt(now, const [
-          Duration(seconds: 5),
-          Duration(seconds: 25),
-        ]);
+        ..answer = _rowsAt(
+          now,
+          const [Duration(seconds: 5), Duration(seconds: 25)],
+          ma: const [1612, 120],
+        );
       await _pumpPage(tester, api, now);
       expect(find.text('站 80 閘道器 1 最近資料'), findsOneWidget);
-      expect(find.byKey(const Key('recent-summary')), findsOneWidget);
-      expect(find.text('最近一筆 5 秒前・共 2 筆'), findsOneWidget);
-      expect(find.byKey(const Key('recent-list')), findsOneWidget);
+      // 1. Banner.
+      expect(find.byKey(const Key('recent-banner')), findsOneWidget);
+      expect(find.byKey(const Key('recent-banner-ok')), findsOneWidget);
+      expect(find.text(recentDataOkText), findsOneWidget);
+      // 2. One PTU → one big card, no grid, no fault line.
+      final cardFinder = find.byKey(const Key('recent-latest'));
+      expect(cardFinder, findsOneWidget);
+      expect(find.byKey(const Key('recent-latest-grid')), findsNothing);
+      expect(find.byKey(const Key('recent-latest-fault')), findsNothing);
+      expect(find.text('PTU 9600・充電中・13:00:05（5 秒前）'), findsOneWidget);
+      final line = tester.widget<Text>(
+        find.byKey(const Key('recent-latest-line')),
+      );
+      expect(line.data, 'PTU 9600・充電中・13:00:05（5 秒前）');
+      final big = find.descendant(
+        of: cardFinder,
+        matching: find.byType(RichText),
+      );
+      final bigText = tester
+          .widgetList<RichText>(big)
+          .map((r) => r.text.toPlainText())
+          .toList();
+      expect(bigText, containsAll(['5.0 V', '1.61 A', '31 °C']));
+      final card = tester.widget<Card>(cardFinder);
+      final side = (card.shape! as RoundedRectangleBorder).side;
+      final colors = Theme.of(tester.element(cardFinder)).colorScheme;
+      expect(side.color, isNot(colors.error));
+      // 3. Trend line and chart.
+      expect(find.text('最近 2 筆・跨 20 秒・平均每秒 0.1 筆'), findsOneWidget);
+      final chart = find.byKey(const Key('recent-trend-chart'));
+      expect(chart, findsOneWidget);
+      final painter =
+          tester.widget<CustomPaint>(chart).painter! as RecentSparklinePainter;
+      expect(painter.points.map((p) => p.$2), [
+        120.0,
+        1612.0,
+      ], reason: 'oldest first');
+      // 4. Table collapsed, then expanded with words for the state.
+      expect(find.byKey(const Key('recent-table-tile')), findsOneWidget);
+      expect(find.text('最近資料（2 筆）'), findsOneWidget);
+      expect(find.byKey(const Key('recent-table')), findsNothing);
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('recent-table-tile')),
+        200,
+      );
+      await tester.tap(find.byKey(const Key('recent-table-tile')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('recent-table')), findsOneWidget);
       expect(find.text('13:00:05'), findsOneWidget);
       expect(find.text('12:59:45'), findsOneWidget);
-      expect(find.text('PTU 9601'), findsOneWidget);
-      expect(find.text('PTU 9602'), findsOneWidget);
-      expect(find.text('POWER_TRANSFER'), findsOneWidget);
-      expect(find.text('IDLE'), findsOneWidget);
-      expect(find.text('5.00 V・120 mA・31 °C'), findsNWidgets(2));
+      expect(find.text('充電中'), findsNWidgets(2));
+      expect(find.text('POWER_TRANSFER'), findsNothing);
       expect(find.byKey(const Key('recent-empty')), findsNothing);
       expect(find.byKey(const Key('recent-error')), findsNothing);
       expect(api.paths, ['GET /api/app/recent/80/1?limit=20']);
@@ -345,7 +547,62 @@ void main() {
       expect(api.paths, hasLength(2));
     });
 
-    testWidgets('count 0: the waiting text, refresh then shows rows', (
+    testWidgets('stale data: yellow banner with the age', (tester) async {
+      final now = DateTime(2026, 9, 28, 13, 0, 10);
+      final api = _Api('data')
+        ..answer = _rowsAt(now, const [Duration(minutes: 3)]);
+      await _pumpPage(tester, api, now);
+      expect(find.byKey(const Key('recent-banner-stale')), findsOneWidget);
+      expect(find.text('最近 3 分鐘沒有新資料'), findsOneWidget);
+      expect(find.byKey(const Key('recent-latest')), findsOneWidget);
+    });
+
+    testWidgets('fault state: red border and 「PTU 回報故障」', (tester) async {
+      final now = DateTime(2026, 9, 28, 13, 0, 10);
+      final api = _Api('data')
+        ..answer = _rowsAt(
+          now,
+          const [Duration(seconds: 1), Duration(seconds: 3)],
+          states: const ['LOCAL_FAULT', 'POWER_TRANSFER'],
+        );
+      await _pumpPage(tester, api, now);
+      final cardFinder = find.byKey(const Key('recent-latest'));
+      final card = tester.widget<Card>(cardFinder);
+      final side = (card.shape! as RoundedRectangleBorder).side;
+      final colors = Theme.of(tester.element(cardFinder)).colorScheme;
+      expect(side.color, colors.error);
+      expect(side.width, 2);
+      expect(find.byKey(const Key('recent-latest-fault')), findsOneWidget);
+      expect(find.text(recentDataFaultText), findsOneWidget);
+      expect(find.textContaining('本地故障'), findsOneWidget);
+    });
+
+    testWidgets('star mode: one tile per PTU', (tester) async {
+      final now = DateTime(2026, 9, 28, 13, 0, 10);
+      final api = _Api('data')
+        ..answer = _rowsAt(
+          now,
+          const [
+            Duration(seconds: 1),
+            Duration(seconds: 2),
+            Duration(seconds: 3),
+          ],
+          samePtu: false,
+          states: const ['POWER_TRANSFER', 'LATCH_FAULT', 'LOW_POWER'],
+        );
+      await _pumpPage(tester, api, now);
+      expect(find.byKey(const Key('recent-latest')), findsNothing);
+      expect(find.byKey(const Key('recent-latest-grid')), findsOneWidget);
+      expect(find.byKey(const Key('recent-latest-9601')), findsOneWidget);
+      expect(find.byKey(const Key('recent-latest-9602')), findsOneWidget);
+      expect(find.byKey(const Key('recent-latest-9603')), findsOneWidget);
+      expect(find.byKey(const Key('recent-latest-9602-fault')), findsOneWidget);
+      expect(find.byKey(const Key('recent-latest-9601-fault')), findsNothing);
+      expect(find.textContaining('PTU 9603・低功率'), findsOneWidget);
+      expect(find.byKey(const Key('recent-trend-chart')), findsOneWidget);
+    });
+
+    testWidgets('count 0: grey banner, refresh then shows data', (
       tester,
     ) async {
       final now = DateTime(2026, 9, 28, 13, 0, 10);
@@ -353,21 +610,24 @@ void main() {
         ..answer = _rowsAt(now, const [Duration(seconds: 2)]);
       await _pumpPage(tester, api, now);
       expect(find.byKey(const Key('recent-empty')), findsOneWidget);
+      expect(find.byKey(const Key('recent-banner-empty')), findsOneWidget);
       expect(find.text(recentDataEmptyText), findsOneWidget);
-      expect(find.byKey(const Key('recent-list')), findsNothing);
+      expect(find.byKey(const Key('recent-latest')), findsNothing);
       api.mode = 'data';
       await tester.tap(find.byKey(const Key('recent-empty-refresh')));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('recent-empty')), findsNothing);
-      expect(find.text('最近一筆 2 秒前・共 1 筆'), findsOneWidget);
+      expect(find.text(recentDataOkText), findsOneWidget);
+      expect(find.text('PTU 9600・充電中・13:00:08（2 秒前）'), findsOneWidget);
     });
 
-    testWidgets('error: words and 〔重試〕; retry recovers', (tester) async {
+    testWidgets('error: red banner with 〔重試〕; retry recovers', (tester) async {
       final now = DateTime(2026, 9, 28, 13, 0, 10);
       final api = _Api('network')
         ..answer = _rowsAt(now, const [Duration(seconds: 2)]);
       await _pumpPage(tester, api, now);
       expect(find.byKey(const Key('recent-error')), findsOneWidget);
+      expect(find.byKey(const Key('recent-banner-error')), findsOneWidget);
       final text = tester
           .widget<Text>(find.byKey(const Key('recent-error-text')))
           .data!;
@@ -378,13 +638,48 @@ void main() {
       await tester.tap(find.byKey(const Key('recent-retry')));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('recent-error')), findsNothing);
-      expect(find.byKey(const Key('recent-list')), findsOneWidget);
-      // An error after data keeps the error on screen (not the old rows).
+      expect(find.byKey(const Key('recent-latest')), findsOneWidget);
+      // An error after data keeps the error on screen (not the old card).
       api.mode = 'auth';
       await tester.tap(find.byKey(const Key('recent-refresh')));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('recent-error')), findsOneWidget);
+      expect(find.byKey(const Key('recent-latest')), findsNothing);
       expect(find.textContaining('尚未登入'), findsOneWidget);
+    });
+
+    testWidgets('loading: progress under the app bar, refresh disabled', (
+      tester,
+    ) async {
+      final now = DateTime(2026, 9, 28, 13, 0, 10);
+      final api = _Api('data')
+        ..answer = _rowsAt(now, const [Duration.zero])
+        ..gate = Completer<void>();
+      SharedPreferences.setMockInitialValues({});
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            linkProvider.overrideWithValue(DemoSystem()),
+            apiProvider.overrideWithValue(api),
+          ],
+          child: MaterialApp(
+            home: RecentDataPage(site: 80, gateway: 1, now: () => now),
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(find.byKey(const Key('recent-loading')), findsOneWidget);
+      expect(find.byKey(const Key('recent-progress')), findsOneWidget);
+      expect(
+        tester
+            .widget<IconButton>(find.byKey(const Key('recent-refresh')))
+            .onPressed,
+        isNull,
+      );
+      api.gate!.complete();
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('recent-loading')), findsNothing);
+      expect(find.byKey(const Key('recent-progress')), findsNothing);
     });
   });
 
@@ -410,9 +705,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(RecentDataPage), findsOneWidget);
       expect(find.text('站 80 閘道器 1 最近資料'), findsOneWidget);
-      // The demo backend answers one row per connected PTU.
-      expect(find.byKey(const Key('recent-list')), findsOneWidget);
-      expect(find.textContaining('共 '), findsOneWidget);
+      // The demo backend answers one row per connected PTU (just sent).
+      expect(find.byKey(const Key('recent-body')), findsOneWidget);
+      expect(find.text(recentDataOkText), findsOneWidget);
+      expect(find.byKey(const Key('recent-trend-chart')), findsOneWidget);
       // Back: the done page, its buttons untouched.
       await tester.pageBack();
       await tester.pumpAndSettle();
