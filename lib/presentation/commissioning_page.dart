@@ -71,6 +71,57 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   bool _wifiStage = false;
   bool _stationWorking = false;
 
+  /// r33: 〔取代舊機〕 chosen for this (site, gateway) on the 「閘道器編號
+  /// 已被使用」 question; saving it uses force_replace without asking again.
+  (int, int)? _replaceSlot;
+
+  /// r33 (a fresh install defaults to star; a one-to-one gateway went
+  /// through it silently as max 5): after a gateway picked from the list
+  /// is connected, a mode other than the APP's is asked about — the default
+  /// keeps the gateway's mode and switches the APP to it. A resumed run or
+  /// a relink keeps the mode it was started with (not asked).
+  Future<void> _askTopology() async {
+    final next = ref.read(commissionProvider);
+    if (!mounted || next.step != 2 || next.error != null) return;
+    final gateway = gatewayTopologyMismatch(
+      next.config,
+      ref.read(topologyProvider).topology,
+    );
+    if (gateway == null) return;
+    await _showTopologyAsk(gateway, Map<String, dynamic>.from(next.config));
+  }
+
+  Future<void> _showTopologyAsk(
+    GatewayTopology gateway,
+    Map<String, dynamic> config,
+  ) async {
+    if (!mounted) return;
+    final keep = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        key: const Key('topology-ask'),
+        title: Text(topologyAskTitle(gateway)),
+        content: Text(topologyAskText(gateway, config)),
+        actions: [
+          TextButton(
+            key: const Key('topology-ask-change'),
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(topologyChangeLabel(gateway)),
+          ),
+          FilledButton(
+            key: const Key('topology-ask-keep'),
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(topologyKeepLabel(gateway)),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || keep == false) return;
+    await ref.read(commissionProvider.notifier).switchTopology(gateway);
+    if (mounted) _snack(topologyKeptText(gateway));
+  }
+
   /// Leaving the station / Wi-Fi pages (another step, the check again,
   /// another gateway) closes their page-only choices.
   void _resetStationPages(CommissionState? previous, CommissionState next) {
@@ -81,6 +132,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             next.config['choose_station'] == true)) {
       _otherSite = false;
       _wifiStage = false;
+      _replaceSlot = null;
     }
   }
 
@@ -228,6 +280,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         if (next.error == null && next.step >= 2) {
           await _syncGateway(explicit: false);
         }
+        await _askTopology();
       }
     } finally {
       if (mounted) setState(() => _connectingPeer = false);
@@ -426,15 +479,32 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       _wifi.clear();
       return;
     }
+    // r33: 〔取代舊機〕 was chosen on the 「閘道器編號已被使用」 question.
+    if (!wifiOnly && _replaceSlot == (site, gw)) {
+      _replaceSlot = null;
+      await c.configureWifi(
+        site,
+        gw,
+        _ssid.text,
+        _wifi.text,
+        replaceExisting: true,
+      );
+      _wifi.clear();
+      return;
+    }
     if (!wifiOnly) {
       final conflictMac = await c.conflictingMac(site, gw);
       if (conflictMac != null && mounted) {
+        // r33: the back office's own conflict text, when it flags one.
+        final conflict = await c.identityConflict(site, gw);
+        if (!mounted) return;
         final action = await showDialog<String>(
           context: context,
           builder: (context) => AlertDialog(
             title: const Text('編號已被使用'),
             content: Text(
               '站點 $site / 閘道器 $gw 目前登記給另一台裝置（MAC $conflictMac）。\n'
+              '${conflict == null ? '' : '$conflict\n'}'
               '請先確認舊機已斷電，否則後台會再次標記衝突。',
             ),
             actions: [
@@ -1775,6 +1845,15 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     if (site == null) return;
     // Its own number typed again: the station is kept.
     if (inService && site == current) {
+      // r33: a conflict the back office flags on it is said first.
+      final gw = (s.config['gateway_id'] as num?)?.toInt() ?? 0;
+      setState(() => _stationWorking = true);
+      try {
+        if (!await _confirmConflict(c, site, gw)) return;
+      } finally {
+        if (mounted) setState(() => _stationWorking = false);
+      }
+      if (!mounted) return;
       if (newStation) c.cancelNewStation();
       setState(() => _otherSite = false);
       await c.chooseStation(newStation: false);
@@ -1800,6 +1879,26 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         if (!mounted) return;
       }
       if (_gatewaySubmitBlocked) return;
+      // r33: a number skipped by the auto-numbering (another device has
+      // it) is said, with 〔取代舊機〕 to take it over.
+      if (input &&
+          _gatewayKind == GatewaySuggestKind.online &&
+          !await _confirmSkippedNumber(
+            c,
+            site,
+            int.tryParse(_gateway.text) ?? 0,
+          )) {
+        return;
+      }
+      if (!mounted) return;
+      // r33: this gateway's own number flagged in conflict.
+      final gwNow = int.tryParse(_gateway.text) ?? 0;
+      if ((s.config['site_id'] as num?)?.toInt() == site &&
+          (s.config['gateway_id'] as num?)?.toInt() == gwNow &&
+          !await _confirmConflict(c, site, gwNow)) {
+        return;
+      }
+      if (!mounted) return;
       // 09-28: a number removed (archived) in the back office is asked
       // about before anything is sent.
       if (!await _confirmArchived(c, site, int.tryParse(_gateway.text) ?? 0)) {
@@ -1860,6 +1959,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     setState(() {
       _otherSite = false;
       _wifiStage = false;
+      _replaceSlot = null;
       _site.text = current == null ? '' : '$current';
       _gateway.text =
           '${s.config['suggested_gateway_id'] ?? s.config['gateway_id'] ?? 1}';
@@ -1867,6 +1967,110 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           ? GatewaySuggestKind.offline
           : GatewaySuggestKind.online;
     });
+  }
+
+  /// r33 (81 typed, 81/1 held by another device: the APP went on as 81/2
+  /// without a word): the number the auto-numbering skipped is said —
+  /// 〔改用閘道器 N〕 (default) goes on, 〔取代舊機〕 takes the skipped
+  /// number over (force_replace when saved). True: go on.
+  Future<bool> _confirmSkippedNumber(
+    CommissioningController c,
+    int site,
+    int gw,
+  ) async {
+    final skipped = await c.skippedGatewayNumber(site, gw);
+    if (!mounted) return false;
+    if (skipped == null) return true;
+    final (taken, mac) = skipped;
+    final conflict = await c.identityConflict(site, taken);
+    if (!mounted) return false;
+    final action = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        key: const Key('number-taken'),
+        title: const Text(numberTakenTitle),
+        content: Text(
+          '${numberTakenText(site, taken, gw)}\n'
+          '（閘道器 $taken 目前登記的 MAC：$mac）\n'
+          '${conflict == null ? '' : '$conflict\n'}\n'
+          '${numberTakenReplaceHint(taken)}',
+        ),
+        actions: [
+          TextButton(
+            key: const Key('number-taken-cancel'),
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            key: const Key('number-taken-replace'),
+            onPressed: () => Navigator.pop(context, 'replace'),
+            child: Text(numberTakenReplaceLabel(taken)),
+          ),
+          FilledButton(
+            key: const Key('number-taken-next'),
+            onPressed: () => Navigator.pop(context, 'next'),
+            child: Text(numberTakenNextLabel(gw)),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || action == null) return false;
+    if (action == 'replace') {
+      setState(() {
+        _gateway.text = '$taken';
+        _replaceSlot = (site, taken);
+      });
+    }
+    return true;
+  }
+
+  /// r33 (a stale record of another MAC at 80/1: the back office flagged a
+  /// conflict, the APP said nothing): this gateway's (site, gw) flagged in
+  /// conflict shows the back office's text — 〔取代舊機〕 records this
+  /// gateway for it (force_replace) and goes on, 〔改用其他站號〕 opens
+  /// the input. True: go on (also when nothing is flagged).
+  Future<bool> _confirmConflict(
+    CommissioningController c,
+    int site,
+    int gw,
+  ) async {
+    final conflict = await c.identityConflict(site, gw);
+    if (!mounted) return false;
+    if (conflict == null) return true;
+    final action = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        key: const Key('identity-conflict'),
+        title: const Text(identityConflictTitle),
+        content: Text('$conflict\n\n${identityConflictHint(site, gw)}'),
+        actions: [
+          TextButton(
+            key: const Key('identity-conflict-other-site'),
+            onPressed: () => Navigator.pop(context, 'other'),
+            child: const Text(otherSiteLabel),
+          ),
+          FilledButton(
+            key: const Key('identity-conflict-replace'),
+            onPressed: () => Navigator.pop(context, 'replace'),
+            child: const Text(replaceOldLabel),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return false;
+    if (action == 'other') {
+      setState(() {
+        _otherSite = true;
+        _wifiStage = false;
+        _site.clear();
+      });
+      return false;
+    }
+    if (action != 'replace') return false;
+    final ok = await c.replaceIdentity(site, gw);
+    if (!mounted) return false;
+    _snack(ok ? replacedText(site, gw) : replaceFailedText);
+    return ok;
   }
 
   /// 09-28 (GC 刪除 56/1, then this gateway configured again: 確認上線
@@ -3628,6 +3832,46 @@ String archivedConfirmText(int site, int gw) =>
     '站點 $site／閘道器 $gw 在後台已被移除（封存）。封存的閘道器，後台不會記錄它的心跳，'
     '配置會停在「確認閘道器上線」。重新加入後會恢復記錄，原本的歷史資料不變。';
 const archivedRejoinLabel = '重新加入並繼續';
+
+/// r33: the auto-numbering skipped a number another device holds.
+const numberTakenTitle = '閘道器編號已被使用';
+String numberTakenText(int site, int taken, int gw) =>
+    '站 $site 的閘道器 $taken 已被其他設備使用，改用閘道器 $gw。';
+String numberTakenReplaceHint(int taken) =>
+    '若這台是來取代那台舊機（舊機已拆除或斷電），按〔取代舊機〕沿用閘道器 $taken。';
+String numberTakenReplaceLabel(int taken) => '取代舊機（沿用閘道器 $taken）';
+String numberTakenNextLabel(int gw) => '改用閘道器 $gw';
+
+/// r33: the back office flags this gateway's own number in conflict.
+const identityConflictTitle = '身分衝突';
+String identityConflictHint(int site, int gw) =>
+    '若舊機已拆除或換掉，按〔取代舊機〕由這台接手站 $site／閘道器 $gw；'
+    '否則請先找出另一台同編號的閘道器，或改用其他站號。';
+const replaceOldLabel = '取代舊機';
+String replacedText(int site, int gw) => '已由這台接手站 $site／閘道器 $gw';
+const replaceFailedText = '取代舊機沒有成功，請確認網路後重試';
+
+/// r33: the connected gateway already runs in another mode than the APP's.
+String topologyAskTitle(GatewayTopology gateway) =>
+    gateway.isDirect ? '這台閘道器是一對一模式' : '這台閘道器是星狀模式';
+String topologyAskText(GatewayTopology gateway, Map<String, dynamic> config) {
+  if (gateway.isDirect) {
+    final mac = gatewayBoundMac(config);
+    final bound = mac == null ? '尚未綁定 PTU' : '已綁定 PTU $mac';
+    return '這台閘道器目前是一對一模式（$bound），要改成星狀嗎？\n\n'
+        '選〔維持一對一〕：APP 改用直連模式，閘道器的設定不變。';
+  }
+  final max = (config['max_connections'] as num?)?.toInt() ?? maxStarPtuCount;
+  return '這台閘道器目前是星狀模式（最多 $max 台 PTU），要改成一對一嗎？\n\n'
+      '選〔維持星狀〕：APP 改用星狀模式，閘道器的設定不變。';
+}
+
+String topologyKeepLabel(GatewayTopology gateway) =>
+    gateway.isDirect ? '維持一對一' : '維持星狀';
+String topologyChangeLabel(GatewayTopology gateway) =>
+    gateway.isDirect ? '改成星狀' : '改成一對一';
+String topologyKeptText(GatewayTopology gateway) =>
+    'APP 已改用${gateway.label}，這台閘道器維持原模式';
 
 /// 09-28: 確認上線 stopped on an archived station — the bottom bar's action.
 const rejoinLabel = '重新加入';

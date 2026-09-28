@@ -443,6 +443,46 @@ void main() {
     expect(container.read(commissionProvider).step, 1);
   });
 
+  testWidgets('r33: the permission dialog of 檢查並開始 is not timed; '
+      'granting it goes on by itself', (tester) async {
+    final fake = SimGateway()..prepareGate = Completer<void>();
+    final container = await _pumpApp(tester, fake);
+    await tester.ensureVisible(find.text('檢查並開始'));
+    await tester.pump();
+    await tester.tap(find.text('檢查並開始'));
+    await tester.pump();
+    // The dialog stays open well past the 30 s limit.
+    for (var i = 0; i < 90; i++) {
+      await tester.pump(const Duration(seconds: 1));
+    }
+    var state = container.read(commissionProvider);
+    expect(state.busy, isTrue);
+    expect(state.error, isNull);
+    expect(state.seconds, 30, reason: 'the countdown waits too');
+    fake.prepareGate!.complete();
+    await tester.pumpAndSettle();
+    state = container.read(commissionProvider);
+    expect(state.error, isNull);
+    expect(state.step, 1);
+  });
+
+  testWidgets('r33: a refused permission fails 檢查並開始 with its text', (
+    tester,
+  ) async {
+    final fake = SimGateway()..prepareGate = Completer<void>();
+    final container = await _pumpApp(tester, fake);
+    await tester.ensureVisible(find.text('檢查並開始'));
+    await tester.pump();
+    await tester.tap(find.text('檢查並開始'));
+    await tester.pump(const Duration(seconds: 45));
+    fake.prepareGate!.completeError(const GatewayFailure('permission'));
+    await tester.pumpAndSettle();
+    final state = container.read(commissionProvider);
+    expect(state.step, 0);
+    expect(state.busy, isFalse);
+    expect(state.error.toString(), contains('權限'));
+  });
+
   testWidgets('step 7: 切回正式站 then log in and re-verify right there', (
     tester,
   ) async {

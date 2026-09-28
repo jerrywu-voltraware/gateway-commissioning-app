@@ -378,6 +378,11 @@ void main() {
         topology: GatewayTopology.direct,
       );
       await _connect(tester);
+      // r33: the gateway is a star one in service — asked about; this
+      // test converts it (〔改成一對一〕 keeps the APP's direct mode).
+      expect(find.byKey(const Key('topology-ask')), findsOneWidget);
+      await _tap(tester, find.byKey(const Key('topology-ask-change')));
+      expect(container.read(topologyProvider).topology.isDirect, isTrue);
       await _tap(tester, find.text(useStationLabel));
       var s = container.read(commissionProvider);
       expect(s.step, 4);

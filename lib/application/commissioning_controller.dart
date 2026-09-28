@@ -47,6 +47,10 @@ final apiProvider = Provider<GatewayApi>(
       ref.watch(demoProvider) ? ref.watch(demoSystemProvider) : DashboardApi(),
 );
 
+/// r33: the conflict text when the back office flags one without its own.
+String identityConflictFallback(int site, int gw) =>
+    'ID 衝突：偵測到多台實體設備使用相同 Site $site / Gateway $gw。';
+
 /// How [CommissioningController.suggestGateway] found its answer.
 enum GatewaySuggestKind {
   /// Confirmed free by the backend (check-identity), or this gateway's own
@@ -2420,6 +2424,7 @@ class CommissioningController extends Notifier<CommissionState> {
     Future<void> Function(int) action, {
     int? relinkStep,
     int? countdown,
+    Future<void> Function()? untimed,
   }) async {
     if (state.busy) return;
     final generation = ++_generation;
@@ -2432,6 +2437,16 @@ class CommissioningController extends Notifier<CommissionState> {
       seconds: countdown ?? timeout,
       reconnectFailed: false,
     );
+    // r33: [untimed] (the permission dialogs) runs busy but before the
+    // countdown and the time limit start; its failure fails the run.
+    var run = action;
+    if (untimed != null) {
+      try {
+        await untimed();
+      } catch (error) {
+        run = (_) async => throw error;
+      }
+    }
     _clock = Timer.periodic(const Duration(seconds: 1), (_) {
       if (ref.mounted && state.seconds > 0) {
         state = state.copy(seconds: state.seconds - 1);
@@ -2441,7 +2456,7 @@ class CommissioningController extends Notifier<CommissionState> {
     // by the data diagnosis; a BLE/HTTP command timeout keeps its own text.
     bool timedOut = false;
     try {
-      await action(generation).timeout(
+      await run(generation).timeout(
         Duration(seconds: timeout),
         onTimeout: () {
           if (generation == _generation) _generation++;
@@ -2899,10 +2914,14 @@ class CommissioningController extends Notifier<CommissionState> {
     await configurePtus(skip: done.intersection(merged));
   }
 
+  /// r33 (first install: the location permission dialog stayed open past
+  /// the 30 s of 〔檢查並開始〕, which ended 「等待超時」 and had to be
+  /// tapped again): the link's permissions are asked for before the timed
+  /// part ([_run] `untimed`) — the dialog takes as long as it takes, and
+  /// once it is answered the check goes on by itself. A refusal fails the
+  /// run with its usual text.
   Future<void> prepare(String base, String password, {bool offline = false}) =>
-      _run('檢查藍牙與後端連線', 30, (generation) async {
-        await _link.prepare();
-        _check(generation);
+      _run('檢查藍牙與後端連線', 30, untimed: _link.prepare, (generation) async {
         _backend = describeBackend(Uri.tryParse(base.trim()));
         if (!offline) {
           final secret = _passwordFor(base, password);
@@ -2916,6 +2935,7 @@ class CommissioningController extends Notifier<CommissionState> {
           message: offline ? '離線模式：最後仍需登入驗證資料' : '準備完成',
         );
       });
+
   Future<void> scan() => _run('搜尋附近的閘道器', 30, (generation) async {
     // 09-28: a failed connect's checklist is not this search's.
     if (state.checklist?.kind == ChecklistKind.connect) _setChecklist(null);
@@ -3723,6 +3743,68 @@ class CommissioningController extends Notifier<CommissionState> {
         identity['last_seen_mac'] != null &&
         _mac(identity['last_seen_mac']) != _mac(state.config['gateway_uid'])) {
       return identity['last_seen_mac'].toString();
+    }
+    return null;
+  }
+
+  /// r33 (a stale record of another MAC at 80/1: the back office flagged
+  /// the conflict for 90 s, the APP said nothing): the back office's
+  /// conflict text for (site, gw) while its conflict flag is up
+  /// (fleet-status `conflict_message`), else null — also when it cannot
+  /// tell.
+  Future<String?> identityConflict(int site, int gw) async {
+    if (!_loggedIn) return null;
+    try {
+      final fleet = await _api.request(
+        'GET',
+        '/api/gateways/fleet-status?site_id=$site',
+      );
+      for (final item in (fleet['gateways'] as List? ?? const [])) {
+        if (item is! Map) continue;
+        if ((item['site_id'] as num?)?.toInt() != site ||
+            (item['gateway_id'] as num?)?.toInt() != gw) {
+          continue;
+        }
+        if (item['conflict_flag'] != true) return null;
+        final text = item['conflict_message']?.toString().trim() ?? '';
+        return text.isNotEmpty ? text : identityConflictFallback(site, gw);
+      }
+    } catch (_) {
+      /* advisory only */
+    }
+    return null;
+  }
+
+  /// r33: 〔取代舊機〕 for a number this gateway keeps (its own station in
+  /// service, flagged in conflict): the back office records this gateway's
+  /// MAC for (site, gw) (`reserve-identity force_replace`). True when done.
+  Future<bool> replaceIdentity(int site, int gw) async {
+    if (!_loggedIn) return false;
+    final uid = state.config['gateway_uid']?.toString() ?? '';
+    if (uid.isEmpty) return false;
+    try {
+      await _api.request(
+        'POST',
+        '/api/gateways/$site/$gw/reserve-identity'
+            '?mac=${Uri.encodeComponent(uid)}&force_replace=true',
+      );
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// r33: the first gateway number below [gw] at [site] that another
+  /// device holds, with its MAC — why the auto-numbering skipped it — or
+  /// null (none, or it cannot tell).
+  Future<(int, String)?> skippedGatewayNumber(int site, int gw) async {
+    for (var g = 1; g < gw; g++) {
+      try {
+        final mac = await conflictingMac(site, g);
+        if (mac != null) return (g, mac);
+      } catch (_) {
+        return null;
+      }
     }
     return null;
   }
