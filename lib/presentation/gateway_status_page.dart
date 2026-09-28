@@ -1,7 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:permission_handler/permission_handler.dart';
 
+import '../application/app_session.dart';
 import '../application/commissioning_controller.dart';
+import '../application/nearby_gateways.dart';
+import '../core/gateway_identity.dart' show parseGatewayName;
+import '../core/protocol.dart';
+import '../data/contracts.dart' show GatewayPeer;
 import '../data/fleet_status_api.dart';
 import '../data/recent_commissions.dart';
 import '../data/recent_data_api.dart' show recentDataErrorText;
@@ -11,8 +19,14 @@ import 'recent_data_page.dart';
 /// topology menu's item).
 const gatewayStatusLabel = '閘道器狀態';
 const gatewayStatusRecentTitle = '最近配置（這支手機）';
+const gatewayStatusNearbyTitle = '附近閘道器（藍牙掃描）';
 const gatewayStatusFleetTitle = '後台在線閘道器';
-const gatewayStatusRecentEmptyText = '這支手機還沒有完成過配置。';
+const gatewayStatusRecentEmptyText = '這支手機尚未用此版本完成過配置';
+const gatewayStatusNearbyEmptyText = '附近沒有掃到閘道器，請靠近後按〔重新掃描〕';
+const gatewayStatusNearbyScanningText = '正在掃描附近閘道器（約 8 秒）…';
+const gatewayStatusNearbyUnnamedText = '尚未設定站號，無法查看資料';
+const gatewayStatusRescanLabel = '重新掃描';
+const gatewayStatusSettingsLabel = '開啟權限設定';
 const gatewayStatusFleetEmptyText = '後台目前沒有任何閘道器。';
 const gatewayStatusLoadingText = '正在向後台查詢…';
 const gatewayStatusRefreshLabel = '重新整理';
@@ -21,6 +35,14 @@ const gatewayStatusHint = '點一列即可查看該閘道器的最近資料。';
 
 /// 「站 56 閘道器 1」.
 String gatewayStatusName(int site, int gateway) => '站 $site 閘道器 $gateway';
+
+/// 「RSSI -61 dBm・GIOS-S56-GW01」 (a nearby row's second line).
+String gatewayStatusNearbyLine(GatewayPeer p) => 'RSSI ${p.rssi} dBm・${p.name}';
+
+/// Words for a failed nearby scan: the link's own (「需要藍牙權限…」, 「請開啟
+/// 手機藍牙後重試。」…) or a generic one.
+String gatewayStatusNearbyErrorText(Object error) =>
+    error is GatewayFailure ? error.message : '掃描失敗，請確認藍牙、定位與附近裝置權限後重試。';
 
 /// 「09-28 14:03 完成」.
 String gatewayStatusDoneText(DateTime doneAt) {
@@ -52,6 +74,12 @@ String gatewayStatusLine(FleetGateway g, DateTime now) {
 /// opens 〔查看最近資料〕 — so the installer can check the data again after
 /// the done page is gone, without a new run. Reached from the start
 /// page's 〔閘道器狀態〕 and the topology menu. Never touches the flow.
+///
+/// 1.0.0+7 (field): the back office is read through [AppSession] — the
+/// page logs the APP in itself (the flow's login no longer has to have
+/// happened) — and a middle section 「附近閘道器（藍牙掃描）」 scans about 8 s
+/// on entry ([NearbyGatewayScanner]; no connect, no pairing) and lists
+/// every gateway heard; a row opens its recent data.
 class GatewayStatusPage extends ConsumerStatefulWidget {
   const GatewayStatusPage({super.key, this.now});
 
@@ -73,10 +101,58 @@ class _GatewayStatusPageState extends ConsumerState<GatewayStatusPage> {
   bool _loading = false;
   int _generation = 0;
 
+  List<GatewayPeer>? _nearby;
+  Object? _nearbyError;
+  bool _scanning = false;
+  int _scanGeneration = 0;
+  Completer<void>? _scanStop;
+
   @override
   void initState() {
     super.initState();
     _load();
+    _scan();
+  }
+
+  @override
+  void dispose() {
+    // The adapter scan is a singleton: it must not outlive the page.
+    _scanGeneration++;
+    _stopScan();
+    super.dispose();
+  }
+
+  void _stopScan() {
+    final stop = _scanStop;
+    if (stop != null && !stop.isCompleted) stop.complete();
+  }
+
+  Future<void> _scan() async {
+    final gen = ++_scanGeneration;
+    _stopScan();
+    final stop = _scanStop = Completer<void>();
+    setState(() {
+      _scanning = true;
+      _nearbyError = null;
+    });
+    List<GatewayPeer>? peers;
+    Object? error;
+    try {
+      peers = await ref
+          .read(nearbyScannerProvider)
+          .scanNearby(stop: stop.future);
+    } catch (e) {
+      error = e;
+    }
+    if (!mounted || gen != _scanGeneration) return;
+    setState(() {
+      _scanning = false;
+      if (error != null) {
+        _nearbyError = error;
+      } else {
+        _nearby = peers;
+      }
+    });
   }
 
   Future<void> _load() async {
@@ -91,7 +167,7 @@ class _GatewayStatusPageState extends ConsumerState<GatewayStatusPage> {
     List<FleetGateway>? fleet;
     Object? error;
     try {
-      fleet = await fetchFleetStatus(ref.read(apiProvider));
+      fleet = await ref.read(appSessionProvider).run(fetchFleetStatus);
     } catch (e) {
       error = e;
     }
@@ -143,6 +219,9 @@ class _GatewayStatusPageState extends ConsumerState<GatewayStatusPage> {
                 _Header(gatewayStatusRecentTitle),
                 ..._recentSection(context),
                 const SizedBox(height: 8),
+                _Header(gatewayStatusNearbyTitle),
+                ..._nearbySection(context),
+                const SizedBox(height: 8),
                 _Header(gatewayStatusFleetTitle),
                 ..._fleetSection(context),
                 Padding(
@@ -187,6 +266,114 @@ class _GatewayStatusPageState extends ConsumerState<GatewayStatusPage> {
           onTap: () => _openRecent(r.site, r.gateway),
         ),
     ];
+  }
+
+  Widget _rescanButton() => FilledButton.tonalIcon(
+    key: const Key('gs-nearby-rescan'),
+    onPressed: _scanning ? null : _scan,
+    icon: const Icon(Icons.bluetooth_searching, size: 20),
+    label: const Text(gatewayStatusRescanLabel),
+  );
+
+  Widget _rescanRow({double top = 0}) => Padding(
+    padding: EdgeInsets.fromLTRB(16, top, 16, 0),
+    child: Align(alignment: Alignment.centerRight, child: _rescanButton()),
+  );
+
+  List<Widget> _nearbySection(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    if (_scanning) {
+      return [
+        const Padding(
+          key: Key('gs-nearby-scanning'),
+          padding: EdgeInsets.all(24),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              SizedBox(width: 12),
+              Expanded(child: Text(gatewayStatusNearbyScanningText)),
+            ],
+          ),
+        ),
+      ];
+    }
+    final error = _nearbyError;
+    if (error != null) {
+      return [
+        Padding(
+          key: const Key('gs-nearby-error'),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                gatewayStatusNearbyErrorText(error),
+                key: const Key('gs-nearby-error-text'),
+                style: TextStyle(color: colors.error),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                alignment: WrapAlignment.end,
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  TextButton(
+                    key: const Key('gs-nearby-settings'),
+                    onPressed: openAppSettings,
+                    child: const Text(gatewayStatusSettingsLabel),
+                  ),
+                  _rescanButton(),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ];
+    }
+    final nearby = _nearby ?? const <GatewayPeer>[];
+    if (nearby.isEmpty) {
+      return [
+        const _Note(
+          key: Key('gs-nearby-empty'),
+          text: gatewayStatusNearbyEmptyText,
+        ),
+        _rescanRow(),
+      ];
+    }
+    return [for (final p in nearby) _nearbyTile(p, colors), _rescanRow(top: 8)];
+  }
+
+  Widget _nearbyTile(GatewayPeer p, ColorScheme colors) {
+    final id = parseGatewayName(p.name);
+    if (id == null) {
+      // A gateway without an identity yet (site / gateway 0): nothing to
+      // look up in the back office.
+      return ListTile(
+        key: Key('gs-nearby-${p.id}'),
+        leading: Icon(Icons.bluetooth, color: colors.onSurfaceVariant),
+        title: Text(p.name),
+        subtitle: Text(
+          'RSSI ${p.rssi} dBm・$gatewayStatusNearbyUnnamedText',
+          key: Key('gs-nearby-${p.id}-line'),
+        ),
+        enabled: false,
+      );
+    }
+    return ListTile(
+      key: Key('gs-nearby-${p.id}'),
+      leading: const Icon(Icons.bluetooth, color: Color(0xFF1565C0)),
+      title: Text(gatewayStatusName(id.site, id.gateway)),
+      subtitle: Text(
+        gatewayStatusNearbyLine(p),
+        key: Key('gs-nearby-${p.id}-line'),
+      ),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: () => _openRecent(id.site, id.gateway),
+    );
   }
 
   List<Widget> _fleetSection(BuildContext context) {

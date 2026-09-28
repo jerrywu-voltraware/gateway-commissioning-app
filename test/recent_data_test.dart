@@ -339,7 +339,7 @@ void main() {
     test('error words', () {
       expect(
         recentDataErrorText(const GatewayFailure('authentication')),
-        contains('尚未登入'),
+        contains('連不上後台（後台拒絕'),
       );
       expect(
         recentDataErrorText(
@@ -763,7 +763,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('recent-error')), findsOneWidget);
       expect(find.byKey(const Key('recent-latest')), findsNothing);
-      expect(find.textContaining('尚未登入'), findsOneWidget);
+      expect(find.textContaining('連不上後台（後台拒絕'), findsOneWidget);
     });
 
     testWidgets('loading: progress under the app bar, refresh disabled', (

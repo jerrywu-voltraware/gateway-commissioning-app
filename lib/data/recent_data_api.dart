@@ -198,9 +198,15 @@ Future<RecentData> fetchRecentData(
   return RecentData.fromJson(json, site: site, gateway: gateway);
 }
 
-/// Words for a failed fetch: the failure's own text, or a generic one.
-String recentDataErrorText(Object error) => switch (error) {
-  GatewayFailure(code: 'authentication') => 'APP 尚未登入後台，請回到完成頁按「登入並確認資料」後再試。',
+/// Words for a failed fetch: 「連不上後台（原因）」. 1.0.0+7: the pages log
+/// in by themselves ([AppSession]), so a refused login is a reason like
+/// any other — nobody is sent back to the done page any more.
+String recentDataErrorText(Object error) =>
+    '連不上後台（${recentDataErrorReason(error)}）';
+
+/// The reason inside [recentDataErrorText].
+String recentDataErrorReason(Object error) => switch (error) {
+  GatewayFailure(code: 'authentication') => '後台拒絕此 APP 的登入憑證，請聯絡管理員更新 APP',
   GatewayFailure f => f.message,
-  _ => '無法取得最近資料：$error',
+  _ => '$error',
 };

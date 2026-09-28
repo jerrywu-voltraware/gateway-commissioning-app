@@ -9,6 +9,11 @@
 // 4. The page: list / empty / error (+〔重試〕) / loading; a tap opens the
 //    recent-data page of that gateway.
 // 5. Entries: the start page's 〔閘道器狀態〕 and the topology menu item.
+// 6. 1.0.0+7: the page logs in by itself (no session → login → 200; a 401
+//    → one re-login → 200; a refused login → 「連不上後台（…）」 + 〔重試〕;
+//    a session already held → no login); 「附近閘道器（藍牙掃描）」 in its
+//    three states (rows / none / no permission) and a row's tap; the
+//    scan stops when the page is left; the recent list's empty words.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -18,11 +23,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:gateway_commissioning/application/backend_environment.dart';
 import 'package:gateway_commissioning/application/commissioning_controller.dart';
 import 'package:gateway_commissioning/application/local_backend_finder.dart';
+import 'package:gateway_commissioning/application/app_session.dart';
+import 'package:gateway_commissioning/application/nearby_gateways.dart';
+import 'package:gateway_commissioning/core/mqtt_target.dart';
 import 'package:gateway_commissioning/core/protocol.dart';
 import 'package:gateway_commissioning/data/contracts.dart';
 import 'package:gateway_commissioning/data/demo_system.dart';
 import 'package:gateway_commissioning/data/fleet_status_api.dart';
 import 'package:gateway_commissioning/data/local_backend_probe.dart';
+import 'package:gateway_commissioning/data/nearby_gateway_scan.dart';
 import 'package:gateway_commissioning/data/recent_commissions.dart';
 import 'package:gateway_commissioning/gateway_app.dart';
 import 'package:gateway_commissioning/presentation/gateway_status_page.dart';
@@ -38,8 +47,17 @@ class _Api implements GatewayApi {
   final paths = <String>[];
   Completer<void>? gate;
 
+  /// 1.0.0+7: every login (its base URL and credential); [refuseLogin]
+  /// answers 401; [authOnce] fails the next request with 401 (an expired
+  /// token) once.
+  final logins = <(String, String)>[];
+  bool refuseLogin = false, authOnce = false;
+
   @override
-  Future<void> login(String base, String password) async {}
+  Future<void> login(String base, String password) async {
+    logins.add((base, password));
+    if (refuseLogin) throw const GatewayFailure('authentication');
+  }
 
   @override
   Future<Map<String, dynamic>> request(
@@ -49,6 +67,10 @@ class _Api implements GatewayApi {
   ]) async {
     paths.add('$method $path');
     if (gate != null) await gate!.future;
+    if (authOnce) {
+      authOnce = false;
+      throw const GatewayFailure('authentication');
+    }
     if (path.startsWith('/api/app/recent/')) {
       return {
         'site_id': 56,
@@ -80,6 +102,40 @@ class _Api implements GatewayApi {
   }
 }
 
+/// An API that reports its session ([SessionInfo]): logged in to [origin].
+class _SessionApi extends _Api implements SessionInfo {
+  _SessionApi(super.mode, {this.origin});
+
+  @override
+  final String? origin;
+
+  @override
+  bool get hasSession => origin != null;
+}
+
+/// The phone's Bluetooth as the page sees it: [peers], or [failure];
+/// counts the scans and whether the page's stop future fired.
+class _Scanner implements NearbyGatewayScanner {
+  _Scanner([this.peers = const []]);
+  List<GatewayPeer> peers;
+  Object? failure;
+  int scans = 0;
+  bool stopped = false;
+  Completer<void>? gate;
+
+  @override
+  Future<List<GatewayPeer>> scanNearby({
+    Duration window = nearbyScanWindow,
+    Future<void>? stop,
+  }) async {
+    scans++;
+    unawaited(stop?.then((_) => stopped = true));
+    if (gate != null) await gate!.future;
+    if (failure != null) throw failure!;
+    return sortNearby(peers);
+  }
+}
+
 Map<String, dynamic> _gw(
   int site,
   int gateway, {
@@ -105,6 +161,7 @@ Future<void> _pumpPage(
   _Api api,
   DateTime now, {
   Map<String, Object> prefs = const {},
+  _Scanner? scanner,
 }) async {
   SharedPreferences.setMockInitialValues(prefs);
   await tester.pumpWidget(
@@ -112,6 +169,8 @@ Future<void> _pumpPage(
       overrides: [
         linkProvider.overrideWithValue(DemoSystem()),
         apiProvider.overrideWithValue(api),
+        backendKeyProvider.overrideWithValue('build-key'),
+        nearbyScannerProvider.overrideWithValue(scanner ?? _Scanner()),
       ],
       child: MaterialApp(home: GatewayStatusPage(now: () => now)),
     ),
@@ -546,6 +605,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(GatewayStatusPage), findsOneWidget);
       expect(find.byKey(const Key('gs-recent-empty')), findsOneWidget);
+      // 1.0.0+7: 練習模式 scans the demo link's list.
+      expect(find.byKey(const Key('gs-nearby-demo-gateway')), findsOneWidget);
       await tester.pageBack();
       await tester.pumpAndSettle();
       expect(find.byType(GatewayStatusPage), findsNothing);
@@ -562,6 +623,282 @@ void main() {
       // The flow is where it was.
       expect(find.text('檢查並開始'), findsOneWidget);
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('1.0.0+7 auto login', () {
+    final now = DateTime(2026, 9, 28, 13, 0, 10);
+
+    testWidgets('no session: logs in with the build key, then reads', (
+      tester,
+    ) async {
+      final api = _Api('data')..fleet = [_gw(56, 1)];
+      await _pumpPage(tester, api, now);
+      expect(api.logins, [(productionApiBase, 'build-key')]);
+      expect(api.paths, ['GET /api/gateways/fleet-status']);
+      expect(find.byKey(const Key('gs-fleet-56-1')), findsOneWidget);
+      expect(find.byKey(const Key('gs-error')), findsNothing);
+    });
+
+    testWidgets('401 on the read: one re-login, the read repeated', (
+      tester,
+    ) async {
+      final api = _SessionApi('data', origin: 'https://46.250.255.172')
+        ..fleet = [_gw(56, 1)]
+        ..authOnce = true;
+      await _pumpPage(tester, api, now);
+      // A session was held: no login before the read; one after the 401.
+      expect(api.paths, [
+        'GET /api/gateways/fleet-status',
+        'GET /api/gateways/fleet-status',
+      ]);
+      expect(api.logins, [(productionApiBase, 'build-key')]);
+      expect(find.byKey(const Key('gs-fleet-56-1')), findsOneWidget);
+      expect(find.byKey(const Key('gs-error')), findsNothing);
+    });
+
+    testWidgets('a session for another backend: logs in again', (tester) async {
+      final api = _SessionApi('data', origin: 'http://192.168.0.12:18000')
+        ..fleet = [_gw(56, 1)];
+      await _pumpPage(tester, api, now);
+      expect(api.logins, hasLength(1));
+      expect(find.byKey(const Key('gs-fleet-56-1')), findsOneWidget);
+    });
+
+    testWidgets('refused login: 「連不上後台（…）」 + 〔重試〕, never the done page', (
+      tester,
+    ) async {
+      final api = _Api('data')
+        ..fleet = [_gw(56, 1)]
+        ..refuseLogin = true;
+      await _pumpPage(tester, api, now);
+      expect(api.logins, hasLength(1));
+      expect(api.paths, isEmpty);
+      final text = tester
+          .widget<Text>(find.byKey(const Key('gs-error-text')))
+          .data!;
+      expect(text, startsWith('連不上後台（'));
+      expect(text, isNot(contains('完成頁')));
+      expect(text, isNot(contains('尚未登入')));
+      expect(find.byKey(const Key('gs-retry')), findsOneWidget);
+      // 〔重試〕 logs in again; the backend recovered.
+      api.refuseLogin = false;
+      await tester.tap(find.byKey(const Key('gs-retry')));
+      await tester.pumpAndSettle();
+      expect(api.logins, hasLength(2));
+      expect(find.byKey(const Key('gs-error')), findsNothing);
+      expect(find.byKey(const Key('gs-fleet-56-1')), findsOneWidget);
+    });
+
+    testWidgets('the recent-data page logs in by itself too', (tester) async {
+      final api = _Api('data')..fleet = [_gw(56, 1)];
+      SharedPreferences.setMockInitialValues({});
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            linkProvider.overrideWithValue(DemoSystem()),
+            apiProvider.overrideWithValue(api),
+            backendKeyProvider.overrideWithValue('build-key'),
+          ],
+          child: MaterialApp(
+            home: RecentDataPage(site: 56, gateway: 1, now: () => now),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(api.logins, [(productionApiBase, 'build-key')]);
+      expect(api.paths, ['GET /api/app/recent/56/1?limit=20']);
+      expect(find.byKey(const Key('recent-error')), findsNothing);
+    });
+
+    test('hasSessionFor: same origin only', () {
+      expect(hasSessionFor(_Api('data'), productionApiBase), isFalse);
+      expect(
+        hasSessionFor(
+          _SessionApi('data', origin: 'https://46.250.255.172'),
+          productionApiBase,
+        ),
+        isTrue,
+      );
+      expect(
+        hasSessionFor(
+          _SessionApi('data', origin: 'https://46.250.255.172'),
+          'http://192.168.0.12:18000',
+        ),
+        isFalse,
+      );
+      expect(hasSessionFor(_SessionApi('data'), productionApiBase), isFalse);
+    });
+  });
+
+  group('1.0.0+7 nearby gateways', () {
+    final now = DateTime(2026, 9, 28, 13, 0, 10);
+
+    testWidgets('rows: strongest first, 站/閘道器・RSSI・name; a tap opens', (
+      tester,
+    ) async {
+      final scanner = _Scanner([
+        const GatewayPeer('AA:BB:CC:DD:EE:02', 'GIOS-S80-GW02', -71),
+        const GatewayPeer('AA:BB:CC:DD:EE:01', 'GIOS-S56-GW01', -58),
+        const GatewayPeer('AA:BB:CC:DD:EE:00', 'GIOS-S0-GW00', -40),
+      ]);
+      final api = _Api('empty');
+      await _pumpPage(tester, api, now, scanner: scanner);
+      expect(scanner.scans, 1);
+      expect(find.byKey(const Key('gs-nearby-scanning')), findsNothing);
+      expect(find.byKey(const Key('gs-nearby-empty')), findsNothing);
+      // The section sits between 「最近配置」 and 「後台在線閘道器」.
+      final nearbyTop = tester.getRect(find.text(gatewayStatusNearbyTitle)).top;
+      expect(
+        nearbyTop,
+        greaterThan(tester.getRect(find.text(gatewayStatusRecentTitle)).top),
+      );
+      expect(
+        nearbyTop,
+        lessThan(tester.getRect(find.text(gatewayStatusFleetTitle)).top),
+      );
+      // Rows by signal; the one without an identity is not tappable.
+      final rows = tester
+          .widgetList<ListTile>(find.byType(ListTile))
+          .map((t) => (t.key as ValueKey<String>).value)
+          .toList();
+      expect(rows, [
+        'gs-nearby-AA:BB:CC:DD:EE:00',
+        'gs-nearby-AA:BB:CC:DD:EE:01',
+        'gs-nearby-AA:BB:CC:DD:EE:02',
+      ]);
+      expect(find.text('站 56 閘道器 1'), findsOneWidget);
+      expect(
+        tester
+            .widget<Text>(
+              find.byKey(const Key('gs-nearby-AA:BB:CC:DD:EE:01-line')),
+            )
+            .data,
+        'RSSI -58 dBm・GIOS-S56-GW01',
+      );
+      expect(
+        tester
+            .widget<ListTile>(
+              find.byKey(const Key('gs-nearby-AA:BB:CC:DD:EE:00')),
+            )
+            .enabled,
+        isFalse,
+      );
+      expect(find.byKey(const Key('gs-nearby-rescan')), findsOneWidget);
+      // A tap opens that gateway's recent data — no connect, no pairing.
+      await tester.tap(find.byKey(const Key('gs-nearby-AA:BB:CC:DD:EE:01')));
+      await tester.pumpAndSettle();
+      expect(find.byType(RecentDataPage), findsOneWidget);
+      expect(find.text('站 56 閘道器 1 最近資料'), findsOneWidget);
+      expect(api.paths.last, 'GET /api/app/recent/56/1?limit=20');
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(find.byType(GatewayStatusPage), findsOneWidget);
+      // Leaving the page stops the scan (the adapter is a singleton).
+      expect(scanner.stopped, isFalse);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+      expect(scanner.stopped, isTrue);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('none heard: the words and 〔重新掃描〕 scans again', (tester) async {
+      final scanner = _Scanner();
+      await _pumpPage(tester, _Api('empty'), now, scanner: scanner);
+      expect(find.byKey(const Key('gs-nearby-empty')), findsOneWidget);
+      expect(find.text(gatewayStatusNearbyEmptyText), findsOneWidget);
+      scanner.peers = [
+        const GatewayPeer('AA:BB:CC:DD:EE:01', 'GIOS-S56-GW01', -58),
+      ];
+      await tester.tap(find.byKey(const Key('gs-nearby-rescan')));
+      await tester.pumpAndSettle();
+      expect(scanner.scans, 2);
+      expect(find.byKey(const Key('gs-nearby-empty')), findsNothing);
+      expect(
+        find.byKey(const Key('gs-nearby-AA:BB:CC:DD:EE:01')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('no permission / Bluetooth off: the link\'s words, 〔開啟權限設定〕', (
+      tester,
+    ) async {
+      final scanner = _Scanner()..failure = const GatewayFailure('permission');
+      await _pumpPage(tester, _Api('empty'), now, scanner: scanner);
+      expect(find.byKey(const Key('gs-nearby-error')), findsOneWidget);
+      expect(
+        tester.widget<Text>(find.byKey(const Key('gs-nearby-error-text'))).data,
+        const GatewayFailure('permission').message,
+      );
+      expect(find.byKey(const Key('gs-nearby-settings')), findsOneWidget);
+      expect(find.text(gatewayStatusSettingsLabel), findsOneWidget);
+      expect(find.byKey(const Key('gs-nearby-rescan')), findsOneWidget);
+      // Bluetooth off reads the same way; the back office part is untouched.
+      scanner.failure = const GatewayFailure('bluetooth_off');
+      await tester.tap(find.byKey(const Key('gs-nearby-rescan')));
+      await tester.pumpAndSettle();
+      expect(find.text('請開啟手機藍牙後重試。'), findsOneWidget);
+      expect(find.byKey(const Key('gs-fleet-empty')), findsOneWidget);
+      // Granted: the rescan recovers.
+      scanner
+        ..failure = null
+        ..peers = [
+          const GatewayPeer('AA:BB:CC:DD:EE:01', 'GIOS-S56-GW01', -58),
+        ];
+      await tester.tap(find.byKey(const Key('gs-nearby-rescan')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('gs-nearby-error')), findsNothing);
+      expect(
+        find.byKey(const Key('gs-nearby-AA:BB:CC:DD:EE:01')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('scanning: progress row, 〔重新掃描〕 absent until it ends', (
+      tester,
+    ) async {
+      final scanner = _Scanner([
+        const GatewayPeer('AA:BB:CC:DD:EE:01', 'GIOS-S56-GW01', -58),
+      ])..gate = Completer<void>();
+      SharedPreferences.setMockInitialValues({});
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            linkProvider.overrideWithValue(DemoSystem()),
+            apiProvider.overrideWithValue(_Api('empty')),
+            backendKeyProvider.overrideWithValue('build-key'),
+            nearbyScannerProvider.overrideWithValue(scanner),
+          ],
+          child: MaterialApp(home: GatewayStatusPage(now: () => now)),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      expect(find.byKey(const Key('gs-nearby-scanning')), findsOneWidget);
+      expect(find.text(gatewayStatusNearbyScanningText), findsOneWidget);
+      expect(find.byKey(const Key('gs-nearby-rescan')), findsNothing);
+      scanner.gate!.complete();
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('gs-nearby-scanning')), findsNothing);
+      expect(
+        find.byKey(const Key('gs-nearby-AA:BB:CC:DD:EE:01')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('recent list empty words (1.0.0+7)', (tester) async {
+      await _pumpPage(tester, _Api('empty'), now);
+      expect(
+        tester
+            .widget<Text>(
+              find.descendant(
+                of: find.byKey(const Key('gs-recent-empty')),
+                matching: find.byType(Text),
+              ),
+            )
+            .data,
+        '這支手機尚未用此版本完成過配置',
+      );
     });
   });
 }

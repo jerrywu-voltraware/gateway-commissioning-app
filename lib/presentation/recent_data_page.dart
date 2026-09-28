@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../application/commissioning_controller.dart';
+import '../application/app_session.dart';
 import '../application/field_report.dart';
 import '../data/recent_data_api.dart';
 
@@ -261,11 +261,16 @@ class _RecentDataPageState extends ConsumerState<RecentDataPage> {
     RecentData? data;
     Object? error;
     try {
-      data = await fetchRecentData(
-        ref.read(apiProvider),
-        site: widget.site,
-        gateway: widget.gateway,
-      );
+      // 1.0.0+7: logs in by itself when the flow has not.
+      data = await ref
+          .read(appSessionProvider)
+          .run(
+            (api) => fetchRecentData(
+              api,
+              site: widget.site,
+              gateway: widget.gateway,
+            ),
+          );
     } catch (e) {
       error = e;
     }
