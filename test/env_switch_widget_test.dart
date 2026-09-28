@@ -387,6 +387,17 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('demo-gateway')));
     await tester.pump();
     expect(container.read(commissionProvider).busy, isTrue);
+    // 1.0.0+11: the list keeps its rows while busy (the page is longer):
+    // the page's 〔取消操作〕 is further down.
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('page-cancel')),
+      100,
+      scrollable: find
+          .byWidgetPredicate(
+            (w) => w is Scrollable && w.axisDirection == AxisDirection.down,
+          )
+          .first,
+    );
 
     await tester.tap(_chip);
     await tester.pump();

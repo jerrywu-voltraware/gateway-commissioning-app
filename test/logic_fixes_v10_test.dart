@@ -497,7 +497,19 @@ void main() {
       await _run(tester);
       expect(link.scans, hasLength(2), reason: 'resumed');
       expect(link.scans.last.isClosed, isFalse);
-      expect(find.textContaining(identifiedHint), findsOneWidget);
+      // 1.0.0+11: on its row and in a SnackBar.
+      expect(
+        find.byKey(const ValueKey('gateway-presence-AA:BB:CC:DD:3A:02')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('gateway-presence-AA:BB:CC:DD:3A:02')),
+          matching: find.text(identifiedHint),
+        ),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('gateway-identified-snack')), findsOneWidget);
       // The rows heard before stay until the new scan answers.
       expect(find.byKey(const ValueKey('AA:BB:CC:DD:3A:02')), findsOneWidget);
       await tester.pumpWidget(const SizedBox());

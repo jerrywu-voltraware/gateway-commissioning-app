@@ -25,6 +25,24 @@ const identifiedHintFor = Duration(seconds: 3);
 /// 1.0.0+10: the 「最近」 chip's fill and the nearest card's outline.
 const gatewayNearestColor = Color(0xFF2E7D32);
 
+/// 1.0.0+11 (phone: 〔辨識〕 paused the scan 2–4 s and every row read
+/// 「未收到廣播」, cutting the title to 「站 80・閘道…」): a gateway heard
+/// keeps its last RSSI (grey while not heard live) for this long; after
+/// that a remembered row reads [gatewaySignalLostLabel] and a nearby one
+/// leaves the list.
+const gatewayHeardFor = Duration(seconds: 30);
+
+/// 1.0.0+11: a remembered gateway not heard for [gatewayHeardFor].
+const gatewaySignalLostLabel = '訊號中斷';
+
+/// 1.0.0+11: a remembered gateway never heard by this list.
+const gatewayNeverHeardLabel = '—';
+
+/// 1.0.0+11: the SnackBar after 〔辨識〕 blinked [name] — seen even when its
+/// row is off screen.
+String identifiedSnackText(String name) =>
+    '${gatewayTitle(name)} $identifiedHint';
+
 /// 1.0.0+10: a small mark on a gateway row (labelMedium): outlined, or
 /// [filled] (white text on [color]).
 class GatewayMark extends StatelessWidget {
@@ -63,6 +81,7 @@ class GatewayDiscovery extends ConsumerStatefulWidget {
     required this.enabled,
     required this.onConnect,
     this.onIdentify,
+    this.now,
   });
   final bool enabled;
   final Future<void> Function(GatewayPeer) onConnect;
@@ -71,6 +90,9 @@ class GatewayDiscovery extends ConsumerStatefulWidget {
   /// whether the identify was really sent (1.0.0+10: 「已閃燈」 only then —
   /// not after a cancel or a failure). Null hides the button.
   final Future<bool> Function(GatewayPeer)? onIdentify;
+
+  /// The clock ([gatewayHeardFor]); tests set it.
+  final DateTime Function()? now;
   @override
   ConsumerState<GatewayDiscovery> createState() => _GatewayDiscoveryState();
 }
@@ -78,7 +100,25 @@ class GatewayDiscovery extends ConsumerStatefulWidget {
 class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     with WidgetsBindingObserver {
   List<RecentGateway> _recent = [];
-  List<GatewayPeer> _found = [];
+
+  /// 1.0.0+11: the gateways in the running scan's last answer (heard live);
+  /// empty while the scan is stopped or paused.
+  var _live = <String>{};
+
+  /// 1.0.0+11: every gateway heard by this list and when it was last in a
+  /// scan answer — its row keeps that RSSI through a pause (〔辨識〕, another
+  /// page, the background) instead of 「未收到廣播」.
+  final _heard = <String, ({GatewayPeer peer, DateTime at})>{};
+
+  /// When the scan stopped (null while it runs): the time a gateway was
+  /// not heard counts only while scanning — a stopped list keeps its rows
+  /// (「搜尋已停止・RSSI 為最後一次結果」), and on the next start every
+  /// [_heard] time moves on by the pause.
+  DateTime? _pausedAt;
+
+  /// Rebuilds a running list now and then, so a row not heard for
+  /// [gatewayHeardFor] says so without a new scan answer.
+  Timer? _heardTick;
   String _query = "";
 
   /// Round 30 (user rehearsal 09-27, D): the phone's signal ranks the list.
@@ -129,7 +169,29 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     _refresh = Timer.periodic(const Duration(seconds: 15), (_) {
       if (mounted) _loadBackend();
     });
+    _heardTick = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (mounted && _scanning && _heard.isNotEmpty) setState(() {});
+    });
   }
+
+  DateTime _now() => (widget.now ?? DateTime.now)();
+
+  /// The time [gatewayHeardFor] is measured to: now, or when the scan
+  /// stopped.
+  DateTime _heardClock() => _pausedAt ?? _now();
+
+  /// In a setState: the scan is over (stopped, done or failed).
+  void _scanEnded() {
+    _scanning = false;
+    _pausedAt ??= _now();
+  }
+
+  /// The gateways heard within [gatewayHeardFor] before [now], in the
+  /// signal ranking.
+  List<GatewayPeer> _heardPeers(DateTime now) => [
+    for (final heard in _heard.values)
+      if (now.difference(heard.at) <= gatewayHeardFor) heard.peer,
+  ]..sort((a, b) => _rankOf(a.id) - _rankOf(b.id));
 
   /// 1.0.0+10 (review P2-5): back on top (e.g. from 「閘道器狀態」, whose
   /// scan stopped this one) — the live scan starts again when it was
@@ -164,7 +226,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     unawaited(() async {
       await _stopping;
       if (!mounted || !_resumePending || _scanning) return;
-      await _start(keep: true);
+      await _start();
     }());
   }
 
@@ -178,6 +240,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
   @override
   void dispose() {
     _identifiedTimer?.cancel();
+    _heardTick?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _refresh?.cancel();
     _epoch++;
@@ -198,7 +261,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
       unawaited(_stop());
       _backendEpoch++;
       setState(() {
-        _found = [];
+        _live = {};
         _fleet = [];
         _backendError = null;
         _backendAt = null;
@@ -269,7 +332,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
       if (link is GatewayScanner) await (link as GatewayScanner).stopScan();
       await _scan?.cancel();
       _scan = null;
-      if (mounted) setState(() => _scanning = false);
+      if (mounted) setState(_scanEnded);
     }();
     _stopping = stopping;
     try {
@@ -279,9 +342,10 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     }
   }
 
-  /// [keep] (1.0.0+10, a resumed scan): the rows heard before stay until
-  /// the scan's first answer — the list does not flash empty.
-  Future<void> _start({bool keep = false}) async {
+  /// 1.0.0+11: the rows heard before stay (grey, their last RSSI) until the
+  /// scan hears them again — the list does not flash empty or jump (1.0.0+10
+  /// kept them only for a resumed scan, and only until its first answer).
+  Future<void> _start() async {
     if (!widget.enabled ||
         _scanning ||
         _selecting ||
@@ -294,9 +358,15 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     _activeLink = link;
     _liveWanted = link is GatewayScanner;
     _resumePending = false;
+    final paused = _pausedAt;
+    if (paused != null) {
+      final gap = _now().difference(paused);
+      _heard.updateAll((_, h) => (peer: h.peer, at: h.at.add(gap)));
+      _pausedAt = null;
+    }
     setState(() {
       _scanning = true;
-      if (!keep) _found = [];
+      _live = {};
       _error = null;
       _needsSettings = false;
     });
@@ -309,11 +379,18 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
         // Round 26: gateways heard here are never PTUs (another gateway's
         // advertisement was listed and picked as one in the field).
         ref.read(commissionProvider.notifier).noteGatewayPeers(peers);
-        final now = DateTime.now();
+        final now = _now();
         for (final peer in peers) {
           _ranker.add(peer.id, peer.rssi, now);
+          _heard[peer.id] = (peer: peer, at: now);
         }
-        final ids = [for (final peer in peers) peer.id];
+        // 1.0.0+11: ranked with the ones heard lately but not in this answer
+        // (a resumed scan's first answer has one gateway only: 「最近」 and
+        // the hint above the list went away, the list jumped).
+        final ids = [
+          for (final heard in _heard.entries)
+            if (now.difference(heard.value.at) <= gatewayHeardFor) heard.key,
+        ];
         final ranked = _ranker.rank(ids, now);
         // 1.0.0+10 (phone: 81/1 at -41 dBm, 80/2 at -62, no 「最近」 at
         // all): the strongest gateway heard is 「最近」 whether configured
@@ -322,8 +399,10 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
         final nearest = _ranker.nearest(ids, now);
         setState(() {
           _ranked = ranked;
-          _nearest = nearest;
-          _found = [...peers]..sort((a, b) => _rankOf(a.id) - _rankOf(b.id));
+          // Two or more heard lately but the ranker's readings older than
+          // its window (a long pause): the last answer stays.
+          _nearest = nearest ?? (ids.length >= 2 ? _nearest : null);
+          _live = {for (final peer in peers) peer.id};
         });
       }
     }
@@ -346,7 +425,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
         update,
         onError: failure,
         onDone: () {
-          if (mounted && epoch == _epoch) setState(() => _scanning = false);
+          if (mounted && epoch == _epoch) setState(_scanEnded);
         },
       );
     } else {
@@ -355,7 +434,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
       } catch (error) {
         failure(error);
       }
-      if (mounted && epoch == _epoch) setState(() => _scanning = false);
+      if (mounted && epoch == _epoch) setState(_scanEnded);
     }
   }
 
@@ -406,6 +485,17 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
         _identifiedTimer = Timer(identifiedHintFor, () {
           if (mounted) setState(() => _identified = null);
         });
+        // 1.0.0+11: also at the bottom of the screen — the row may be off
+        // screen.
+        ScaffoldMessenger.maybeOf(context)
+          ?..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(
+              key: const Key('gateway-identified-snack'),
+              content: Text(identifiedSnackText(peer.name)),
+              duration: identifiedHintFor,
+            ),
+          );
       }
     } finally {
       if (mounted) setState(() => _selecting = false);
@@ -413,8 +503,21 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     if (mounted && resume) _resumeScan();
   }
 
-  Widget _tile(GatewayPeer peer, {RecentGateway? recent}) {
-    final found = _found.where((p) => p.id == peer.id).firstOrNull;
+  /// [signalWidth]: the RSSI column's least width; [nearestNow]: the
+  /// nearest shown (1.0.0+11).
+  Widget _tile(
+    GatewayPeer peer, {
+    RecentGateway? recent,
+    required DateTime now,
+    required double signalWidth,
+    ({String nearest, bool close})? nearestNow,
+  }) {
+    final heard = _heard[peer.id];
+    final lost = heard != null && now.difference(heard.at) > gatewayHeardFor;
+    // Heard in the running scan's last answer; else grey (1.0.0+11).
+    final live =
+        heard != null && _scanning && !_selecting && _live.contains(peer.id);
+    final found = heard == null || lost ? null : heard.peer;
     final last =
         recent ?? _recent.where((r) => r.peer.id == peer.id).firstOrNull;
     // 1.0.0+9: the back-office state as a short phrase (在線／離線／無紀錄／
@@ -426,16 +529,21 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
         ? backendUnknownShort
         : backendPresenceShort(last?.uid, _fleet, archived: _archived);
     final configured = _configured(peer.id);
-    final signal = found == null
-        ? '未收到廣播'
-        : found.rssi <= -127
+    // 1.0.0+11: never 「未收到廣播」 (wide: it cut the title) — the last RSSI
+    // heard (grey while not live), 「—」 never heard, 「訊號中斷」 not heard
+    // for [gatewayHeardFor].
+    final signal = heard == null
+        ? gatewayNeverHeardLabel
+        : lost
+        ? gatewaySignalLostLabel
+        : heard.peer.rssi <= -127
         ? '訊號未知'
-        : '${found.rssi} dBm';
+        : '${heard.peer.rssi} dBm';
     // Round 26 (field: two gateways both read 「GIOS-S80-G…」): 「站 80 ·
     // 閘道器 2」 as the title. 1.0.0+10: the advertised name (the live one:
     // a recent entry keeps the name it had) only when it does not parse —
     // the title says the same (the filter still matches it).
-    final name = found?.name ?? peer.name;
+    final name = heard?.peer.name ?? peer.name;
     final title = gatewayTitle(name);
     // Round 28 (field round 28: this list read 「70F2」, the help panel and
     // the back office 「70F0」): the Wi-Fi MAC tail the back office shows —
@@ -445,7 +553,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     final tail = wifi == null ? peer.id : '…${wifi.substring(8)}';
     final theme = Theme.of(context).textTheme;
     final colors = Theme.of(context).colorScheme;
-    final nearest = found != null && _nearest?.nearest == peer.id;
+    final nearest = found != null && nearestNow?.nearest == peer.id;
     final small = theme.bodySmall?.copyWith(color: colors.onSurfaceVariant);
     final identified = _identified == peer.id;
     final detail = [if (title == name) name, tail].join(' · ');
@@ -474,7 +582,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
         key: ValueKey(peer.id),
         borderRadius: BorderRadius.circular(4),
         onTap: widget.enabled && !_selecting
-            ? () => _connect(found ?? peer)
+            ? () => _connect(heard?.peer ?? peer)
             : null,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(12, 8, 2, 8),
@@ -503,12 +611,21 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
                           ),
                         ),
                         const SizedBox(width: 8),
-                        Text(
-                          signal,
-                          key: ValueKey('gateway-signal-${peer.id}'),
-                          maxLines: 1,
-                          softWrap: false,
-                          style: theme.bodyMedium,
+                        // 1.0.0+11: a column at least as wide as 「-88 dBm」
+                        // and 「訊號中斷」 (right-aligned): the title's room
+                        // does not change with the text.
+                        ConstrainedBox(
+                          constraints: BoxConstraints(minWidth: signalWidth),
+                          child: Text(
+                            signal,
+                            key: ValueKey('gateway-signal-${peer.id}'),
+                            maxLines: 1,
+                            softWrap: false,
+                            textAlign: TextAlign.right,
+                            style: theme.bodyMedium?.copyWith(
+                              color: live ? null : colors.outline,
+                            ),
+                          ),
                         ),
                       ],
                     ),
@@ -562,7 +679,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
                   ),
                   visualDensity: VisualDensity.compact,
                   onPressed: widget.enabled && !_selecting
-                      ? () => _identify(found ?? peer)
+                      ? () => _identify(heard?.peer ?? peer)
                       : null,
                 ),
             ],
@@ -570,6 +687,26 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
         ),
       ),
     );
+  }
+
+  /// 1.0.0+11: the RSSI column's least width — the wider of 「-88 dBm」 (any
+  /// two-digit reading) and [gatewaySignalLostLabel], at the text scale.
+  double _signalWidth(BuildContext context) {
+    final style = DefaultTextStyle.of(
+      context,
+    ).style.merge(Theme.of(context).textTheme.bodyMedium);
+    var width = 0.0;
+    for (final sample in const ['-88 dBm', gatewaySignalLostLabel]) {
+      final painter = TextPainter(
+        text: TextSpan(text: sample, style: style),
+        textDirection: TextDirection.ltr,
+        textScaler: MediaQuery.textScalerOf(context),
+        maxLines: 1,
+      )..layout();
+      if (painter.width > width) width = painter.width;
+      painter.dispose();
+    }
+    return width.ceilToDouble();
   }
 
   /// 1.0.0+10: 「最近使用」／「附近裝置（N）」 as section titles.
@@ -613,10 +750,25 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
           final c = _rankOf(a.$2.peer.id) - _rankOf(b.$2.peer.id);
           return c != 0 ? c : a.$1 - b.$1;
         });
-    final nearby = _found
+    final now = _heardClock();
+    // 1.0.0+11: heard within [gatewayHeardFor] (live or not): a pause
+    // keeps the rows, 「最近」 and the hint above them.
+    final heard = _heardPeers(now);
+    final heardIds = {for (final peer in heard) peer.id};
+    final nearby = heard
         .where((p) => !recentIds.contains(p.id) && matches(p))
         .toList();
-    final nearest = _nearest;
+    final nearest = heardIds.length >= 2 && heardIds.contains(_nearest?.nearest)
+        ? _nearest
+        : null;
+    final signalWidth = _signalWidth(context);
+    Widget tile(GatewayPeer peer, {RecentGateway? recent}) => _tile(
+      peer,
+      recent: recent,
+      now: now,
+      signalWidth: signalWidth,
+      nearestNow: nearest,
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -653,7 +805,12 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
           ],
         ),
         const SizedBox(height: 4),
-        if (_scanning) const LinearProgressIndicator(),
+        // 1.0.0+11: the bar's room kept while the scan pauses (〔辨識〕) —
+        // the list below does not move.
+        if (_scanning)
+          const LinearProgressIndicator()
+        else
+          const SizedBox(height: 4),
         Text(
           _selecting
               ? '正在連線並讀取設定…'
@@ -709,13 +866,13 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
           ),
         if (recent.isNotEmpty) ...[
           _groupTitle('最近使用'),
-          ...recent.map((r) => _tile(r.$2.peer, recent: r.$2)),
+          ...recent.map((r) => tile(r.$2.peer, recent: r.$2)),
         ],
         if (nearby.isNotEmpty) ...[
           _groupTitle('附近裝置（${nearby.length}）'),
-          ...nearby.map(_tile),
+          ...nearby.map(tile),
         ],
-        if (!_scanning && _found.isEmpty)
+        if (!_scanning && heard.isEmpty)
           const Text('未發現附近閘道器。請確認電源、靠近裝置，並確認沒有被其他手機連線。'),
         if (_backendAt != null) const Text('後端狀態每 15 秒更新，僅代表目前選擇的後端環境。'),
         // 1.0.0+9: the rows say 「後端未知」 only; the reason is this line.

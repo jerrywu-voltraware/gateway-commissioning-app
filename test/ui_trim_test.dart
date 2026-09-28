@@ -671,7 +671,15 @@ void main() {
       expect(read().error, isNull);
       expect(read().busy, isFalse);
       expect(row, findsOneWidget);
-      expect(find.textContaining(identifiedHint), findsOneWidget);
+      // 1.0.0+11: on its row and in a SnackBar.
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('gateway-presence-demo-gateway')),
+          matching: find.text(identifiedHint),
+        ),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('gateway-identified-snack')), findsOneWidget);
       // The hint goes after 3 s.
       await tester.pump(identifiedHintFor + const Duration(milliseconds: 100));
       await tester.pumpAndSettle();

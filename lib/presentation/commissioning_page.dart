@@ -55,6 +55,12 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     with WidgetsBindingObserver {
   final _pageScroll = ScrollController();
 
+  /// 1.0.0+11 (phone: 〔辨識〕 emptied the list for 2–4 s): the busy row
+  /// inserted above the step card shifts the page's children, so the card
+  /// was built anew and the list lost its state (RSSI, 「最近」, 「已閃燈」).
+  /// A global key keeps the list's state across that move.
+  final _discoveryKey = GlobalKey(debugLabel: 'gateway-discovery');
+
   /// Mirrors the selected backend URL (editable only for 其他網址); the
   /// source of truth is [backendEnvProvider].
   final _base = TextEditingController(text: productionApiBase);
@@ -2659,6 +2665,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         return [
           ..._savedResume(s, c, enabled),
           GatewayDiscovery(
+            key: _discoveryKey,
             enabled: enabled,
             // 1.0.0+9: 「辨識」 only blinks (connect → identify → disconnect)
             // and stays on this list; the row's tap chooses the gateway.
