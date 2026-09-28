@@ -1369,6 +1369,10 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                   if (state.step == 2 &&
                       (state.bindLaterMac != null || state.bindLaterDeferred))
                     _bindLaterCard(state, controller),
+                  // r34: bound, but the bound PTU is not connected:
+                  // 〔更換 PTU〕 / 〔PTU 已上電，重新檢查〕.
+                  if (state.step == 2 && state.ptuMissingMac != null)
+                    _ptuMissingCard(state, controller),
                   // Above the red box: the item that failed, then why in
                   // full and its retry.
                   if (checklist != null)
@@ -3474,6 +3478,82 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         ),
       ),
     );
+  }
+
+  /// r34: a gateway in service, one-to-one and bound, whose bound PTU is
+  /// not connected ([CommissionState.ptuMissingMac]): 〔更換 PTU〕 clears
+  /// the binding and goes to step 7, 〔PTU 已上電，重新檢查〕 reads again;
+  /// green 「PTU 已連線」 once the re-check found it
+  /// ([CommissionState.ptuMissingBack]).
+  Widget _ptuMissingCard(CommissionState s, CommissioningController c) {
+    final theme = Theme.of(context);
+    final mac = s.ptuMissingMac!;
+    final back = s.ptuMissingBack;
+    final fg = back ? Colors.green.shade900 : theme.colorScheme.onErrorContainer;
+    final bg = back ? Colors.green.shade100 : theme.colorScheme.errorContainer;
+    return Card(
+      key: const Key('ptu-missing'),
+      color: bg,
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            macRichText(
+              back ? ptuBackTitle(mac) : ptuMissingTitle(mac),
+              key: const Key('ptu-missing-title'),
+              style: TextStyle(color: fg, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              back ? ptuBackHint : ptuMissingHint,
+              style: TextStyle(color: fg),
+            ),
+            if (!back) ...[
+              const SizedBox(height: 8),
+              FilledButton.icon(
+                key: const Key('ptu-missing-replace'),
+                icon: const Icon(Icons.swap_horiz, size: 20),
+                onPressed: s.busy ? null : () => _replacePtu(c, mac),
+                label: const Text(replacePtuLabel),
+              ),
+              const SizedBox(height: 4),
+              OutlinedButton.icon(
+                key: const Key('ptu-missing-recheck'),
+                icon: const Icon(Icons.refresh, size: 20),
+                onPressed: s.busy ? null : c.recheckBoundPtu,
+                label: const Text(recheckPtuLabel),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// r34: 〔更換 PTU〕 asks first (it clears the gateway's binding).
+  Future<void> _replacePtu(CommissioningController c, String mac) async {
+    if (!mounted) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text(replacePtuConfirmTitle),
+        content: Text(replacePtuConfirmText(mac)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text(replacePtuLabel),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await c.replaceBoundPtu();
   }
 
   /// Step 7 without a login: the build must carry a backend credential

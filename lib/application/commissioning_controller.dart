@@ -900,6 +900,45 @@ const bindLaterWaitingHint = '請確認本樁 PTU 已上電、與閘道器放在
 
 const bindLaterLabel = '辨識並綁定';
 
+// ---- r34: the bound PTU is not connected (PTU-missing card) ----
+
+/// r34: the card on a gateway in service, one-to-one and bound to [mac],
+/// whose bound PTU is not connected ([CommissionState.ptuMissingMac]).
+String ptuMissingTitle(String mac) =>
+    '本樁 PTU 不在場（綁定 MAC 後 4 碼 ${macTail4(mac)}）';
+
+const ptuMissingHint =
+    '請確認 PTU 已上電；若已更換 PTU，按〔$replacePtuLabel〕解除綁定後重新配對。';
+
+/// r34: the same card once the re-check found the PTU connected
+/// ([CommissionState.ptuMissingBack]).
+String ptuBackTitle(String mac) => 'PTU 已連線（${formatMac(mac)}）';
+
+const ptuBackHint = '閘道器已連上綁定的 PTU，不需要更換。';
+
+const replacePtuLabel = '更換 PTU';
+const recheckPtuLabel = 'PTU 已上電，重新檢查';
+const replacePtuConfirmTitle = '更換 PTU：解除綁定並重新配對？';
+
+/// r34: the confirm body of 〔更換 PTU〕.
+String replacePtuConfirmText(String mac) =>
+    '會解除閘道器對 PTU ${formatMac(mac)} 的綁定（站點與 Wi-Fi 不變），'
+    '然後沿用目前站點到「選擇 PTU」，由閘道器重新搜尋本樁的新 PTU。';
+
+/// r34: the busy texts.
+const replacingPtuText = '正在解除 PTU 綁定';
+const recheckingPtuText = '正在重新檢查 PTU';
+
+/// r34: the field report line (the rescue page's timeline).
+String ptuMissingReportText(String mac) =>
+    '本樁 PTU 不在場：閘道器綁定 ${formatMac(mac)}，目前未連上 PTU';
+
+/// The last four hex digits of [mac] (「9600」), or the MAC as given.
+String macTail4(String mac) {
+  final hex = mac.toUpperCase().replaceAll(RegExp('[^0-9A-F]'), '');
+  return hex.length >= 4 ? hex.substring(hex.length - 4) : mac;
+}
+
 /// Step 7, not busy, phone↔gateway link lost (banner shown).
 bool step7LinkLost(CommissionState s) => !s.busy && _step7Lost(s);
 
@@ -1190,10 +1229,24 @@ class CommissionState {
     this.ptuDeferred = false,
     this.bindLaterMac,
     this.bindLaterDeferred = false,
+    this.ptuMissingMac,
+    this.ptuMissingBack = false,
     this.savedGateway = '',
     this.checklist,
     this.identityArchived = false,
   });
+
+  /// r34 (the pile's PTU broken or taken away after commissioning): step 2
+  /// on a gateway in service, one-to-one and bound, whose bound PTU is not
+  /// connected (`get_status.direct.state` not `connected`, cmd_contract.md
+  /// §3A) — the PTU-missing card: 〔更換 PTU〕 clears the binding and goes
+  /// to step 7, 〔PTU 已上電，重新檢查〕 reads the state again. The bound
+  /// MAC; null: no card.
+  final String? ptuMissingMac;
+
+  /// r34: the re-check found the bound PTU connected — the card turns
+  /// green (「PTU 已連線」) instead of vanishing.
+  final bool ptuMissingBack;
 
   /// 09-28: the automatic step running (or just failed) as a checklist
   /// ([Checklist]) — ticked on real events; the page shows it where it
@@ -1587,10 +1640,16 @@ class CommissionState {
     bool? ptuDeferred,
     Object? bindLaterMac = _keep,
     bool? bindLaterDeferred,
+    Object? ptuMissingMac = _keep,
+    bool? ptuMissingBack,
     String? savedGateway,
     Object? checklist = _keep,
     bool? identityArchived,
   }) => CommissionState(
+    ptuMissingMac: identical(ptuMissingMac, _keep)
+        ? this.ptuMissingMac
+        : ptuMissingMac as String?,
+    ptuMissingBack: ptuMissingBack ?? this.ptuMissingBack,
     checklist: identical(checklist, _keep)
         ? this.checklist
         : checklist as Checklist?,
@@ -3133,6 +3192,8 @@ class CommissioningController extends Notifier<CommissionState> {
       ptuDeferred: false,
       bindLaterMac: null,
       bindLaterDeferred: false,
+      ptuMissingMac: null,
+      ptuMissingBack: false,
       net: const {},
       // A notice from before is not repeated; [_connect] compares again.
       gatewayReboot: null,
@@ -6118,6 +6179,50 @@ class CommissioningController extends Notifier<CommissionState> {
   Future<void> startBindLater() async {
     if (state.busy || state.step != 2 || state.peer == null) return;
     if (state.bindLaterMac == null && !state.bindLaterDeferred) return;
+    await _goBindLater();
+  }
+
+  /// r34: 〔PTU 已上電，重新檢查〕 on the PTU-missing card: reads get_status
+  /// again; the bound PTU connected turns the card green
+  /// ([CommissionState.ptuMissingBack]), else it stays.
+  Future<void> recheckBoundPtu() async {
+    if (state.busy || state.step != 2 || state.ptuMissingMac == null) return;
+    await _sideTask(recheckingPtuText, 20, (generation) async {
+      final status = await _command(generation, 'get_status');
+      final report = _directReport(status['direct']);
+      if (report?.state == DirectState.connected) {
+        state = state.copy(ptuMissingBack: true);
+      }
+    });
+  }
+
+  /// r34: 〔更換 PTU〕 (confirmed on the page): clears the binding
+  /// (`set_config direct_bind_mac: ""`, cmd_contract.md Level 3), then the
+  /// bind-later path — one-to-one, the network check, 「沿用目前站點」 and
+  /// step 7, where the gateway picks the new PTU and 「是這台」 binds it.
+  Future<void> replaceBoundPtu() async {
+    if (state.busy || state.step != 2 || state.ptuMissingMac == null) return;
+    await _sideTask(replacingPtuText, 30, (generation) async {
+      await _command(generation, 'set_config', {'direct_bind_mac': ''});
+      state = state.copy(
+        config: {...state.config, 'direct_bind_mac': ''},
+        ptuMissingMac: null,
+        ptuMissingBack: false,
+        strayBindMac: null,
+        tempBoundMac: null,
+        tempRestoreMac: null,
+      );
+      await _rememberBind(null);
+    });
+    if (!ref.mounted || state.error != null || state.ptuMissingMac != null) {
+      return;
+    }
+    await _goBindLater();
+  }
+
+  /// Round 28 / r34: from step 2 to step 7 on the current station, binding
+  /// on 「是這台」 whatever 「確認後綁定 PTU」 says.
+  Future<void> _goBindLater() async {
     if (!ref.read(topologyProvider).topology.isDirect) {
       await ref
           .read(topologyProvider.notifier)
@@ -6143,23 +6248,17 @@ class CommissioningController extends Notifier<CommissionState> {
     final config = state.config;
     if (config['fleet_joined'] != true ||
         !directAutoConnectSupported(config) ||
-        config['max_connections'] != 1 ||
-        directBoundMacOf(config) != null) {
+        config['max_connections'] != 1) {
       return;
     }
+    final bound = directBoundMacOf(config);
+    if (bound != null) return _checkBoundPtu(bound);
     final peer = state.peer;
     String? linked;
     try {
       final status = await _rawCommand('get_status');
-      final direct = status['direct'];
-      if (direct is Map) {
-        final clean = directWithoutGateways(
-          Map<String, dynamic>.from(direct),
-          _isGatewayMac,
-        ).direct;
-        final report = DirectStatus.from(clean);
-        if (report?.boundMac == null) linked = report?.pickedMac;
-      }
+      final report = _directReport(status['direct']);
+      if (report?.boundMac == null) linked = report?.pickedMac;
     } catch (_) {}
     final deferred = await _deferredRecorded();
     if (!ref.mounted || !identical(state.peer, peer) || state.step != 2) {
@@ -6171,6 +6270,43 @@ class CommissioningController extends Notifier<CommissionState> {
       bindLaterDeferred: deferred,
       error: state.error,
     );
+  }
+
+  /// r34: the bound case of [_checkBindLater] — a gateway in service,
+  /// one-to-one and bound to [bound]: its `get_status.direct.state` other
+  /// than `connected` (`bound_missing` after a collection window,
+  /// `scanning` / `connecting` before one; cmd_contract.md §3A) shows the
+  /// PTU-missing card ([CommissionState.ptuMissingMac]) and reports it to
+  /// the back office. Advisory: a failed or unparsable read shows nothing;
+  /// connected shows nothing (the ordinary step 2).
+  Future<void> _checkBoundPtu(String bound) async {
+    final peer = state.peer;
+    DirectStatus? report;
+    try {
+      final status = await _rawCommand('get_status');
+      report = _directReport(status['direct']);
+    } catch (_) {}
+    if (!ref.mounted || !identical(state.peer, peer) || state.step != 2) {
+      return;
+    }
+    if (report == null || report.state == DirectState.connected) return;
+    state = state.copy(
+      ptuMissingMac: bound,
+      ptuMissingBack: false,
+      error: state.error,
+    );
+    _field.noteDirectPtuMissing(ptuMissingReportText(bound));
+  }
+
+  /// The `direct` object of a get_status, gateways left out (round 26);
+  /// null when absent or unparsable.
+  DirectStatus? _directReport(Object? direct) {
+    if (direct is! Map) return null;
+    final clean = directWithoutGateways(
+      Map<String, dynamic>.from(direct),
+      _isGatewayMac,
+    ).direct;
+    return DirectStatus.from(clean);
   }
 
   /// Polls get_status until a collection window newer than [before] has
@@ -8775,6 +8911,8 @@ class CommissioningController extends Notifier<CommissionState> {
         ptuDeferred: false,
         bindLaterMac: null,
         bindLaterDeferred: false,
+        ptuMissingMac: null,
+        ptuMissingBack: false,
         identifiedMac: null,
         tempBoundMac: null,
         tempRestoreMac: null,

@@ -1665,6 +1665,29 @@ class FieldReporter {
     );
   });
 
+  /// r34: the PTU-missing card appeared at step 2 (a gateway bound to a
+  /// PTU that is not connected): one `status` report whose
+  /// `error_message` is [text], so the rescue page's timeline shows it.
+  /// Not remembered as the last report (the ordinary step / status /
+  /// error reports go on as before).
+  void noteDirectPtuMissing(String text) => _guard(() {
+    if (!_enabled) return;
+    final i = _read();
+    if (i == null) return;
+    if (_session == null) _evaluate();
+    final session = _session;
+    if (session == null) return;
+    _report(
+      session,
+      'status',
+      i,
+      status: _status(i, false),
+      code: _baseCode(i),
+      message: text,
+      remember: false,
+    );
+  });
+
   /// A red box set outside a run (e.g. 「沿用目前站點」 refused) is [code].
   void noteErrorCode(RescueCode code) => _guard(() {
     if (!_enabled) return;

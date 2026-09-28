@@ -81,3 +81,12 @@ Wi-Fi 名稱下方可掃描手機周邊的 2.4 GHz 網路，依訊號排序，�
 - **直連切回星狀**：第 8 步把 `max_connections` 由 1 改成星狀時（直連期間名單不會更新，舊名單會擋掉新選的 PTU），緊接著以本次選定的 PTU 重送名單，再 `join_fleet`；失敗時第 7/8 步提示「驗證完成後會再寫一次」。
 - **外來 PTU 提示**：星狀 PTU 列表讀 `get_status.star.foreign_ptus` 與 `get_ble_devices` 的 `star_enforced`／`star_listed`，有忽略中的同編號 PTU 時顯示「附近有 N 台編號相同的其他 PTU，已被閘道器忽略（不會連線）」等人話提示，不顯示韌體代碼。
 - 程式：`lib/core/star_allow_list.dart`（`starTargetList`／`starAllowList` 規則與文字）、`CommissioningController._starListBeforeAssign`／`writeStarList`；測試 `test/round26_star_macs_test.dart`、`test/round27_star_before_assign_test.dart`。
+
+## 一對一：本樁 PTU 不在場（r34，APP 1.0.0+2）
+
+配置完成後本樁 PTU 壞掉或被拿走時，現場人員再連同一台閘道器，第 2 步（找到閘道器）直接處理，不必走到第 7 步才看到「綁定的 PTU 不在場」。
+
+- **顯示條件**（`CommissioningController._checkBoundPtu`）：閘道器 `fleet_joined`、`direct_autoconnect_supported`、`max_connections == 1`、`get_config.direct_bind_mac` 非空，且 `get_status.direct.state` 不是 `connected`（`bound_missing`／`scanning`／`connecting`；契約 `ble_multi_wifi_gateway/docs/cmd_contract.md` §3A 狀態字串、Level 3 `get_status` 的 `direct{state,bound_mac,ptu_mac}`）。已綁定且 PTU 在場不顯示；未綁定仍走 round 28 的〔辨識並綁定〕卡。
+- **卡片**（`Key('ptu-missing')`）：「本樁 PTU 不在場（綁定 MAC 後 4 碼 xxxx）」＋〔更換 PTU〕（confirm 後送 `set_config {"direct_bind_mac": ""}`，再沿用目前站點到第 7 步，不重輸站號；`replaceBoundPtu`）與〔PTU 已上電，重新檢查〕（再讀 `get_status`，連上即轉綠「PTU 已連線」；`recheckBoundPtu`）。
+- **現場回報**：卡片出現時送一筆 `status` 事件，`error_message` 為「本樁 PTU 不在場：閘道器綁定 …」（`FieldReporter.noteDirectPtuMissing`），後台救援頁時間軸看得到。
+- 測試：`test/round34_ptu_missing_test.dart`。
