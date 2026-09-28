@@ -15,6 +15,12 @@ Color envColor(BuildContext context, BackendEnv env) {
   };
 }
 
+/// 1.0.0+8: the start page's 正式站 line (no more 「客戶看得到」).
+const productionHintText = '資料送到正式站。';
+
+/// The sheet's 正式站 option description.
+const productionSheetHint = '資料送到正式站';
+
 /// AppBar chip showing the current environment; tap to switch.
 class EnvironmentChip extends ConsumerWidget {
   const EnvironmentChip({super.key, required this.onPressed});
@@ -236,7 +242,7 @@ class _EnvironmentSheetState extends ConsumerState<_EnvironmentSheet> {
             child: const Text('變更電腦 IP'),
           ),
         ),
-      option(BackendEnv.production, '資料送到正式站，客戶看得到'),
+      option(BackendEnv.production, productionSheetHint),
       option(
         BackendEnv.custom,
         env.customUrl.trim().isEmpty
@@ -257,15 +263,9 @@ class _EnvironmentSheetState extends ConsumerState<_EnvironmentSheet> {
         ),
         const SizedBox(height: 12),
       ],
-      SwitchListTile(
-        key: const Key('auto-sync-switch'),
-        contentPadding: EdgeInsets.zero,
-        title: const Text('連線 Gateway 時自動同步上傳目標'),
-        subtitle: const Text('連上 Gateway 後，自動讓它把資料送到和手機相同的地方'),
-        value: env.autoSync,
-        onChanged: (value) =>
-            ref.read(backendEnvProvider.notifier).setAutoSync(value),
-      ),
+      // 1.0.0+8: the 「連線 Gateway 時自動同步上傳目標」 switch is gone;
+      // the gateway's target is changed only by 「同步」 in the status
+      // panel or an explicit environment switch ([EnvSwitchPolicy.autoSyncDefault]).
     ];
 
     return Padding(

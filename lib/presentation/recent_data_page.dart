@@ -194,13 +194,25 @@ String recentTrendText(RecentData data) {
   return '最近 $n 筆・跨 ${recentAgeText(span)}・平均每秒 $rateText 筆';
 }
 
-/// 「PTU 9A:96:00・充電中・13:00:03（7 秒前）」 (1.0.0+5: the MAC's last 3
-/// groups — 「PTU 9600」 meant nothing to the installer).
+/// 「PTU 90:5F:E8:9A:96:00・充電中・13:00:03（7 秒前）」 (1.0.0+8: the whole
+/// MAC on the line itself; 1.0.0+5's 「MAC …」 small print is gone). The
+/// card lays the two parts out in a Wrap so the state may drop to the
+/// next line on a narrow screen ([recentLatestParts]).
 String recentLatestLine(RecentItem item, DateTime now) {
-  final tail = item.ptuShort.isEmpty ? '--:--:--' : item.ptuShort;
+  final (mac, rest) = recentLatestParts(item, now);
+  return '$mac$rest';
+}
+
+/// The line's two pieces: 「PTU 90:5F:E8:9A:96:00」 and
+/// 「・充電中・13:00:03（7 秒前）」.
+(String, String) recentLatestParts(RecentItem item, DateTime now) {
+  final mac = item.ptuMacText.isEmpty ? '--:--:--' : item.ptuMacText;
   final ts = item.ts;
   final ago = ts == null ? '時間不明' : '${recentAgeText(now.difference(ts))}前';
-  return 'PTU $tail・${ptuStateLabel(item.ptuState)}・${recentClockText(ts)}（$ago）';
+  return (
+    'PTU $mac',
+    '・${ptuStateLabel(item.ptuState)}・${recentClockText(ts)}（$ago）',
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -493,9 +505,9 @@ class _Banner extends StatelessWidget {
 
 const _tabular = TextStyle(fontFeatures: [FontFeature.tabularFigures()]);
 
-/// The newest row of one PTU: three big numbers, the PTU / state / time
-/// line, and the PTU's whole MAC in small print. A fault state turns the
-/// border red and adds a warning line.
+/// The newest row of one PTU: three big numbers and the PTU (whole MAC) /
+/// state / time line. A fault state turns the border red and adds a
+/// warning line.
 class _LatestCard extends StatelessWidget {
   const _LatestCard({required this.item, required this.now, required this.big});
   final RecentItem item;
@@ -551,27 +563,27 @@ class _LatestCard extends StatelessWidget {
               ],
             ),
             SizedBox(height: big ? 12 : 8),
-            Text(
-              recentLatestLine(item, now),
-              key: Key('$key-line'),
-              style:
-                  (big ? theme.textTheme.bodyLarge : theme.textTheme.bodySmall)
-                      ?.merge(_tabular)
-                      .copyWith(color: colors.onSurfaceVariant),
-              maxLines: 2,
+            // 1.0.0+8: the whole MAC on the line; on a narrow screen the
+            // state / time part wraps under it.
+            Builder(
+              builder: (context) {
+                final (mac, rest) = recentLatestParts(item, now);
+                final style =
+                    (big
+                            ? theme.textTheme.bodyLarge
+                            : theme.textTheme.bodySmall)
+                        ?.merge(_tabular)
+                        .copyWith(color: colors.onSurfaceVariant);
+                return Wrap(
+                  key: Key('$key-line'),
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Text(mac, key: Key('$key-line-mac'), style: style),
+                    Text(rest, key: Key('$key-line-rest'), style: style),
+                  ],
+                );
+              },
             ),
-            if (item.ptuMacText.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text(
-                'MAC ${item.ptuMacText}',
-                key: Key('$key-mac'),
-                style: theme.textTheme.bodySmall
-                    ?.merge(_tabular)
-                    .copyWith(color: colors.onSurfaceVariant),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
             if (fault) ...[
               const SizedBox(height: 6),
               Row(

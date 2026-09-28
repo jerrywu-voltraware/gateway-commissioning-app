@@ -911,8 +911,12 @@ void main() {
         120,
         scrollable: find.byType(Scrollable).first,
       );
-      await reveal(find.text('使用模擬設備練習'));
-      await tap(tester, find.text('使用模擬設備練習'));
+      // 1.0.0+8: the 「使用模擬設備練習」 switch is gone from the start page;
+      // the demo is turned on through the provider.
+      expect(find.text('使用模擬設備練習'), findsNothing);
+      expect(find.byType(SwitchListTile), findsNothing);
+      container.read(demoProvider.notifier).set(true);
+      await tester.pumpAndSettle();
       expect(container.read(demoProvider), isTrue);
       final choice = find.byKey(const Key('demo-wifi'));
       await reveal(choice);

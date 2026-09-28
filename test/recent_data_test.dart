@@ -495,8 +495,12 @@ void main() {
       expect(recentTrendText(data), '最近 3 筆・跨 4 秒・平均每秒 0.8 筆');
       expect(
         recentLatestLine(latest.last, now),
-        'PTU 9A:96:01・充電中・13:00:08（2 秒前）',
+        'PTU 90:5F:E8:9A:96:01・充電中・13:00:08（2 秒前）',
       );
+      expect(recentLatestParts(latest.last, now), (
+        'PTU 90:5F:E8:9A:96:01',
+        '・充電中・13:00:08（2 秒前）',
+      ));
       // One row: no span.
       final one = RecentData.fromJson(_rowsAt(now, const [Duration.zero]));
       expect(recentLatestPerDevice(one), hasLength(1));
@@ -540,17 +544,25 @@ void main() {
       expect(cardFinder, findsOneWidget);
       expect(find.byKey(const Key('recent-latest-grid')), findsNothing);
       expect(find.byKey(const Key('recent-latest-fault')), findsNothing);
-      expect(find.text('PTU 9A:96:00・充電中・13:00:05（5 秒前）'), findsOneWidget);
-      final line = tester.widget<Text>(
-        find.byKey(const Key('recent-latest-line')),
-      );
-      expect(line.data, 'PTU 9A:96:00・充電中・13:00:05（5 秒前）');
-      expect(find.text('PTU 9600・充電中・13:00:05（5 秒前）'), findsNothing);
-      // The whole MAC in small print under the line.
+      // 1.0.0+8: the whole MAC on the line (a Wrap of two pieces); the
+      // small 「MAC …」 print under it is gone.
+      expect(find.byKey(const Key('recent-latest-line')), findsOneWidget);
       expect(
-        tester.widget<Text>(find.byKey(const Key('recent-latest-mac'))).data,
-        'MAC 90:5F:E8:9A:96:00',
+        tester
+            .widget<Text>(find.byKey(const Key('recent-latest-line-mac')))
+            .data,
+        'PTU 90:5F:E8:9A:96:00',
       );
+      expect(
+        tester
+            .widget<Text>(find.byKey(const Key('recent-latest-line-rest')))
+            .data,
+        '・充電中・13:00:05（5 秒前）',
+      );
+      expect(find.textContaining('PTU 9A:96:00'), findsNothing);
+      expect(find.textContaining('PTU 9600'), findsNothing);
+      expect(find.byKey(const Key('recent-latest-mac')), findsNothing);
+      expect(find.textContaining('MAC 90:5F'), findsNothing);
       final big = find.descendant(
         of: cardFinder,
         matching: find.byType(RichText),
@@ -651,8 +663,10 @@ void main() {
       expect(find.byKey(const Key('recent-latest-9603')), findsOneWidget);
       expect(find.byKey(const Key('recent-latest-9602-fault')), findsOneWidget);
       expect(find.byKey(const Key('recent-latest-9601-fault')), findsNothing);
-      expect(find.textContaining('PTU 9A:96:03・低功率'), findsOneWidget);
-      expect(find.byKey(const Key('recent-latest-9603-mac')), findsOneWidget);
+      // 1.0.0+8: star tiles show the whole MAC too.
+      expect(find.text('PTU 90:5F:E8:9A:96:03'), findsOneWidget);
+      expect(find.textContaining('・低功率'), findsOneWidget);
+      expect(find.byKey(const Key('recent-latest-9603-mac')), findsNothing);
       expect(find.byKey(const Key('recent-trend-chart')), findsNothing);
       // Several PTUs: the PTU column and a sideways scroll.
       await tester.scrollUntilVisible(
@@ -736,7 +750,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('recent-empty')), findsNothing);
       expect(find.text(recentDataOkText), findsOneWidget);
-      expect(find.text('PTU 9A:96:00・充電中・13:00:08（2 秒前）'), findsOneWidget);
+      expect(find.text('PTU 90:5F:E8:9A:96:00'), findsOneWidget);
+      expect(find.text('・充電中・13:00:08（2 秒前）'), findsOneWidget);
     });
 
     testWidgets('error: red banner with 〔重試〕; retry recovers', (tester) async {

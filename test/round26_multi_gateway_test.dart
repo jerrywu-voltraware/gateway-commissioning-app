@@ -247,8 +247,9 @@ void main() {
       for (final (title, tail, rssi) in [
         // Round 28: the Wi-Fi tail (as the back office shows it), the
         // Bluetooth one in brackets.
-        ('站 80 · 閘道器 1', 'MAC 後 4 碼 3A00（藍牙 3A02）', '-44 dBm'),
-        ('站 80 · 閘道器 2', 'MAC 後 4 碼 70F0（藍牙 70F2）', '-54 dBm'),
+        // 1.0.0+8: the compact tile shows the Wi-Fi MAC tail only.
+        ('站 80 · 閘道器 1', 'MAC …3A00', '-44 dBm'),
+        ('站 80 · 閘道器 2', 'MAC …70F0', '-54 dBm'),
       ]) {
         final text = find.text(title);
         expect(text, findsOneWidget);

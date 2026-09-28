@@ -99,6 +99,14 @@ String? gatewayMacText({Object? uid, String? bleId, bool withBle = true}) {
       : 'MAC 後 4 碼 $tail（藍牙 $ble）';
 }
 
+/// 1.0.0+8: the gateway list's short form — 「MAC …70F0」 (the Wi-Fi MAC's
+/// last 4 digits, as the back office shows it); null when neither [uid]
+/// nor [bleId] is a MAC.
+String? gatewayMacTail({Object? uid, String? bleId}) {
+  final wifi = gatewayWifiMac(uid: uid, bleId: bleId);
+  return wifi == null ? null : 'MAC …${wifi.substring(8)}';
+}
+
 /// The connected gateway in the page header: its configured identity
 /// (get_config, which follows a site change at once) or else its name,
 /// the MAC tail and the firmware. Round 28: the Wi-Fi MAC tail

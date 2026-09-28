@@ -694,8 +694,10 @@ void main() {
       expect(gatewayNearestHint, contains('〔辨識閘道器〕'));
       expect(find.byKey(const Key('gateway-close-hint')), findsOneWidget);
       expect(find.text('⚠ $gatewayCloseHint'), findsOneWidget);
-      // The button the advice names.
-      expect(find.text('辨識閘道器'), findsNWidgets(2));
+      // The button the advice names (1.0.0+8: a bulb icon with the
+      // tooltip).
+      expect(find.byTooltip('辨識閘道器'), findsNWidgets(2));
+      expect(find.text('辨識閘道器'), findsNothing);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
     });

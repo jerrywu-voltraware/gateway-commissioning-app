@@ -13,6 +13,7 @@ import 'package:gateway_commissioning/data/contracts.dart';
 import 'package:gateway_commissioning/data/demo_system.dart';
 import 'package:gateway_commissioning/data/local_backend_probe.dart';
 import 'package:gateway_commissioning/gateway_app.dart';
+import 'package:gateway_commissioning/presentation/environment_switch.dart';
 
 const _debug = EnvSwitchPolicy(
   autoSyncDefault: true,
@@ -188,18 +189,19 @@ Future<void> _chooseInSheet(WidgetTester tester, BackendEnv env) async {
 }
 
 void main() {
-  testWidgets('AppBar sheet and prep dropdown share one environment', (
+  testWidgets('AppBar sheet and prep page share one environment', (
     tester,
   ) async {
     final container = await _pumpApp(tester, SimGateway());
     expect(_chipText(tester), '正式站');
+    // 1.0.0+8: no 「連線環境」 dropdown on the prep page — the chip is the
+    // only switch; the prep page shows the address of the chosen one.
+    expect(find.byType(DropdownButtonFormField<BackendEnv>), findsNothing);
+    expect(find.text('連線環境'), findsNothing);
 
     await _chooseInSheet(tester, BackendEnv.local);
     expect(_chipText(tester), '本地測試');
-    final dropdown = tester.widget<DropdownButtonFormField<BackendEnv>>(
-      find.byType(DropdownButtonFormField<BackendEnv>),
-    );
-    expect(dropdown.initialValue, BackendEnv.local);
+    expect(container.read(backendEnvProvider).environment, BackendEnv.local);
     expect(
       tester
           .widget<TextField>(find.byKey(const Key('local-backend-host')))
@@ -215,18 +217,17 @@ void main() {
       'http://192.168.1.50:18000',
     );
 
-    // The other way round: the prep dropdown moves the AppBar chip.
-    await _tap(tester, find.byType(DropdownButtonFormField<BackendEnv>));
-    await tester.tap(find.text('正式站').last);
-    await tester.pumpAndSettle();
+    // Back to 正式站 through the sheet: the prep page shows its URL only.
+    await _chooseInSheet(tester, BackendEnv.production);
     expect(_chipText(tester), '正式站');
     prefs = await SharedPreferences.getInstance();
     expect(prefs.getString('backend_environment'), 'production');
+    expect(find.byKey(const Key('env-base-line')), findsOneWidget);
+    expect(find.text(productionApiBase), findsOneWidget);
+    expect(find.byKey(const Key('local-backend-host')), findsNothing);
 
     // Typing a new PC address on the prep page is what the sheet shows.
-    await _tap(tester, find.byType(DropdownButtonFormField<BackendEnv>));
-    await tester.tap(find.text('本地測試').last);
-    await tester.pumpAndSettle();
+    await _chooseInSheet(tester, BackendEnv.local);
     await tester.enterText(
       find.byKey(const Key('local-backend-host')),
       '192.168.1.77',
@@ -353,12 +354,11 @@ void main() {
     expect(fake.targetRequests.single['host'], '192.168.1.50');
     expect(find.text('⚠ 送到別處'), findsNothing);
 
-    // Turning the setting on makes the next connect sync by itself.
+    // 1.0.0+8: no 「連線 Gateway 時自動同步上傳目標」 switch in the sheet.
     await tester.tap(_chip);
     await tester.pumpAndSettle();
-    await _tap(tester, find.byKey(const Key('auto-sync-switch')));
-    final prefs = await SharedPreferences.getInstance();
-    expect(prefs.getBool('auto_sync_upload_target'), isTrue);
+    expect(find.byKey(const Key('auto-sync-switch')), findsNothing);
+    expect(find.textContaining('自動同步上傳目標'), findsNothing);
   });
 
   testWidgets('legacy firmware gets the plain 韌體太舊 message', (tester) async {
@@ -686,40 +686,21 @@ void main() {
   ) async {
     await _pumpApp(tester, SimGateway());
     expect(find.text(productionApiBase), findsOneWidget);
-    expect(find.text('資料送到正式站，客戶看得到。'), findsOneWidget);
+    // 1.0.0+8: 「客戶看得到」 is gone from the prep page and the sheet.
+    expect(find.text(productionHintText), findsOneWidget);
+    expect(find.textContaining('客戶'), findsNothing);
     expect(find.textContaining('待部署'), findsNothing);
+    await tester.tap(_chip);
+    await tester.pumpAndSettle();
+    expect(find.text(productionSheetHint), findsOneWidget);
+    expect(find.textContaining('客戶'), findsNothing);
   });
 
-  testWidgets('r32: a prod build marks 本地測試 unavailable in the dropdown '
-      'and the sheet', (tester) async {
+  testWidgets('r32: a prod build marks 本地測試 unavailable in the sheet', (
+    tester,
+  ) async {
     final container = await _pumpApp(tester, SimGateway(), policy: _prodBuild);
-    await tester.tap(find.byType(DropdownButtonFormField<BackendEnv>));
-    await tester.pumpAndSettle();
-    final item = tester.widget<DropdownMenuItem<BackendEnv>>(
-      find
-          .byWidgetPredicate(
-            (w) =>
-                w is DropdownMenuItem<BackendEnv> &&
-                w.value == BackendEnv.local,
-          )
-          .last,
-    );
-    expect(item.enabled, isFalse);
-    expect(find.text(localUnavailableLabel), findsWidgets);
-    await tester.tap(
-      find.text(localUnavailableLabel).last,
-      warnIfMissed: false,
-    );
-    await tester.pumpAndSettle();
-    expect(
-      container.read(backendEnvProvider).environment,
-      BackendEnv.production,
-    );
-    // Close the menu if it is still open.
-    if (find.byType(DropdownMenuItem<BackendEnv>).evaluate().length > 3) {
-      await tester.tapAt(const Offset(5, 5));
-      await tester.pumpAndSettle();
-    }
+    expect(find.byType(DropdownButtonFormField<BackendEnv>), findsNothing);
 
     await tester.tap(_chip);
     await tester.pumpAndSettle();

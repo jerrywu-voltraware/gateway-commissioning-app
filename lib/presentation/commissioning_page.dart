@@ -36,6 +36,9 @@ import 'gateway_signal.dart';
 import 'gateway_discovery.dart';
 import 'gateway_mode_card.dart';
 
+/// The AppBar title (1.0.0+8: shown whole at 360 dp, never 「GIOS …」).
+const appBarTitle = 'GIOS 現場開通';
+
 class CommissioningPage extends ConsumerStatefulWidget {
   const CommissioningPage({
     super.key,
@@ -1043,7 +1046,18 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       },
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('GIOS 現場開通'),
+          // 1.0.0+8: 360 dp cut the title to 「GIOS …」 beside the chip and
+          // the topology menu — scale it down instead of eliding.
+          title: const FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              appBarTitle,
+              key: Key('appbar-title'),
+              maxLines: 1,
+              softWrap: false,
+            ),
+          ),
           actions: [
             // Field rescue v1: no error, but the installer does not know
             // what to do next.
@@ -1597,19 +1611,10 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                             : endFlowLabel,
                       ),
                     ),
-                  if (state.step == 0)
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('使用模擬設備練習'),
-                      subtitle: const Text('不需要連接閘道器'),
-                      value: demo,
-                      onChanged: state.busy
-                          ? null
-                          : (value) =>
-                                ref.read(demoProvider.notifier).set(value),
-                    ),
-                  // Practice the network check: the simulated gateway's
-                  // Wi-Fi after it boots.
+                  // 1.0.0+8: the 「使用模擬設備練習」 switch is gone from the
+                  // start page; tests turn the demo on through
+                  // [demoProvider]. Practice the network check: the
+                  // simulated gateway's Wi-Fi after it boots.
                   if (state.step == 0 && demo)
                     DropdownButtonFormField<String>(
                       key: const Key('demo-wifi'),
@@ -2520,39 +2525,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           ..._savedResume(s, c, enabled),
           const Text('先確認現場 WiFi 路由器與裝置電源已開啟。'),
           const SizedBox(height: 20),
-          DropdownButtonFormField<BackendEnv>(
-            key: ValueKey(environment),
-            initialValue: environment,
-            isExpanded: true,
-            decoration: const InputDecoration(
-              labelText: '連線環境',
-              border: OutlineInputBorder(),
-            ),
-            items: [
-              for (final value in [
-                BackendEnv.production,
-                BackendEnv.local,
-                BackendEnv.custom,
-              ])
-                DropdownMenuItem(
-                  value: value,
-                  // r32: a prod / prodtest build cannot use the local
-                  // test backend; say so on the option itself.
-                  enabled: value != BackendEnv.local || localAllowed,
-                  child: Text(
-                    value == BackendEnv.local && !localAllowed
-                        ? localUnavailableLabel
-                        : envLabel(value),
-                  ),
-                ),
-            ],
-            onChanged: enabled
-                ? (value) {
-                    if (value != null) _applyEnvironment(value);
-                  }
-                : null,
-          ),
-          const SizedBox(height: 12),
+          // 1.0.0+8: no 「連線環境」 dropdown here — the AppBar chip
+          // (「● 正式站」) is the only switch. The local / custom address
+          // fields stay for those environments; 正式站 shows its URL only.
           if (localBlocked)
             const SizedBox.shrink()
           else if (environment == BackendEnv.local)
@@ -2568,12 +2543,16 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           else
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
-              child: Text(env.base),
+              child: Text(
+                env.base,
+                key: const Key('env-base-line'),
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
             ),
           if (environment == BackendEnv.local && !localBlocked)
             const Text('手機與電腦需連同一個 Wi-Fi；電腦 IP 若變更，可在上方修改或按「自動尋找」。')
           else if (environment == BackendEnv.production)
-            const Text('資料送到正式站，客戶看得到。'),
+            const Text(productionHintText),
           // 09-28: no password field; the build carries the credential.
           if (!demo && ref.read(backendKeyProvider).isEmpty)
             Padding(

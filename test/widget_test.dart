@@ -28,13 +28,16 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     await tester.pumpWidget(const ProviderScope(child: GatewayApp()));
     await tester.pumpAndSettle();
-    expect(find.byType(DropdownButtonFormField<BackendEnv>), findsOneWidget);
+    // 1.0.0+8: no environment dropdown and no demo switch on the start
+    // page; the offline checkbox is still there.
+    expect(find.byType(DropdownButtonFormField<BackendEnv>), findsNothing);
+    expect(find.byType(SwitchListTile), findsNothing);
     await tester.scrollUntilVisible(
-      find.byType(SwitchListTile),
+      find.byType(CheckboxListTile),
       250,
       scrollable: find.byType(Scrollable).first,
     );
-    expect(find.byType(SwitchListTile), findsOneWidget);
+    expect(find.byType(CheckboxListTile), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

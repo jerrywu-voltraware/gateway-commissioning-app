@@ -15,7 +15,7 @@ enum BackendEnv { production, local, custom }
 /// Build-dependent behaviour of the environment switch; injectable in tests.
 class EnvSwitchPolicy {
   const EnvSwitchPolicy({
-    this.autoSyncDefault = kDebugMode,
+    this.autoSyncDefault = false,
     this.confirmGatewaySwitch = !kDebugMode,
     this.defaultEnvironment = localDevelopmentBuild
         ? BackendEnv.local
@@ -39,7 +39,11 @@ class EnvSwitchPolicy {
   /// (`backend_environment`) always wins over this.
   final BackendEnv defaultEnvironment;
 
-  /// Default of 「連線 Gateway 時自動同步上傳目標」 (debug ON, release OFF).
+  /// Whether a connect syncs the gateway's upload target by itself
+  /// (`set_mqtt_target` without the installer asking). 1.0.0+8: the
+  /// 「連線 Gateway 時自動同步上傳目標」 switch is gone from the sheet, so
+  /// this is OFF in every build; only tests turn it on. A value saved by
+  /// an older version (`auto_sync_upload_target`) is ignored.
   final bool autoSyncDefault;
 
   /// Release builds ask once before a gateway switch; debug builds do not.
@@ -190,7 +194,7 @@ class BackendEnvController extends Notifier<BackendEnvState> {
       localHost: endpoint?.host ?? '',
       localPort: endpoint?.port ?? defaultLocalPort,
       customUrl: prefs.getString(_customKey) ?? '',
-      autoSync: prefs.getBool(_autoSyncKey),
+      // 1.0.0+8: the saved switch value no longer overrides the policy.
       loaded: true,
     );
   }

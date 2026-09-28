@@ -99,13 +99,13 @@ void main() {
     await tester.pump();
     expect(find.text('將連線：http://10.0.0.5:18000'), findsOneWidget);
 
-    // Leaving local mode persists the full URL for the rest of the app.
-    await tester.ensureVisible(
-      find.byType(DropdownButtonFormField<BackendEnv>),
-    );
-    await tester.tap(find.byType(DropdownButtonFormField<BackendEnv>));
+    // Leaving local mode (1.0.0+8: through the AppBar chip's sheet, the
+    // prep page has no dropdown) persists the full URL for the rest of
+    // the app.
+    expect(find.byType(DropdownButtonFormField<BackendEnv>), findsNothing);
+    await tester.tap(find.byKey(const Key('env-chip')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('正式站').last);
+    await tester.tap(find.byKey(const Key('env-option-production')));
     await tester.pumpAndSettle();
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getString('backend_local_url'), 'http://10.0.0.5:18000');

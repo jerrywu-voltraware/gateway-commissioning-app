@@ -10,6 +10,12 @@ import '../core/protocol.dart';
 import '../data/contracts.dart';
 import '../data/recent_gateways.dart';
 
+/// 1.0.0+8: the tile's badge for a gateway not yet configured.
+const gatewayUnconfiguredLabel = '未配置';
+
+/// The identify button's tooltip (an icon since 1.0.0+8).
+const identifyGatewayLabel = '辨識閘道器';
+
 class GatewayDiscovery extends ConsumerStatefulWidget {
   const GatewayDiscovery({
     super.key,
@@ -290,18 +296,27 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     // the back office 「70F0」): the Wi-Fi MAC tail the back office shows —
     // remembered from an earlier connect, else derived from the Bluetooth
     // MAC — with the Bluetooth tail in brackets.
-    final tail = gatewayMacText(uid: last?.uid, bleId: peer.id);
+    final tail = gatewayMacTail(uid: last?.uid, bleId: peer.id) ?? peer.id;
     final theme = Theme.of(context).textTheme;
+    final colors = Theme.of(context).colorScheme;
+    final nearest = found != null && _nearest?.nearest == peer.id;
+    final small = theme.bodySmall?.copyWith(color: colors.onSurfaceVariant);
+    // 1.0.0+8: two lines per gateway (at least 4 on a 360 dp screen):
+    // 「站 81・閘道器 1  -34 dBm  已配置」 over
+    // 「GIOS-S81-GW01・MAC …3A00・後端回報在線上」, the 〔辨識閘道器〕 text
+    // button replaced by a bulb icon. The name stays its own Text (tests
+    // and the installer find the advertised name).
     return Card(
-      margin: const EdgeInsets.symmetric(vertical: 3),
+      margin: const EdgeInsets.symmetric(vertical: 2),
       child: ListTile(
         key: ValueKey(peer.id),
         dense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-        // Round 30: a Wrap — the wider 〔辨識閘道器〕 must not squeeze the
-        // signal off the row at 360 dp and large text.
+        visualDensity: VisualDensity.compact,
+        contentPadding: const EdgeInsets.only(left: 10, right: 2),
+        // Round 30: a Wrap — the badges must not squeeze the signal off
+        // the row at 360 dp and large text.
         title: Wrap(
-          spacing: 6,
+          spacing: 8,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             Text(
@@ -310,46 +325,77 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
               style: const TextStyle(fontWeight: FontWeight.w700),
             ),
             Text(signal, style: theme.labelMedium),
-          ],
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
             if (configured)
               Text(
                 gatewayConfiguredLabel,
                 key: ValueKey('gateway-configured-${peer.id}'),
-                style: theme.labelMedium?.copyWith(fontWeight: FontWeight.w700),
+                style: theme.labelSmall?.copyWith(fontWeight: FontWeight.w700),
               )
-            else if (found != null && _nearest?.nearest == peer.id)
+            else if (nearest)
               Text(
                 gatewayNearestLabel,
                 key: ValueKey('gateway-nearest-${peer.id}'),
-                style: theme.labelMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.primary,
+                style: theme.labelSmall?.copyWith(
+                  color: colors.primary,
                   fontWeight: FontWeight.w700,
                 ),
+              )
+            else
+              Text(
+                gatewayUnconfiguredLabel,
+                key: ValueKey('gateway-unconfigured-${peer.id}'),
+                style: theme.labelSmall?.copyWith(
+                  color: colors.onSurfaceVariant,
+                ),
               ),
-            Wrap(
-              spacing: 8,
-              children: [if (title != name) Text(name), Text(tail ?? peer.id)],
+          ],
+        ),
+        subtitle: Row(
+          key: ValueKey('gateway-detail-${peer.id}'),
+          children: [
+            if (title != name) ...[
+              Flexible(
+                child: Text(
+                  name,
+                  style: small,
+                  maxLines: 1,
+                  softWrap: false,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Text('・', style: small),
+            ],
+            Flexible(
+              child: Text(
+                tail,
+                style: small,
+                maxLines: 1,
+                softWrap: false,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
-            Text(status),
+            Text('・', style: small),
+            Flexible(
+              child: Text(
+                status,
+                style: small,
+                maxLines: 1,
+                softWrap: false,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
           ],
         ),
         trailing: widget.onIdentify == null
             ? null
-            : TextButton(
+            : IconButton(
                 key: ValueKey('identify-${peer.id}'),
-                style: TextButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  minimumSize: const Size(0, 32),
-                ),
+                tooltip: identifyGatewayLabel,
+                icon: const Icon(Icons.lightbulb_outline),
+                visualDensity: VisualDensity.compact,
                 onPressed: widget.enabled && !_selecting
                     ? () => _connect(found ?? peer, identify: true)
                     : null,
-                child: const Text('辨識閘道器'),
               ),
         onTap: widget.enabled && !_selecting
             ? () => _connect(found ?? peer)
