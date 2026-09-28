@@ -44,6 +44,10 @@ import 'network_check.dart';
 const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '1.0.0');
 const appBuild = String.fromEnvironment('APP_BUILD', defaultValue: 'dev');
 
+/// 09-28: `error_message` of the `status` report sent when 〔查看最近資料〕
+/// opens ([FieldReporter.noteRecentDataViewed]).
+const recentDataReportText = '查看最近資料';
+
 /// §6.3 fault injection (`scan_timeout_once`), only in debug and
 /// LOCAL_DEVELOPMENT builds.
 const fieldFault = String.fromEnvironment('FIELD_FAULT');
@@ -1687,6 +1691,34 @@ class FieldReporter {
       remember: false,
     );
   });
+
+  /// 09-28 〔查看最近資料〕 opened: one `status` report whose
+  /// `error_message` is [recentDataReportText], for the rescue page's
+  /// timeline. Only while a session is still open — on the done page the
+  /// session has already ended as `completed` ([end], from [_evaluate]),
+  /// so nothing is sent there (the endpoint's own `gateway_commands` /
+  /// access log is the trace). Returns whether a report was queued.
+  bool noteRecentDataViewed() {
+    var sent = false;
+    _guard(() {
+      if (!_enabled) return;
+      final session = _session;
+      if (session == null) return;
+      final i = _read();
+      if (i == null) return;
+      _report(
+        session,
+        'status',
+        i,
+        status: _status(i, false),
+        code: _baseCode(i),
+        message: recentDataReportText,
+        remember: false,
+      );
+      sent = true;
+    });
+    return sent;
+  }
 
   /// A red box set outside a run (e.g. 「沿用目前站點」 refused) is [code].
   void noteErrorCode(RescueCode code) => _guard(() {

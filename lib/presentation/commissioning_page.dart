@@ -30,6 +30,7 @@ import 'install_report_panel.dart';
 import 'local_backend_field.dart';
 import 'progress_checklist.dart';
 import 'ptu_selection_tile.dart';
+import 'recent_data_page.dart';
 import 'gateway_signal.dart';
 import 'gateway_discovery.dart';
 import 'gateway_mode_card.dart';
@@ -3252,23 +3253,43 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         color: colors.surface,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-          child: Row(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Expanded(
-                child: OutlinedButton(
-                  key: const Key('done-next'),
-                  onPressed: enabled ? () => _finishDone(c, next: true) : null,
-                  child: const Text(doneNextLabel),
-                ),
+              // 09-28: 〔查看最近資料〕 — the back office's last rows from
+              // this gateway on its own page, through the APP's session
+              // (no dashboard login, no key). Secondary to 〔完成〕.
+              TextButton.icon(
+                key: const Key('done-recent'),
+                onPressed: enabled
+                    ? () => RecentDataPage.open(context, c.site, c.gateway)
+                    : null,
+                icon: const Icon(Icons.table_rows_outlined, size: 20),
+                label: const Text(recentDataLabel),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: FilledButton.icon(
-                  key: const Key('done-finish'),
-                  onPressed: enabled ? () => _finishDone(c) : null,
-                  icon: const Icon(Icons.check, size: 20),
-                  label: const Text(doneFinishLabel),
-                ),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      key: const Key('done-next'),
+                      onPressed: enabled
+                          ? () => _finishDone(c, next: true)
+                          : null,
+                      child: const Text(doneNextLabel),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton.icon(
+                      key: const Key('done-finish'),
+                      onPressed: enabled ? () => _finishDone(c) : null,
+                      icon: const Icon(Icons.check, size: 20),
+                      label: const Text(doneFinishLabel),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),

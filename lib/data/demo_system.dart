@@ -599,6 +599,30 @@ class DemoSystem implements GatewayLink, GatewayApi, ForeignAcks {
         ],
       };
     }
+    if (path.startsWith('/api/app/recent/')) {
+      // 09-28 〔查看最近資料〕: one row per connected PTU, newest first.
+      final ptus = devices.where((d) => d['connected'] == true).toList();
+      final base = DateTime.now();
+      return {
+        'site_id': config['site_id'],
+        'gateway_id': config['gateway_id'],
+        'count': ptus.length,
+        'items': [
+          for (final (i, d) in ptus.indexed)
+            {
+              'ts': base.subtract(Duration(seconds: 3 + i)).toIso8601String(),
+              'seq': tick + i,
+              'device_id': d['device_number'],
+              'ptu_mac': d['mac'],
+              'ptu_state': 'POWER_TRANSFER',
+              'input_mv': 5000,
+              'input_ma': 120,
+              'bus_mv': 4980,
+              'temp_c': 31,
+            },
+        ],
+      };
+    }
     if (path.contains('/api/latest')) {
       return {
         'items': devices

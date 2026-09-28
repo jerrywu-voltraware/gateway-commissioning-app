@@ -90,3 +90,13 @@ Wi-Fi 名稱下方可掃描手機周邊的 2.4 GHz 網路，依訊號排序，�
 - **卡片**（`Key('ptu-missing')`）：「本樁 PTU 不在場（綁定 MAC 後 4 碼 xxxx）」＋〔更換 PTU〕（confirm 後送 `set_config {"direct_bind_mac": ""}`，再沿用目前站點到第 7 步，不重輸站號；`replaceBoundPtu`）與〔PTU 已上電，重新檢查〕（再讀 `get_status`，連上即轉綠「PTU 已連線」；`recheckBoundPtu`）。
 - **現場回報**：卡片出現時送一筆 `status` 事件，`error_message` 為「本樁 PTU 不在場：閘道器綁定 …」（`FieldReporter.noteDirectPtuMissing`），後台救援頁時間軸看得到。
 - 測試：`test/round34_ptu_missing_test.dart`。
+
+## 完成頁〔查看最近資料〕（09-28，APP 1.0.0+3）
+
+現場人員配置完想確認資料真的進了後台，不必登入後台網頁、不必給 key：完成頁底部多一顆〔查看最近資料〕（`Key('done-recent')`），開新頁「站 S 閘道器 G 最近資料」，用 APP 自己的低權限 session 查後台唯讀端點。
+
+- **後台契約**：`GET {API_BASE}/api/app/recent/{site_id}/{gateway_id}?limit=20`，header `X-API-Key`（沿用 `DashboardApi.request`，正式站走 `cert_pin.dart` 的 CA 信任）；回 `{site_id, gateway_id, count, items:[{ts, seq, device_id, ptu_mac, ptu_state, input_mv, input_ma, bus_mv, temp_c}]}`。`count` 0 ＝ 後台尚未收到資料；非 2xx／連不上 ＝ 錯誤。
+- **畫面**（`lib/presentation/recent_data_page.dart`）：頂部一行「最近一筆 N 秒前・共 count 筆」；每列時間（`DateTime.parse` 後 `toLocal()`，HH:mm:ss）、PTU 後 4 碼、狀態、`input_mv/1000` V、`input_ma` mA、`temp_c` °C；count 0 顯示「後台尚未收到這台閘道器的資料，請稍等 20 秒再重新整理」；錯誤顯示人話＋〔重試〕；右上〔重新整理〕。不自動輪詢。
+- **資料層**：`lib/data/recent_data_api.dart`（`RecentData`／`RecentItem`／`fetchRecentData`）；練習模式 `DemoSystem` 回每台已連線 PTU 一列。
+- **現場回報**：進入此頁呼叫 `FieldReporter.noteRecentDataViewed()`（`status` 事件、`error_message`「查看最近資料」）。完成頁出現時 session 已以 `completed` 結束（`FieldReporter.end`），所以從完成頁進入不會送出；只有 session 仍開著時才送。
+- 測試：`test/recent_data_test.dart`。
