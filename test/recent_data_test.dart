@@ -499,7 +499,7 @@ void main() {
       );
       expect(recentLatestParts(latest.last, now), (
         'PTU 90:5F:E8:9A:96:01',
-        '・充電中・13:00:08（2 秒前）',
+        '充電中・13:00:08（2 秒前）',
       ));
       // One row: no span.
       final one = RecentData.fromJson(_rowsAt(now, const [Duration.zero]));
@@ -534,7 +534,9 @@ void main() {
           ma: const [1612, 120],
         );
       await _pumpPage(tester, api, now);
-      expect(find.text('站 80 閘道器 1 最近資料'), findsOneWidget);
+      // 1.0.0+10: 「最近資料」 in the AppBar, the gateway under it.
+      expect(find.text(recentDataPageTitle), findsOneWidget);
+      expect(find.text('站 80 · 閘道器 1'), findsOneWidget);
       // 1. Banner.
       expect(find.byKey(const Key('recent-banner')), findsOneWidget);
       expect(find.byKey(const Key('recent-banner-ok')), findsOneWidget);
@@ -557,7 +559,7 @@ void main() {
         tester
             .widget<Text>(find.byKey(const Key('recent-latest-line-rest')))
             .data,
-        '・充電中・13:00:05（5 秒前）',
+        '充電中・13:00:05（5 秒前）',
       );
       expect(find.textContaining('PTU 9A:96:00'), findsNothing);
       expect(find.textContaining('PTU 9600'), findsNothing);
@@ -665,7 +667,7 @@ void main() {
       expect(find.byKey(const Key('recent-latest-9601-fault')), findsNothing);
       // 1.0.0+8: star tiles show the whole MAC too.
       expect(find.text('PTU 90:5F:E8:9A:96:03'), findsOneWidget);
-      expect(find.textContaining('・低功率'), findsOneWidget);
+      expect(find.textContaining('低功率・'), findsOneWidget);
       expect(find.byKey(const Key('recent-latest-9603-mac')), findsNothing);
       expect(find.byKey(const Key('recent-trend-chart')), findsNothing);
       // Several PTUs: the PTU column and a sideways scroll.
@@ -751,7 +753,7 @@ void main() {
       expect(find.byKey(const Key('recent-empty')), findsNothing);
       expect(find.text(recentDataOkText), findsOneWidget);
       expect(find.text('PTU 90:5F:E8:9A:96:00'), findsOneWidget);
-      expect(find.text('・充電中・13:00:08（2 秒前）'), findsOneWidget);
+      expect(find.text('充電中・13:00:08（2 秒前）'), findsOneWidget);
     });
 
     testWidgets('error: red banner with 〔重試〕; retry recovers', (tester) async {
@@ -837,7 +839,9 @@ void main() {
       await tester.tap(button);
       await tester.pumpAndSettle();
       expect(find.byType(RecentDataPage), findsOneWidget);
-      expect(find.text('站 80 閘道器 1 最近資料'), findsOneWidget);
+      // 1.0.0+10: 「最近資料」 in the AppBar, the gateway under it.
+      expect(find.text(recentDataPageTitle), findsOneWidget);
+      expect(find.text('站 80 · 閘道器 1'), findsOneWidget);
       // The demo backend answers one row per connected PTU (just sent).
       expect(find.byKey(const Key('recent-body')), findsOneWidget);
       expect(find.text(recentDataOkText), findsOneWidget);

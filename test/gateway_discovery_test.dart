@@ -125,7 +125,9 @@ void main() {
         const GatewayPeer('AA:BB:CC:DD:EE:FF', 'GIOS-S1-GW01', -42),
       ]);
       await tester.pump();
-      expect(find.textContaining('GIOS-S1-GW01'), findsOneWidget);
+      // 1.0.0+10: the title only (the advertised name is not repeated).
+      expect(find.text('站 1 · 閘道器 1'), findsOneWidget);
+      expect(find.textContaining('GIOS-S1-GW01'), findsNothing);
       expect(find.textContaining('後端未知'), findsWidgets);
       expect(find.byType(LinearProgressIndicator), findsOneWidget);
       await tester.pump();
@@ -198,7 +200,7 @@ void main() {
       ]);
       await tester.pump();
       expect(
-        tester.getTopLeft(find.textContaining('GIOS-S80-GW29')).dy,
+        tester.getTopLeft(find.text('站 80 · 閘道器 29')).dy,
         lessThan(tester.getTopLeft(find.text('GIOS-S80-GW0')).dy),
       );
       expect(

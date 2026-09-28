@@ -84,7 +84,7 @@ class PtuSelectionTile extends StatelessWidget {
                 SelectableText(
                   status!.detail!,
                   key: const Key('ptu-assign-detail'),
-                  style: const TextStyle(fontSize: 12),
+                  style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
               const SizedBox(height: 16),
@@ -127,7 +127,13 @@ class PtuSelectionTile extends StatelessWidget {
                       spacing: 8,
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
-                        Text(title, style: theme.textTheme.titleSmall),
+                        // 1.0.0+10: a list row's title (titleMedium w700).
+                        Text(
+                          title,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                         Text(
                           ptu['connected'] == true ? '已連線' : '未連線',
                           style: theme.textTheme.bodySmall,

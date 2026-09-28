@@ -1046,31 +1046,16 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       },
       child: Scaffold(
         appBar: AppBar(
-          // 1.0.0+9 (phone: the FittedBox of 1.0.0+8 shrank the title to a
-          // few pixels beside the actions): the title at its normal size,
-          // never scaled nor elided; the topology menu moved into ⋮ and
-          // the environment chip made compact to leave it room.
-          title: LayoutBuilder(
-            builder: (context, constraints) {
-              // titleLarge when the whole title fits the width the AppBar
-              // leaves it, else titleMedium — never scaled, never elided.
-              final text = Theme.of(context).textTheme;
-              final painter = TextPainter(
-                text: TextSpan(text: appBarTitle, style: text.titleLarge),
-                textDirection: Directionality.of(context),
-                textScaler: MediaQuery.textScalerOf(context),
-                maxLines: 1,
-              )..layout();
-              final fits = painter.width <= constraints.maxWidth;
-              painter.dispose();
-              return Text(
-                appBarTitle,
-                key: const Key('appbar-title'),
-                maxLines: 1,
-                softWrap: false,
-                style: fits ? null : text.titleMedium,
-              );
-            },
+          // 1.0.0+10 (phone 360 dp at text scale 1.1: 「GIOS 現場…」 beside
+          // the help icon): the theme's AppBar title style (titleMedium
+          // w600, [gatewayTheme]) on every page — no size picked by width;
+          // the help icon compact and the environment chip small leave it
+          // room whole up to text scale 1.3.
+          title: const Text(
+            appBarTitle,
+            key: Key('appbar-title'),
+            maxLines: 1,
+            softWrap: false,
           ),
           actions: [
             // Field rescue v1: no error, but the installer does not know
@@ -1080,6 +1065,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                 key: const Key('field-help-appbar'),
                 icon: const Icon(Icons.support_agent),
                 tooltip: fieldHelpLabel,
+                visualDensity: VisualDensity.compact,
                 onPressed: () => openFieldHelp(context, ref),
               ),
             EnvironmentChip(onPressed: _openEnvironmentSheet),
@@ -1330,7 +1316,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               constraints: const BoxConstraints(maxWidth: 720),
               child: ListView(
                 controller: _pageScroll,
-                padding: EdgeInsets.all(selectingPtus ? 12 : 20),
+                // 1.0.0+10: 16 (was 20) — more width for the gateway list's
+                // rows at 360 dp.
+                padding: EdgeInsets.all(selectingPtus ? 12 : 16),
                 children: [
                   if (demo)
                     Container(
@@ -1537,17 +1525,22 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                                     tilePadding: EdgeInsets.zero,
                                     title: Text(
                                       '詳細資訊',
-                                      style: TextStyle(
-                                        color: colors.onErrorContainer,
-                                      ),
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodyMedium
+                                          ?.copyWith(
+                                            color: colors.onErrorContainer,
+                                          ),
                                     ),
                                     children: [
                                       SelectableText(
                                         state.errorDetail!,
-                                        style: TextStyle(
-                                          color: colors.onErrorContainer,
-                                          fontSize: 12,
-                                        ),
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodySmall
+                                            ?.copyWith(
+                                              color: colors.onErrorContainer,
+                                            ),
                                       ),
                                     ],
                                   ),
@@ -1600,7 +1593,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                   else
                     Card(
                       child: Padding(
-                        padding: EdgeInsets.all(selectingPtus ? 8 : 20),
+                        padding: EdgeInsets.all(selectingPtus ? 8 : 16),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: content(state, controller, demo),
@@ -2607,7 +2600,13 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           CheckboxListTile(
             contentPadding: EdgeInsets.zero,
             value: _offline,
-            title: const Text('先離線配置，稍後驗證資料'),
+            // 1.0.0+10 (phone: larger than the notes around it — the
+            // ListTile's own title style): the notes' size (bodyMedium).
+            title: Text(
+              '先離線配置，稍後驗證資料',
+              key: const Key('offline-checkbox-title'),
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
             onChanged: enabled
                 ? (v) => setState(() => _offline = v ?? false)
                 : null,
@@ -2952,7 +2951,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               tilePadding: EdgeInsets.zero,
               title: Text(
                 '掃描說明與完整流程',
-                style: Theme.of(context).textTheme.bodySmall,
+                style: Theme.of(context).textTheme.bodyMedium,
               ),
               children: [
                 Text(
@@ -2992,33 +2991,44 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           ...byDeviceNumber(s.ptus).map((ptu) {
             final id = (ptu['device_number'] as num?)?.toInt() ?? 0;
             final count = s.verifyCounts[id];
+            final skip =
+                count != null &&
+                s.verifyWaiting.contains(id) &&
+                !s.verifySkipped.contains(id);
+            // 1.0.0+10 (review: the trailing count and 〔略過此台〕 squeezed
+            // the title at 360 dp): the count / state alone on the right,
+            // 〔略過此台〕 under the MAC.
             return ListTile(
               key: Key('verify-ptu-$id'),
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.sensors),
               title: Text('PTU #$id'),
-              subtitle: Text(ptu['mac'].toString()),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(ptu['mac'].toString()),
+                  if (skip)
+                    TextButton(
+                      key: Key('verify-skip-$id'),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      onPressed: () => c.skipVerifyPtu(id),
+                      child: const Text('略過此台'),
+                    ),
+                ],
+              ),
               trailing: count == null
                   ? null
-                  : Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          s.verifySkipped.contains(id)
-                              ? '未驗證（已略過）'
-                              : s.verifyWaiting.contains(id)
-                              ? '尚無資料'
-                              : '$count/3',
-                          key: Key('verify-count-$id'),
-                        ),
-                        if (s.verifyWaiting.contains(id) &&
-                            !s.verifySkipped.contains(id))
-                          TextButton(
-                            key: Key('verify-skip-$id'),
-                            onPressed: () => c.skipVerifyPtu(id),
-                            child: const Text('略過此台'),
-                          ),
-                      ],
+                  : Text(
+                      s.verifySkipped.contains(id)
+                          ? '未驗證（已略過）'
+                          : s.verifyWaiting.contains(id)
+                          ? '尚無資料'
+                          : '$count/3',
+                      key: Key('verify-count-$id'),
                     ),
             );
           }),
@@ -3453,7 +3463,11 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       tilePadding: EdgeInsets.zero,
       childrenPadding: const EdgeInsets.only(bottom: 8),
       expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
-      title: Text(s.report.startsWith('模擬') ? '模擬安裝報告' : '安裝報告'),
+      // 1.0.0+10: a collapsed section's title (bodyMedium).
+      title: Text(
+        s.report.startsWith('模擬') ? '模擬安裝報告' : '安裝報告',
+        style: Theme.of(context).textTheme.bodyMedium,
+      ),
       subtitle: const Text('全文；也可分享或複製'),
       children: [
         SelectableText(s.report),
@@ -3776,9 +3790,12 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         : '仍要繼續設定新站點（稍後再確認上傳）';
 
     return [
+      // 1.0.0+10: a card title (titleSmall w700).
       Text(
         recheck ? '確認資料上傳' : 'Gateway 網路體檢',
-        style: theme.textTheme.titleMedium,
+        style: theme.textTheme.titleSmall?.copyWith(
+          fontWeight: FontWeight.w700,
+        ),
       ),
       const SizedBox(height: 4),
       Text(

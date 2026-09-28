@@ -144,7 +144,7 @@ Wi-Fi 名稱下方可掃描手機周邊的 2.4 GHz 網路，依訊號排序，�
 
 ### 1.0.0+9（09-29 實機截圖）：AppBar 標題不再用 `FittedBox` 縮小（`LayoutBuilder`：放得下用 titleLarge，否則 titleMedium，不縮放不省略），拓撲選單（直連／星狀／每台 PTU 數／直連進階設定）與主題併入 ⋮（`Key('topology-menu')` 不變，主題預設淺色 `defaultThemeMode`），「● 正式站」chip 緊湊（字 12）；第 2 步清單 tile 改自訂排版（不用 `ListTile`，避免小標籤與第二行重疊）——第一行 `Wrap`「站 81・閘道器 1」＋「已配置／未配置」小標籤＋訊號最強的「最近」實心 chip（`gatewayNearestLabel`，卡片描邊、排第一，<6 dB 仍有「差距小」提示）＋「-39 dBm」，第二行單一 `Text`「GIOS-S81-GW01 · …3A00 · 後端在線」（`backendPresenceShort`：在線／離線／無紀錄／已封存／未知）一個省略號；燈泡〔辨識〕改為只閃燈（`CommissioningController.identifyPeer`：連線→get_config→identify both／gateway→斷線，step 不變，tile 顯示「已閃燈」3 秒），點整列才選擇；測試 `test/ui_trim_test.dart`（載入 SDK Roboto 量寬）。
 
-### 1.0.0+10（邏輯修正）：審查 1.0.0+9（d308987）後的邏輯修正，版面未動（版號由下一輪與版面調整一起升）
+### 1.0.0+10（邏輯修正＋版面）：審查 1.0.0+9（d308987）後的邏輯修正，以及實機截圖（SM-N950F，360×740 dp，系統字級 1.1）後的版面調整
 - 清單〔辨識〕（`CommissioningController.identifyPeer`）：時間上限改為 `identifyPeerTimeout`＝`reconnectBudget`（80 秒；BLE 連線最壞 53 秒）；指令走 `_commandBusy`（閘道器回 busy 會重送，`absorb: false` 不寫入流程 config），舊韌體（沒有 `identify_ptu_supported`）送不帶 target 的 identify；只有仍是目前 generation、且流程沒有選其他閘道器時才斷線（`connect()` 先 `_generation++`），逾時後立即斷線收掉背景連線；結束後還原清單原本的提示（如〔配置下一台〕的「預設沿用站 X」）；回傳是否真的送出，「已閃燈」只在送出時顯示；辨識中按〔取消操作〕只中止辨識（不顯示「已取消…」、不結束現場 session）。
 - 〔更換 PTU〕（`replaceBoundPtu`）：先過網路體檢與「沿用目前站點」的所有條件（`_reuseStationBlocked`：網路未就緒／上傳暫停／測試模式／不能沿用站點），全部通過才在進第 7 步前一刻送 `direct_bind_mac: ""`；送出前記 `tempBoundMac = ""`（`replacedBindMarker`）與 `tempRestoreMac = 舊 MAC`，第 7 步取消／結束／〔先完成配置〕由 `_releaseTempBind` 還原舊綁定，按「是這台」才換成新 PTU；`_goBindLater` 任何停下都在紅框說明原因。
 - 綁定 PTU 是否在場（`boundPtuPresence`）：`connected` 且 `ptu_mac` 等於綁定 MAC 才算在場，不同時顯示紅卡「連到的不是綁定的 PTU」；`scanning`／`connecting` 且開機 `uptime_sec` 未滿 90 秒（`boundPtuSettle`）或狀態剛變化時，顯示中性卡「正在尋找本樁 PTU…」＋〔重新檢查〕（不回報後台）；沒有 uptime 時只對 `connecting` 顯示中性。卡片的色調、文字與按鈕由 `ptuCardView` 決定。
@@ -153,3 +153,17 @@ Wi-Fi 名稱下方可掃描手機周邊的 2.4 GHz 網路，依訊號排序，�
 - 最近資料：`recentAgeText` 加上「N 小時」「N 天」；負的年齡當 0 秒；後台回應帶 `Date` header 時（`ServerClock`，`DashboardApi` 記錄時鐘差），新鮮度以後台時間判斷（`recentServerNow`），手機時鐘快 30 秒也不會誤判黃色。
 - 第 9 步驗證通過時（安裝報告送出的同一刻）就寫入「閘道器狀態」的本機紀錄，不必等按〔完成〕（同站同閘道器只保留一筆）。
 - 測試：新增 `test/logic_fixes_v10_test.dart`（18 項）；`test/gateway_status_test.dart` 改為驗證按〔完成〕前已有紀錄；清單測試的假掃描改為 broadcast（掃描會重新訂閱）。
+
+#### 版面（360 dp，字級 1.1／1.3 都不截斷）
+- AppBar：`gatewayTheme` 的 `appBarTheme.titleTextStyle` 統一為 titleMedium w600（字級取自 `ThemeData.localize`，因為 `ThemeData.textTheme` 本身沒有字級），三個頁面都用它；拿掉 1.0.0+9 依寬度切 titleLarge／titleMedium 的 `LayoutBuilder`。求助圖示 `VisualDensity.compact`；環境 chip 改 labelMedium、padding 2、圓點框 12 dp。360 dp、字級 1.3、有求助圖示時「GIOS 現場開通」需 137 dp、可用 170 dp。
+- 最近資料頁：標題「最近資料」（`recentDataPageTitle`），閘道器放在下方第一行「站 81 · 閘道器 1」（`recentDataSubtitle`，`Key('recent-subtitle')`）。三個大數字改三等分欄（`_BigNumbers`）：數值同一字級粗體、單位小字同基線、下方標籤「電壓／電流／溫度」；headlineMedium 放不下時三個一起降為 titleLarge（星狀小卡為 titleLarge→titleMedium），不再用 `FittedBox`。PTU 區塊兩行：「PTU 90:5F:E8:9A:96:00」／「充電中・01:34:53（0 秒前）」（`recentLatestParts` 第二段不再以「・」開頭，`recentLatestLine` 不變）。表格欄寬乘上字級比例、儲存格 `ellipsis`，單台 PTU 放不下時也橫向捲動（`Key('recent-table-scroll')`）；折疊標題 bodyMedium。
+- 第 2 步閘道器清單 tile 三行：①「站 81 · 閘道器 1」（titleMedium w700，`Expanded`＋ellipsis）與右端「-41 dBm」（bodyMedium）；② 小標籤 `GatewayMark`（labelMedium）：「最近」（實心綠 `gatewayNearestColor`，卡片綠框）、「已配置／未配置」、後端短語（`Key('gateway-presence-<id>')`，辨識後 3 秒顯示「已閃燈」）；③「…3A00」（bodySmall）。廣播名稱不再重複顯示（只在無法解析成站號／閘道器時出現；篩選仍可搜尋）。
+- 「最近」規則（實機：81/1 -41 dBm 已配置、80/2 -62 未配置 → 沒有任何標記、80/2 排第一）：聽到兩台以上時，訊號最強那台一律標「最近」，並在所屬分組（最近使用／附近裝置）排第一，已配置的也一樣（取消 r31 的「已配置不標最近、排後面」，已配置由「已配置」標籤表達）。
+- 〔開啟權限設定〕只在掃描因權限或定位服務失敗時出現（`Key('gateway-open-settings')`）；說明文字與按鈕間加間距；「選擇附近的閘道器」「最近使用」「附近裝置（N）」為區段標題（titleSmall w600）。流程頁內距與主卡片內距 20→16 dp。
+- 閘道器狀態：三個區段的列統一（標題 titleMedium w700、副標 bodySmall）；藍牙列「-40 dBm・GIOS‑S81‑GW01」（`unbrokenName` 把連字號換成不斷行的 U+2011，名稱整段換行），訊號最強那台（兩台以上）加「最近」（`Key('gs-nearby-nearest-<id>')`）；最近配置副標只留「09-29 01:15 完成」；後台列「在線・PTU 已連線・7 秒前」（無資料時「心跳 N 分鐘前」）。
+- 首頁「先離線配置，稍後驗證資料」改 bodyMedium，與周圍說明同級（原為 ListTile 標題字級）。
+- 驗證頁（第 9 步）每台 PTU：右側只留計數／狀態，〔略過此台〕移到 MAC 下方。
+- ⋮「直連進階設定」面板可捲動（`Key('direct-settings-scroll')`）。
+- 寫死的字級：錯誤詳細資訊、PTU 詳細（bodySmall）；環境 chip（labelMedium）；清單小標籤（labelMedium，原 11）。
+- 字級層級：區段標題 titleSmall w600（狀態頁區段、清單分組、求助面板「請唸給後台」）；卡片標題 titleSmall w700（網路體檢／確認資料上傳、連線狀態）；清單列標題 titleMedium w700（閘道器清單、PTU 清單、狀態頁、環境面板選項）；面板標題 titleLarge（直連進階設定、現場取樣）；折疊標題 bodyMedium（掃描說明、安裝報告、錯誤詳細資訊、最近資料表格）。
+- 測試：新增 `test/layout_smoke_test.dart`——首頁、環境面板、閘道器清單（兩台不同 RSSI）、⋮ 選單、網路體檢、站點、完成頁、驗證頁、PTU 不在場卡、直連進階設定、最近資料（單台／星狀，表格展開）、閘道器狀態；每頁在 360×740、360×640 × 字級 1.0／1.1／1.3 下由上捲到下，檢查無例外、`maxLines: 1` 的文字不截斷、文字不超出螢幕右緣（橫向捲動表格除外）、AppBar 標題完整且字級 16。字型用 `test/support/real_fonts.dart`：SDK 的 Roboto＋系統的 Noto Sans TC（或 `GIOS_TEST_CJK_FONT`）做 fallback——只載 Roboto 時中文會畫成約 0.44 em 的缺字方塊，量出來比手機窄；`GatewayApp(theme:)` 讓測試加上 fallback。`ui_trim_test` 新增「已配置的最強那台仍標最近、排第一」；其他測試改用 `ValueKey('demo-gateway')` 點選示範閘道器（名稱不再顯示）。

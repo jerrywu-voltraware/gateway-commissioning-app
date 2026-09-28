@@ -31,22 +31,26 @@ class EnvironmentChip extends ConsumerWidget {
     final color = envColor(context, env);
     return Tooltip(
       message: '切換連線環境',
-      // 1.0.0+9: compact (small padding, 12 px text) — the AppBar title
-      // must keep its normal size at 360 dp beside it.
+      // 1.0.0+9: compact — the AppBar title must stay whole at 360 dp
+      // beside it. 1.0.0+10: labelMedium (no fixed size), a smaller dot
+      // box and less padding (the title whole at text scale 1.3).
       child: ActionChip(
         key: const Key('env-chip'),
         visualDensity: VisualDensity.compact,
         materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        padding: const EdgeInsets.symmetric(horizontal: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 2),
         labelPadding: const EdgeInsets.symmetric(horizontal: 2),
+        avatarBoxConstraints: const BoxConstraints.tightFor(
+          width: 12,
+          height: 12,
+        ),
         side: BorderSide(color: color),
-        avatar: Icon(Icons.circle, size: 10, color: color),
+        avatar: Icon(Icons.circle, size: 8, color: color),
         label: Text(
           envLabel(env),
-          style: TextStyle(
+          style: Theme.of(context).textTheme.labelMedium?.copyWith(
             color: color,
             fontWeight: FontWeight.w600,
-            fontSize: 12,
           ),
         ),
         onPressed: onPressed,
@@ -173,6 +177,7 @@ class _EnvironmentSheetState extends ConsumerState<_EnvironmentSheet> {
                         available ? envLabel(value) : localUnavailableLabel,
                         style: theme.textTheme.titleMedium?.copyWith(
                           color: off ? colors.onSurfaceVariant : null,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                       const SizedBox(height: 2),

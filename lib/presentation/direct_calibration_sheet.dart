@@ -156,7 +156,8 @@ class _DirectCalibrationSheetState
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(calibrationTitle, style: text.titleMedium),
+            // 1.0.0+10: a sheet's title (titleLarge).
+            Text(calibrationTitle, style: text.titleLarge),
             const SizedBox(height: 4),
             Text(
               '本樁與鄰近樁請維持實際擺放與電源。取樣 $seconds 秒後建議門檻，'

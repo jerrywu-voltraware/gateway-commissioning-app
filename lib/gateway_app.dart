@@ -7,7 +7,10 @@ import 'presentation/commissioning_page.dart';
 const defaultThemeMode = ThemeMode.light;
 
 class GatewayApp extends StatefulWidget {
-  const GatewayApp({super.key});
+  const GatewayApp({super.key, this.theme = gatewayTheme});
+
+  /// The theme for a brightness ([gatewayTheme]; layout tests add fonts).
+  final ThemeData Function(Brightness brightness) theme;
   @override
   State<GatewayApp> createState() => _GatewayAppState();
 }
@@ -42,8 +45,8 @@ class _GatewayAppState extends State<GatewayApp> {
   Widget build(BuildContext context) => MaterialApp(
     title: 'GIOS 現場開通',
     debugShowCheckedModeBanner: false,
-    theme: gatewayTheme(Brightness.light),
-    darkTheme: gatewayTheme(Brightness.dark),
+    theme: widget.theme(Brightness.light),
+    darkTheme: widget.theme(Brightness.dark),
     themeMode: _mode,
     home: CommissioningPage(themeMode: _mode, onThemeChanged: _change),
   );

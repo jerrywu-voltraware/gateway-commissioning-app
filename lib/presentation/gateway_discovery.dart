@@ -22,6 +22,41 @@ const identifiedHint = '已閃燈';
 /// 1.0.0+9: how long [identifiedHint] stays.
 const identifiedHintFor = Duration(seconds: 3);
 
+/// 1.0.0+10: the 「最近」 chip's fill and the nearest card's outline.
+const gatewayNearestColor = Color(0xFF2E7D32);
+
+/// 1.0.0+10: a small mark on a gateway row (labelMedium): outlined, or
+/// [filled] (white text on [color]).
+class GatewayMark extends StatelessWidget {
+  const GatewayMark(
+    this.text, {
+    super.key,
+    required this.color,
+    this.filled = false,
+  });
+  final String text;
+  final Color color;
+  final bool filled;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = Theme.of(context).textTheme.labelMedium?.copyWith(
+      color: filled ? Colors.white : color,
+      fontWeight: FontWeight.w700,
+      height: 1.2,
+    );
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: filled ? color : null,
+        border: Border.all(color: color),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(text, maxLines: 1, softWrap: false, style: style),
+    );
+  }
+}
+
 class GatewayDiscovery extends ConsumerStatefulWidget {
   const GatewayDiscovery({
     super.key,
@@ -55,6 +90,10 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
   String? _backendError;
   DateTime? _backendAt;
   String? _error;
+
+  /// 1.0.0+10: the last scan failed for want of a permission (or a
+  /// location service) — only then 〔開啟權限設定〕 is shown.
+  bool _needsSettings = false;
   bool _scanning = false, _selecting = false;
 
   /// 1.0.0+9: the gateway 〔辨識〕 just blinked (「已閃燈」 on its row).
@@ -259,6 +298,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
       _scanning = true;
       if (!keep) _found = [];
       _error = null;
+      _needsSettings = false;
     });
     unawaited(_loadBackend());
     final recent = await RecentGateways.load(link.demo);
@@ -275,11 +315,11 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
         }
         final ids = [for (final peer in peers) peer.id];
         final ranked = _ranker.rank(ids, now);
-        // r31: a gateway already configured is not 「最近」.
-        final nearest = _ranker.nearest([
-          for (final id in ids)
-            if (!_configured(id)) id,
-        ], now);
+        // 1.0.0+10 (phone: 81/1 at -41 dBm, 80/2 at -62, no 「最近」 at
+        // all): the strongest gateway heard is 「最近」 whether configured
+        // or not (its 「已配置」 chip says the rest) — r31 left it out, so
+        // with one configured and one new gateway nothing was marked.
+        final nearest = _ranker.nearest(ids, now);
         setState(() {
           _ranked = ranked;
           _nearest = nearest;
@@ -294,6 +334,10 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
         _error = error is GatewayFailure
             ? error.message
             : '搜尋失敗，請確認藍牙、定位與附近裝置權限後重試。';
+        _needsSettings =
+            error is! GatewayFailure ||
+            error.code == 'permission' ||
+            error.code == 'location_off';
       });
     }
 
@@ -374,7 +418,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     final last =
         recent ?? _recent.where((r) => r.peer.id == peer.id).firstOrNull;
     // 1.0.0+9: the back-office state as a short phrase (在線／離線／無紀錄／
-    // 未知) — the line below must fit 360 dp whole.
+    // 未知).
     final stale =
         _backendAt == null ||
         DateTime.now().difference(_backendAt!).inSeconds > 30;
@@ -388,58 +432,41 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
         ? '訊號未知'
         : '${found.rssi} dBm';
     // Round 26 (field: two gateways both read 「GIOS-S80-G…」): 「站 80 ·
-    // 閘道器 2」 as the title, the advertised name (the live one: a recent
-    // entry keeps the name it had) and the MAC tail below.
+    // 閘道器 2」 as the title. 1.0.0+10: the advertised name (the live one:
+    // a recent entry keeps the name it had) only when it does not parse —
+    // the title says the same (the filter still matches it).
     final name = found?.name ?? peer.name;
     final title = gatewayTitle(name);
     // Round 28 (field round 28: this list read 「70F2」, the help panel and
     // the back office 「70F0」): the Wi-Fi MAC tail the back office shows —
     // remembered from an earlier connect, else derived from the Bluetooth
-    // MAC. 1.0.0+9: 「…3A00」 (no 「MAC」 word) to keep the line short.
+    // MAC. 1.0.0+9: 「…3A00」 (no 「MAC」 word).
     final wifi = gatewayWifiMac(uid: last?.uid, bleId: peer.id);
     final tail = wifi == null ? peer.id : '…${wifi.substring(8)}';
     final theme = Theme.of(context).textTheme;
     final colors = Theme.of(context).colorScheme;
     final nearest = found != null && _nearest?.nearest == peer.id;
     final small = theme.bodySmall?.copyWith(color: colors.onSurfaceVariant);
-    // 1.0.0+8: two lines per gateway (at least 4 on a 360 dp screen).
-    // 1.0.0+9 (phone: the three Flexible parts of line 2 were each cut to
-    // 「GIOS-…・MAC …・後端…」 and the badge overlapped the line): line 1 is
-    // a Row — 「站 81・閘道器 1」 (expanded) · badge · 「-39 dBm」; line 2 is
-    // one Text 「GIOS-S81-GW01 · …3A00 · 後端在線」 with a single ellipsis.
-    // The name is inside that Text (tests use textContaining).
     final identified = _identified == peer.id;
-    final detail = [
-      if (title != name) name,
-      tail,
-      identified ? identifiedHint : presence,
-    ].join(' · ');
-    final (badgeKey, badgeText, badgeColor) = configured
-        ? (
-            'gateway-configured-',
-            gatewayConfiguredLabel,
-            colors.onSurfaceVariant,
-          )
-        : ('gateway-unconfigured-', gatewayUnconfiguredLabel, colors.outline);
-    // 1.0.0+9 (phone: 「which one is nearest」 was no longer visible): the
-    // strongest signal gets a filled 「最近」 chip beside its dBm and an
-    // outlined card; it is already ranked first (round 30).
-    final nearColor = colors.primary;
-    // Not a ListTile: its two-line layout puts the subtitle at a fixed
-    // baseline, so a badge that wrapped under the title overlapped line 2
-    // (the 1.0.0+8 phone screenshot). Line 1 is a Wrap (at large text the
-    // badge and the dBm go to a second run, and line 2 moves down).
-    final badgeStyle = theme.labelSmall?.copyWith(
-      fontSize: 11,
-      height: 1.2,
-      fontWeight: FontWeight.w700,
-    );
+    final detail = [if (title == name) name, tail].join(' · ');
+    // 1.0.0+10 (phone 360 dp at text scale 1.1: line 1 wrapped and pushed
+    // the dBm to a second line, line 3 cut 「· …」, the name repeated the
+    // title): three short lines per gateway —
+    // 1. 「站 81・閘道器 1」 (titleMedium w700, cut with an ellipsis if ever
+    //    too long) and 「-40 dBm」 fixed at the right end;
+    // 2. the marks as small chips: 「最近」 (filled green, the strongest
+    //    gateway only), 「已配置」／「未配置」, the back office's short
+    //    phrase (「已閃燈」 for 3 s after 〔辨識〕);
+    // 3. 「…3A00」 (bodySmall).
+    final (badgeKey, badgeText) = configured
+        ? ('gateway-configured-', gatewayConfiguredLabel)
+        : ('gateway-unconfigured-', gatewayUnconfiguredLabel);
     return Card(
       key: ValueKey('gateway-card-${peer.id}'),
       margin: const EdgeInsets.symmetric(vertical: 2),
       shape: nearest
           ? RoundedRectangleBorder(
-              side: BorderSide(color: nearColor, width: 1.5),
+              side: const BorderSide(color: gatewayNearestColor, width: 1.5),
               borderRadius: BorderRadius.circular(4),
             )
           : null,
@@ -450,7 +477,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
             ? () => _connect(found ?? peer)
             : null,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(10, 6, 2, 6),
+          padding: const EdgeInsets.fromLTRB(12, 8, 2, 8),
           child: Row(
             children: [
               Expanded(
@@ -458,62 +485,67 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Wrap(
+                    Row(
                       key: ValueKey('gateway-head-${peer.id}'),
-                      spacing: 6,
-                      runSpacing: 2,
-                      crossAxisAlignment: WrapCrossAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
                       children: [
-                        Text(
-                          title,
-                          key: ValueKey('gateway-title-${peer.id}'),
-                          style: theme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 5,
-                            vertical: 1,
-                          ),
-                          decoration: BoxDecoration(
-                            border: Border.all(color: badgeColor),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
+                        Expanded(
                           child: Text(
-                            badgeText,
-                            key: ValueKey('$badgeKey${peer.id}'),
-                            style: badgeStyle?.copyWith(color: badgeColor),
+                            title,
+                            key: ValueKey('gateway-title-${peer.id}'),
+                            maxLines: 1,
+                            softWrap: false,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                         ),
+                        const SizedBox(width: 8),
+                        Text(
+                          signal,
+                          key: ValueKey('gateway-signal-${peer.id}'),
+                          maxLines: 1,
+                          softWrap: false,
+                          style: theme.bodyMedium,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Wrap(
+                      key: ValueKey('gateway-marks-${peer.id}'),
+                      spacing: 6,
+                      runSpacing: 4,
+                      children: [
                         if (nearest)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 5,
-                              vertical: 1,
-                            ),
-                            decoration: BoxDecoration(
-                              color: nearColor,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              gatewayNearestLabel,
-                              key: ValueKey('gateway-nearest-${peer.id}'),
-                              style: badgeStyle?.copyWith(
-                                color: colors.onPrimary,
-                              ),
-                            ),
+                          GatewayMark(
+                            gatewayNearestLabel,
+                            key: ValueKey('gateway-nearest-${peer.id}'),
+                            color: gatewayNearestColor,
+                            filled: true,
                           ),
-                        Text(signal, style: theme.bodyMedium),
+                        GatewayMark(
+                          badgeText,
+                          key: ValueKey('$badgeKey${peer.id}'),
+                          color: configured
+                              ? colors.onSurfaceVariant
+                              : colors.outline,
+                        ),
+                        GatewayMark(
+                          identified ? identifiedHint : presence,
+                          key: ValueKey('gateway-presence-${peer.id}'),
+                          color: identified
+                              ? colors.primary
+                              : colors.onSurfaceVariant,
+                        ),
                       ],
                     ),
                     const SizedBox(height: 2),
                     Text(
                       detail,
                       key: ValueKey('gateway-detail-${peer.id}'),
-                      style: identified
-                          ? small?.copyWith(color: colors.primary)
-                          : small,
+                      style: small,
                       maxLines: 1,
                       softWrap: false,
                       overflow: TextOverflow.ellipsis,
@@ -540,6 +572,18 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     );
   }
 
+  /// 1.0.0+10: 「最近使用」／「附近裝置（N）」 as section titles.
+  Widget _groupTitle(String text) => Padding(
+    padding: const EdgeInsets.only(top: 8, bottom: 2),
+    child: Text(
+      text,
+      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+        fontWeight: FontWeight.w600,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
     ref.listen(backendEnvProvider, (_, next) {
@@ -559,16 +603,13 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
             .contains(_query);
     // Round 30: both lists by the phone's signal, strongest first (a
     // recent gateway not heard keeps its place after the heard ones).
+    // 1.0.0+10: configured ones no longer after the others — the strongest
+    // (「最近」) is first in its group.
     final recent =
         [
           for (final (i, r) in _recent.indexed)
             if (matches(r.peer)) (i, r),
         ]..sort((a, b) {
-          // r31: configured gateways after the others.
-          final done =
-              (_configured(a.$2.peer.id) ? 1 : 0) -
-              (_configured(b.$2.peer.id) ? 1 : 0);
-          if (done != 0) return done;
           final c = _rankOf(a.$2.peer.id) - _rankOf(b.$2.peer.id);
           return c != 0 ? c : a.$1 - b.$1;
         });
@@ -579,10 +620,20 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text('選擇附近的閘道器', style: TextStyle(fontWeight: FontWeight.bold)),
+        // 1.0.0+10: a section title (titleSmall w600) and room between
+        // the note and the button (phone: they touched).
+        Text(
+          '選擇附近的閘道器',
+          style: Theme.of(
+            context,
+          ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 2),
         const Text('RSSI 為手機收到的藍牙訊號，與後端在線狀態不同。'),
+        const SizedBox(height: 8),
         Wrap(
           spacing: 8,
+          runSpacing: 4,
           children: [
             FilledButton.icon(
               onPressed: widget.enabled && !_selecting
@@ -591,12 +642,17 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
               icon: Icon(_scanning ? Icons.stop : Icons.search),
               label: Text(_scanning ? '停止搜尋' : '重新搜尋'),
             ),
-            TextButton(
-              onPressed: widget.enabled ? openAppSettings : null,
-              child: const Text('開啟權限設定'),
-            ),
+            // 1.0.0+10 (phone: always there): only when the scan failed for
+            // want of a permission.
+            if (_needsSettings)
+              TextButton(
+                key: const Key('gateway-open-settings'),
+                onPressed: widget.enabled ? openAppSettings : null,
+                child: const Text('開啟權限設定'),
+              ),
           ],
         ),
+        const SizedBox(height: 4),
         if (_scanning) const LinearProgressIndicator(),
         Text(
           _selecting
@@ -652,11 +708,11 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
             ),
           ),
         if (recent.isNotEmpty) ...[
-          const Text('最近使用'),
+          _groupTitle('最近使用'),
           ...recent.map((r) => _tile(r.$2.peer, recent: r.$2)),
         ],
         if (nearby.isNotEmpty) ...[
-          Text('附近裝置（${nearby.length}）'),
+          _groupTitle('附近裝置（${nearby.length}）'),
           ...nearby.map(_tile),
         ],
         if (!_scanning && _found.isEmpty)

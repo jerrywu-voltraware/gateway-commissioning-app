@@ -34,7 +34,10 @@ import 'package:gateway_commissioning/data/demo_system.dart';
 import 'package:gateway_commissioning/data/recent_gateways.dart';
 import 'package:gateway_commissioning/presentation/gateway_discovery.dart';
 
+import 'package:gateway_commissioning/core/app_theme.dart';
+
 import 'link_loss_test.dart' show DroppingLink, pumpApp, ready;
+import 'support/real_fonts.dart';
 
 /// The two gateways of the field test (their Bluetooth MACs).
 const _gw1 = 'C8:F0:9E:4B:3A:02';
@@ -166,6 +169,7 @@ void main() {
   });
 
   group('3. gateway names', () {
+    setUpAll(loadRealFonts);
     test('GIOS-S{site}-GW{nn} reads 站 · 閘道器, anything else stays whole', () {
       expect(parseGatewayName('GIOS-S80-GW02'), (site: 80, gateway: 2));
       expect(gatewayTitle('GIOS-S80-GW01'), '站 80 · 閘道器 1');
@@ -213,6 +217,9 @@ void main() {
         ProviderScope(
           overrides: [linkProvider.overrideWithValue(link)],
           child: MaterialApp(
+            // 1.0.0+10: real fonts (the title is cut with an ellipsis if
+            // ever too wide — measured as on the phone).
+            theme: withRealFonts(gatewayTheme(Brightness.light)),
             home: Scaffold(
               body: SingleChildScrollView(
                 child: Padding(
@@ -256,13 +263,10 @@ void main() {
         expect(text, findsOneWidget);
         await tester.ensureVisible(text);
         await tester.pump();
-        // Whole, not 「GIOS-S80-G…」.
+        // Whole, not 「GIOS-S80-G…」 (1.0.0+10: an ellipsis only as a
+        // safety net — never used here).
         final paragraph = tester.renderObject<RenderParagraph>(text);
         expect(paragraph.didExceedMaxLines, isFalse);
-        expect(
-          tester.widget<Text>(text).overflow,
-          isNot(TextOverflow.ellipsis),
-        );
         expect(find.textContaining(tail), findsOneWidget);
         expect(find.text(rssi), findsOneWidget);
         // The row's title and MAC tail are inside the screen.
@@ -272,9 +276,10 @@ void main() {
           lessThanOrEqualTo(360),
         );
       }
-      // The advertised names stay readable (and searchable) below.
-      expect(find.textContaining('GIOS-S80-GW01'), findsOneWidget);
-      expect(find.textContaining('GIOS-S80-GW02'), findsOneWidget);
+      // 1.0.0+10: the advertised names are not repeated under the title
+      // (the filter still finds them).
+      expect(find.textContaining('GIOS-S80-GW01'), findsNothing);
+      expect(find.textContaining('GIOS-S80-GW02'), findsNothing);
       expect(tester.takeException(), isNull);
       // Rule 4: the gateways heard here are never PTUs.
       final container = ProviderScope.containerOf(

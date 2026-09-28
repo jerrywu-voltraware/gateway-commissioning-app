@@ -124,7 +124,15 @@ class _ConnectionStatusPanelState extends ConsumerState<ConnectionStatusPanel> {
         children: [
           const Icon(Icons.sensors, size: 20),
           const SizedBox(width: 8),
-          Expanded(child: Text('連線狀態', style: theme.textTheme.titleSmall)),
+          // 1.0.0+10: a card title (titleSmall w700).
+          Expanded(
+            child: Text(
+              '連線狀態',
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
           if (status.allOk)
             IconButton(
               tooltip: '收合',

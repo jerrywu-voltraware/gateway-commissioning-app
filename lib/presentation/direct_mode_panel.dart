@@ -1300,14 +1300,18 @@ class _DirectSettingsSheetState extends ConsumerState<DirectSettingsSheet> {
     final bound = directBoundMacOf(state.config) ?? state.direct?.boundMac;
     final linkedMac = controller.directConnectedMac;
     final ownMac = controller.calibrationOwnMac;
+    // 1.0.0+10 (review: at text scale 1.3 on 360x640 the sheet was taller
+    // than the screen): it scrolls; the title as every sheet's
+    // (titleLarge).
     return SafeArea(
-      child: Padding(
+      child: SingleChildScrollView(
+        key: const Key('direct-settings-scroll'),
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('直連進階設定', style: Theme.of(context).textTheme.titleMedium),
+            Text('直連進階設定', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 8),
             Text('自動連線門檻：${value.round()} dBm（預設 $defaultDirectRssi）'),
             Slider(

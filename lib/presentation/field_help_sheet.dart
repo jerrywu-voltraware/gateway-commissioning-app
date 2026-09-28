@@ -100,7 +100,10 @@ class FieldHelpSheet extends ConsumerWidget {
           Text(
             '請唸給後台：',
             key: const Key('field-help-read'),
-            style: theme.textTheme.titleSmall,
+            // 1.0.0+10: a section title (titleSmall w600).
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
           ),
           const SizedBox(height: 4),
           for (final line in lines)

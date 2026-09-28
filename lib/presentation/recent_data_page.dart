@@ -3,11 +3,20 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../application/app_session.dart';
 import '../application/field_report.dart';
+import '../core/gateway_identity.dart' show gatewayIdText;
 import '../data/recent_data_api.dart';
 
-/// Title of the page and of the done page's button.
+/// Title of the done page's button.
 const recentDataLabel = '查看最近資料';
-String recentDataTitle(int site, int gateway) => '站 $site 閘道器 $gateway 最近資料';
+
+/// 1.0.0+10 (phone: 「站 81 閘道器 1 …」 cut in the AppBar): the AppBar
+/// says 「最近資料」; the gateway is the first line under it
+/// ([recentDataSubtitle]).
+const recentDataPageTitle = '最近資料';
+
+/// 「站 81 · 閘道器 1」, the line under the AppBar.
+String recentDataSubtitle(int site, int gateway) =>
+    gatewayIdText(site, gateway);
 
 /// `count` 0: the back office has nothing from this gateway yet.
 const recentDataEmptyText = '後台尚未收到這台閘道器的資料，請稍等 20 秒再重新整理';
@@ -212,22 +221,22 @@ String recentTrendText(RecentData data) {
 
 /// 「PTU 90:5F:E8:9A:96:00・充電中・13:00:03（7 秒前）」 (1.0.0+8: the whole
 /// MAC on the line itself; 1.0.0+5's 「MAC …」 small print is gone). The
-/// card lays the two parts out in a Wrap so the state may drop to the
-/// next line on a narrow screen ([recentLatestParts]).
+/// card shows the two parts on two lines ([recentLatestParts]).
 String recentLatestLine(RecentItem item, DateTime now) {
   final (mac, rest) = recentLatestParts(item, now);
-  return '$mac$rest';
+  return '$mac・$rest';
 }
 
 /// The line's two pieces: 「PTU 90:5F:E8:9A:96:00」 and
-/// 「・充電中・13:00:03（7 秒前）」.
+/// 「充電中・13:00:03（7 秒前）」 (1.0.0+10: no leading 「・」 — on the phone
+/// the second line started with it).
 (String, String) recentLatestParts(RecentItem item, DateTime now) {
   final mac = item.ptuMacText.isEmpty ? '--:--:--' : item.ptuMacText;
   final ts = item.ts;
   final ago = ts == null ? '時間不明' : '${recentAgeText(now.difference(ts))}前';
   return (
     'PTU $mac',
-    '・${ptuStateLabel(item.ptuState)}・${recentClockText(ts)}（$ago）',
+    '${ptuStateLabel(item.ptuState)}・${recentClockText(ts)}（$ago）',
   );
 }
 
@@ -315,9 +324,15 @@ class _RecentDataPageState extends ConsumerState<RecentDataPage> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: Text(recentDataTitle(widget.site, widget.gateway)),
+        title: const Text(
+          recentDataPageTitle,
+          key: Key('recent-appbar-title'),
+          maxLines: 1,
+          softWrap: false,
+        ),
         actions: [
           IconButton(
             key: const Key('recent-refresh'),
@@ -340,7 +355,24 @@ class _RecentDataPageState extends ConsumerState<RecentDataPage> {
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 720),
-            child: _body(context),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // 1.0.0+10: which gateway, the first line under the AppBar.
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+                  child: Text(
+                    recentDataSubtitle(widget.site, widget.gateway),
+                    key: const Key('recent-subtitle'),
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+                Expanded(child: _body(context)),
+              ],
+            ),
           ),
         ),
       ),
@@ -553,34 +585,19 @@ class _LatestCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: _BigNumber(
-                    value: recentVoltsBigText(item.inputMv),
-                    unit: 'V',
-                    big: big,
-                  ),
-                ),
-                Expanded(
-                  child: _BigNumber(
-                    value: recentAmpsText(item.inputMa),
-                    unit: 'A',
-                    big: big,
-                  ),
-                ),
-                Expanded(
-                  child: _BigNumber(
-                    value: recentTempText(item.tempC),
-                    unit: '°C',
-                    big: big,
-                  ),
-                ),
+            _BigNumbers(
+              keyPrefix: key,
+              big: big,
+              values: [
+                (recentVoltsBigText(item.inputMv), 'V', '電壓'),
+                (recentAmpsText(item.inputMa), 'A', '電流'),
+                (recentTempText(item.tempC), '°C', '溫度'),
               ],
             ),
             SizedBox(height: big ? 12 : 8),
-            // 1.0.0+8: the whole MAC on the line; on a narrow screen the
-            // state / time part wraps under it.
+            // 1.0.0+8: the whole MAC. 1.0.0+10 (phone: the wrapped part
+            // started with 「・」): two lines — 「PTU 90:5F:E8:9A:96:00」 and
+            // 「充電中・01:34:53（0 秒前）」.
             Builder(
               builder: (context) {
                 final (mac, rest) = recentLatestParts(item, now);
@@ -590,9 +607,9 @@ class _LatestCard extends StatelessWidget {
                             : theme.textTheme.bodySmall)
                         ?.merge(_tabular)
                         .copyWith(color: colors.onSurfaceVariant);
-                return Wrap(
+                return Column(
                   key: Key('$key-line'),
-                  crossAxisAlignment: WrapCrossAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(mac, key: Key('$key-line-mac'), style: style),
                     Text(rest, key: Key('$key-line-rest'), style: style),
@@ -624,40 +641,96 @@ class _LatestCard extends StatelessWidget {
   }
 }
 
-class _BigNumber extends StatelessWidget {
-  const _BigNumber({
-    required this.value,
-    required this.unit,
+/// 1.0.0+10 (phone: 「53.2V2.72A36°C」 ran together, each number scaled
+/// by its own FittedBox): three equal columns — the value (one size for
+/// all three, bold) with its unit small on the same baseline, and 「電壓」
+/// ／「電流」／「溫度」 under it. The size is headlineMedium (the direct
+/// mode's card) or titleLarge (a star tile); when one value does not fit
+/// its column, all three drop one step (titleLarge / titleMedium).
+class _BigNumbers extends StatelessWidget {
+  const _BigNumbers({
+    required this.keyPrefix,
     required this.big,
+    required this.values,
   });
-  final String value, unit;
+  final String keyPrefix;
   final bool big;
+
+  /// (value, unit, label).
+  final List<(String, String, String)> values;
+
+  static const _gap = 8.0;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return FittedBox(
-      fit: BoxFit.scaleDown,
-      alignment: Alignment.centerLeft,
-      child: Text.rich(
-        TextSpan(
-          text: value,
-          style:
-              (big
-                      ? theme.textTheme.displaySmall
-                      : theme.textTheme.headlineSmall)
-                  ?.merge(_tabular)
-                  .copyWith(fontWeight: FontWeight.w600),
+    final colors = theme.colorScheme;
+    final scaler = MediaQuery.textScalerOf(context);
+    final unitStyle = theme.textTheme.bodyMedium?.copyWith(
+      color: colors.onSurfaceVariant,
+    );
+    TextSpan span(String value, String unit, TextStyle? style) => TextSpan(
+      text: value,
+      style: style?.merge(_tabular).copyWith(fontWeight: FontWeight.w700),
+      children: [TextSpan(text: ' $unit', style: unitStyle)],
+    );
+    return LayoutBuilder(
+      key: Key('$keyPrefix-numbers'),
+      builder: (context, box) {
+        final column =
+            (box.maxWidth - _gap * (values.length - 1)) / values.length;
+        bool fits(TextStyle? style) => values.every((v) {
+          final painter = TextPainter(
+            text: span(v.$1, v.$2, style),
+            textDirection: Directionality.of(context),
+            textScaler: scaler,
+            maxLines: 1,
+          )..layout();
+          final ok = painter.width <= column;
+          painter.dispose();
+          return ok;
+        });
+        final large = big
+            ? theme.textTheme.headlineMedium
+            : theme.textTheme.titleLarge;
+        final style = fits(large)
+            ? large
+            : big
+            ? theme.textTheme.titleLarge
+            : theme.textTheme.titleMedium;
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            TextSpan(
-              text: ' $unit',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+            for (final (i, (value, unit, label)) in values.indexed) ...[
+              if (i > 0) const SizedBox(width: _gap),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text.rich(
+                      span(value, unit, style),
+                      key: Key('$keyPrefix-value-$i'),
+                      maxLines: 1,
+                      softWrap: false,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      label,
+                      key: Key('$keyPrefix-label-$i'),
+                      maxLines: 1,
+                      softWrap: false,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colors.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
+            ],
           ],
-        ),
-      ),
+        );
+      },
     );
   }
 }
@@ -700,6 +773,11 @@ class _LatestGrid extends StatelessWidget {
 /// a 360 dp phone without a horizontal scroll (the 「狀態」 column was cut
 /// off before). Several PTUs: a 「PTU」 column (MAC's last 3 groups) is
 /// added and the table scrolls sideways.
+///
+/// 1.0.0+10 (review: at text scale 1.3 the fixed widths silently clipped
+/// the digits): the widths grow with the text scale, a cell too long ends
+/// in 「…」, and one PTU's table scrolls sideways too once it no longer
+/// fits the width.
 class _RecentTable extends StatelessWidget {
   const _RecentTable({required this.data, required this.singlePtu});
   final RecentData data;
@@ -711,6 +789,9 @@ class _RecentTable extends StatelessWidget {
     final cell = theme.textTheme.bodyMedium?.merge(_tabular);
     final head = theme.textTheme.labelLarge;
     const gap = 8.0;
+    // The widths were measured at text scale 1 (14 px cells).
+    final size = cell?.fontSize ?? 14;
+    final scale = MediaQuery.textScalerOf(context).scale(size) / size;
     final columns = <_Col>[
       const _Col('時間', 66),
       if (!singlePtu) const _Col('PTU', 72),
@@ -720,16 +801,20 @@ class _RecentTable extends StatelessWidget {
       const _Col('狀態', 58),
     ];
     Widget text(String s, _Col col, TextStyle? style) => SizedBox(
-      width: col.width,
+      width: (col.width * scale).ceilToDouble(),
       child: Text(
         s,
         style: style,
         maxLines: 1,
         softWrap: false,
-        overflow: TextOverflow.clip,
+        overflow: TextOverflow.ellipsis,
         textAlign: col.numeric ? TextAlign.right : TextAlign.left,
       ),
     );
+    final tableWidth =
+        32 +
+        gap * (columns.length - 1) +
+        columns.fold<double>(0, (w, c) => w + (c.width * scale).ceil());
     Widget row(List<String> values, TextStyle? style, {Key? key}) => Padding(
       key: key,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -776,18 +861,23 @@ class _RecentTable extends StatelessWidget {
       child: ExpansionTile(
         key: const Key('recent-table-tile'),
         initiallyExpanded: false,
-        title: Text('$recentDataTableTitle（${data.items.length} 筆）'),
+        // 1.0.0+10: a collapsed section's title (bodyMedium).
+        title: Text(
+          '$recentDataTableTitle（${data.items.length} 筆）',
+          style: theme.textTheme.bodyMedium,
+        ),
         childrenPadding: const EdgeInsets.only(bottom: 8),
         expandedCrossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (singlePtu)
-            table
-          else
-            SingleChildScrollView(
-              key: const Key('recent-table-scroll'),
-              scrollDirection: Axis.horizontal,
-              child: table,
-            ),
+          LayoutBuilder(
+            builder: (context, box) => singlePtu && tableWidth <= box.maxWidth
+                ? table
+                : SingleChildScrollView(
+                    key: const Key('recent-table-scroll'),
+                    scrollDirection: Axis.horizontal,
+                    child: table,
+                  ),
+          ),
         ],
       ),
     );

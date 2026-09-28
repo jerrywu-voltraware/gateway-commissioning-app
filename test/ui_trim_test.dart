@@ -48,6 +48,31 @@ class _LiveLink extends DemoSystem implements GatewayScanner {
   Future<void> stopScan() async {}
 }
 
+/// [_LiveLink] whose back office knows 81/1 (`AABBCCDD3A00`, online).
+class _FleetLink extends _LiveLink {
+  @override
+  Future<Map<String, dynamic>> request(
+    String method,
+    String path, [
+    Map<String, dynamic>? body,
+  ]) async {
+    if (path.startsWith('/api/gateways/fleet-status')) {
+      return {
+        'gateways': [
+          {
+            'site_id': 81,
+            'gateway_id': 1,
+            'last_seen_mac': 'AA:BB:CC:DD:3A:00',
+            'online': true,
+          },
+        ],
+        'archived_gateways': [],
+      };
+    }
+    return super.request(method, path, body);
+  }
+}
+
 /// The SDK's Roboto, so Latin text measures as on the phone: the test
 /// font gives every glyph 1 em (about twice Roboto's width), which would
 /// wrap a line that fits 360 dp on the device. Found through FLUTTER_ROOT
@@ -324,31 +349,64 @@ void main() {
         GatewayPeer('AA:BB:CC:DD:3D:02', 'GIOS-S81-GW04', -70),
       ]);
       await tester.pump();
-      // Line 1: 「站 81・閘道器 1」 bold (titleMedium), the badge 「未配置」
-      // (11 px), the signal (bodyMedium) — one Row, no overflow.
+      // 1.0.0+10 — line 1: 「站 81・閘道器 1」 bold (titleMedium) and the
+      // signal (bodyMedium) at its right end, one line.
       final title = tester.widget<Text>(
         find.byKey(const ValueKey('gateway-title-AA:BB:CC:DD:3A:02')),
       );
       expect(title.data, gatewayIdText(81, 1));
       expect(title.style?.fontWeight, FontWeight.w700);
       expect(title.style?.fontSize, 16);
+      expect(title.maxLines, 1);
       expect(find.text('-34 dBm'), findsOneWidget);
       expect(tester.widget<Text>(find.text('-34 dBm')).style?.fontSize, 14);
+      final titleRect = tester.getRect(
+        find.byKey(const ValueKey('gateway-title-AA:BB:CC:DD:3A:02')),
+      );
+      final dbmRect = tester.getRect(find.text('-34 dBm'));
+      expect((titleRect.center.dy - dbmRect.center.dy).abs(), lessThan(4));
+      expect(dbmRect.left, greaterThanOrEqualTo(titleRect.right));
+      // Line 2: the marks as chips (labelMedium, 12 px): 「未配置」 and the
+      // back office's short phrase.
       final badge = find.byKey(
         const ValueKey('gateway-unconfigured-AA:BB:CC:DD:3B:02'),
       );
       expect(badge, findsOneWidget);
-      expect(tester.widget<Text>(badge).style?.fontSize, 11);
+      expect(
+        tester
+            .widget<Text>(
+              find.descendant(of: badge, matching: find.byType(Text)),
+            )
+            .style
+            ?.fontSize,
+        12,
+      );
       expect(find.text(gatewayUnconfiguredLabel), findsWidgets);
-      // Line 2: one Text 「GIOS-S81-GW01 · …3A00 · 後端未知」, one ellipsis,
-      // laid out whole at 360 dp; no overlap with the badge.
-      expect(find.text('GIOS-S81-GW01'), findsNothing);
+      expect(
+        tester.getRect(badge).top,
+        greaterThanOrEqualTo(
+          tester
+              .getRect(
+                find.byKey(const ValueKey('gateway-head-AA:BB:CC:DD:3B:02')),
+              )
+              .bottom,
+        ),
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('gateway-presence-AA:BB:CC:DD:3A:02')),
+          matching: find.text(backendUnknownShort),
+        ),
+        findsOneWidget,
+      );
+      // Line 3: 「…3A00」 only — the advertised name is not repeated.
+      expect(find.textContaining('GIOS-S81-GW01'), findsNothing);
       expect(find.text('MAC …3A00'), findsNothing);
       expect(find.textContaining('MAC 後 4 碼'), findsNothing);
       expect(find.textContaining('後端狀態未知'), findsNothing);
       for (final (id, line) in [
-        ('AA:BB:CC:DD:3A:02', 'GIOS-S81-GW01 · …3A00 · 後端未知'),
-        ('AA:BB:CC:DD:3B:02', 'GIOS-S81-GW02 · …3B00 · 後端未知'),
+        ('AA:BB:CC:DD:3A:02', '…3A00'),
+        ('AA:BB:CC:DD:3B:02', '…3B00'),
       ]) {
         final detail = find.byKey(ValueKey('gateway-detail-$id'));
         final text = tester.widget<Text>(detail);
@@ -367,11 +425,14 @@ void main() {
         expect(painter.width, lessThanOrEqualTo(tester.getSize(detail).width));
         painter.dispose();
         expect(tester.getRect(detail).right, lessThanOrEqualTo(360));
+        final marks = tester.getRect(find.byKey(ValueKey('gateway-marks-$id')));
+        expect(tester.getRect(detail).top, greaterThanOrEqualTo(marks.bottom));
         final head = tester.getRect(find.byKey(ValueKey('gateway-head-$id')));
-        expect(tester.getRect(detail).top, greaterThanOrEqualTo(head.bottom));
+        expect(marks.top, greaterThanOrEqualTo(head.bottom));
         expect(head.right, lessThanOrEqualTo(360));
       }
-      // Compact: each card at most 72 dp, all four inside 800 dp.
+      // Compact: each card at most 88 dp (three short lines), all four
+      // inside 800 dp.
       for (final id in [
         'AA:BB:CC:DD:3A:02',
         'AA:BB:CC:DD:3B:02',
@@ -379,7 +440,7 @@ void main() {
         'AA:BB:CC:DD:3D:02',
       ]) {
         final tile = find.byKey(ValueKey(id));
-        expect(tester.getSize(tile).height, lessThanOrEqualTo(72));
+        expect(tester.getSize(tile).height, lessThanOrEqualTo(88));
         expect(tester.getRect(tile).bottom, lessThanOrEqualTo(800));
       }
       // The row's action stops the scanner first (a real async stop).
@@ -435,6 +496,79 @@ void main() {
       );
     });
 
+    testWidgets('1.0.0+10 (phone: 81/1 at -41 dBm configured, 80/2 at '
+        '-62 new — no 「最近」, 80/2 first): the strongest is 「最近」 and '
+        'first in 「最近使用」 even when configured', (tester) async {
+      _phone(tester);
+      SharedPreferences.setMockInitialValues({
+        'demo_recent_gateways':
+            '[{"id":"A0:DD:6C:A3:70:F2","name":"GIOS-S80-GW02",'
+            '"uid":"A0DD6CA370F0"},'
+            '{"id":"AA:BB:CC:DD:3A:02","name":"GIOS-S81-GW01",'
+            '"uid":"AABBCCDD3A00"}]',
+      });
+      final link = _FleetLink();
+      addTearDown(link.events.close);
+      final container = ProviderContainer(
+        overrides: [
+          linkProvider.overrideWithValue(link),
+          apiProvider.overrideWithValue(link),
+        ],
+      );
+      addTearDown(container.dispose);
+      await tester.runAsync(
+        () => container
+            .read(commissionProvider.notifier)
+            .prepare('https://example.invalid', 'pw'),
+      );
+      expect(container.read(commissionProvider).loggedIn, isTrue);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: Scaffold(
+              body: SingleChildScrollView(
+                child: GatewayDiscovery(
+                  enabled: true,
+                  onConnect: (peer) async {},
+                  onIdentify: (peer) async => true,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      link.events.add(const [
+        GatewayPeer('A0:DD:6C:A3:70:F2', 'GIOS-S80-GW02', -62),
+        GatewayPeer('AA:BB:CC:DD:3A:02', 'GIOS-S81-GW01', -41),
+      ]);
+      await tester.pump();
+      expect(
+        find.byKey(const ValueKey('gateway-configured-AA:BB:CC:DD:3A:02')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('gateway-nearest-AA:BB:CC:DD:3A:02')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('gateway-nearest-A0:DD:6C:A3:70:F2')),
+        findsNothing,
+      );
+      expect(
+        tester.getRect(find.byKey(const ValueKey('AA:BB:CC:DD:3A:02'))).top,
+        lessThan(
+          tester.getRect(find.byKey(const ValueKey('A0:DD:6C:A3:70:F2'))).top,
+        ),
+      );
+      // No scan failure: no 〔開啟權限設定〕.
+      expect(find.text('開啟權限設定'), findsNothing);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    });
+
     testWidgets('the strongest gateway alone carries the 「最近」 chip and '
         'is listed first', (tester) async {
       _phone(tester);
@@ -474,15 +608,27 @@ void main() {
         find.byKey(const ValueKey('gateway-nearest-AA:BB:CC:DD:3B:02')),
         findsNothing,
       );
-      // Beside the dBm on line 1, filled in the primary colour.
+      // 1.0.0+10: first of the marks on line 2 (under the title and the
+      // dBm), filled green.
       final chipRect = tester.getRect(chip);
       final dbm = tester.getRect(find.text('-40 dBm'));
-      expect((chipRect.center.dy - dbm.center.dy).abs(), lessThan(8));
-      expect(chipRect.right, lessThanOrEqualTo(dbm.left));
-      final box = tester.widget<Container>(
-        find.ancestor(of: chip, matching: find.byType(Container)).first,
+      expect(chipRect.top, greaterThanOrEqualTo(dbm.bottom));
+      expect(
+        chipRect.left,
+        lessThanOrEqualTo(
+          tester
+              .getRect(
+                find.byKey(
+                  const ValueKey('gateway-unconfigured-AA:BB:CC:DD:3A:02'),
+                ),
+              )
+              .left,
+        ),
       );
-      expect((box.decoration as BoxDecoration).color, isNotNull);
+      final box = tester.widget<Container>(
+        find.descendant(of: chip, matching: find.byType(Container)).first,
+      );
+      expect((box.decoration as BoxDecoration).color, gatewayNearestColor);
       // First in the list, its card outlined.
       expect(
         tester.getRect(find.byKey(const ValueKey('AA:BB:CC:DD:3A:02'))).top,
@@ -531,7 +677,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.textContaining(identifiedHint), findsNothing);
       // The row's tap chooses the gateway and goes on.
-      await _tap(tester, find.textContaining('GIOS-S1-GW01'));
+      await _tap(tester, find.byKey(const ValueKey('demo-gateway')));
       expect(read().peer?.id, 'demo-gateway');
       expect(read().step, greaterThanOrEqualTo(2));
       expect(fake.identifyRequests.length, 1);

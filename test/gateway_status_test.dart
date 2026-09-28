@@ -371,19 +371,19 @@ void main() {
       expect(direct.ptuConnected, isTrue, reason: 'direct.connected');
       expect(direct.directLabel, '已綁定');
       expect(direct.lastData, isNotNull);
-      expect(gatewayStatusLine(direct, now), '在線・PTU 已連線・最近資料 7 秒前');
+      expect(gatewayStatusLine(direct, now), '在線・PTU 已連線・7 秒前');
       final offline = parsed.firstWhere((g) => g.gateway == 2);
       expect(offline.ptuConnected, isFalse);
       expect(offline.lastData, isNull);
       expect(
         gatewayStatusLine(offline, now),
-        '離線・PTU 未連線・最近心跳 20 分鐘前',
+        '離線・PTU 未連線・心跳 20 分鐘前',
         reason: 'no PTU row yet → the heartbeat',
       );
       final star = parsed.firstWhere((g) => g.gateway == 3);
       expect(star.ptuConnected, isTrue, reason: 'ble_connected 2');
       expect(star.directLabel, '');
-      expect(gatewayStatusLine(star, now), '在線・PTU 已連線・最近資料 1 分鐘前');
+      expect(gatewayStatusLine(star, now), '在線・PTU 已連線・1 分鐘前');
       expect(
         gatewayStatusLine(
           const FleetGateway(
@@ -456,18 +456,18 @@ void main() {
         expect(find.text(gatewayStatusFleetTitle), findsOneWidget);
         // Top: the phone's own list.
         expect(find.byKey(const Key('gs-recent-56-1')), findsOneWidget);
-        expect(find.text('GW-56A・09-28 12:30 完成'), findsOneWidget);
+        expect(find.text('09-28 12:30 完成'), findsOneWidget);
         expect(find.byKey(const Key('gs-recent-empty')), findsNothing);
         // Bottom: the fleet, one line each.
         expect(find.byKey(const Key('gs-fleet-56-1')), findsOneWidget);
         expect(find.byKey(const Key('gs-fleet-80-2')), findsOneWidget);
         expect(
           tester.widget<Text>(find.byKey(const Key('gs-fleet-56-1-line'))).data,
-          '在線・PTU 已連線・最近資料 7 秒前',
+          '在線・PTU 已連線・7 秒前',
         );
         expect(
           tester.widget<Text>(find.byKey(const Key('gs-fleet-80-2-line'))).data,
-          '離線・PTU 未連線・最近心跳 3 分鐘前',
+          '離線・PTU 未連線・心跳 3 分鐘前',
         );
         expect(find.byKey(const Key('gs-error')), findsNothing);
         expect(find.byKey(const Key('gs-loading')), findsNothing);
@@ -480,7 +480,7 @@ void main() {
         await tester.tap(find.byKey(const Key('gs-fleet-80-2')));
         await tester.pumpAndSettle();
         expect(find.byType(RecentDataPage), findsOneWidget);
-        expect(find.text('站 80 閘道器 2 最近資料'), findsOneWidget);
+        expect(find.text('站 80 · 閘道器 2'), findsOneWidget);
         expect(api.paths.last, 'GET /api/app/recent/80/2?limit=20');
         await tester.pageBack();
         await tester.pumpAndSettle();
@@ -488,7 +488,7 @@ void main() {
         // A recent-commission row too.
         await tester.tap(find.byKey(const Key('gs-recent-56-1')));
         await tester.pumpAndSettle();
-        expect(find.text('站 56 閘道器 1 最近資料'), findsOneWidget);
+        expect(find.text('站 56 · 閘道器 1'), findsOneWidget);
         expect(api.paths.last, 'GET /api/app/recent/56/1?limit=20');
         expect(tester.takeException(), isNull);
       },
@@ -779,7 +779,7 @@ void main() {
               find.byKey(const Key('gs-nearby-AA:BB:CC:DD:EE:01-line')),
             )
             .data,
-        'RSSI -58 dBm・GIOS-S56-GW01',
+        '-58 dBm・GIOS\u2011S56\u2011GW01',
       );
       expect(
         tester
@@ -794,7 +794,7 @@ void main() {
       await tester.tap(find.byKey(const Key('gs-nearby-AA:BB:CC:DD:EE:01')));
       await tester.pumpAndSettle();
       expect(find.byType(RecentDataPage), findsOneWidget);
-      expect(find.text('站 56 閘道器 1 最近資料'), findsOneWidget);
+      expect(find.text('站 56 · 閘道器 1'), findsOneWidget);
       expect(api.paths.last, 'GET /api/app/recent/56/1?limit=20');
       await tester.pageBack();
       await tester.pumpAndSettle();

@@ -169,7 +169,7 @@ String _chipText(WidgetTester tester) => tester
 
 Future<void> _connectGateway(WidgetTester tester) async {
   await _tap(tester, find.text('檢查並開始'));
-  await _tap(tester, find.textContaining('GIOS-S1-GW01'));
+  await _tap(tester, find.byKey(const ValueKey('demo-gateway')));
 }
 
 /// The network check shown right after connecting has passed: go on to the
@@ -383,8 +383,8 @@ void main() {
     final container = await _pumpApp(tester, fake);
     await _tap(tester, find.text('檢查並開始'));
     fake.connectGate = Completer<void>();
-    await tester.ensureVisible(find.textContaining('GIOS-S1-GW01'));
-    await tester.tap(find.textContaining('GIOS-S1-GW01'));
+    await tester.ensureVisible(find.byKey(const ValueKey('demo-gateway')));
+    await tester.tap(find.byKey(const ValueKey('demo-gateway')));
     await tester.pump();
     expect(container.read(commissionProvider).busy, isTrue);
 

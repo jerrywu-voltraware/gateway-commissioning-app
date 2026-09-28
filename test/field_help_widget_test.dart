@@ -115,7 +115,7 @@ Future<void> _tap(WidgetTester tester, Finder finder) async {
 /// 檢查並開始 → the demo gateway (network check, 第 3–5 步).
 Future<void> _connect(WidgetTester tester) async {
   await _tap(tester, find.text('檢查並開始'));
-  await _tap(tester, find.textContaining('GIOS-S1-GW01'));
+  await _tap(tester, find.byKey(const ValueKey('demo-gateway')));
 }
 
 /// A red box: re-reading the gateway times out. The page is scrolled back

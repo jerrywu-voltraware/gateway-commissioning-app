@@ -112,8 +112,9 @@ const gatewayArchivedLabel = '已封存（後台已移除）';
 const gatewayConfiguredLabel = '已配置';
 
 /// r31: a gateway already configured — its verified [uid] is exactly one
-/// fleet row without a conflict. Such a gateway is still listed but is not
-/// marked 「最近」 nor ranked first.
+/// fleet row without a conflict. Such a gateway is listed with
+/// [gatewayConfiguredLabel]; 1.0.0+10: when it is the strongest it is still
+/// marked 「最近」 and ranked first (r31 left it out).
 bool gatewayConfigured(String? uid, List<dynamic> fleet) {
   final normalized = gatewayUid(uid);
   if (normalized.length != 12) return false;

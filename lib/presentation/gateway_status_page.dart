@@ -13,6 +13,7 @@ import '../data/contracts.dart' show GatewayPeer;
 import '../data/fleet_status_api.dart';
 import '../data/recent_commissions.dart';
 import '../data/recent_data_api.dart' show recentDataErrorText;
+import 'gateway_discovery.dart' show GatewayMark, gatewayNearestColor;
 import 'recent_data_page.dart';
 
 /// Title of the page and of its entries (the start page's button, the
@@ -36,8 +37,18 @@ const gatewayStatusHint = '點一列即可查看該閘道器的最近資料。';
 /// 「站 56 閘道器 1」.
 String gatewayStatusName(int site, int gateway) => '站 $site 閘道器 $gateway';
 
-/// 「RSSI -61 dBm・GIOS-S56-GW01」 (a nearby row's second line).
-String gatewayStatusNearbyLine(GatewayPeer p) => 'RSSI ${p.rssi} dBm・${p.name}';
+/// 「-61 dBm・GIOS-S56-GW01」 (a nearby row's second line). 1.0.0+10
+/// (phone: the line broke at 「GIOS-S81-」): no 「RSSI」 word, and the name
+/// with non-breaking hyphens (U+2011) so it moves to the next line whole.
+String gatewayStatusNearbyLine(GatewayPeer p) =>
+    '${p.rssi} dBm・${unbrokenName(p.name)}';
+
+/// [name] with its hyphens non-breaking (U+2011): a line never breaks
+/// inside 「GIOS-S81-GW01」.
+String unbrokenName(String name) => name.replaceAll('-', '\u2011');
+
+/// 1.0.0+10: the strongest nearby gateway's mark (as on the gateway list).
+const gatewayStatusNearestLabel = '最近';
 
 /// Words for a failed nearby scan: the link's own (「需要藍牙權限…」, 「請開啟
 /// 手機藍牙後重試。」…) or a generic one.
@@ -51,8 +62,9 @@ String gatewayStatusDoneText(DateTime doneAt) {
       '${two(doneAt.hour)}:${two(doneAt.minute)} 完成';
 }
 
-/// 「在線・PTU 已連線・最近資料 7 秒前」 (「離線」, 「PTU 未連線」, 「最近心跳
-/// N 秒前」 when the PTUs sent nothing yet, 「尚無資料」 when neither).
+/// 「在線・PTU 已連線・7 秒前」 (the newest data; 「離線」, 「PTU 未連線」,
+/// 「心跳 N 秒前」 when the PTUs sent nothing yet, 「尚無資料」 when
+/// neither). 1.0.0+10 (phone: 「最近資料 7 秒前」 wrapped): shorter.
 String gatewayStatusLine(FleetGateway g, DateTime now) {
   final parts = <String>[
     g.online ? '在線' : '離線',
@@ -60,9 +72,9 @@ String gatewayStatusLine(FleetGateway g, DateTime now) {
   ];
   final data = g.lastData, hb = g.lastHeartbeat;
   if (data != null) {
-    parts.add('最近資料 ${recentAgeText(now.difference(data))}前');
+    parts.add('${recentAgeText(now.difference(data))}前');
   } else if (hb != null) {
-    parts.add('最近心跳 ${recentAgeText(now.difference(hb))}前');
+    parts.add('心跳 ${recentAgeText(now.difference(hb))}前');
   } else {
     parts.add('尚無資料');
   }
@@ -189,7 +201,7 @@ class _GatewayStatusPageState extends ConsumerState<GatewayStatusPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text(gatewayStatusLabel),
+        title: const Text(gatewayStatusLabel, maxLines: 1, softWrap: false),
         actions: [
           IconButton(
             key: const Key('gs-refresh'),
@@ -250,22 +262,68 @@ class _GatewayStatusPageState extends ConsumerState<GatewayStatusPage> {
         ),
       ];
     }
+    // 1.0.0+10 (phone: 「GIOS-S81-GW01・09-29 / 01:15 完成」 on two lines):
+    // the time alone (the title says which gateway).
     return [
       for (final r in _recent)
-        ListTile(
+        _tile(
+          context,
           key: Key('gs-recent-${r.site}-${r.gateway}'),
           leading: const Icon(Icons.history),
-          title: Text(gatewayStatusName(r.site, r.gateway)),
-          subtitle: Text(
-            [
-              if (r.gatewayName.isNotEmpty) r.gatewayName,
-              gatewayStatusDoneText(r.doneAt),
-            ].join('・'),
-          ),
-          trailing: const Icon(Icons.chevron_right),
+          title: gatewayStatusName(r.site, r.gateway),
+          line: gatewayStatusDoneText(r.doneAt),
+          lineKey: Key('gs-recent-${r.site}-${r.gateway}-line'),
           onTap: () => _openRecent(r.site, r.gateway),
         ),
     ];
+  }
+
+  /// 1.0.0+10: one row style for the three sections — the title
+  /// titleMedium w700, the line under it bodySmall (phone: titles were
+  /// larger than the section headers, lines wrapped).
+  Widget _tile(
+    BuildContext context, {
+    required Key key,
+    required Widget leading,
+    required String title,
+    required String line,
+    Key? lineKey,
+    Widget? mark,
+    VoidCallback? onTap,
+  }) {
+    final theme = Theme.of(context);
+    final titleText = Text(
+      title,
+      maxLines: 1,
+      softWrap: false,
+      overflow: TextOverflow.ellipsis,
+    );
+    return ListTile(
+      key: key,
+      leading: leading,
+      titleTextStyle: theme.textTheme.titleMedium?.copyWith(
+        fontWeight: FontWeight.w700,
+        color: onTap == null
+            ? theme.colorScheme.onSurfaceVariant
+            : theme.colorScheme.onSurface,
+      ),
+      subtitleTextStyle: theme.textTheme.bodySmall?.copyWith(
+        color: theme.colorScheme.onSurfaceVariant,
+      ),
+      title: mark == null
+          ? titleText
+          : Row(
+              children: [
+                Flexible(child: titleText),
+                const SizedBox(width: 8),
+                mark,
+              ],
+            ),
+      subtitle: Text(line, key: lineKey),
+      trailing: onTap == null ? null : const Icon(Icons.chevron_right),
+      enabled: onTap != null,
+      onTap: onTap,
+    );
   }
 
   Widget _rescanButton() => FilledButton.tonalIcon(
@@ -344,34 +402,53 @@ class _GatewayStatusPageState extends ConsumerState<GatewayStatusPage> {
         _rescanRow(),
       ];
     }
-    return [for (final p in nearby) _nearbyTile(p, colors), _rescanRow(top: 8)];
+    // 1.0.0+10: the strongest one (two or more heard) marked 「最近」, as
+    // on the gateway list.
+    final strongest = nearby.length < 2
+        ? null
+        : nearby.reduce((a, b) => b.rssi > a.rssi ? b : a).id;
+    return [
+      for (final p in nearby)
+        _nearbyTile(p, colors, nearest: p.id == strongest),
+      _rescanRow(top: 8),
+    ];
   }
 
-  Widget _nearbyTile(GatewayPeer p, ColorScheme colors) {
+  Widget _nearbyTile(
+    GatewayPeer p,
+    ColorScheme colors, {
+    bool nearest = false,
+  }) {
     final id = parseGatewayName(p.name);
+    final mark = nearest
+        ? GatewayMark(
+            gatewayStatusNearestLabel,
+            key: Key('gs-nearby-nearest-${p.id}'),
+            color: gatewayNearestColor,
+            filled: true,
+          )
+        : null;
     if (id == null) {
       // A gateway without an identity yet (site / gateway 0): nothing to
       // look up in the back office.
-      return ListTile(
+      return _tile(
+        context,
         key: Key('gs-nearby-${p.id}'),
         leading: Icon(Icons.bluetooth, color: colors.onSurfaceVariant),
-        title: Text(p.name),
-        subtitle: Text(
-          'RSSI ${p.rssi} dBm・$gatewayStatusNearbyUnnamedText',
-          key: Key('gs-nearby-${p.id}-line'),
-        ),
-        enabled: false,
+        title: p.name,
+        line: '${p.rssi} dBm・$gatewayStatusNearbyUnnamedText',
+        lineKey: Key('gs-nearby-${p.id}-line'),
+        mark: mark,
       );
     }
-    return ListTile(
+    return _tile(
+      context,
       key: Key('gs-nearby-${p.id}'),
       leading: const Icon(Icons.bluetooth, color: Color(0xFF1565C0)),
-      title: Text(gatewayStatusName(id.site, id.gateway)),
-      subtitle: Text(
-        gatewayStatusNearbyLine(p),
-        key: Key('gs-nearby-${p.id}-line'),
-      ),
-      trailing: const Icon(Icons.chevron_right),
+      title: gatewayStatusName(id.site, id.gateway),
+      line: gatewayStatusNearbyLine(p),
+      lineKey: Key('gs-nearby-${p.id}-line'),
+      mark: mark,
       onTap: () => _openRecent(id.site, id.gateway),
     );
   }
@@ -438,18 +515,16 @@ class _GatewayStatusPageState extends ConsumerState<GatewayStatusPage> {
     final now = (widget.now ?? DateTime.now)();
     return [
       for (final g in fleet)
-        ListTile(
+        _tile(
+          context,
           key: Key('gs-fleet-${g.site}-${g.gateway}'),
           leading: Icon(
             g.online ? Icons.cloud_done : Icons.cloud_off,
             color: g.online ? const Color(0xFF2E7D32) : colors.error,
           ),
-          title: Text(gatewayStatusName(g.site, g.gateway)),
-          subtitle: Text(
-            gatewayStatusLine(g, now),
-            key: Key('gs-fleet-${g.site}-${g.gateway}-line'),
-          ),
-          trailing: const Icon(Icons.chevron_right),
+          title: gatewayStatusName(g.site, g.gateway),
+          line: gatewayStatusLine(g, now),
+          lineKey: Key('gs-fleet-${g.site}-${g.gateway}-line'),
           onTap: () => _openRecent(g.site, g.gateway),
         ),
     ];
