@@ -248,8 +248,9 @@ void main() {
         // Round 28: the Wi-Fi tail (as the back office shows it), the
         // Bluetooth one in brackets.
         // 1.0.0+8: the compact tile shows the Wi-Fi MAC tail only.
-        ('站 80 · 閘道器 1', 'MAC …3A00', '-44 dBm'),
-        ('站 80 · 閘道器 2', 'MAC …70F0', '-54 dBm'),
+        // 1.0.0+9: line 2 is one Text 「GIOS-S80-GW01 · …3A00 · 後端未知」.
+        ('站 80 · 閘道器 1', '…3A00', '-44 dBm'),
+        ('站 80 · 閘道器 2', '…70F0', '-54 dBm'),
       ]) {
         final text = find.text(title);
         expect(text, findsOneWidget);
@@ -262,15 +263,18 @@ void main() {
           tester.widget<Text>(text).overflow,
           isNot(TextOverflow.ellipsis),
         );
-        expect(find.text(tail), findsOneWidget);
+        expect(find.textContaining(tail), findsOneWidget);
         expect(find.text(rssi), findsOneWidget);
         // The row's title and MAC tail are inside the screen.
         expect(tester.getRect(text).right, lessThanOrEqualTo(360));
-        expect(tester.getRect(find.text(tail)).right, lessThanOrEqualTo(360));
+        expect(
+          tester.getRect(find.textContaining(tail)).right,
+          lessThanOrEqualTo(360),
+        );
       }
       // The advertised names stay readable (and searchable) below.
-      expect(find.text('GIOS-S80-GW01'), findsOneWidget);
-      expect(find.text('GIOS-S80-GW02'), findsOneWidget);
+      expect(find.textContaining('GIOS-S80-GW01'), findsOneWidget);
+      expect(find.textContaining('GIOS-S80-GW02'), findsOneWidget);
       expect(tester.takeException(), isNull);
       // Rule 4: the gateways heard here are never PTUs.
       final container = ProviderScope.containerOf(

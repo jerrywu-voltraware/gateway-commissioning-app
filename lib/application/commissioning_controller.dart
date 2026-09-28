@@ -38,6 +38,10 @@ class DemoMode extends Notifier<bool> {
 
 final demoProvider = NotifierProvider<DemoMode, bool>(DemoMode.new);
 final demoSystemProvider = Provider((ref) => DemoSystem());
+
+/// 1.0.0+9: the busy message of [CommissioningController.identifyPeer].
+const identifyPeerLabel = '辨識閘道器（閃燈）';
+
 final linkProvider = Provider<GatewayLink>(
   (ref) => ref.watch(demoProvider)
       ? ref.watch(demoSystemProvider)
@@ -3166,6 +3170,36 @@ class CommissioningController extends Notifier<CommissionState> {
         directNotice: ok ? '' : state.directNotice,
       );
     }
+  }
+
+  /// 1.0.0+9 (phone: 〔辨識〕 on the gateway list connected, blinked and
+  /// went on to the next step — the installer only wanted the light):
+  /// blink [peer] and stay on the list. Connects, reads `get_config` for
+  /// `identify_supported`, sends identify target=both (the gateway alone
+  /// when the PTU side is not connected — same fallback as [_identify]),
+  /// then disconnects. The step, the chosen peer and the config are
+  /// untouched; a tap on the row afterwards connects as usual.
+  Future<void> identifyPeer(GatewayPeer peer) async {
+    _noteGatewayMac(peer.id);
+    await _run(identifyPeerLabel, 20, (generation) async {
+      await _link.connect(peer);
+      try {
+        _check(generation);
+        final config = await _link.command('get_config');
+        _check(generation);
+        if (config['identify_supported'] != true) {
+          throw const GatewayFailure('identify_unsupported');
+        }
+        try {
+          await _link.command('identify', {'target': 'both'});
+        } on GatewayFailure catch (e) {
+          if (!e.fromGateway || e.code != 'not_connected') rethrow;
+          await _link.command('identify', {'target': 'gateway'});
+        }
+      } finally {
+        await _link.disconnect();
+      }
+    });
   }
 
   Future<void> connect(GatewayPeer peer) async {
@@ -8947,9 +8981,7 @@ class CommissioningController extends Notifier<CommissionState> {
             : restore == null
             ? '暫時綁定 $tempBound 未能解除：$unbindFailure'
             : '暫時綁定 $tempBound 未能還原成 $restore：$unbindFailure',
-        message: fromList
-            ? ''
-            : '已取消。請重新連線核對進度；未成功恢復的監控會話最晚於到期時恢復。',
+        message: fromList ? '' : '已取消。請重新連線核對進度；未成功恢復的監控會話最晚於到期時恢復。',
       );
       if (!safe) {
         _field.noteErrorCode(RescueCode.monitorUnconfirmed);

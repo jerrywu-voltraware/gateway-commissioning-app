@@ -620,7 +620,7 @@ void main() {
       CommissionState read() => container.read(commissionProvider);
       BackendEnvState readEnv() => container.read(backendEnvProvider);
       await tap(tester, find.text('檢查並開始'));
-      final gateway = find.text('GIOS-S1-GW01');
+      final gateway = find.textContaining('GIOS-S1-GW01');
       await tester.ensureVisible(gateway);
       await tester.pumpAndSettle();
       final scrolled = tester.widget<Scrollable>(_page).controller!.offset;
@@ -672,7 +672,7 @@ void main() {
       final fake = WifiGateway.station()..simulateWifi('disconnected');
       await pumpCheckApp(tester, fake);
       await tap(tester, find.text('檢查並開始'));
-      await tap(tester, find.text('GIOS-S1-GW01'));
+      await tap(tester, find.textContaining('GIOS-S1-GW01'));
       expect(find.byKey(const Key('check-next')), findsNothing);
       final refresh = find.byKey(const Key('check-refresh'));
       await tester.scrollUntilVisible(refresh, 120, scrollable: _page);

@@ -16,7 +16,8 @@ library;
 const gatewayCloseDb = 6;
 
 /// The strongest gateway's mark in the list.
-const gatewayNearestLabel = '最近（訊號最強）';
+/// 1.0.0+9: 「最近」 — the filled chip beside the strongest row's dBm.
+const gatewayNearestLabel = '最近';
 
 /// Above the list once two or more gateways are heard.
 const gatewayNearestHint = '本樁的閘道器通常是訊號最強的那台；不確定就按〔辨識閘道器〕看哪台閃燈';

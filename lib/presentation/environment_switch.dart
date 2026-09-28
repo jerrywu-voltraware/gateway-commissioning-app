@@ -31,14 +31,23 @@ class EnvironmentChip extends ConsumerWidget {
     final color = envColor(context, env);
     return Tooltip(
       message: '切換連線環境',
+      // 1.0.0+9: compact (small padding, 12 px text) — the AppBar title
+      // must keep its normal size at 360 dp beside it.
       child: ActionChip(
         key: const Key('env-chip'),
         visualDensity: VisualDensity.compact,
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        labelPadding: const EdgeInsets.symmetric(horizontal: 2),
         side: BorderSide(color: color),
-        avatar: Icon(Icons.circle, size: 12, color: color),
+        avatar: Icon(Icons.circle, size: 10, color: color),
         label: Text(
           envLabel(env),
-          style: TextStyle(color: color, fontWeight: FontWeight.w600),
+          style: TextStyle(
+            color: color,
+            fontWeight: FontWeight.w600,
+            fontSize: 12,
+          ),
         ),
         onPressed: onPressed,
       ),

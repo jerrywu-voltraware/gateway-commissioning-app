@@ -657,7 +657,7 @@ void main() {
 
     Future<void> connect(WidgetTester tester) async {
       await tap(tester, find.text('檢查並開始'));
-      await tap(tester, find.text('GIOS-S1-GW01'));
+      await tap(tester, find.textContaining('GIOS-S1-GW01'));
     }
 
     String title(WidgetTester tester) =>

@@ -125,12 +125,14 @@ void main() {
         const GatewayPeer('AA:BB:CC:DD:EE:FF', 'GIOS-S1-GW01', -42),
       ]);
       await tester.pump();
-      expect(find.text('GIOS-S1-GW01'), findsOneWidget);
-      expect(find.textContaining('後端狀態未知'), findsWidgets);
+      expect(find.textContaining('GIOS-S1-GW01'), findsOneWidget);
+      expect(find.textContaining('後端未知'), findsWidgets);
       expect(find.byType(LinearProgressIndicator), findsOneWidget);
       await tester.pump();
-      expect(tester.widget<ListTile>(find.byType(ListTile)).onTap, isNotNull);
-      await tester.tap(find.byType(ListTile));
+      // 1.0.0+9: the row is an InkWell (no ListTile).
+      final row = find.byKey(const ValueKey('AA:BB:CC:DD:EE:FF'));
+      expect(tester.widget<InkWell>(row).onTap, isNotNull);
+      await tester.tap(row);
       await tester.pump(const Duration(milliseconds: 500));
       expect(link.stopped, isTrue, reason: 'tap must stop scanner');
       await tester.runAsync(() async {
@@ -196,7 +198,7 @@ void main() {
       ]);
       await tester.pump();
       expect(
-        tester.getTopLeft(find.text('GIOS-S80-GW29')).dy,
+        tester.getTopLeft(find.textContaining('GIOS-S80-GW29')).dy,
         lessThan(tester.getTopLeft(find.text('GIOS-S80-GW0')).dy),
       );
       expect(
@@ -205,7 +207,15 @@ void main() {
       );
       await tester.enterText(find.byType(TextField), 'gw29');
       await tester.pump();
-      expect(find.byType(ListTile), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (w) =>
+              w is Card &&
+              w.key is ValueKey<String> &&
+              (w.key as ValueKey<String>).value.startsWith('gateway-card-'),
+        ),
+        findsOneWidget,
+      );
       expect(find.text('-30 dBm'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());

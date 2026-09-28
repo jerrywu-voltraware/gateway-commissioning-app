@@ -86,6 +86,25 @@ String backendPresence(
   };
 }
 
+/// 1.0.0+9: the gateway list's short form of [backendPresence] — 「後端在線」
+/// ／「後端離線」／「後端無紀錄」／「後端已封存」／「後端未知」 (the reason
+/// stays in the list's footer line and the help panel).
+String backendPresenceShort(
+  String? uid,
+  List<dynamic> fleet, {
+  List<dynamic> archived = const [],
+}) {
+  final full = backendPresence(uid, fleet, archived: archived);
+  if (full == '後端回報在線上') return '後端在線';
+  if (full == '後端回報離線') return '後端離線';
+  if (full == gatewayArchivedLabel) return '後端已封存';
+  if (full.contains('沒有這個 MAC')) return '後端無紀錄';
+  return backendUnknownShort;
+}
+
+/// 1.0.0+9: the list's short 「後端狀態未知」.
+const backendUnknownShort = '後端未知';
+
 /// r31: the mark of a station archived in the back office.
 const gatewayArchivedLabel = '已封存（後台已移除）';
 

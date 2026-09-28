@@ -16,6 +16,12 @@ const gatewayUnconfiguredLabel = '未配置';
 /// The identify button's tooltip (an icon since 1.0.0+8).
 const identifyGatewayLabel = '辨識閘道器';
 
+/// 1.0.0+9: on the row for 3 s after 〔辨識〕 blinked it.
+const identifiedHint = '已閃燈';
+
+/// 1.0.0+9: how long [identifiedHint] stays.
+const identifiedHintFor = Duration(seconds: 3);
+
 class GatewayDiscovery extends ConsumerStatefulWidget {
   const GatewayDiscovery({
     super.key,
@@ -49,6 +55,10 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
   DateTime? _backendAt;
   String? _error;
   bool _scanning = false, _selecting = false;
+
+  /// 1.0.0+9: the gateway 〔辨識〕 just blinked (「已閃燈」 on its row).
+  String? _identified;
+  Timer? _identifiedTimer;
   int _epoch = 0, _backendEpoch = 0;
   StreamSubscription<List<GatewayPeer>>? _scan;
   GatewayLink? _activeLink;
@@ -71,6 +81,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
 
   @override
   void dispose() {
+    _identifiedTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _refresh?.cancel();
     _epoch++;
@@ -256,13 +267,37 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     return gatewayConfigured(uid, _fleet);
   }
 
-  Future<void> _connect(GatewayPeer peer, {bool identify = false}) async {
+  Future<void> _connect(GatewayPeer peer) async {
     if (_selecting || !widget.enabled) return;
     setState(() => _selecting = true);
     try {
       await _stop();
-      final action = identify ? widget.onIdentify : widget.onConnect;
-      if (mounted && action != null) await action(peer);
+      if (mounted) await widget.onConnect(peer);
+    } finally {
+      if (mounted) setState(() => _selecting = false);
+    }
+  }
+
+  /// 1.0.0+9: 〔辨識〕 blinks [peer] ([GatewayDiscovery.onIdentify]) and the
+  /// list stays; 「已閃燈」 on its row for [identifiedHintFor] when the
+  /// controller reports no error.
+  Future<void> _identify(GatewayPeer peer) async {
+    final action = widget.onIdentify;
+    if (_selecting || !widget.enabled || action == null) return;
+    setState(() {
+      _selecting = true;
+      _identified = null;
+    });
+    try {
+      await _stop();
+      if (mounted) await action(peer);
+      if (mounted && ref.read(commissionProvider).error == null) {
+        _identifiedTimer?.cancel();
+        setState(() => _identified = peer.id);
+        _identifiedTimer = Timer(identifiedHintFor, () {
+          if (mounted) setState(() => _identified = null);
+        });
+      }
     } finally {
       if (mounted) setState(() => _selecting = false);
     }
@@ -272,14 +307,14 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     final found = _found.where((p) => p.id == peer.id).firstOrNull;
     final last =
         recent ?? _recent.where((r) => r.peer.id == peer.id).firstOrNull;
-    final status = !ref.watch(commissionProvider).loggedIn
-        ? '後端狀態未知・尚未登入'
-        : _backendAt == null && _backendError != null
-        ? _backendError!
-        : _backendAt == null ||
-              DateTime.now().difference(_backendAt!).inSeconds > 30
-        ? '後端狀態未知・尚未取得最新資料'
-        : backendPresence(last?.uid, _fleet, archived: _archived);
+    // 1.0.0+9: the back-office state as a short phrase (在線／離線／無紀錄／
+    // 未知) — the line below must fit 360 dp whole.
+    final stale =
+        _backendAt == null ||
+        DateTime.now().difference(_backendAt!).inSeconds > 30;
+    final presence = !ref.watch(commissionProvider).loggedIn || stale
+        ? backendUnknownShort
+        : backendPresenceShort(last?.uid, _fleet, archived: _archived);
     final configured = _configured(peer.id);
     final signal = found == null
         ? '未收到廣播'
@@ -288,118 +323,153 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
         : '${found.rssi} dBm';
     // Round 26 (field: two gateways both read 「GIOS-S80-G…」): 「站 80 ·
     // 閘道器 2」 as the title, the advertised name (the live one: a recent
-    // entry keeps the name it had) and the MAC tail below — nothing cut,
-    // long text wraps.
+    // entry keeps the name it had) and the MAC tail below.
     final name = found?.name ?? peer.name;
     final title = gatewayTitle(name);
     // Round 28 (field round 28: this list read 「70F2」, the help panel and
     // the back office 「70F0」): the Wi-Fi MAC tail the back office shows —
     // remembered from an earlier connect, else derived from the Bluetooth
-    // MAC — with the Bluetooth tail in brackets.
-    final tail = gatewayMacTail(uid: last?.uid, bleId: peer.id) ?? peer.id;
+    // MAC. 1.0.0+9: 「…3A00」 (no 「MAC」 word) to keep the line short.
+    final wifi = gatewayWifiMac(uid: last?.uid, bleId: peer.id);
+    final tail = wifi == null ? peer.id : '…${wifi.substring(8)}';
     final theme = Theme.of(context).textTheme;
     final colors = Theme.of(context).colorScheme;
     final nearest = found != null && _nearest?.nearest == peer.id;
     final small = theme.bodySmall?.copyWith(color: colors.onSurfaceVariant);
-    // 1.0.0+8: two lines per gateway (at least 4 on a 360 dp screen):
-    // 「站 81・閘道器 1  -34 dBm  已配置」 over
-    // 「GIOS-S81-GW01・MAC …3A00・後端回報在線上」, the 〔辨識閘道器〕 text
-    // button replaced by a bulb icon. The name stays its own Text (tests
-    // and the installer find the advertised name).
+    // 1.0.0+8: two lines per gateway (at least 4 on a 360 dp screen).
+    // 1.0.0+9 (phone: the three Flexible parts of line 2 were each cut to
+    // 「GIOS-…・MAC …・後端…」 and the badge overlapped the line): line 1 is
+    // a Row — 「站 81・閘道器 1」 (expanded) · badge · 「-39 dBm」; line 2 is
+    // one Text 「GIOS-S81-GW01 · …3A00 · 後端在線」 with a single ellipsis.
+    // The name is inside that Text (tests use textContaining).
+    final identified = _identified == peer.id;
+    final detail = [
+      if (title != name) name,
+      tail,
+      identified ? identifiedHint : presence,
+    ].join(' · ');
+    final (badgeKey, badgeText, badgeColor) = configured
+        ? (
+            'gateway-configured-',
+            gatewayConfiguredLabel,
+            colors.onSurfaceVariant,
+          )
+        : ('gateway-unconfigured-', gatewayUnconfiguredLabel, colors.outline);
+    // 1.0.0+9 (phone: 「which one is nearest」 was no longer visible): the
+    // strongest signal gets a filled 「最近」 chip beside its dBm and an
+    // outlined card; it is already ranked first (round 30).
+    final nearColor = colors.primary;
+    // Not a ListTile: its two-line layout puts the subtitle at a fixed
+    // baseline, so a badge that wrapped under the title overlapped line 2
+    // (the 1.0.0+8 phone screenshot). Line 1 is a Wrap (at large text the
+    // badge and the dBm go to a second run, and line 2 moves down).
+    final badgeStyle = theme.labelSmall?.copyWith(
+      fontSize: 11,
+      height: 1.2,
+      fontWeight: FontWeight.w700,
+    );
     return Card(
+      key: ValueKey('gateway-card-${peer.id}'),
       margin: const EdgeInsets.symmetric(vertical: 2),
-      child: ListTile(
+      shape: nearest
+          ? RoundedRectangleBorder(
+              side: BorderSide(color: nearColor, width: 1.5),
+              borderRadius: BorderRadius.circular(4),
+            )
+          : null,
+      child: InkWell(
         key: ValueKey(peer.id),
-        dense: true,
-        visualDensity: VisualDensity.compact,
-        contentPadding: const EdgeInsets.only(left: 10, right: 2),
-        // Round 30: a Wrap — the badges must not squeeze the signal off
-        // the row at 360 dp and large text.
-        title: Wrap(
-          spacing: 8,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            Text(
-              title,
-              key: ValueKey('gateway-title-${peer.id}'),
-              style: const TextStyle(fontWeight: FontWeight.w700),
-            ),
-            Text(signal, style: theme.labelMedium),
-            if (configured)
-              Text(
-                gatewayConfiguredLabel,
-                key: ValueKey('gateway-configured-${peer.id}'),
-                style: theme.labelSmall?.copyWith(fontWeight: FontWeight.w700),
-              )
-            else if (nearest)
-              Text(
-                gatewayNearestLabel,
-                key: ValueKey('gateway-nearest-${peer.id}'),
-                style: theme.labelSmall?.copyWith(
-                  color: colors.primary,
-                  fontWeight: FontWeight.w700,
-                ),
-              )
-            else
-              Text(
-                gatewayUnconfiguredLabel,
-                key: ValueKey('gateway-unconfigured-${peer.id}'),
-                style: theme.labelSmall?.copyWith(
-                  color: colors.onSurfaceVariant,
-                ),
-              ),
-          ],
-        ),
-        subtitle: Row(
-          key: ValueKey('gateway-detail-${peer.id}'),
-          children: [
-            if (title != name) ...[
-              Flexible(
-                child: Text(
-                  name,
-                  style: small,
-                  maxLines: 1,
-                  softWrap: false,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              Text('・', style: small),
-            ],
-            Flexible(
-              child: Text(
-                tail,
-                style: small,
-                maxLines: 1,
-                softWrap: false,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            Text('・', style: small),
-            Flexible(
-              child: Text(
-                status,
-                style: small,
-                maxLines: 1,
-                softWrap: false,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
-        trailing: widget.onIdentify == null
-            ? null
-            : IconButton(
-                key: ValueKey('identify-${peer.id}'),
-                tooltip: identifyGatewayLabel,
-                icon: const Icon(Icons.lightbulb_outline),
-                visualDensity: VisualDensity.compact,
-                onPressed: widget.enabled && !_selecting
-                    ? () => _connect(found ?? peer, identify: true)
-                    : null,
-              ),
+        borderRadius: BorderRadius.circular(4),
         onTap: widget.enabled && !_selecting
             ? () => _connect(found ?? peer)
             : null,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 6, 2, 6),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Wrap(
+                      key: ValueKey('gateway-head-${peer.id}'),
+                      spacing: 6,
+                      runSpacing: 2,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text(
+                          title,
+                          key: ValueKey('gateway-title-${peer.id}'),
+                          style: theme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 5,
+                            vertical: 1,
+                          ),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: badgeColor),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            badgeText,
+                            key: ValueKey('$badgeKey${peer.id}'),
+                            style: badgeStyle?.copyWith(color: badgeColor),
+                          ),
+                        ),
+                        if (nearest)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 5,
+                              vertical: 1,
+                            ),
+                            decoration: BoxDecoration(
+                              color: nearColor,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              gatewayNearestLabel,
+                              key: ValueKey('gateway-nearest-${peer.id}'),
+                              style: badgeStyle?.copyWith(
+                                color: colors.onPrimary,
+                              ),
+                            ),
+                          ),
+                        Text(signal, style: theme.bodyMedium),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      detail,
+                      key: ValueKey('gateway-detail-${peer.id}'),
+                      style: identified
+                          ? small?.copyWith(color: colors.primary)
+                          : small,
+                      maxLines: 1,
+                      softWrap: false,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              if (widget.onIdentify != null)
+                IconButton(
+                  key: ValueKey('identify-${peer.id}'),
+                  tooltip: identifyGatewayLabel,
+                  icon: Icon(
+                    identified ? Icons.lightbulb : Icons.lightbulb_outline,
+                  ),
+                  visualDensity: VisualDensity.compact,
+                  onPressed: widget.enabled && !_selecting
+                      ? () => _identify(found ?? peer)
+                      : null,
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -526,6 +596,13 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
         if (!_scanning && _found.isEmpty)
           const Text('未發現附近閘道器。請確認電源、靠近裝置，並確認沒有被其他手機連線。'),
         if (_backendAt != null) const Text('後端狀態每 15 秒更新，僅代表目前選擇的後端環境。'),
+        // 1.0.0+9: the rows say 「後端未知」 only; the reason is this line.
+        if (_backendAt == null && _backendError != null)
+          Text(
+            _backendError!,
+            key: const Key('gateway-backend-error'),
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          ),
       ],
     );
   }

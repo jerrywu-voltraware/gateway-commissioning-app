@@ -1046,17 +1046,31 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       },
       child: Scaffold(
         appBar: AppBar(
-          // 1.0.0+8: 360 dp cut the title to 「GIOS …」 beside the chip and
-          // the topology menu — scale it down instead of eliding.
-          title: const FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Text(
-              appBarTitle,
-              key: Key('appbar-title'),
-              maxLines: 1,
-              softWrap: false,
-            ),
+          // 1.0.0+9 (phone: the FittedBox of 1.0.0+8 shrank the title to a
+          // few pixels beside the actions): the title at its normal size,
+          // never scaled nor elided; the topology menu moved into ⋮ and
+          // the environment chip made compact to leave it room.
+          title: LayoutBuilder(
+            builder: (context, constraints) {
+              // titleLarge when the whole title fits the width the AppBar
+              // leaves it, else titleMedium — never scaled, never elided.
+              final text = Theme.of(context).textTheme;
+              final painter = TextPainter(
+                text: TextSpan(text: appBarTitle, style: text.titleLarge),
+                textDirection: Directionality.of(context),
+                textScaler: MediaQuery.textScalerOf(context),
+                maxLines: 1,
+              )..layout();
+              final fits = painter.width <= constraints.maxWidth;
+              painter.dispose();
+              return Text(
+                appBarTitle,
+                key: const Key('appbar-title'),
+                maxLines: 1,
+                softWrap: false,
+                style: fits ? null : text.titleMedium,
+              );
+            },
           ),
           actions: [
             // Field rescue v1: no error, but the installer does not know
@@ -1069,13 +1083,12 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                 onPressed: () => openFieldHelp(context, ref),
               ),
             EnvironmentChip(onPressed: _openEnvironmentSheet),
-            // 拓撲模式（進階）：直連／星狀切換與星狀「每台 PTU 數」收在同一個選單，
-            // 避免 360dp 窄螢幕被多個 AppBar action 擠壓（narrow 360dp widget test）。
+            // ⋮: the topology items first (拓撲模式（進階）: 直連／星狀, the
+            // star 「每台 PTU 數」, 直連進階設定 — greyed while busy), then
+            // 「閘道器狀態…」, then the theme. One button keeps 360 dp free.
             PopupMenuButton<String>(
               key: const Key('topology-menu'),
-              tooltip: state.busy ? '操作進行中，完成後才能切換拓撲' : '拓撲模式（進階）',
-              enabled: !state.busy,
-              icon: const Icon(Icons.hub_outlined),
+              tooltip: '更多',
               onSelected: (value) {
                 if (value.startsWith('topology:')) {
                   final t = GatewayTopology.values.firstWhere(
@@ -1094,55 +1107,77 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                   );
                 } else if (value == 'status') {
                   GatewayStatusPage.open(context);
+                } else if (value.startsWith('theme:')) {
+                  widget.onThemeChanged(
+                    ThemeMode.values.firstWhere(
+                      (m) => m.name == value.substring('theme:'.length),
+                    ),
+                  );
                 }
               },
-              itemBuilder: (_) => [
-                // 1.0.0+5: 「閘道器狀態」 from any page (the flow untouched).
-                const PopupMenuItem(
-                  key: Key('gateway-status-menu'),
-                  value: 'status',
-                  child: Text('$gatewayStatusLabel…'),
-                ),
-                const PopupMenuDivider(),
-                for (final t in GatewayTopology.values)
-                  CheckedPopupMenuItem(
-                    value: 'topology:${t.name}',
-                    checked: t == topology,
-                    child: Text(t.label),
+              itemBuilder: (context) {
+                final heading = Theme.of(context).textTheme.labelSmall;
+                return [
+                  PopupMenuItem<String>(
+                    key: const Key('topology-heading'),
+                    enabled: false,
+                    height: 32,
+                    child: Text(
+                      state.busy ? '拓撲模式（操作進行中，完成後才能切換）' : '拓撲模式（進階）',
+                      style: heading,
+                    ),
                   ),
-                // 直連進階設定：只在直連、且已連上支援直連選台的韌體時出現。
-                if (topology.isDirect &&
-                    state.peer != null &&
-                    directAutoConnectSupported(state.config)) ...[
+                  for (final t in GatewayTopology.values)
+                    CheckedPopupMenuItem(
+                      value: 'topology:${t.name}',
+                      checked: t == topology,
+                      enabled: !state.busy,
+                      child: Text(t.label),
+                    ),
+                  // 直連進階設定：只在直連、且已連上支援直連選台的韌體時出現。
+                  if (topology.isDirect &&
+                      state.peer != null &&
+                      directAutoConnectSupported(state.config))
+                    PopupMenuItem(
+                      key: const Key('direct-settings'),
+                      value: 'direct:settings',
+                      enabled: !state.busy,
+                      child: const Text('直連進階設定…'),
+                    ),
+                  // Round 16: the star count opens its own dialog — one
+                  // mis-tap beside the topology items no longer changes it.
+                  if (topology.isStar)
+                    PopupMenuItem(
+                      key: const Key('star-count'),
+                      value: 'starcount',
+                      enabled: !state.busy,
+                      child: Text('每台 PTU 數：${topologySettings.starCount}…'),
+                    ),
                   const PopupMenuDivider(),
+                  // 1.0.0+5: 「閘道器狀態」 from any page (the flow untouched).
                   const PopupMenuItem(
-                    key: Key('direct-settings'),
-                    value: 'direct:settings',
-                    child: Text('直連進階設定…'),
+                    key: Key('gateway-status-menu'),
+                    value: 'status',
+                    child: Text('$gatewayStatusLabel…'),
                   ),
-                ],
-                // Round 16: the star count opens its own dialog — one mis-tap
-                // beside the topology items no longer changes it (round 15:
-                // it was 4 after a direct run, R14 had ended at 5).
-                if (topology.isStar) ...[
                   const PopupMenuDivider(),
-                  PopupMenuItem(
-                    key: const Key('star-count'),
-                    value: 'starcount',
-                    child: Text('每台 PTU 數：${topologySettings.starCount}…'),
+                  PopupMenuItem<String>(
+                    enabled: false,
+                    height: 32,
+                    child: Text('主題', style: heading),
                   ),
-                ],
-              ],
-            ),
-            PopupMenuButton<ThemeMode>(
-              tooltip: '主題',
-              initialValue: widget.themeMode,
-              onSelected: widget.onThemeChanged,
-              itemBuilder: (_) => const [
-                PopupMenuItem(value: ThemeMode.system, child: Text('跟隨系統')),
-                PopupMenuItem(value: ThemeMode.light, child: Text('淺色')),
-                PopupMenuItem(value: ThemeMode.dark, child: Text('深色')),
-              ],
+                  for (final (mode, label) in const [
+                    (ThemeMode.system, '跟隨系統'),
+                    (ThemeMode.light, '淺色'),
+                    (ThemeMode.dark, '深色'),
+                  ])
+                    CheckedPopupMenuItem(
+                      value: 'theme:${mode.name}',
+                      checked: widget.themeMode == mode,
+                      child: Text(label),
+                    ),
+                ];
+              },
             ),
           ],
         ),
@@ -2623,17 +2658,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           ..._savedResume(s, c, enabled),
           GatewayDiscovery(
             enabled: enabled,
-            // 「辨識」：連上這台（保持連線進入流程）後立即送 identify。
-            onIdentify: (peer) async {
-              await _connectPeer(c, peer);
-              final next = ref.read(commissionProvider);
-              if (mounted &&
-                  next.error == null &&
-                  next.peer != null &&
-                  next.step >= 2) {
-                await c.identify();
-              }
-            },
+            // 1.0.0+9: 「辨識」 only blinks (connect → identify → disconnect)
+            // and stays on this list; the row's tap chooses the gateway.
+            onIdentify: c.identifyPeer,
             onConnect: (peer) => _connectPeer(c, peer),
           ),
         ];

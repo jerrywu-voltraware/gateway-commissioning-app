@@ -3,6 +3,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'core/app_theme.dart';
 import 'presentation/commissioning_page.dart';
 
+/// 1.0.0+9: the theme when `theme_mode` was never stored.
+const defaultThemeMode = ThemeMode.light;
+
 class GatewayApp extends StatefulWidget {
   const GatewayApp({super.key});
   @override
@@ -10,7 +13,8 @@ class GatewayApp extends StatefulWidget {
 }
 
 class _GatewayAppState extends State<GatewayApp> {
-  ThemeMode _mode = ThemeMode.system;
+  /// 1.0.0+9: light unless the phone chose otherwise (was 跟隨系統).
+  ThemeMode _mode = defaultThemeMode;
   @override
   void initState() {
     super.initState();
@@ -21,8 +25,9 @@ class _GatewayAppState extends State<GatewayApp> {
     final p = await SharedPreferences.getInstance();
     if (mounted) {
       setState(
-        () =>
-            _mode = ThemeMode.values[(p.getInt('theme_mode') ?? 0).clamp(0, 2)],
+        () => _mode =
+            ThemeMode.values[(p.getInt('theme_mode') ?? defaultThemeMode.index)
+                .clamp(0, 2)],
       );
     }
   }
