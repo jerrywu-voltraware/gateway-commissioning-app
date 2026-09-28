@@ -37,6 +37,14 @@
   allowed> (pin the production server certificate, --dart-define
   API_CERT_SHA256). Absent -> not passed (defaults: https://46.250.255.172,
   system trust).
+  API_CA_FILE=<path to a PEM CA certificate> (absolute, or relative to the
+  repo): the file is read, base64-encoded and passed as --dart-define
+  API_CA_PEM_B64; the APP then verifies the production host with the
+  normal chain check against the system roots plus this CA (IP SAN
+  included). 09-28: the production nginx is signed by IoTGateway-CA
+  (MariaDb_Contabo_Server_Master\mosquitto\certs\ca.crt). With a CA,
+  API_CERT_SHA256 is an optional extra pin on the leaf; without one it is
+  the old pinning that only works for a single self-signed certificate.
 
   Gradle's release output stays unsigned (android/app/build.gradle.kts has
   signingConfig = null); this script signs it with apksigner, runs
@@ -242,6 +250,16 @@ if ($secrets.ContainsKey('API_CERT_SHA256') -and $secrets['API_CERT_SHA256']) {
     if ($pin -notmatch '^[0-9a-f]{64}$') { Fail 'API_CERT_SHA256 must be 64 hex digits.' }
     $defines['API_CERT_SHA256'] = $pin
     Write-Host "API_CERT_SHA256: $pin"
+}
+if ($secrets.ContainsKey('API_CA_FILE') -and $secrets['API_CA_FILE']) {
+    $caFile = $secrets['API_CA_FILE']
+    if (-not [System.IO.Path]::IsPathRooted($caFile)) { $caFile = Join-Path $Root $caFile }
+    if (-not (Test-Path -LiteralPath $caFile)) { Fail "API_CA_FILE not found: $caFile" }
+    $caBytes = [System.IO.File]::ReadAllBytes($caFile)
+    $caText = [System.Text.Encoding]::ASCII.GetString($caBytes)
+    if ($caText -notmatch '-----BEGIN CERTIFICATE-----') { Fail "API_CA_FILE is not a PEM certificate: $caFile" }
+    $defines['API_CA_PEM_B64'] = [System.Convert]::ToBase64String($caBytes)
+    Write-Host "API_CA_FILE: $caFile ($($caBytes.Length) bytes, production host verified against this CA)"
 }
 if ($Env -eq 'prodtest' -and -not $defines.ContainsKey('API_BASE')) {
     Fail '.secrets\prodtest.env has no API_BASE.'

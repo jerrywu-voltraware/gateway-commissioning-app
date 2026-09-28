@@ -43,12 +43,14 @@ APP_BACKEND_KEY=<後台 .env.local 的 APP_API_KEY>
 - 腳本把值寫進 `build\` 下的暫存 JSON，以 `--dart-define-from-file` 交給 flutter（等同 `--dart-define=APP_BACKEND_KEY=...`，但值不出現在命令列與輸出），建置後立即刪除。
 - APP 用它向 `POST /api/auth/app-login` 換 token，token 照舊存安全儲存區（12 小時）。後台 `APP_API_KEY` 只放行 APP 配置用到的端點（dashboard-api `app_key_auth.py`），其他管理端點回 403。
 - 可選欄位（沒有就不帶）：`API_BASE=https://<host>`（正式站 API base，`--dart-define=API_BASE`）、`API_CERT_SHA256=<64 位 hex，可含冒號>`（`--dart-define=API_CERT_SHA256`：對正式站主機只接受 SHA-256 指紋完全相符的伺服器憑證，不查系統信任，自簽憑證可用；其他主機與未設定時維持系統信任，本地 http 不受影響）。指紋取法：`openssl s_client -connect <ip>:443 </dev/null | openssl x509 -fingerprint -sha256 -noout`。
+- `API_CA_FILE=<CA 憑證 PEM 路徑>`（r33，09-28 起正式站用這個）：腳本讀檔轉 base64，以 `--dart-define=API_CA_PEM_B64` 注入；APP 對正式站用 `SecurityContext(withTrustedRoots: true)` 加信任這張 CA，走正常憑證鏈驗證（含 IP SAN），不用 badCertificateCallback 放行，自簽或別的 CA 簽的憑證一律握手失敗。正式站 nginx 憑證由 IoTGateway-CA 簽發（`E:\iot_gateway\MariaDb_Contabo_Server_Master\mosquitto\certs\ca.crt`，到 2036-02-10），`.secrets\prod.env`／`prodtest.env` 已設定。
+- **`API_CERT_SHA256` 的適用範圍**：與 `API_CA_FILE` 同時設定時是額外 pinning——握手後比對 leaf（`SecureSocket.peerCertificate`），兩者都要過；**單獨設定**時是舊的 pinning（不查系統信任、比對 badCertificateCallback 收到的那張），**只適用伺服器只送一張自簽憑證**：伺服器送「leaf＋CA」鏈時 Dart 交給 callback 的是 CA，leaf 指紋永遠不符（r33 登入失敗的原因），所以正式站現在不要單獨用它。
 - `-Env prodtest`（**過渡用**）：讀 `.secrets\prodtest.env`（需有 `API_BASE`），用 debug keystore 簽章（同 local，可覆蓋安裝），但**不帶** `LOCAL_DEVELOPMENT`（只走 HTTPS），供正式站只有 IP＋自簽憑證期間做端到端測試。這不是正式版：正式發佈仍須 `-Env prod` 與 release keystore。
 - 自己 `flutter run` 測真後台時可加 `--dart-define=APP_BACKEND_KEY=<值>`；不加就是「缺少後台憑證」的畫面。
 
 `DEMO_MODE=true` 完全使用模擬BLE／API，安裝報告會標示模擬。不加此旗標即使用真實BLE。通訊套件已改為 `universal_ble 2.3.0`（BSD-3-Clause，允許免費商用），不再需要 FBP 商用授權旗標。授權全文保存在 `THIRD_PARTY_NOTICES.md`，發佈時應隨附。
 
-API預設 `https://dashboard.voltraware.com`，可在畫面改設定。預設僅系統TLS信任，不繞過憑證；設定 `API_CERT_SHA256` 時正式站改為憑證指紋 pinning（見上）。`LOCAL_DEVELOPMENT=true` 才允許localhost／127.0.0.1／Android emulator localhost的HTTP；真機連本機可用adb reverse測試。WiFi密碼不落地；以建置憑證換得的 token 存安全儲存區。
+API預設 `https://dashboard.voltraware.com`，可在畫面改設定。預設僅系統TLS信任，不繞過憑證；設定 `API_CA_FILE` 時正式站另外信任該 CA（正常鏈驗證）；`API_CERT_SHA256` 為可選的 leaf 指紋 pinning（見上）。`LOCAL_DEVELOPMENT=true` 才允許localhost／127.0.0.1／Android emulator localhost的HTTP；真機連本機可用adb reverse測試。WiFi密碼不落地；以建置憑證換得的 token 存安全儲存區。
 
 
 Android minSdk24，Gradle release 輸出不簽章，交付 APK 由 `tools/build_apk.ps1` 簽章並驗證（見上）。正式keystore與發佈程序仍待備妥；目前只能產出 local 版作開發測試。

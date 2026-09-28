@@ -11,7 +11,8 @@ const defaultMqttPort = 8883;
 
 /// Production API base; `--dart-define=API_BASE=...` overrides it.
 /// 09-28: the production site stays on its public IP (no domain name); the
-/// certificate is pinned by the build (`API_CERT_SHA256`, cert_pin.dart).
+/// certificate is verified against the build's CA (`API_CA_PEM_B64`,
+/// optionally pinned with `API_CERT_SHA256`; cert_pin.dart).
 const productionApiBase = String.fromEnvironment(
   'API_BASE',
   defaultValue: 'https://$productionApiHost',

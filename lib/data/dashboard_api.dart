@@ -48,8 +48,8 @@ class DashboardApi
 
   final DateTime Function() _now;
   final _storage = const FlutterSecureStorage();
-  // One client per API origin: the production host may be pinned
-  // (API_CERT_SHA256, cert_pin.dart); every other origin uses system trust.
+  // One client per API origin: the production host may trust the build CA
+  // and / or be pinned (cert_pin.dart); every other origin uses system trust.
   final _clients = <String, HttpClient>{};
   HttpClient _httpFor(Uri base) =>
       _clients.putIfAbsent(base.origin, () => apiHttpClientFor(base));
