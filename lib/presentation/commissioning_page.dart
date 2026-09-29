@@ -36,6 +36,7 @@ import 'gateway_signal.dart';
 import 'gateway_discovery.dart';
 import 'gateway_mode_card.dart';
 import 'gateway_swap_sheet.dart';
+import 'verify_live_panel.dart';
 import '../core/gateway_swap.dart';
 
 /// The AppBar title (1.0.0+8: shown whole at 360 dp, never 「GIOS …」).
@@ -1674,7 +1675,12 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                       key: const Key('auto-checklist'),
                       items: checklist.items,
                       animate: state.busy,
-                      footer: state.busy ? '最多等待 ${state.seconds} 秒' : null,
+                      // 1.0.0+18: the data check says its pace instead.
+                      footer: !state.busy
+                          ? null
+                          : state.step == 6
+                          ? verifyFooterText(state.seconds)
+                          : '最多等待 ${state.seconds} 秒',
                     ),
                   if (state.error != null)
                     Material(
@@ -1831,6 +1837,14 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                   // below the summary and the 連線狀態 line (no card).
                   if (done)
                     ...content(state, controller, demo)
+                  // 1.0.0+18: step 9's card turns green once the data
+                  // passed.
+                  else if (state.step == 6)
+                    VerifyStepCard(
+                      key: const Key('verify-card'),
+                      passed: state.verifyPassed,
+                      children: content(state, controller, demo),
+                    )
                   else
                     Card(
                       child: Padding(
@@ -3289,7 +3303,16 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         // runs, only its progress (「取消操作」 stays below the card).
         final autoRunning = c.directFlow && s.busy;
         return [
-          const Text('逐台檢查資料時間、落後秒數與錯誤碼。連續三次通過後才判定完成。'),
+          // 1.0.0+18: the data flow on top of the card, live.
+          VerifyLiveHeader(
+            key: const Key('verify-live'),
+            feed: s.verifyFeed,
+            busy: s.busy,
+            passed: s.verifyPassed,
+            ptus: s.verifyCounts.length,
+          ),
+          const SizedBox(height: 12),
+          const Text(verifyGoalText, key: Key('verify-goal')),
           const SizedBox(height: 16),
           if (autoRunning)
             const SizedBox.shrink()
@@ -3312,10 +3335,12 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                 count != null &&
                 s.verifyWaiting.contains(id) &&
                 !s.verifySkipped.contains(id);
+            // 1.0.0+18: the PTU's last rows under its line.
+            final rows = s.verifyFeed.where((e) => e.id == id).toList();
             // 1.0.0+10 (review: the trailing count and 〔略過此台〕 squeezed
             // the title at 360 dp): the count / state alone on the right,
             // 〔略過此台〕 under the MAC.
-            return ListTile(
+            final tile = ListTile(
               key: Key('verify-ptu-$id'),
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.sensors),
@@ -3347,6 +3372,14 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                           : '$count/3',
                       key: Key('verify-count-$id'),
                     ),
+            );
+            if (rows.isEmpty) return tile;
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                tile,
+                VerifyFeedRows(key: Key('verify-feed-ptu-$id'), entries: rows),
+              ],
             );
           }),
           if (!autoRunning) ...[

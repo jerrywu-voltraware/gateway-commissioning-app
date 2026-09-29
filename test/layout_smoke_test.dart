@@ -15,6 +15,10 @@
 //
 // 1.0.0+15: the Wi-Fi-first page of a gateway not configured and the
 // station page after it (「網路已正常，接著設定站號。」).
+//
+// 1.0.0+18: the verify page's live data flow — two rows in under each PTU,
+// passed (the card green, 「資料正常上傳」), and one late row (red, its
+// reason); the widest values (12.35 A, 255 °C, 落後 75.0 秒).
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -181,6 +185,66 @@ class _SearchGateways extends _TwoGateways implements GatewayScanner {
     for (final scan in sessions) {
       if (!scan.isClosed) unawaited(scan.close());
     }
+  }
+}
+
+/// 1.0.0+18: [_TwoGateways] whose /api/latest rows carry the widest PTU
+/// values (12.35 A, 255 °C); poll [holdAt] — or, [holdConfirm], the
+/// read-back once the data passed — waits for [hold]; polls in [lateAt]
+/// answer a lag of 75 s.
+class _VerifyGateways extends _TwoGateways {
+  _VerifyGateways({
+    this.holdAt,
+    this.holdConfirm = false,
+    this.lateAt = const {},
+  });
+  final int? holdAt;
+  final bool holdConfirm;
+  final Set<int> lateAt;
+  final hold = Completer<void>();
+  bool held = false;
+  int latestCalls = 0;
+
+  @override
+  Future<Map<String, dynamic>> request(
+    String method,
+    String path, [
+    Map<String, dynamic>? body,
+  ]) async {
+    final result = await super.request(method, path, body);
+    if (!path.startsWith('/api/latest')) return result;
+    final n = ++latestCalls;
+    if (n == holdAt) {
+      held = true;
+      await hold.future;
+    }
+    return {
+      'items': [
+        for (final raw in result['items'] as List)
+          {
+            ...Map<String, dynamic>.from(raw as Map),
+            'ptu': {
+              ...Map<String, dynamic>.from(raw['ptu'] as Map),
+              'ptu_inputVoltage_mV': 53200,
+              'ptu_inputCurrent_mA': 12345,
+              'ptu_ampTemp_degC': 255,
+            },
+            'lag_seconds': lateAt.contains(n) ? 75 : 1,
+          },
+      ],
+    };
+  }
+
+  @override
+  Future<Map<String, dynamic>> command(
+    String op, [
+    Map<String, dynamic> params = const {},
+  ]) async {
+    if (holdConfirm && op == 'get_config' && latestCalls >= 3) {
+      held = true;
+      await hold.future;
+    }
+    return super.command(op, params);
   }
 }
 
@@ -986,6 +1050,72 @@ void main() {
     await _checkPage(tester, 'verify');
     await tester.pumpWidget(const SizedBox());
   });
+
+  // 1.0.0+18: the live data flow while the check runs (star, three PTUs).
+  for (final (page, make) in [
+    ('verify: 2 rows in', () => _VerifyGateways(holdAt: 3)),
+    (
+      'verify: passed, the card green',
+      () => _VerifyGateways(holdConfirm: true),
+    ),
+    ('verify: one late row', () => _VerifyGateways(holdAt: 3, lateAt: {2})),
+  ]) {
+    testWidgets(page, (tester) async {
+      final fake = make();
+      final container = await _pumpApp(tester, fake);
+      CommissionState read() => container.read(commissionProvider);
+      final c = container.read(commissionProvider.notifier);
+      await tester.runAsync(() async {
+        await _topology(container, GatewayTopology.star);
+        await c.prepare('https://example.invalid', '', offline: true);
+        await c.scan();
+        await c.connect(_demoPeer(container));
+        await c.configureWifi(81, 1, 'Office-2G', 'pw123456');
+        await c.online(skip: true);
+        await c.discover();
+        await c.configurePtus();
+      });
+      await tester.pumpAndSettle();
+      expect(read().step, 6);
+      late Future<void> run;
+      await tester.runAsync(() async {
+        final env = container.read(backendEnvProvider);
+        run = c.verify(env.base, '', environment: env.environment.name);
+        for (var i = 0; i < 400 && !fake.held; i++) {
+          await Future<void>.delayed(const Duration(milliseconds: 5));
+        }
+      });
+      expect(fake.held, isTrue);
+      await _frames(tester);
+      final s = read();
+      expect(s.busy, isTrue);
+      expect(s.verifyCounts.length, greaterThan(1));
+      final ids = s.verifyCounts.keys;
+      if (fake.holdConfirm) {
+        expect(s.verifyPassed, isTrue);
+        expect(find.byKey(const Key('verify-passed-check')), findsOneWidget);
+        for (final id in ids) {
+          expect(s.verifyFeed.where((e) => e.id == id), hasLength(3));
+        }
+      } else {
+        for (final id in ids) {
+          final rows = s.verifyFeed.where((e) => e.id == id).toList();
+          expect(rows, hasLength(2));
+          expect(rows.first.ok, fake.lateAt.isEmpty);
+        }
+        expect(
+          find.textContaining('原因：延遲 75 秒'),
+          fake.lateAt.isEmpty ? findsNothing : findsNWidgets(ids.length),
+        );
+      }
+      await _checkPage(tester, page);
+      fake.hold.complete();
+      await tester.runAsync(() => run);
+      await tester.pumpAndSettle();
+      expect(read().step, 7);
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
 
   testWidgets('PTU-missing card (one-to-one) and 直連進階設定', (tester) async {
     final fake = _BoundGateway();

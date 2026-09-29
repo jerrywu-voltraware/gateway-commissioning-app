@@ -31,6 +31,7 @@ import 'field_report.dart';
 import 'network_check.dart';
 import 'topology_settings.dart';
 import 'verify_diagnosis.dart';
+import 'verify_feed.dart';
 
 class DemoMode extends Notifier<bool> {
   @override
@@ -1439,7 +1440,19 @@ class CommissionState {
     this.savedGateway = '',
     this.checklist,
     this.identityArchived = false,
+    this.verifyFeed = const [],
+    this.verifyPassed = false,
   });
+
+  /// 1.0.0+18: step 9's live feed ([verifyFeedAfterPoll]), newest first,
+  /// at most [verifyFeedPerPtu] per PTU. Display only; kept while on step
+  /// 9 (another step empties it, see [copy]).
+  final List<VerifyFeedEntry> verifyFeed;
+
+  /// 1.0.0+18: the last step 9 poll passed the data check (every active
+  /// PTU 3/3 and the back office's check) — the card turns green. Display
+  /// only; false on any other step.
+  final bool verifyPassed;
 
   /// r34 (the pile's PTU broken or taken away after commissioning): step 2
   /// on a gateway in service, one-to-one and bound, whose bound PTU is not
@@ -1866,7 +1879,15 @@ class CommissionState {
     String? savedGateway,
     Object? checklist = _keep,
     bool? identityArchived,
+    List<VerifyFeedEntry>? verifyFeed,
+    bool? verifyPassed,
   }) => CommissionState(
+    // 1.0.0+18: the live feed and the green card belong to step 9.
+    verifyFeed: (step ?? this.step) == 6
+        ? verifyFeed ?? this.verifyFeed
+        : const [],
+    verifyPassed:
+        (step ?? this.step) == 6 && (verifyPassed ?? this.verifyPassed),
     ptuMissingMac: identical(ptuMissingMac, _keep)
         ? this.ptuMissingMac
         : ptuMissingMac as String?,
@@ -8139,6 +8160,31 @@ class CommissioningController extends Notifier<CommissionState> {
   })?
   _verifyCarry;
 
+  /// 1.0.0+18: [verifyFeedAfterPoll] on the current feed; a row it cannot
+  /// read leaves the feed as it was — the feed never stops a verification.
+  List<VerifyFeedEntry> _verifyFeedAfterPoll({
+    required Iterable<int> ids,
+    required List<Map<String, dynamic>> rows,
+    required Map<int, DateTime> before,
+    required Map<int, int> countsBefore,
+    required Map<int, int> countsAfter,
+    required Map<int, String> macs,
+  }) {
+    try {
+      return verifyFeedAfterPoll(
+        feed: state.verifyFeed,
+        ids: ids,
+        rows: rows,
+        before: before,
+        countsBefore: countsBefore,
+        countsAfter: countsAfter,
+        macs: macs,
+      );
+    } catch (_) {
+      return state.verifyFeed;
+    }
+  }
+
   Future<void> _verify(
     int generation,
     String base,
@@ -8255,6 +8301,10 @@ class CommissioningController extends Notifier<CommissionState> {
       verifyCounts: {for (final id in ids) id: counts[id] ?? 0},
       verifyWaiting: resume ? null : {},
       verifySkipped: resume ? null : {},
+      verifyFeed: resume
+          ? null
+          : verifyFeedForRun(state.verifyFeed, expectedMacs),
+      verifyPassed: false,
     );
     progress = verifyProgressText(
       ids,
@@ -8346,6 +8396,8 @@ class CommissioningController extends Notifier<CommissionState> {
           state = state.copy(backendSeenAt: DateTime.now());
         }
         final before = Map<int, DateTime>.of(previous);
+        // 1.0.0+18: for the live feed only (read, never written back).
+        final countsBefore = Map<int, int>.of(counts);
         verifyTally(
           ids: ids,
           rows: judged,
@@ -8399,6 +8451,15 @@ class CommissioningController extends Notifier<CommissionState> {
           message: progress,
           verifyCounts: Map.of(counts),
           verifyWaiting: waiting,
+          verifyFeed: _verifyFeedAfterPoll(
+            ids: ids,
+            rows: judged,
+            before: before,
+            countsBefore: countsBefore,
+            countsAfter: counts,
+            macs: expectedMacs,
+          ),
+          verifyPassed: good,
         );
         final dataNote = dataCountNote(
           min(consecutive, 3),
