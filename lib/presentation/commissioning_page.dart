@@ -1608,8 +1608,16 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                   // 09-28: on the station and Wi-Fi pages the idle message
                   // only repeated the task sentence; while something runs
                   // (or failed) it is shown as before.
+                  // 1.0.0+17: on the gateway list (step 2) neither the
+                  // message left from the step before (「準備完成」) nor
+                  // 〔辨識〕's own (the list's progress says what runs) —
+                  // others (offline, 〔配置下一台〕's) and failures stay.
                   if (state.message.isNotEmpty &&
                       !done &&
+                      (state.step != 1 ||
+                          state.error != null ||
+                          (state.message != preparedText &&
+                              state.message != identifyPeerLabel)) &&
                       (!stationPages ||
                           state.busy ||
                           state.relinking ||

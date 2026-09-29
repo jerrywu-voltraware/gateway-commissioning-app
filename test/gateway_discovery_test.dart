@@ -179,7 +179,7 @@ void main() {
     },
   );
   testWidgets(
-    'compact rows filter many devices and update RSSI without moving',
+    'compact rows list many devices and update RSSI without moving',
     (tester) async {
       final link = LiveLink();
       addTearDown(link.events.close);
@@ -238,8 +238,8 @@ void main() {
         find.byKey(const ValueKey('gateway-nearest-AA:BB:CC:DD:EE:29')),
         findsOneWidget,
       );
-      await tester.enterText(find.byType(TextField), 'gw29');
-      await tester.pump();
+      // 1.0.0+17: no filter box — every gateway heard stays listed.
+      expect(find.byType(TextField), findsNothing);
       expect(
         find.byWidgetPredicate(
           (w) =>
@@ -247,7 +247,7 @@ void main() {
               w.key is ValueKey<String> &&
               (w.key as ValueKey<String>).value.startsWith('gateway-card-'),
         ),
-        findsOneWidget,
+        findsNWidgets(30),
       );
       expect(find.text('-30 dBm'), findsOneWidget);
       expect(tester.takeException(), isNull);

@@ -9,7 +9,59 @@ import '../core/gateway_identity.dart';
 import '../core/gateway_proximity.dart';
 import '../core/protocol.dart';
 import '../data/contracts.dart';
+import '../data/nearby_gateway_scan.dart';
 import '../data/recent_gateways.dart';
+
+/// 1.0.0+17 (user on the phone: the list's scan showed no progress, only
+/// 「搜尋已停止・未發現附近閘道器」 at the end): the live scan runs until it
+/// is stopped, but its first [gatewaySearchWindow] is a search with a
+/// visible end — a progress bar (elapsed / window) and 「已找到 N 台」. After
+/// it, the scan goes on (RSSI) and one line says what was found.
+const gatewaySearchWindow = nearbyScanWindow;
+
+/// 1.0.0+17: a search that found nothing is run once more after this pause
+/// (HANDOFF §5.3 P2: the first scan after an install sometimes found
+/// nothing and 〔重新搜尋〕 did).
+const gatewayRescanDelay = Duration(seconds: 1);
+
+/// 1.0.0+17: the progress area's head while the search runs.
+const gatewaySearchingText = '正在搜尋附近的閘道器…';
+
+/// 1.0.0+17: the head while the one automatic second search waits / runs.
+const gatewayRetryingText = '沒找到，再搜尋一次…';
+
+/// 1.0.0+17: the head while 〔辨識〕 pauses the search.
+const gatewayBusyText = '正在連線並讀取設定…';
+
+/// 1.0.0+17: the second search found nothing either.
+const gatewayNotFoundText = '未發現附近閘道器。請確認電源、靠近裝置，並確認沒有被其他手機連線。';
+
+/// 1.0.0+17: the installer stopped the scan with nothing heard.
+const gatewayStoppedText = '已停止搜尋，按〔重新搜尋〕再找一次';
+
+/// 1.0.0+17: counted live under the progress bar.
+String gatewayFoundCountText(int count) => '已找到 $count 台';
+
+/// 1.0.0+17: the line after the search. [withHint]: the nearest hint
+/// (「本樁的閘道器通常是訊號最強的那台…」) is shown under it — then the
+/// line only counts, the hint says which to pick.
+String gatewayFoundText(int count, {bool withHint = false}) =>
+    withHint ? '找到 $count 台' : '找到 $count 台，請點選本樁的那台';
+
+/// 1.0.0+17: where the list's search is.
+enum _Search {
+  /// No search runs (over with results, stopped, or never started).
+  idle,
+
+  /// The progress bar runs ([gatewaySearchWindow]); paused by 〔辨識〕.
+  searching,
+
+  /// Nothing found: waiting [gatewayRescanDelay] to search once more.
+  retrying,
+
+  /// The second search found nothing either: 〔重新搜尋〕 is the main button.
+  notFound,
+}
 
 /// 1.0.0+8: the tile's badge for a gateway not yet configured.
 const gatewayUnconfiguredLabel = '未配置';
@@ -316,12 +368,29 @@ class GatewayDiscovery extends ConsumerStatefulWidget {
 
   /// The clock ([gatewayHeardFor]); tests set it.
   final DateTime Function()? now;
+
+  /// 1.0.0+17: the search's length ([gatewaySearchWindow]); a layout test
+  /// stretches it to check the page while the search runs.
+  @visibleForTesting
+  static Duration searchWindow = gatewaySearchWindow;
   @override
   ConsumerState<GatewayDiscovery> createState() => _GatewayDiscoveryState();
 }
 
 class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
-    with WidgetsBindingObserver {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+  /// 1.0.0+17: the search's progress (0→1 over [gatewaySearchWindow]);
+  /// paused while the scan pauses (〔辨識〕, the background).
+  late final AnimationController _progress = AnimationController(
+    vsync: this,
+    duration: GatewayDiscovery.searchWindow,
+  )..addStatusListener(_progressStatus);
+  var _search = _Search.idle;
+
+  /// 1.0.0+17: 1 for the first search, 2 for the automatic second one.
+  int _attempt = 1;
+  Timer? _retryTimer;
+
   List<RecentGateway> _recent = [];
 
   /// 1.0.0+11: the gateways in the running scan's last answer (heard live);
@@ -342,7 +411,6 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
   /// Rebuilds a running list now and then, so a row not heard for
   /// [gatewayHeardFor] says so without a new scan answer.
   Timer? _heardTick;
-  String _query = "";
 
   /// Round 30 (user rehearsal 09-27, D): the phone's signal ranks the list.
   final _ranker = GatewaySignalRanker();
@@ -407,7 +475,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     _attachChoice();
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _start();
+      if (mounted) _start(fresh: true);
     });
     _refresh = Timer.periodic(const Duration(seconds: 15), (_) {
       if (mounted) _loadBackend();
@@ -552,14 +620,65 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
   }
 
   /// 〔停止搜尋〕: the installer stopped it — not resumed by itself.
+  /// 1.0.0+17: nor searched again (no automatic second search).
   Future<void> _stopByUser() {
     _liveWanted = false;
     _resumePending = false;
+    _retryTimer?.cancel();
+    setState(() => _search = _Search.idle);
     return _stop();
+  }
+
+  void _progressStatus(AnimationStatus status) {
+    if (status == AnimationStatus.completed) _searchOver();
+  }
+
+  /// 1.0.0+17: the search's window is over (or its scan ended by itself):
+  /// gateways heard — the scan goes on, one line says so; none — once more
+  /// after [gatewayRescanDelay] (not when a permission is missing), then
+  /// [gatewayNotFoundText] and the scan stops.
+  void _searchOver() {
+    if (!mounted || _search != _Search.searching) return;
+    _progress.stop();
+    if (_heardPeers(_heardClock()).isNotEmpty) {
+      setState(() => _search = _Search.idle);
+      return;
+    }
+    if (_attempt < 2 && !_needsSettings) {
+      setState(() => _search = _Search.retrying);
+      unawaited(_stop());
+      _retryTimer?.cancel();
+      _retryTimer = Timer(gatewayRescanDelay, _retry);
+      return;
+    }
+    _liveWanted = false;
+    _resumePending = false;
+    setState(() => _search = _Search.notFound);
+    unawaited(_stop());
+  }
+
+  /// 1.0.0+17: the automatic second search (as a resumed scan: it waits
+  /// while the list is disabled, busy, covered or in the background).
+  void _retry() {
+    if (!mounted || _search != _Search.retrying) return;
+    setState(() {
+      _attempt = 2;
+      _search = _Search.searching;
+    });
+    _progress.value = 0;
+    if (_scanning) {
+      unawaited(_progress.forward());
+    } else if (_liveWanted) {
+      _resumeScan();
+    } else {
+      unawaited(_start());
+    }
   }
 
   @override
   void dispose() {
+    _retryTimer?.cancel();
+    _progress.dispose();
     _detachChoice();
     _ownChoice?.dispose();
     _identifiedTimer?.cancel();
@@ -649,6 +768,8 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
 
   Future<void> _stop() async {
     if (_stopping != null) return _stopping;
+    // 1.0.0+17: the search's bar pauses with the scan (〔辨識〕).
+    _progress.stop();
     final stopping = () async {
       _epoch++;
       final link = _activeLink;
@@ -668,13 +789,24 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
   /// 1.0.0+11: the rows heard before stay (grey, their last RSSI) until the
   /// scan hears them again — the list does not flash empty or jump (1.0.0+10
   /// kept them only for a resumed scan, and only until its first answer).
-  Future<void> _start() async {
+  ///
+  /// 1.0.0+17: [fresh] (the page opened, 〔重新搜尋〕) starts a search (the
+  /// progress bar); a resumed scan goes on with a search it paused.
+  Future<void> _start({bool fresh = false}) async {
     if (!widget.enabled ||
         _scanning ||
         _selecting ||
         _background ||
         _stopping != null) {
       return;
+    }
+    if (fresh || _search == _Search.retrying) {
+      // A start while the second search waits (e.g. back from the
+      // background) is that second search.
+      _retryTimer?.cancel();
+      _attempt = fresh ? 1 : 2;
+      _search = _Search.searching;
+      _progress.value = 0;
     }
     final epoch = ++_epoch;
     final link = ref.read(linkProvider);
@@ -693,6 +825,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
       _error = null;
       _needsSettings = false;
     });
+    if (_search == _Search.searching) unawaited(_progress.forward());
     unawaited(_loadBackend());
     final recent = await RecentGateways.load(link.demo);
     if (!mounted || epoch != _epoch) return;
@@ -748,7 +881,11 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
         update,
         onError: failure,
         onDone: () {
-          if (mounted && epoch == _epoch) setState(_scanEnded);
+          if (mounted && epoch == _epoch) {
+            setState(_scanEnded);
+            // 1.0.0+17: a scan that ended by itself ends its search too.
+            _searchOver();
+          }
         },
       );
     } else {
@@ -757,7 +894,10 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
       } catch (error) {
         failure(error);
       }
-      if (mounted && epoch == _epoch) setState(_scanEnded);
+      if (mounted && epoch == _epoch) {
+        setState(_scanEnded);
+        _searchOver();
+      }
     }
   }
 
@@ -807,9 +947,13 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
   /// tappable. A failed connect leaves the selection as it was.
   Future<void> _connect(GatewayPeer peer) async {
     if (_selecting || !widget.enabled) return;
+    _retryTimer?.cancel();
     setState(() {
       _selecting = true;
       _connectingId = peer.id;
+      // 1.0.0+17: a gateway chosen ends the search (a failed connect
+      // leaves the list stopped, as before).
+      _search = _Search.idle;
     });
     _syncChoice();
     try {
@@ -826,11 +970,12 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     }
   }
 
-  /// 〔重新搜尋〕: a new list — 1.0.0+14: the selection goes.
+  /// 〔重新搜尋〕: a new list — 1.0.0+14: the selection goes. 1.0.0+17: a
+  /// new search (the progress bar, and once more if it finds nothing).
   Future<void> _restartByUser() {
     setState(_clearSelection);
     _syncChoice();
-    return _start();
+    return _start(fresh: true);
   }
 
   /// 1.0.0+9: 〔辨識〕 blinks [peer] ([GatewayDiscovery.onIdentify]) and the
@@ -926,7 +1071,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     // Round 26 (field: two gateways both read 「GIOS-S80-G…」): 「站 80 ·
     // 閘道器 2」 as the title. 1.0.0+10: the advertised name (the live one:
     // a recent entry keeps the name it had) only when it does not parse —
-    // the title says the same (the filter still matches it).
+    // the title says the same.
     final name = heard?.peer.name ?? peer.name;
     // 1.0.0+12: 「未配置閘道器 …70F0」 for a gateway known not to be
     // configured (never an old identity it still advertises).
@@ -1197,6 +1342,98 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     ),
   );
 
+  /// 1.0.0+17: while the search runs — 「正在搜尋附近的閘道器…」 (「沒找到，
+  /// 再搜尋一次…」 for the second one), a bar filling over
+  /// [gatewaySearchWindow] (moving while the second one waits) and
+  /// 「已找到 N 台」 ([count]: the gateways listed as heard).
+  Widget _searchProgress(int count) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final waiting = _search == _Search.retrying;
+    final head = _selecting
+        ? gatewayBusyText
+        : waiting || _attempt >= 2
+        ? gatewayRetryingText
+        : gatewaySearchingText;
+    return Semantics(
+      key: const Key('gateway-search-progress'),
+      container: true,
+      liveRegion: true,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        decoration: BoxDecoration(
+          color: colors.primaryContainer.withValues(alpha: 0.5),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.search, size: 20, color: colors.primary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    head,
+                    key: const Key('gateway-search-head'),
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            AnimatedBuilder(
+              animation: _progress,
+              builder: (context, _) => LinearProgressIndicator(
+                key: const Key('gateway-search-bar'),
+                value: waiting ? null : _progress.value,
+                minHeight: 6,
+                borderRadius: BorderRadius.circular(3),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              gatewayFoundCountText(count),
+              key: const Key('gateway-found-count'),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 1.0.0+17: the second search found nothing — what to check, and
+  /// 〔重新搜尋〕 as the main button (full width, 52 dp).
+  Widget _notFoundBlock() => Column(
+    key: const Key('gateway-not-found'),
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Semantics(
+        liveRegion: true,
+        child: Text(
+          gatewayNotFoundText,
+          key: const Key('gateway-not-found-text'),
+          style: Theme.of(
+            context,
+          ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+        ),
+      ),
+      const SizedBox(height: 10),
+      FilledButton.icon(
+        key: const Key('gateway-rescan-primary'),
+        style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+        onPressed: widget.enabled && !_selecting ? _restartByUser : null,
+        icon: const Icon(Icons.search),
+        label: const Text('重新搜尋'),
+      ),
+    ],
+  );
+
   @override
   Widget build(BuildContext context) {
     ref.listen(backendEnvProvider, (_, next) {
@@ -1209,15 +1446,8 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     });
     final recentIds = _recent.map((r) => r.peer.id).toSet();
     final selectedId = _selectedId;
-    // Round 28: the Wi-Fi MAC the back office shows is searchable too.
-    // 1.0.0+14: the selected card stays whatever the filter (the bottom
-    // button never names a gateway not on screen).
-    bool matches(GatewayPeer peer) =>
-        peer.id == selectedId ||
-        '${peer.name} ${gatewayTitle(peer.name)} ${peer.id} '
-                '${gatewayWifiMac(bleId: peer.id) ?? ''}'
-            .toLowerCase()
-            .contains(_query);
+    // 1.0.0+17: no filter box any more (the user: the list is short and the
+    // flow should pick for the installer) — every gateway is listed.
     // 1.0.0+14: while a gateway is selected the cards keep the order they
     // had then ([_frozen]); gateways heard since come after.
     final frozen = _frozen;
@@ -1231,16 +1461,13 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     // recent gateway not heard keeps its place after the heard ones).
     // 1.0.0+10: configured ones no longer after the others — the strongest
     // (「最近」) is first in its group.
-    final recent =
-        [
-          for (final (i, r) in _recent.indexed)
-            if (matches(r.peer)) (i, r),
-        ]..sort((a, b) {
-          final f = frozenAt(a.$2.peer.id) - frozenAt(b.$2.peer.id);
-          if (f != 0) return f;
-          final c = _rankOf(a.$2.peer.id) - _rankOf(b.$2.peer.id);
-          return c != 0 ? c : a.$1 - b.$1;
-        });
+    final recent = [for (final (i, r) in _recent.indexed) (i, r)]
+      ..sort((a, b) {
+        final f = frozenAt(a.$2.peer.id) - frozenAt(b.$2.peer.id);
+        if (f != 0) return f;
+        final c = _rankOf(a.$2.peer.id) - _rankOf(b.$2.peer.id);
+        return c != 0 ? c : a.$1 - b.$1;
+      });
     final now = _heardClock();
     // 1.0.0+11: heard within [gatewayHeardFor] (live or not): a pause
     // keeps the rows, 「最近」 and the hint above them.
@@ -1251,7 +1478,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
         !recentIds.contains(selectedId) &&
         !heardIds.contains(selectedId);
     final ranked = [
-      ...heard.where((p) => !recentIds.contains(p.id) && matches(p)),
+      ...heard.where((p) => !recentIds.contains(p.id)),
       // 1.0.0+14: the selected gateway stays listed when not heard for
       // [gatewayHeardFor] (「訊號中斷」).
       if (selectedLost) _heard[selectedId]?.peer ?? _selectedPeer!,
@@ -1278,6 +1505,8 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
         ? _nearest
         : null;
     final signalWidth = _signalWidth(context);
+    // 1.0.0+17: 〔停止搜尋〕 also cancels the automatic second search.
+    final stoppable = _scanning || _search == _Search.retrying;
     Widget tile(GatewayPeer peer, {RecentGateway? recent}) => _tile(
       peer,
       recent: recent,
@@ -1303,13 +1532,17 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
           spacing: 8,
           runSpacing: 4,
           children: [
-            FilledButton.icon(
-              onPressed: widget.enabled && !_selecting
-                  ? (_scanning ? _stopByUser : _restartByUser)
-                  : null,
-              icon: Icon(_scanning ? Icons.stop : Icons.search),
-              label: Text(_scanning ? '停止搜尋' : '重新搜尋'),
-            ),
+            // 1.0.0+17: after the second search found nothing it is the
+            // big 〔重新搜尋〕 under the message instead.
+            if (_search != _Search.notFound)
+              FilledButton.icon(
+                key: const Key('gateway-scan-toggle'),
+                onPressed: widget.enabled && !_selecting
+                    ? (stoppable ? _stopByUser : _restartByUser)
+                    : null,
+                icon: Icon(stoppable ? Icons.stop : Icons.search),
+                label: Text(stoppable ? '停止搜尋' : '重新搜尋'),
+              ),
             // 1.0.0+10 (phone: always there): only when the scan failed for
             // want of a permission.
             if (_needsSettings)
@@ -1320,36 +1553,33 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
               ),
           ],
         ),
-        const SizedBox(height: 4),
-        // 1.0.0+11: the bar's room kept while the scan pauses (〔辨識〕) —
-        // the list below does not move.
-        if (_scanning)
-          const LinearProgressIndicator()
+        const SizedBox(height: 8),
+        // 1.0.0+17: the search's progress (it pauses — and stays, the list
+        // does not move — while 〔辨識〕 runs); after it one line.
+        if (_search == _Search.searching || _search == _Search.retrying)
+          _searchProgress(heard.length)
+        else if (_search == _Search.notFound)
+          _notFoundBlock()
         else
-          const SizedBox(height: 4),
-        Text(
-          _selecting
-              ? '正在連線並讀取設定…'
-              : _scanning
-              ? '持續搜尋中・RSSI 隨廣播更新'
-              : '搜尋已停止・RSSI 為最後一次結果',
-        ),
+          Text(
+            _selecting
+                ? gatewayBusyText
+                : heard.isNotEmpty
+                ? gatewayFoundText(heard.length, withHint: nearest != null)
+                : _scanning
+                ? gatewaySearchingText
+                : gatewayStoppedText,
+            key: const Key('gateway-search-status'),
+            // One style whatever it says: 〔辨識〕 moves nothing.
+            style: Theme.of(
+              context,
+            ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+          ),
         if (_error != null)
           Text(
             _error!,
             style: TextStyle(color: Theme.of(context).colorScheme.error),
           ),
-        TextField(
-          decoration: const InputDecoration(
-            isDense: true,
-            prefixIcon: Icon(Icons.search),
-            hintText: '篩選名稱或位址',
-          ),
-          onChanged: (value) =>
-              setState(() => _query = value.trim().toLowerCase()),
-        ),
-        if (_query.isNotEmpty && recent.isEmpty && nearby.isEmpty)
-          const Text('沒有符合的裝置'),
         if (nearest != null)
           Container(
             key: const Key('gateway-nearest-hint'),
@@ -1388,8 +1618,6 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
           _groupTitle('附近裝置（${nearby.length}）'),
           ...nearby.map(tile),
         ],
-        if (!_scanning && heard.isEmpty)
-          const Text('未發現附近閘道器。請確認電源、靠近裝置，並確認沒有被其他手機連線。'),
         if (_backendAt != null) const Text('後端狀態每 15 秒更新，僅代表目前選擇的後端環境。'),
         // 1.0.0+9: the rows say 「後端未知」 only; the reason is this line.
         if (_backendAt == null && _backendError != null)

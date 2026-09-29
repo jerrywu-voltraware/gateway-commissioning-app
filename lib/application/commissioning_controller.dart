@@ -1191,6 +1191,10 @@ String lastDoneText(
     '上一台已完成：站 $site 閘道器 $gateway'
     '${ptuDeferred ? '（本樁 PTU 尚未連線，上電後自動連上）' : ''}';
 
+/// The message after 〔檢查並開始〕 passed (1.0.0+17: not shown on the
+/// gateway list — it only said the step before was over).
+const preparedText = '準備完成';
+
 /// Round 29: the gateway list after 〔配置下一台〕 — a new gateway is
 /// proposed on the same station ([site]).
 String nextGatewayText(int site) => '請選擇下一台閘道器；新的閘道器會預設沿用站 $site。';
@@ -3270,7 +3274,7 @@ class CommissioningController extends Notifier<CommissionState> {
         state = state.copy(
           step: 1,
           offline: offline,
-          message: offline ? '離線模式：最後仍需登入驗證資料' : '準備完成',
+          message: offline ? '離線模式：最後仍需登入驗證資料' : preparedText,
         );
       });
 

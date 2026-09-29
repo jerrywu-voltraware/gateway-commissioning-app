@@ -366,6 +366,10 @@ void main() {
         120,
         scrollable: find.byType(Scrollable).first,
       );
+      // 1.0.0+17 (no filter box: the list is shorter): scrolled clear of
+      // the fixed bottom bar before the tap.
+      await tester.ensureVisible(leave);
+      await tester.pumpAndSettle();
       expect(find.text(leaveListLabel), findsOneWidget);
       await tester.tap(leave);
       await tester.pumpAndSettle();

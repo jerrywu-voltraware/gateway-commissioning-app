@@ -747,7 +747,7 @@ void main() {
   });
 
   testWidgets('the selected gateway stays listed when not heard (「訊號中斷」) '
-      'and whatever the filter; the others follow the rules', (tester) async {
+      'and when heard again; the others follow the rules', (tester) async {
     _phone(tester, 1.1);
     SharedPreferences.setMockInitialValues({});
     var clock = DateTime(2026, 9, 29, 3);
@@ -795,15 +795,19 @@ void main() {
     expect(_mark(_gw82), findsOneWidget);
     expect(_buttonText(tester), '連線到 站 82 · 閘道器 1');
 
-    // Heard again with 81/1 and a new one; a filter for 81/1 keeps 82/1.
+    // Heard again with 81/1 and a new one: all listed (1.0.0+17: no filter
+    // box), 82/1 still selected.
     link.hear(const [_gw81, _gw82, _new]);
     await tester.pump();
-    await tester.enterText(find.byType(TextField), 's81');
-    await tester.pump();
-    expect(find.byKey(ValueKey('gateway-card-${_gw81.id}')), findsOneWidget);
-    expect(find.byKey(ValueKey('gateway-card-${_gw82.id}')), findsOneWidget);
-    expect(find.byKey(ValueKey('gateway-card-${_new.id}')), findsNothing);
+    expect(find.byType(TextField), findsNothing);
+    for (final peer in [_gw81, _gw82, _new]) {
+      expect(
+        find.byKey(ValueKey('gateway-card-${peer.id}'), skipOffstage: false),
+        findsOneWidget,
+      );
+    }
     expect(_mark(_gw82), findsOneWidget);
+    expect(_buttonText(tester), '連線到 站 82 · 閘道器 1');
 
     // The button connects to 82/1.
     await tester.tap(_button);

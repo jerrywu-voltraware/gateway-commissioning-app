@@ -35,6 +35,13 @@ import 'package:gateway_commissioning/data/local_backend_probe.dart';
 import 'package:gateway_commissioning/gateway_app.dart';
 import 'package:gateway_commissioning/presentation/commissioning_page.dart'
     show siteFieldLabel;
+import 'package:gateway_commissioning/presentation/gateway_discovery.dart'
+    show
+        GatewayDiscovery,
+        gatewayNotFoundText,
+        gatewayRetryingText,
+        gatewaySearchWindow,
+        gatewaySearchingText;
 import 'package:gateway_commissioning/presentation/gateway_status_page.dart';
 import 'package:gateway_commissioning/presentation/recent_data_page.dart';
 
@@ -145,6 +152,35 @@ class _SelectGateways extends _TwoGateways {
         {'site_id': 81, 'gateway_id': 1, 'online': true},
       ],
     };
+  }
+}
+
+/// 1.0.0+17: [_TwoGateways] scanning live, one scan per start: the first
+/// [silent] scans end at once with nothing heard, the others stay open and
+/// hear [heard].
+class _SearchGateways extends _TwoGateways implements GatewayScanner {
+  _SearchGateways({this.silent = 0, this.heard = const []});
+  final int silent;
+  final List<GatewayPeer> heard;
+  final sessions = <StreamController<List<GatewayPeer>>>[];
+
+  @override
+  Stream<List<GatewayPeer>> scanLive() {
+    final scan = StreamController<List<GatewayPeer>>();
+    sessions.add(scan);
+    if (sessions.length <= silent) {
+      unawaited(scan.close());
+    } else if (heard.isNotEmpty) {
+      scan.add(heard);
+    }
+    return scan.stream;
+  }
+
+  @override
+  Future<void> stopScan() async {
+    for (final scan in sessions) {
+      if (!scan.isClosed) unawaited(scan.close());
+    }
   }
 }
 
@@ -500,6 +536,45 @@ GatewayPeer _demoPeer(ProviderContainer container) => container
     .peers
     .firstWhere((p) => p.id == 'demo-gateway');
 
+/// 1.0.0+17: star, prepared, on the gateway list while its search runs —
+/// frames only (settling would run the search to its end); [time]: how
+/// long the list has searched, its stop / start let run.
+Future<ProviderContainer> _toSearchingList(
+  WidgetTester tester,
+  DemoSystem fake, {
+  Duration time = const Duration(milliseconds: 600),
+}) async {
+  final container = await _pumpApp(
+    tester,
+    fake,
+    prefs: {
+      'backend_environment': 'production',
+      'demo_recent_gateways':
+          '[{"id":"A0:DD:6C:A3:70:F2","name":"GIOS-S80-GW02",'
+          '"uid":"A0DD6CA370F0"}]',
+    },
+  );
+  await tester.runAsync(() async {
+    await _topology(container, GatewayTopology.star);
+    await container
+        .read(commissionProvider.notifier)
+        .prepare(container.read(backendEnvProvider).base, 'pw');
+  });
+  const step = Duration(milliseconds: 200);
+  for (var t = Duration.zero; t < time; t += step) {
+    await tester.pump(step);
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 2)),
+    );
+  }
+  await tester.pump();
+  expect(container.read(commissionProvider).step, 1);
+  return container;
+}
+
+String? _keyText(WidgetTester tester, String key) =>
+    tester.widget<Text>(find.byKey(Key(key))).data;
+
 /// 1.0.0+14: selects the gateway [id] on the list (its card's tap).
 Future<void> _select(WidgetTester tester, String id) async {
   final card = find.byKey(ValueKey(id));
@@ -658,6 +733,63 @@ void main() {
     fake.hold!.complete();
     await tester.pumpAndSettle();
     expect(container.read(commissionProvider).step, 2);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  // 1.0.0+17: the list's search — its progress area, the second search,
+  // and 「未發現」 with the main 〔重新搜尋〕.
+  testWidgets('gateway list while searching: the progress area, 「已找到 1 台」', (
+    tester,
+  ) async {
+    GatewayDiscovery.searchWindow = const Duration(minutes: 10);
+    addTearDown(() => GatewayDiscovery.searchWindow = gatewaySearchWindow);
+    await _toSearchingList(
+      tester,
+      _SearchGateways(
+        heard: const [GatewayPeer('demo-gateway', 'GIOS-S81-GW01', -41)],
+      ),
+    );
+    expect(find.byKey(const Key('gateway-search-progress')), findsOneWidget);
+    expect(_keyText(tester, 'gateway-search-head'), gatewaySearchingText);
+    expect(_keyText(tester, 'gateway-found-count'), '已找到 1 台');
+    await _checkPage(tester, 'gateway list, searching');
+    expect(find.byKey(const Key('gateway-search-progress')), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('gateway list, nothing found: 「沒找到，再搜尋一次…」', (tester) async {
+    GatewayDiscovery.searchWindow = const Duration(minutes: 10);
+    addTearDown(() => GatewayDiscovery.searchWindow = gatewaySearchWindow);
+    final fake = _SearchGateways(silent: 1);
+    await _toSearchingList(tester, fake, time: const Duration(seconds: 2));
+    expect(fake.sessions, hasLength(2), reason: 'searching once more');
+    expect(_keyText(tester, 'gateway-search-head'), gatewayRetryingText);
+    expect(_keyText(tester, 'gateway-found-count'), '已找到 0 台');
+    await _checkPage(tester, 'gateway list, searching again');
+    expect(_keyText(tester, 'gateway-search-head'), gatewayRetryingText);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('gateway list, nothing found twice: 「未發現」 and the main '
+      '〔重新搜尋〕 (≥ 48 dp, full width)', (tester) async {
+    final fake = _SearchGateways(silent: 2);
+    await _toSearchingList(tester, fake, time: const Duration(seconds: 3));
+    expect(fake.sessions, hasLength(2));
+    expect(find.text(gatewayNotFoundText), findsOneWidget);
+    final button = find.byKey(const Key('gateway-rescan-primary'));
+    expect(button, findsOneWidget);
+    await _checkPage(
+      tester,
+      'gateway list, not found',
+      also: (where) {
+        if (button.hitTestable().evaluate().isEmpty) return;
+        final rect = tester.getRect(button);
+        final width =
+            tester.view.physicalSize.width / tester.view.devicePixelRatio;
+        expect(rect.height, greaterThanOrEqualTo(48), reason: where);
+        expect(rect.width, greaterThan(width - 80), reason: where);
+      },
+    );
     await tester.pumpWidget(const SizedBox());
   });
 
