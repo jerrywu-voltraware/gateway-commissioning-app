@@ -2342,6 +2342,12 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   /// conflict shows the back office's text — 〔取代舊機〕 records this
   /// gateway for it (force_replace) and goes on, 〔改用其他站號〕 opens
   /// the input. True: go on (also when nothing is flagged).
+  ///
+  /// 1.0.0+13: while the other gateway holding the number is online
+  /// (fleet-status `online`, the row held by another MAC), 〔取代舊機〕 is
+  /// not offered — 「閘道器 N 目前在線上，不能取代；如果這台是來換掉它，
+  /// 請先把舊機斷電。」; when it cannot be told (also: the row held by this
+  /// gateway), as before — as r33's 「閘道器編號已被使用」.
   Future<bool> _confirmConflict(
     CommissioningController c,
     int site,
@@ -2350,23 +2356,29 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     final conflict = await c.identityConflict(site, gw);
     if (!mounted) return false;
     if (conflict == null) return true;
+    final online = await c.gatewayOnline(site, gw);
+    if (!mounted) return false;
     final action = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
         key: const Key('identity-conflict'),
         title: const Text(identityConflictTitle),
-        content: Text('$conflict\n\n${identityConflictHint(site, gw)}'),
+        content: Text(
+          '$conflict\n\n'
+          '${online == true ? numberTakenOnlineText(gw) : identityConflictHint(site, gw)}',
+        ),
         actions: [
           TextButton(
             key: const Key('identity-conflict-other-site'),
             onPressed: () => Navigator.pop(context, 'other'),
             child: const Text(otherSiteLabel),
           ),
-          FilledButton(
-            key: const Key('identity-conflict-replace'),
-            onPressed: () => Navigator.pop(context, 'replace'),
-            child: const Text(replaceOldLabel),
-          ),
+          if (online != true)
+            FilledButton(
+              key: const Key('identity-conflict-replace'),
+              onPressed: () => Navigator.pop(context, 'replace'),
+              child: const Text(replaceOldLabel),
+            ),
         ],
       ),
     );

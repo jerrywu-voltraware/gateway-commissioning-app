@@ -74,13 +74,24 @@ List<SwapCandidate> offlineSwapCandidates(
 }
 
 /// fleet-status `online` of [site] / [gateway]: true or false; null when
-/// there is no such row or it carries no `online`.
-bool? fleetRowOnline(Map<String, dynamic> fleet, int site, int gateway) {
+/// there is no such row or it carries no `online`, or when the row is held
+/// by [ownUid] (this gateway: its heartbeats say nothing about the other
+/// gateway on that number — a conflict flagged on this gateway's own
+/// number).
+bool? fleetRowOnline(
+  Map<String, dynamic> fleet,
+  int site,
+  int gateway, {
+  Object? ownUid,
+}) {
+  final own = gatewayMacKey(ownUid);
   for (final row in _rows(fleet)) {
     if ((row['site_id'] as num?)?.toInt() != site ||
         (row['gateway_id'] as num?)?.toInt() != gateway) {
       continue;
     }
+    final mac = gatewayMacKey(row['last_seen_mac'] ?? row['mac']);
+    if (own.isNotEmpty && mac == own) return null;
     final online = row['online'];
     return online is bool ? online : null;
   }

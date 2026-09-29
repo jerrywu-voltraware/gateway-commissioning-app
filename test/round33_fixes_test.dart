@@ -40,6 +40,9 @@ class _Gateway extends WifiGateway {
 
   /// 'site/gw' → the back office's conflict text (flag up).
   final conflicts = <String, String>{};
+
+  /// 1.0.0+13: 'site/gw' → fleet-status `online` (none: not reported).
+  final online = <String, bool>{};
   final reserves = <String>[];
 
   @override
@@ -74,6 +77,7 @@ class _Gateway extends WifiGateway {
                 'last_seen_mac': e.value,
                 'conflict_flag': conflicts.containsKey(e.key),
                 'conflict_message': conflicts[e.key],
+                if (online.containsKey(e.key)) 'online': online[e.key],
               },
         ],
       };
@@ -313,6 +317,70 @@ void main() {
       expect(fake.reserves, isEmpty);
       expect(container.read(commissionProvider).step, 2);
       expect(find.widgetWithText(TextField, siteFieldLabel), findsOneWidget);
+    });
+
+    // 1.0.0+13: the other gateway on the number online → no 〔取代舊機〕.
+    for (final holderOnline in [true, false]) {
+      testWidgets(
+        'the other gateway holding it ${holderOnline ? 'online' : 'offline'}: '
+        '〔取代舊機〕 ${holderOnline ? 'not offered' : 'offered'}',
+        (tester) async {
+          final fake = _Gateway.station();
+          fake.records['80/1'] = _other;
+          fake.conflicts['80/1'] = text;
+          fake.online['80/1'] = holderOnline;
+          await _pump(tester, fake);
+          await _connect(tester);
+          await _tap(tester, find.text(useStationLabel));
+          final dialog = find.byKey(const Key('identity-conflict'));
+          expect(dialog, findsOneWidget);
+          expect(
+            find.byKey(const Key('identity-conflict-other-site')),
+            findsOneWidget,
+          );
+          expect(
+            find.byKey(const Key('identity-conflict-replace')),
+            holderOnline ? findsNothing : findsOneWidget,
+          );
+          expect(
+            find.descendant(
+              of: dialog,
+              matching: find.textContaining(numberTakenOnlineText(1)),
+            ),
+            holderOnline ? findsOneWidget : findsNothing,
+          );
+          expect(
+            numberTakenOnlineText(1),
+            '閘道器 1 目前在線上，不能取代；如果這台是來換掉它，請先把舊機斷電。',
+          );
+          if (!holderOnline) {
+            await _tap(
+              tester,
+              find.byKey(const Key('identity-conflict-replace')),
+            );
+            expect(fake.reserves.single, contains('force_replace=true'));
+          } else {
+            expect(fake.reserves, isEmpty);
+          }
+        },
+      );
+    }
+
+    testWidgets('the row held by this gateway (its own heartbeats): online '
+        'says nothing about the other one — 〔取代舊機〕 offered as before', (
+      tester,
+    ) async {
+      final fake = _Gateway.station();
+      fake.records['80/1'] = fake.config['gateway_uid'].toString();
+      fake.conflicts['80/1'] = text;
+      fake.online['80/1'] = true;
+      await _pump(tester, fake);
+      await _connect(tester);
+      await _tap(tester, find.text(useStationLabel));
+      expect(
+        find.byKey(const Key('identity-conflict-replace')),
+        findsOneWidget,
+      );
     });
 
     testWidgets('no conflict: 〔使用此站點〕 asks nothing', (tester) async {

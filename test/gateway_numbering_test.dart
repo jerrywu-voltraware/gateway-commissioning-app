@@ -805,6 +805,10 @@ void main() {
       expect(fleetRowOnline(fleet, 80, 1), isFalse);
       expect(fleetRowOnline(fleet, 80, 5), isNull);
       expect(fleetRowOnline(fleet, 80, 9), isNull);
+      // Held by this gateway: its own heartbeats say nothing of the other.
+      expect(fleetRowOnline(fleet, 80, 4), isFalse);
+      expect(fleetRowOnline(fleet, 80, 4, ownUid: _uid), isNull);
+      expect(fleetRowOnline(fleet, 80, 2, ownUid: _uid), isTrue);
 
       final now = DateTime(2026, 9, 29, 12);
       expect(

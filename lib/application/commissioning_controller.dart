@@ -4172,8 +4172,9 @@ class CommissioningController extends Notifier<CommissionState> {
   /// 1.0.0+13: whether the gateway holding [site] / [gw] is online now
   /// (fleet-status `online`; check-identity carries no such field) — true
   /// or false; null when it cannot tell (not logged in, the back office
-  /// unreachable, no such row). Asked before 〔取代舊機〕 is offered and once
-  /// more before a replacement is sent.
+  /// unreachable, no such row, or the row held by this gateway itself —
+  /// its own heartbeats say nothing about the old one). Asked before
+  /// 〔取代舊機〕 is offered and once more before a replacement is sent.
   Future<bool?> gatewayOnline(int site, int gw) async {
     if (!_loggedIn) return null;
     try {
@@ -4181,7 +4182,12 @@ class CommissioningController extends Notifier<CommissionState> {
         'GET',
         '/api/gateways/fleet-status?site_id=$site',
       );
-      return fleetRowOnline(fleet, site, gw);
+      return fleetRowOnline(
+        fleet,
+        site,
+        gw,
+        ownUid: state.config['gateway_uid'],
+      );
     } catch (_) {
       return null;
     }
