@@ -489,6 +489,13 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   /// 「下一個編號」 instead of just failing with a generic error.
   Future<void> _saveWifi(bool wifiOnly) async {
     final c = ref.read(commissionProvider.notifier);
+    // 1.0.0+15: the Wi-Fi-first form of a gateway not in service — the
+    // Wi-Fi only; the station is chosen after it joined.
+    if (wifiOnly && ref.read(commissionProvider).config[wifiFirstKey] == true) {
+      await c.configureWifiFirst(_ssid.text, _wifi.text);
+      _wifi.clear();
+      return;
+    }
     final site = int.tryParse(_site.text) ?? 0;
     var gw = int.tryParse(_gateway.text) ?? 0;
     // Round 30: a kept Wi-Fi ([keptWifiSsid]) is sent without a password
@@ -817,6 +824,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       s.config['choose_station'] == true,
       s.config['wifi_only'] == true,
       s.config['new_station'] == true,
+      s.config[wifiFirstKey] == true,
     ].join('/');
     if (page(previous) != page(next)) _toTop();
   }
@@ -849,7 +857,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           if (check.upload.tone == StatusTone.bad) return uploadBadTaskTitle;
           return checkingTaskTitle;
         }
-        if (s.config['wifi_only'] == true ||
+        if (wifiFormOfCheck(s) ||
             (_wifiStage && s.config['choose_station'] != true)) {
           return wifiTaskTitle;
         }
@@ -1950,6 +1958,15 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           : !_suggestingGateway && !_gatewaySubmitBlocked;
     }
     return [
+      // 1.0.0+15: the Wi-Fi was fixed on the check a moment ago.
+      if (wifiFirstJoined(s))
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: _markedText(
+            const CheckLine('✓', wifiFirstDoneText, StatusTone.ok),
+            key: const Key('wifi-first-done'),
+          ),
+        ),
       if (!input)
         inService
             ? Text(
@@ -2047,12 +2064,17 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   /// The Wi-Fi page: a station in service kept ([wifiOnly]: its number
   /// stays, the upload is checked again next), or a new identity whose
   /// station was chosen on the page before (sent together with it).
+  ///
+  /// 1.0.0+15: [wifiOnly] is also a gateway not in service fixing its
+  /// Wi-Fi on the check ([wifiFirstKey]): the station comes after it.
   List<Widget> _wifiPage(
     CommissionState s,
     bool enabled, {
     required bool wifiOnly,
   }) => [
-    if (wifiOnly)
+    if (s.config[wifiFirstKey] == true)
+      const Text(wifiFirstPageText, key: Key('wifi-first-intro'))
+    else if (wifiOnly)
       Text(
         '保留站點 ${s.config['site_id']}／閘道器 ${s.config['gateway_id']}，只更新 Wi-Fi。',
       )
@@ -2558,7 +2580,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               padding: const EdgeInsets.only(top: 8),
               child: _identifyButton(s),
             ),
-          if (s.step == 2 && s.checkPassed && s.config['wifi_only'] != true)
+          if (s.step == 2 && s.checkPassed && !wifiFormOfCheck(s))
             Align(
               alignment: Alignment.centerLeft,
               child: TextButton(
@@ -2945,7 +2967,8 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         // One-thing screens (09-28): a Wi-Fi page only when it is needed
         // (the gateway is on no Wi-Fi, or 「改用其他 Wi-Fi」); otherwise the
         // station page asks one question.
-        if (s.config['wifi_only'] == true) {
+        // 1.0.0+15: also the Wi-Fi-first form of a gateway not in service.
+        if (wifiFormOfCheck(s)) {
           return _wifiPage(s, enabled, wifiOnly: true);
         }
         if (_wifiStage && s.config['choose_station'] != true) {
@@ -4216,8 +4239,8 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           onPressed: enabled ? c.refreshUploadTarget : null,
           child: const Text('重新檢查'),
         ),
-      // A new gateway with no Wi-Fi gets the identity/Wi-Fi form from the
-      // button above; skipping would lead to the same form.
+      // A new gateway with no Wi-Fi fixes it from the button above (1.0.0+15:
+      // the Wi-Fi first, then the station); no skip past it while online.
       if (!recheck &&
           check.canSkip &&
           (s.offline || station || !check.wifiProblem)) ...[
@@ -4344,6 +4367,9 @@ const targetTaskTitle = '請讓閘道器把資料送到目前的後台';
 const uploadPausedTaskTitle = '閘道器的資料上傳已暫停，請恢復上傳';
 const uploadBadTaskTitle = '閘道器還沒開始上傳資料，請依下方提示處理';
 const wifiTaskTitle = '設定閘道器的 Wi-Fi';
+
+/// 1.0.0+15: the Wi-Fi-first page of a gateway not in service.
+const wifiFirstPageText = '先讓 Gateway 連上 Wi-Fi，網路正常後再設定站號。';
 String stationQuestionTitle(int site) => '目前站號是 $site，這台要配置在本站嗎？';
 const stationInputTitle = '請輸入這台要配置的站號';
 const onlineRunningTaskTitle = '正在確認閘道器上線，請稍候';

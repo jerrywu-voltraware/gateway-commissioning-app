@@ -1,0 +1,517 @@
+// 1.0.0+15 (09-29 field: a gateway not in service showed 「✗ Gateway 找不到
+// Wi-Fi『Xiaomi_WU』」 on the network check; 〔重設 Wi-Fi〕 opened 「請輸入這台
+// 要配置的站號」 (6 / 10 站點選擇) and read as the wrong page). The network
+// is fixed first: 〔重設 Wi-Fi〕／〔設定 Wi-Fi〕 of a gateway not in service
+// opens the Wi-Fi form of 「保留站點」 (set_wifi only, no identity, no
+// restart; the upload target first when it must change), the check is read
+// again once it joined, and the station follows with that Wi-Fi kept (the
+// identity only). A failed Wi-Fi stays on the form with its reason.
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:gateway_commissioning/application/backend_environment.dart';
+import 'package:gateway_commissioning/application/commissioning_controller.dart';
+import 'package:gateway_commissioning/application/connection_status.dart';
+import 'package:gateway_commissioning/application/local_backend_finder.dart';
+import 'package:gateway_commissioning/application/network_check.dart';
+import 'package:gateway_commissioning/core/gateway_net.dart';
+import 'package:gateway_commissioning/core/mqtt_target.dart';
+import 'package:gateway_commissioning/data/demo_system.dart';
+import 'package:gateway_commissioning/data/local_backend_probe.dart';
+import 'package:gateway_commissioning/gateway_app.dart';
+import 'package:gateway_commissioning/presentation/commissioning_page.dart';
+
+import 'network_check_test.dart' show WifiGateway;
+import 'support/pick_gateway.dart';
+
+const _lan = MqttTarget.local('192.168.1.50');
+
+const _fast = UploadWatchTiming(
+  interval: Duration(milliseconds: 20),
+  cap: Duration(seconds: 2),
+  slowAfter: Duration(milliseconds: 100),
+  confirmAfter: Duration(milliseconds: 200),
+  wifiGrace: Duration(milliseconds: 100),
+);
+
+const _localPrefs = {
+  'backend_environment': 'local',
+  'backend_local_url': 'http://192.168.1.50:18000',
+};
+
+/// Not in service (factory 1/1), set up for 「Xiaomi_WU」 that it cannot
+/// find. [discReason]: `wifi_last_disc_reason` reported with a set_wifi
+/// that did not join (firmware 1.7.32).
+class _NewGateway extends WifiGateway {
+  _NewGateway({this.discReason}) {
+    config['wifi_ssid'] = 'Xiaomi_WU';
+    simulateWifi('disconnected');
+  }
+
+  int? discReason;
+  final wifiParams = <Map<String, dynamic>>[];
+  final identityParams = <Map<String, dynamic>>[];
+  final paths = <String>[];
+
+  @override
+  Future<Map<String, dynamic>> command(
+    String op, [
+    Map<String, dynamic> params = const {},
+  ]) async {
+    if (op == 'set_wifi') wifiParams.add(Map.of(params));
+    if (op == 'set_site_identity') identityParams.add(Map.of(params));
+    final result = await super.command(op, params);
+    if (op == 'get_net_status' &&
+        discReason != null &&
+        lastWifiError.isNotEmpty) {
+      return {
+        ...result,
+        'wifi_last_disc_reason': discReason,
+        'wifi_last_disc_age_s': 1,
+      };
+    }
+    return result;
+  }
+
+  @override
+  Future<Map<String, dynamic>> request(
+    String method,
+    String path, [
+    Map<String, dynamic>? body,
+  ]) {
+    paths.add(path);
+    return super.request(method, path, body);
+  }
+
+  /// The ops sent after the first [op].
+  List<String> after(String op) => commands.sublist(commands.indexOf(op));
+}
+
+class _Prober implements LocalBackendProber {
+  @override
+  Future<ProbeResult> probe(Uri base, {Duration? connectTimeout}) async =>
+      const ProbeResult(ProbeOutcome.healthy, status: 200);
+}
+
+Future<(ProviderContainer, CommissioningController)> _connected(
+  DemoSystem fake, {
+  bool offline = true,
+  bool local = false,
+}) async {
+  SharedPreferences.setMockInitialValues(
+    local ? _localPrefs : const {'backend_environment': 'production'},
+  );
+  final container = ProviderContainer(
+    overrides: [
+      linkProvider.overrideWithValue(fake),
+      apiProvider.overrideWithValue(fake),
+      uploadWatchTimingProvider.overrideWithValue(_fast),
+      envSwitchPolicyProvider.overrideWithValue(
+        const EnvSwitchPolicy(confirmGatewaySwitch: false),
+      ),
+    ],
+  );
+  await container.read(backendEnvProvider.notifier).ready;
+  final c = container.read(commissionProvider.notifier);
+  await c.prepare(
+    container.read(backendEnvProvider).base,
+    'pw',
+    offline: offline,
+  );
+  await c.scan();
+  await c.connect(container.read(commissionProvider).peers.single);
+  return (container, c);
+}
+
+NetworkCheck _check(ProviderContainer container) => networkCheck(
+  state: container.read(commissionProvider),
+  env: container.read(backendEnvProvider),
+);
+
+String _shown(ProviderContainer container) =>
+    stepLabels[displayStep(
+      container.read(commissionProvider),
+      container.read(backendEnvProvider),
+    )];
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  group('controller', () {
+    test('Wi-Fi failed, 〔重設 Wi-Fi〕: the Wi-Fi form (not the station), '
+        'set_wifi only; joined → the check again → the station, whose '
+        'identity is written with that Wi-Fi kept', () async {
+      final fake = _NewGateway();
+      final (container, c) = await _connected(fake, offline: false);
+      addTearDown(container.dispose);
+      var s = container.read(commissionProvider);
+      expect(s.checkPassed, isFalse);
+      expect(_check(container).wifiProblem, isTrue);
+
+      await c.startWifiFix();
+      s = container.read(commissionProvider);
+      expect(s.error, isNull);
+      expect(s.checkPassed, isTrue);
+      expect(s.config[wifiFirstKey], isTrue);
+      expect(s.config['wifi_only'], isFalse);
+      expect(s.config['choose_station'], isFalse);
+      expect(wifiFormOfCheck(s), isTrue);
+      expect(_shown(container), 'Gateway 網路體檢', reason: 'not 站點選擇');
+      expect(keptWifiSsid(s), isNull, reason: 'the form asks the password');
+      expect(fake.commands, isNot(contains('set_wifi')));
+
+      fake.paths.clear();
+      await c.configureWifiFirst('Office-2G', 'password123');
+      s = container.read(commissionProvider);
+      expect(s.error, isNull);
+      expect(fake.wifiParams, [
+        {'ssid': 'Office-2G', 'password': 'password123'},
+      ]);
+      expect(fake.count('set_site_identity'), 0);
+      expect(fake.count('set_mqtt_target'), 0);
+      expect(
+        fake.paths.where((p) => p.contains('identity')),
+        isEmpty,
+        reason: 'no check-identity / reserve-identity for the Wi-Fi alone',
+      );
+      // Joined (the wait), then the check read again.
+      expect(
+        fake.after('set_wifi').where((op) => op == 'get_net_status').length,
+        greaterThanOrEqualTo(2),
+      );
+      expect(s.step, 2);
+      expect(s.checkPassed, isTrue);
+      expect(s.config[wifiFirstKey], isFalse);
+      expect(s.config['choose_station'], isFalse);
+      expect(s.config['new_station'], isFalse);
+      expect(s.message, wifiFirstDoneText);
+      expect(_shown(container), '站點選擇');
+      expect(_check(container).wifiOk, isTrue);
+      expect(keptWifiSsid(s), 'Office-2G');
+      expect(wifiFirstJoined(s), isTrue);
+
+      // The station: identity only, no Wi-Fi asked for or sent again.
+      await c.configureWifi(82, 1, 'Office-2G', '');
+      s = container.read(commissionProvider);
+      expect(s.error, isNull);
+      expect(s.step, 3);
+      expect(fake.identityParams, [
+        {'site_id': 82, 'gateway_id': 1},
+      ]);
+      expect(fake.count('set_wifi'), 1);
+      expect(fake.paths.any((p) => p.contains('reserve-identity')), isTrue);
+      expect(fake.config['wifi_ssid'], 'Office-2G');
+    });
+
+    test('MQTT still connecting after the Wi-Fi joined: the upload item does '
+        'not hold up the station, and the Wi-Fi is kept', () async {
+      final fake = _NewGateway()..mqttConnected = false;
+      final (container, c) = await _connected(fake);
+      addTearDown(container.dispose);
+      await c.startWifiFix();
+      await c.configureWifiFirst('Xiaomi_WU', 'password123');
+      var s = container.read(commissionProvider);
+      expect(s.error, isNull);
+      expect(_check(container).wifiOk, isTrue);
+      expect(_check(container).uploadOk, isFalse);
+      expect(s.checkPassed, isTrue);
+      expect(s.config[wifiFirstKey], isFalse);
+      expect(s.message, wifiFirstDoneText);
+      expect(keptWifiSsid(s), 'Xiaomi_WU', reason: 'set here a moment ago');
+      await c.configureWifi(3, 1, 'Xiaomi_WU', '');
+      s = container.read(commissionProvider);
+      expect(s.error, isNull, reason: 'no 「請輸入 Wi-Fi 密碼」');
+      expect(s.step, 3);
+      expect(fake.count('set_wifi'), 1);
+      expect(fake.count('set_site_identity'), 1);
+    });
+
+    test('the Wi-Fi does not join: its reason, the Wi-Fi form stays and the '
+        'station never opens; a retry that joins goes on', () async {
+      // The same SSID, a wrong password: the firmware tells why (15).
+      final fake = _NewGateway(discReason: 15)
+        ..unreachableSsids.add('Xiaomi_WU');
+      final (container, c) = await _connected(fake);
+      addTearDown(container.dispose);
+      await c.startWifiFix();
+      await c.configureWifiFirst('Xiaomi_WU', 'wrong-pass-1');
+      var s = container.read(commissionProvider);
+      expect(s.error, wifiSetFailedText(15));
+      expect(s.error, contains('密碼可能錯誤'));
+      expect(s.step, 2);
+      expect(s.checkPassed, isTrue);
+      expect(s.config[wifiFirstKey], isTrue, reason: 'still the Wi-Fi form');
+      expect(s.config['choose_station'], isFalse);
+      expect(_shown(container), 'Gateway 網路體檢');
+      expect(keptWifiSsid(s), isNull);
+      expect(wifiFirstJoined(s), isFalse);
+      expect(fake.count('set_site_identity'), 0);
+
+      // Another network it cannot find: back on the old one, plain words.
+      fake.unreachableSsids.add('Missing-2G');
+      await c.configureWifiFirst('Missing-2G', 'password123');
+      s = container.read(commissionProvider);
+      expect(s.error, wifiSetFailedText(null));
+      expect(s.config[wifiFirstKey], isTrue);
+
+      fake.unreachableSsids.clear();
+      await c.configureWifiFirst('Xiaomi_WU', 'password123');
+      s = container.read(commissionProvider);
+      expect(s.error, isNull);
+      expect(s.config[wifiFirstKey], isFalse);
+      expect(s.message, wifiFirstDoneText);
+      expect(fake.count('set_wifi'), 3);
+      expect(fake.count('set_site_identity'), 0);
+    });
+
+    test('the upload target must change too: set_mqtt_target first, then '
+        'set_wifi (one reboot), then the station', () async {
+      final fake = _NewGateway();
+      final (container, c) = await _connected(fake, local: true);
+      addTearDown(container.dispose);
+      final check = _check(container);
+      expect(check.need, SyncNeed.sync);
+      expect(check.wifiProblem, isTrue);
+      await c.startWifiFix(target: check.syncTarget);
+      var s = container.read(commissionProvider);
+      expect(s.error, isNull);
+      expect(s.config[wifiFirstKey], isTrue);
+      expect(parseMqttTarget(s.config)!.sameAs(_lan), isTrue);
+      expect(fake.count('set_wifi'), 0);
+
+      await c.configureWifiFirst('Office-2G', 'password123');
+      s = container.read(commissionProvider);
+      expect(s.error, isNull);
+      expect(fake.commands.where((op) => op.startsWith('set_')).toList(), [
+        'set_mqtt_target',
+        'set_wifi',
+      ]);
+      expect(fake.targetRequests.single, _lan.params);
+      expect(fake.connects, 2, reason: 'one reboot, for the target');
+      expect(_check(container).targetOk, isTrue);
+      expect(s.checkPassed, isTrue);
+      expect(s.config[wifiFirstKey], isFalse);
+      expect(s.message, wifiFirstDoneText);
+    });
+
+    test('the upload target left as it was: after the Wi-Fi the check shows '
+        'what is left (no station yet)', () async {
+      final fake = _NewGateway();
+      final (container, c) = await _connected(fake, local: true);
+      addTearDown(container.dispose);
+      await c.startWifiFix();
+      await c.configureWifiFirst('Office-2G', 'password123');
+      final s = container.read(commissionProvider);
+      expect(s.error, isNull);
+      expect(s.checkPassed, isFalse);
+      expect(s.config[wifiFirstKey], isFalse);
+      expect(s.message, wifiFirstCheckText);
+      final check = _check(container);
+      expect(check.wifiOk, isTrue);
+      expect(check.targetOk, isFalse);
+      expect(fake.count('set_site_identity'), 0);
+      // The station after it keeps that Wi-Fi all the same.
+      expect(keptWifiSsid(s), 'Office-2G');
+    });
+
+    test('a station in service: 〔重設 Wi-Fi〕 is still 「保留站點」', () async {
+      final fake = WifiGateway.station()..simulateWifi('disconnected');
+      final (container, c) = await _connected(fake);
+      addTearDown(container.dispose);
+      await c.startWifiFix();
+      var s = container.read(commissionProvider);
+      expect(s.config['wifi_only'], isTrue);
+      expect(s.config[wifiFirstKey], isFalse);
+      expect(_shown(container), 'Gateway 網路體檢');
+      fake.mqttConnected = false;
+      await c.configureWifi(80, 1, 'Office-2G', 'password123');
+      s = container.read(commissionProvider);
+      expect(s.error, isNull);
+      expect(s.checkPassed, isFalse, reason: 'the upload check next');
+      expect(s.message, 'Wi-Fi 已更新，站點與 PTU 設定保留。接著確認資料有上傳。');
+      expect(s.config[wifiFirstSsidKey], isNull);
+      expect(fake.count('set_site_identity'), 0);
+    });
+
+    test('keptWifiSsid: the Wi-Fi-first SSID counts without MQTT, only for '
+        'that SSID and not on the form itself', () {
+      CommissionState state({
+        Object? first,
+        bool form = false,
+        String ssid = 'Office-2G',
+      }) => CommissionState(
+        step: 2,
+        checkPassed: true,
+        config: {
+          'fw_version': '1.7.41',
+          'wifi_ssid': ssid,
+          'mqtt_connected': false,
+          wifiFirstKey: form,
+          wifiFirstSsidKey: ?first,
+        },
+        net: {'wifi_state': 'got_ip', 'ssid': ssid, 'ip': '192.168.31.20'},
+      );
+      expect(keptWifiSsid(state()), isNull);
+      expect(keptWifiSsid(state(first: 'Office-2G')), 'Office-2G');
+      expect(keptWifiSsid(state(first: 'Xiaomi_WU')), isNull);
+      expect(keptWifiSsid(state(first: 'Office-2G', form: true)), isNull);
+      expect(wifiFirstJoined(state(first: 'Office-2G')), isTrue);
+      expect(wifiFirstJoined(state()), isFalse);
+    });
+  });
+
+  group('page', () {
+    Future<ProviderContainer> pump(WidgetTester tester, DemoSystem fake) async {
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      SharedPreferences.setMockInitialValues({
+        'backend_environment': 'production',
+      });
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            linkProvider.overrideWithValue(fake),
+            apiProvider.overrideWithValue(fake),
+            localBackendProberProvider.overrideWithValue(_Prober()),
+          ],
+          child: const GatewayApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(GatewayApp)),
+      );
+      await tester.runAsync(
+        () => container.read(backendEnvProvider.notifier).ready,
+      );
+      await tester.runAsync(
+        () => container
+            .read(commissionProvider.notifier)
+            .prepare(container.read(backendEnvProvider).base, 'pw'),
+      );
+      await tester.pumpAndSettle();
+      return container;
+    }
+
+    Future<void> tap(WidgetTester tester, Finder finder) async {
+      await tester.ensureVisible(finder);
+      await tester.pumpAndSettle();
+      await tester.tap(finder);
+      await tester.pumpAndSettle();
+    }
+
+    String text(WidgetTester tester, String key) =>
+        tester.widget<Text>(find.byKey(Key(key))).data!;
+
+    Future<void> save(WidgetTester tester, String password) async {
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Wi-Fi 密碼'),
+        password,
+      );
+      await tester.pumpAndSettle();
+      await tap(tester, find.byKey(const Key('wifi-save')));
+    }
+
+    testWidgets('〔重設 Wi-Fi〕 → 「設定閘道器的 Wi-Fi」 (3 / 10 Gateway 網路體檢, '
+        'no station field); a failure keeps it with its reason; joined → '
+        '「請輸入這台要配置的站號」 with 「網路已正常」, identity only', (tester) async {
+      final fake = _NewGateway(discReason: 15)
+        ..unreachableSsids.add('Xiaomi_WU');
+      final container = await pump(tester, fake);
+      await pickGateway(
+        (f) => tap(tester, f),
+        find.byKey(const ValueKey('demo-gateway')),
+      );
+      expect(text(tester, 'task-title'), wifiProblemTaskTitle);
+      await tap(tester, find.text('重設 Wi-Fi'));
+
+      expect(text(tester, 'task-title'), wifiTaskTitle);
+      expect(text(tester, 'step-title'), '3 / 10   Gateway 網路體檢');
+      expect(find.byKey(const Key('wifi-first-intro')), findsOneWidget);
+      expect(find.widgetWithText(TextField, siteFieldLabel), findsNothing);
+      expect(find.textContaining('站點'), findsNothing);
+      expect(find.byKey(const Key('details-review-check')), findsNothing);
+      expect(text(tester, 'wifi-selected'), 'Xiaomi_WU');
+
+      // Wrong password: the reason, the same form, nothing else sent.
+      await save(tester, 'wrong-pass-1');
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('error-banner')),
+          matching: find.text(wifiSetFailedText(15)),
+        ),
+        findsOneWidget,
+      );
+      expect(text(tester, 'task-title'), wifiTaskTitle);
+      expect(text(tester, 'step-title'), '3 / 10   Gateway 網路體檢');
+      expect(find.widgetWithText(TextField, siteFieldLabel), findsNothing);
+      expect(fake.count('set_site_identity'), 0);
+
+      // Retried with the right one: joined → the station.
+      fake.unreachableSsids.clear();
+      await save(tester, 'password123');
+      expect(container.read(commissionProvider).error, isNull);
+      expect(text(tester, 'task-title'), stationInputTitle);
+      expect(text(tester, 'step-title'), '6 / 10   站點選擇');
+      expect(find.byKey(const Key('wifi-first-done')), findsOneWidget);
+      expect(find.text('✓ $wifiFirstDoneText'), findsOneWidget);
+      expect(find.byKey(const Key('wifi-keep')), findsOneWidget);
+      expect(fake.count('set_wifi'), 2);
+      expect(fake.count('set_site_identity'), 0);
+
+      await tester.enterText(
+        find.widgetWithText(TextField, siteFieldLabel),
+        '82',
+      );
+      await tester.pump(const Duration(milliseconds: 600));
+      await tester.pumpAndSettle();
+      await tap(tester, find.byKey(const Key('station-use')));
+      await tap(tester, find.byKey(const Key('new-site-ok')));
+      final s = container.read(commissionProvider);
+      expect(s.error, isNull);
+      expect(s.step, greaterThanOrEqualTo(3));
+      expect(fake.identityParams.single['site_id'], 82);
+      expect(fake.count('set_wifi'), 2, reason: 'no Wi-Fi page after it');
+      expect(find.text(wifiTaskTitle), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('〔不改 Wi-Fi，返回〕 goes back to the check, nothing sent', (
+      tester,
+    ) async {
+      final fake = _NewGateway();
+      final container = await pump(tester, fake);
+      await pickGateway(
+        (f) => tap(tester, f),
+        find.byKey(const ValueKey('demo-gateway')),
+      );
+      await tap(tester, find.text('重設 Wi-Fi'));
+      expect(text(tester, 'task-title'), wifiTaskTitle);
+      await tap(tester, find.text('不改 Wi-Fi，返回'));
+      final s = container.read(commissionProvider);
+      expect(s.checkPassed, isFalse);
+      expect(s.config[wifiFirstKey], isFalse);
+      expect(text(tester, 'task-title'), wifiProblemTaskTitle);
+      expect(fake.count('set_wifi'), 0);
+      expect(fake.count('set_site_identity'), 0);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('the check passing at once: the station as before, no '
+        '「網路已正常」 line', (tester) async {
+      final fake = WifiGateway();
+      final container = await pump(tester, fake);
+      await pickGateway(
+        (f) => tap(tester, f),
+        find.byKey(const ValueKey('demo-gateway')),
+      );
+      expect(container.read(commissionProvider).checkPassed, isTrue);
+      expect(text(tester, 'task-title'), stationInputTitle);
+      expect(find.byKey(const Key('wifi-first-done')), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  });
+}

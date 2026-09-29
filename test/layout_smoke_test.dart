@@ -12,6 +12,9 @@
 //
 // 1.0.0+14: the gateway list with a gateway selected (the fixed bottom
 // button 〔連線到 …〕), one not configured selected, and while connecting.
+//
+// 1.0.0+15: the Wi-Fi-first page of a gateway not configured and the
+// station page after it (「網路已正常，接著設定站號。」).
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -680,6 +683,42 @@ void main() {
     expect(read().step, 2);
     expect(read().checkPassed, isFalse);
     await _checkPage(tester, 'network check');
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  // 1.0.0+15: a gateway not configured, off its Wi-Fi — 〔重設 Wi-Fi〕 opens
+  // the Wi-Fi page first, then the station page says 「網路已正常」.
+  testWidgets('Wi-Fi first (a gateway not configured), then the station', (
+    tester,
+  ) async {
+    final container = await _toList(
+      tester,
+      fake: _TwoGateways()..simulateWifi('disconnected'),
+    );
+    CommissionState read() => container.read(commissionProvider);
+    await _run(tester, container, (c) async {
+      await c.scan();
+      await c.connect(_demoPeer(container));
+    });
+    expect(read().checkPassed, isFalse);
+    final fix = find.text('重設 Wi-Fi');
+    await tester.ensureVisible(fix);
+    await tester.pumpAndSettle();
+    await tester.tap(fix);
+    await tester.pumpAndSettle();
+    expect(read().config[wifiFirstKey], isTrue);
+    expect(find.byKey(const Key('wifi-first-intro')), findsOneWidget);
+    await _checkPage(tester, 'Wi-Fi first');
+
+    await _run(
+      tester,
+      container,
+      (c) => c.configureWifiFirst('Office-2G', 'pw123456'),
+    );
+    expect(read().error, isNull);
+    expect(read().checkPassed, isTrue);
+    expect(find.byKey(const Key('wifi-first-done')), findsOneWidget);
+    await _checkPage(tester, 'station after the Wi-Fi');
     await tester.pumpWidget(const SizedBox());
   });
 

@@ -282,9 +282,11 @@ void main() {
   });
 
   group('3. the Wi-Fi page only when needed', () {
-    testWidgets('360x640: a gateway on no Wi-Fi — the station first, then '
-        '「設定閘道器的 Wi-Fi」 with 〔儲存並繼續〕 (site and Wi-Fi sent '
-        'together)', (tester) async {
+    // 1.0.0+15 (09-29 field): the Wi-Fi first, then the station (was: the
+    // station first, then its Wi-Fi page, both sent together).
+    testWidgets('360x640: a gateway on no Wi-Fi — 「設定閘道器的 Wi-Fi」 '
+        'with 〔儲存並繼續〕 first (Wi-Fi only), then the station with that '
+        'Wi-Fi kept (identity only)', (tester) async {
       _phoneView(tester);
       final fake = WifiGateway()
         ..config['wifi_ssid'] = 'Xiaomi_WU'
@@ -295,7 +297,23 @@ void main() {
       expect(_title(tester), wifiProblemTaskTitle);
       await _tap(tester, find.text('重設 Wi-Fi'));
 
+      expect(_title(tester), wifiTaskTitle);
+      expect(find.text(wifiFirstPageText), findsOneWidget);
+      expect(find.widgetWithText(TextField, siteFieldLabel), findsNothing);
+      expect(_label(tester, 'wifi-save'), saveWifiLabel);
+      expect(find.text('不改 Wi-Fi，返回'), findsOneWidget);
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Wi-Fi 密碼'),
+        'password123',
+      );
+      await tester.pumpAndSettle();
+      _onScreen(tester, find.byKey(const Key('wifi-save')));
+      await _tap(tester, find.byKey(const Key('wifi-save')));
+      expect(fake.count('set_wifi'), 1);
+      expect(fake.count('set_site_identity'), 0, reason: 'nothing else sent');
+
       expect(_title(tester), stationInputTitle);
+      expect(find.byKey(const Key('wifi-first-done')), findsOneWidget);
       expect(find.widgetWithText(TextField, 'Wi-Fi 密碼'), findsNothing);
       await tester.enterText(
         find.widgetWithText(TextField, siteFieldLabel),
@@ -305,25 +323,13 @@ void main() {
       await tester.pumpAndSettle();
       await _tap(tester, find.byKey(const Key('station-use')));
       await _tap(tester, find.byKey(const Key('new-site-ok')));
-
-      expect(_title(tester), wifiTaskTitle);
-      expect(find.textContaining('將配置為 站點 82'), findsOneWidget);
-      expect(_label(tester, 'wifi-save'), saveWifiLabel);
-      expect(find.text('返回修改站號'), findsOneWidget);
-      expect(fake.count('set_site_identity'), 0, reason: 'nothing sent yet');
-      await tester.enterText(
-        find.widgetWithText(TextField, 'Wi-Fi 密碼'),
-        'password123',
-      );
-      await tester.pumpAndSettle();
-      _onScreen(tester, find.byKey(const Key('wifi-save')));
-      await _tap(tester, find.byKey(const Key('wifi-save')));
       final s = container.read(commissionProvider);
       expect(s.error, isNull);
       expect(fake.count('set_site_identity'), 1);
-      expect(fake.count('set_wifi'), 1);
+      expect(fake.count('set_wifi'), 1, reason: 'the Wi-Fi is not sent again');
       expect(s.config['site_id'], 82);
       expect(s.step, greaterThanOrEqualTo(3));
+      expect(find.text(wifiTaskTitle), findsNothing);
       expect(tester.takeException(), isNull);
     });
 

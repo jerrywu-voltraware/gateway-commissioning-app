@@ -164,17 +164,57 @@ bool isStep8LinkLoss(Object? error, bool current) =>
 /// an IP and `ssid`) and MQTT connected. Null otherwise: firmware without
 /// get_net_status, not joined, MQTT down, or 「保留站點，重設 Wi-Fi」 (a
 /// reset on purpose).
+///
+/// 1.0.0+15: also the Wi-Fi this phone has just set on the network check of
+/// a gateway not in service ([wifiFirstSsidKey], 「先修網路、再設站號」)
+/// while its MQTT still connects — the station after it writes the identity
+/// only (a new identity's upload is confirmed at 確認上線). The Wi-Fi form
+/// itself ([wifiFirstKey]) sets the Wi-Fi on purpose, like 「保留站點」.
 String? keptWifiSsid(CommissionState s) {
-  if (!s.netCheckSupported || s.config['wifi_only'] == true) return null;
+  if (!s.netCheckSupported ||
+      s.config['wifi_only'] == true ||
+      s.config[wifiFirstKey] == true) {
+    return null;
+  }
   final ssid = s.net['ssid'];
   if (s.net['wifi_state'] != 'got_ip' ||
       (s.net['ip']?.toString() ?? '').isEmpty ||
       ssid is! String ||
       ssid.isEmpty ||
-      s.config['mqtt_connected'] != true) {
+      (s.config['mqtt_connected'] != true &&
+          s.config[wifiFirstSsidKey] != ssid)) {
     return null;
   }
   return ssid;
+}
+
+/// 1.0.0+15 (09-29 field: a gateway not in service, 「✗ Gateway 找不到
+/// Wi-Fi『Xiaomi_WU』」, 〔重設 Wi-Fi〕 opened 「請輸入這台要配置的站號」 —
+/// read as the wrong page): its Wi-Fi is fixed first, on the network check,
+/// then the station is chosen. Config key of that Wi-Fi form (set_wifi
+/// only, no identity, no restart).
+const wifiFirstKey = 'wifi_first';
+
+/// 1.0.0+15: config key of the SSID that form joined ([keptWifiSsid]).
+const wifiFirstSsidKey = 'wifi_first_ssid';
+
+/// 1.0.0+15: busy label of the Wi-Fi-first form (no identity is written).
+const wifiFirstRunLabel = '設定 Wi-Fi';
+
+/// 1.0.0+15: the station page after the Wi-Fi-first form joined.
+const wifiFirstDoneText = '網路已正常，接著設定站號。';
+
+/// 1.0.0+15: the Wi-Fi-first form joined, but another check item has not
+/// passed (upload target, test mode): back on the check.
+const wifiFirstCheckText = 'Wi-Fi 已連上。網路體檢還有項目沒通過，請依下方提示處理。';
+
+/// 1.0.0+15: the station page says [wifiFirstDoneText] while the Wi-Fi the
+/// gateway not in service joined on the check ([wifiFirstSsidKey]) is kept.
+bool wifiFirstJoined(CommissionState s) {
+  final ssid = s.config[wifiFirstSsidKey];
+  return s.config['fleet_joined'] != true &&
+      ssid is String &&
+      keptWifiSsid(s) == ssid;
 }
 
 /// Round 30: the station form's line when [keptWifiSsid] is kept.
@@ -3882,6 +3922,11 @@ class CommissioningController extends Notifier<CommissionState> {
   /// its site / gateway numbers and PTUs (Wi-Fi only); a new gateway gets the
   /// identity + Wi-Fi form.
   ///
+  /// 1.0.0+15: a gateway not in service (`fleet_joined` not true) gets the
+  /// same Wi-Fi-only form ([wifiFirstKey]): set_wifi, no identity, no
+  /// restart; once it joins, the check is read again and the station is
+  /// chosen next ([configureWifiFirst]).
+  ///
   /// [target]: the upload target must change too. It is sent FIRST, without
   /// waiting for the upload: set_mqtt_target always reboots, and the boot
   /// reads the Wi-Fi from NVS, while set_wifi reconnects in place without a
@@ -3904,6 +3949,7 @@ class CommissioningController extends Notifier<CommissionState> {
         'choose_station': false,
         'new_station': false,
         'wifi_only': station,
+        wifiFirstKey: !station,
       },
       results: {},
       assignStatus: {},
@@ -3911,8 +3957,16 @@ class CommissioningController extends Notifier<CommissionState> {
       report: '',
       message: station
           ? '保留目前站點與 PTU，只重設 Wi-Fi。請選 2.4 GHz 的 Wi-Fi。'
-          : '請設定身份與 Wi-Fi（Gateway 只能用 2.4 GHz）。',
+          : '請先設定 Wi-Fi（Gateway 只能用 2.4 GHz），網路正常後再設定站號。',
     );
+  }
+
+  /// 1.0.0+15: 〔儲存並繼續〕 on the Wi-Fi-first form ([startWifiFix], a
+  /// gateway not in service): set_wifi only, with the gateway's numbers as
+  /// they are (nothing else is sent).
+  Future<void> configureWifiFirst(String ssid, String password) async {
+    if (state.config[wifiFirstKey] != true) return;
+    await configureWifi(site, gateway, ssid, password);
   }
 
   /// Back to the network check from the station choice or a Wi-Fi form.
@@ -3927,6 +3981,7 @@ class CommissioningController extends Notifier<CommissionState> {
         'choose_station': station,
         'new_station': false,
         'wifi_only': false,
+        wifiFirstKey: false,
       },
       selected: station
           ? state.ptus.map((d) => d['mac'].toString()).toSet()
@@ -4347,18 +4402,22 @@ class CommissioningController extends Notifier<CommissionState> {
     String ssid,
     String password,
     bool replaceExisting,
-  ) => _run('設定身份與 WiFi', 150, (generation) async {
-    final wifiOnly = state.config['wifi_only'] == true;
+  ) => _run(_configureWifiLabel, 150, (generation) async {
+    // 1.0.0+15: the Wi-Fi-first form ([startWifiFix]) of a gateway not in
+    // service sends the Wi-Fi like 「保留站點」 (no identity, no backend).
+    final wifiFirst = state.config[wifiFirstKey] == true;
+    final wifiOnly = state.config['wifi_only'] == true || wifiFirst;
     if (wifiOnly && (newSite != site || newGateway != gateway)) {
       throw const GatewayFailure('conflict');
     }
     if (state.config['new_station'] == true && newSite == site) {
       throw const GatewayFailure('new_site_required');
     }
-    if (newSite < 1 ||
-        newSite > 65535 ||
-        newGateway < 1 ||
-        newGateway > kMaxGatewayId ||
+    if ((!wifiFirst &&
+            (newSite < 1 ||
+                newSite > 65535 ||
+                newGateway < 1 ||
+                newGateway > kMaxGatewayId)) ||
         utf8.encode(ssid).isEmpty ||
         utf8.encode(ssid).length > 32) {
       throw const GatewayFailure('wifi_failed');
@@ -4536,6 +4595,7 @@ class CommissioningController extends Notifier<CommissionState> {
           : ({...state.config, 'wifi_ssid': ssid}..remove('mqtt_connected')),
       uploadLate: false,
     );
+    if (wifiFirst) return _wifiFirstJoined(generation, ssid);
     if (wifiOnly) {
       // The station is kept and the next page verifies data, so the upload
       // is confirmed first (網路體檢 → 確認資料上傳).
@@ -4558,6 +4618,43 @@ class CommissioningController extends Notifier<CommissionState> {
       message: keepWifi ? wifiKeptDoneText(ssid) : 'WiFi 已連線，下一步確認後端看得到閘道器',
     );
   });
+
+  String get _configureWifiLabel =>
+      state.config[wifiFirstKey] == true ? wifiFirstRunLabel : '設定身份與 WiFi';
+
+  /// 1.0.0+15: the Wi-Fi-first form's [ssid] joined — the network check is
+  /// read again on it; with the Wi-Fi and the upload target fine the
+  /// station is chosen next (a gateway not in service confirms its upload
+  /// after the identity, at 確認上線, so that item does not hold it up),
+  /// otherwise the check shows what is left. The station keeps this Wi-Fi
+  /// ([keptWifiSsid]): only the identity is written.
+  Future<void> _wifiFirstJoined(int generation, String ssid) async {
+    if (state.netCheckSupported) {
+      try {
+        final net = await _command(generation, 'get_net_status');
+        _absorbTarget(net);
+        _absorbNet(net);
+      } on GatewayFailure catch (error) {
+        // Joined a moment ago (read above); a busy read is not a failure.
+        if (!['busy', 'not_ready', 'timeout'].contains(error.code)) rethrow;
+      }
+    }
+    final check = networkCheck(state: state, env: ref.read(backendEnvProvider));
+    final next = check.wifiOk && check.targetOk && !state.testMode;
+    state = state.copy(
+      checkPassed: next,
+      config: {
+        ...state.config,
+        'choose_station': false,
+        'new_station': false,
+        'wifi_only': false,
+        wifiFirstKey: false,
+        wifiFirstSsidKey: ssid,
+      },
+      message: next ? wifiFirstDoneText : wifiFirstCheckText,
+    );
+  }
+
   Future<Map<String, dynamic>?> _fleet(int generation) async {
     final response = await _request(
       generation,

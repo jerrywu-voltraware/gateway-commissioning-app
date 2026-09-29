@@ -301,10 +301,20 @@ NetworkCheck networkCheck({
   );
 }
 
+/// 1.0.0+15: the Wi-Fi form opened by 〔重設 Wi-Fi〕 on the check — a station
+/// kept (`wifi_only`) or a gateway not in service fixing its network before
+/// its station ([wifiFirstKey]). Part of the network check, never shown as
+/// 「站點選擇」.
+bool wifiFormOfCheck(CommissionState s) =>
+    s.step == 2 &&
+    s.checkPassed &&
+    (s.config['wifi_only'] == true || s.config[wifiFirstKey] == true);
+
 /// Index into [stepLabels] for the controller state.
 int displayStep(CommissionState s, BackendEnvState env) => switch (s.step) {
   0 => 0,
   1 => 1,
+  2 when wifiFormOfCheck(s) => 2,
   2 => s.checkPassed ? 5 : 2 + networkCheck(state: s, env: env).stage.index,
   3 => 4,
   4 => 6,

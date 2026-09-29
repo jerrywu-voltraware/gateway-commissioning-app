@@ -299,7 +299,10 @@ void main() {
       },
     );
 
-    test('new gateway: 設定 Wi-Fi opens the identity and Wi-Fi form', () async {
+    // 1.0.0+15: the Wi-Fi first (set_wifi only), then the station and the
+    // identity with that Wi-Fi kept (was: one identity + Wi-Fi form).
+    test('new gateway: 設定 Wi-Fi opens the Wi-Fi form first, then the '
+        'station with the Wi-Fi kept', () async {
       final fake = WifiGateway()..simulateWifi('disconnected');
       final (container, c) = await _connected(fake);
       addTearDown(container.dispose);
@@ -308,12 +311,20 @@ void main() {
       var s = container.read(commissionProvider);
       expect(s.checkPassed, isTrue);
       expect(s.config['wifi_only'], isFalse);
-      await c.configureWifi(5, 2, 'Office-2G', 'password123');
+      expect(s.config[wifiFirstKey], isTrue);
+      await c.configureWifiFirst('Office-2G', 'password123');
+      s = container.read(commissionProvider);
+      expect(s.error, isNull);
+      expect(s.step, 2);
+      expect(s.config[wifiFirstKey], isFalse, reason: 'the station is next');
+      expect(fake.count('set_site_identity'), 0);
+      await c.configureWifi(5, 2, 'Office-2G', '');
       s = container.read(commissionProvider);
       expect(s.error, isNull);
       expect(s.step, 3);
       expect(fake.config['site_id'], 5);
       expect(fake.config['wifi_ssid'], 'Office-2G');
+      expect(fake.count('set_wifi'), 1, reason: 'the Wi-Fi is not sent again');
     });
 
     test('connecting right after a boot gets a grace period', () async {
