@@ -19,6 +19,7 @@ import 'package:gateway_commissioning/core/protocol.dart';
 import 'package:gateway_commissioning/data/contracts.dart';
 import 'package:gateway_commissioning/data/demo_system.dart';
 import 'package:gateway_commissioning/gateway_app.dart';
+import 'support/pick_gateway.dart';
 
 const _production = BackendEnvState(loaded: true);
 
@@ -625,7 +626,10 @@ void main() {
 
     Future<void> connect(WidgetTester tester) async {
       await tap(tester, find.text('檢查並開始'));
-      await tap(tester, find.byKey(const ValueKey('demo-gateway')));
+      await pickGateway(
+        (f) => tap(tester, f),
+        find.byKey(const ValueKey('demo-gateway')),
+      );
     }
 
     testWidgets('restart notice: plain reason, 知道了 hides it', (tester) async {

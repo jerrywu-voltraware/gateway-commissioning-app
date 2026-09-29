@@ -14,6 +14,7 @@ import 'package:gateway_commissioning/data/demo_system.dart';
 import 'package:gateway_commissioning/data/local_backend_probe.dart';
 import 'package:gateway_commissioning/gateway_app.dart';
 import 'package:gateway_commissioning/presentation/environment_switch.dart';
+import 'support/pick_gateway.dart';
 
 const _debug = EnvSwitchPolicy(
   autoSyncDefault: true,
@@ -169,7 +170,10 @@ String _chipText(WidgetTester tester) => tester
 
 Future<void> _connectGateway(WidgetTester tester) async {
   await _tap(tester, find.text('檢查並開始'));
-  await _tap(tester, find.byKey(const ValueKey('demo-gateway')));
+  await pickGateway(
+    (f) => _tap(tester, f),
+    find.byKey(const ValueKey('demo-gateway')),
+  );
 }
 
 /// The network check shown right after connecting has passed: go on to the
@@ -385,6 +389,9 @@ void main() {
     fake.connectGate = Completer<void>();
     await tester.ensureVisible(find.byKey(const ValueKey('demo-gateway')));
     await tester.tap(find.byKey(const ValueKey('demo-gateway')));
+    await tester.pump();
+    // 1.0.0+14: the card's tap selects; the fixed bottom button connects.
+    await tester.tap(gatewayConnectButton);
     await tester.pump();
     expect(container.read(commissionProvider).busy, isTrue);
     // 1.0.0+11: the list keeps its rows while busy (the page is longer):

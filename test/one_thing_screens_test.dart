@@ -32,6 +32,7 @@ import 'package:gateway_commissioning/presentation/gateway_signal.dart';
 import 'gateway_signal_test.dart' show SignalLink;
 import 'network_check_test.dart' show WifiGateway;
 import 'round15_direct_flow_test.dart' show PickGateway;
+import 'support/pick_gateway.dart';
 
 class _Prober implements LocalBackendProber {
   @override
@@ -102,8 +103,10 @@ Future<void> _tap(WidgetTester tester, Finder finder) async {
   await tester.pumpAndSettle();
 }
 
-Future<void> _connect(WidgetTester tester) =>
-    _tap(tester, find.byKey(const ValueKey('demo-gateway')));
+Future<void> _connect(WidgetTester tester) => pickGateway(
+  (f) => _tap(tester, f),
+  find.byKey(const ValueKey('demo-gateway')),
+);
 
 String _title(WidgetTester tester) =>
     tester.widget<Text>(find.byKey(const Key('task-title'))).data!;

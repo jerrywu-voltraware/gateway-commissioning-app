@@ -9,6 +9,11 @@
 // - no text beyond the right edge of the screen (a sideways-scrolling
 //   table's cells excepted);
 // - the AppBar title whole, in the one AppBar size (titleMedium, 16).
+//
+// 1.0.0+14: the gateway list with a gateway selected (the fixed bottom
+// button 〔連線到 …〕), one not configured selected, and while connecting.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -104,6 +109,39 @@ class _SwapGateways extends _TwoGateways {
       };
     }
     return result;
+  }
+}
+
+/// 1.0.0+14: [_TwoGateways] with 81/1 in the back office (「站 81 · 閘道器
+/// 1」; 80/2 is not: 「未配置閘道器 …70F0」); its connect can be held
+/// ([hold]: the list's 「連線中…」).
+class _SelectGateways extends _TwoGateways {
+  Completer<void>? hold;
+
+  @override
+  Future<void> connect(
+    GatewayPeer peer, {
+    void Function(String stage)? onStage,
+  }) async {
+    await hold?.future;
+    return super.connect(peer, onStage: onStage);
+  }
+
+  @override
+  Future<Map<String, dynamic>> request(
+    String method,
+    String path, [
+    Map<String, dynamic>? body,
+  ]) async {
+    final result = await super.request(method, path, body);
+    if (!path.contains('fleet-status')) return result;
+    return {
+      ...result,
+      'gateways': [
+        ...result['gateways'] as List,
+        {'site_id': 81, 'gateway_id': 1, 'online': true},
+      ],
+    };
   }
 }
 
@@ -317,11 +355,13 @@ ScrollPosition? _pageScroll(WidgetTester tester) {
   return found;
 }
 
-/// [page] at every size and text scale, scrolled top to bottom.
+/// [page] at every size and text scale, scrolled top to bottom; [also]
+/// checks more at each place (1.0.0+14: the list's bottom button).
 Future<void> _checkPage(
   WidgetTester tester,
   String page, {
   List<String>? covered,
+  void Function(String where)? also,
 }) async {
   for (final size in _sizes) {
     for (final scale in _scales) {
@@ -335,6 +375,7 @@ Future<void> _checkPage(
       scroll?.jumpTo(0);
       await _frames(tester);
       _checkTexts(tester, where);
+      also?.call(where);
       while (scroll != null && scroll.pixels < scroll.maxScrollExtent - 0.5) {
         scroll.jumpTo(
           (scroll.pixels + scroll.viewportDimension * 0.8).clamp(
@@ -344,6 +385,7 @@ Future<void> _checkPage(
         );
         await _frames(tester);
         _checkTexts(tester, '$where (scrolled ${scroll.pixels.round()})');
+        also?.call('$where (scrolled ${scroll.pixels.round()})');
       }
       scroll?.jumpTo(0);
       covered?.add(where);
@@ -455,6 +497,56 @@ GatewayPeer _demoPeer(ProviderContainer container) => container
     .peers
     .firstWhere((p) => p.id == 'demo-gateway');
 
+/// 1.0.0+14: selects the gateway [id] on the list (its card's tap).
+Future<void> _select(WidgetTester tester, String id) async {
+  final card = find.byKey(ValueKey(id));
+  await tester.ensureVisible(card);
+  await tester.pumpAndSettle();
+  await tester.tap(card);
+  await tester.pumpAndSettle();
+}
+
+String _connectText(WidgetTester tester) =>
+    tester.widget<Text>(find.byKey(const Key('gateway-connect-text'))).data!;
+
+/// 1.0.0+14: the list's bottom button — on screen, ≥ 48 dp, its text on
+/// one line and whole; at the end of the page 〔結束配置〕 above the bar.
+void _checkConnectBar(WidgetTester tester, String where) {
+  final button = find.byKey(const Key('gateway-connect'));
+  expect(button, findsOneWidget, reason: '$where: bottom button');
+  final rect = tester.getRect(button);
+  final screen = tester.view.physicalSize / tester.view.devicePixelRatio;
+  expect(rect.height, greaterThanOrEqualTo(48), reason: '$where: 48 dp');
+  expect(rect.bottom, lessThanOrEqualTo(screen.height + 0.5));
+  expect(rect.right, lessThanOrEqualTo(screen.width + 0.5));
+  final bar = tester.getRect(find.byKey(const Key('gateway-connect-bar')));
+  final leave = find.byKey(const Key('page-cancel'));
+  final scroll = _pageScroll(tester);
+  if (scroll != null &&
+      scroll.pixels >= scroll.maxScrollExtent - 0.5 &&
+      leave.evaluate().isNotEmpty) {
+    expect(
+      tester.getRect(leave).bottom,
+      lessThanOrEqualTo(bar.top + 0.5),
+      reason: '$where: 〔結束配置〕 under the bar',
+    );
+  }
+  if (!_realFonts) return;
+  final text = tester.renderObject<RenderParagraph>(
+    find.descendant(
+      of: find.byKey(const Key('gateway-connect-text')),
+      matching: find.byType(RichText),
+    ),
+  );
+  final plain = text.text.toPlainText();
+  expect(text.didExceedMaxLines, isFalse, reason: '$where: 「$plain」 cut');
+  expect(
+    text.getMaxIntrinsicWidth(double.infinity),
+    lessThanOrEqualTo(text.size.width + 0.5),
+    reason: '$where: 「$plain」 not on one line',
+  );
+}
+
 void main() {
   setUpAll(() async => _realFonts = await loadRealFonts());
 
@@ -492,6 +584,77 @@ void main() {
     expect(find.text('開啟權限設定'), findsNothing);
     expect(find.byKey(const Key('field-help-appbar')), findsOneWidget);
     await _checkPage(tester, 'gateway list');
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  // 1.0.0+14: a card's tap selects, the fixed bottom button connects.
+  testWidgets('gateway list, a gateway selected: 〔連線到 站 81 · 閘道器 1〕 '
+      'fixed at the bottom, 〔結束配置〕 above it', (tester) async {
+    await _toList(tester, fake: _SelectGateways());
+    await _select(tester, 'demo-gateway');
+    expect(
+      find.byKey(const ValueKey('gateway-selected-demo-gateway')),
+      findsOneWidget,
+    );
+    expect(_connectText(tester), '連線到 站 81 · 閘道器 1');
+    await _checkPage(
+      tester,
+      'gateway list, selected',
+      also: (where) => _checkConnectBar(tester, where),
+    );
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('gateway list, a gateway not configured selected: 「未配置閘道器」 '
+      'on one line, 〔連線到 未配置閘道器 …70F0〕 whole', (tester) async {
+    await _toList(tester, fake: _SelectGateways());
+    const id = 'A0:DD:6C:A3:70:F2';
+    await _select(tester, id);
+    final title = tester.widget<Text>(
+      find.byKey(const ValueKey('gateway-title-$id')),
+    );
+    expect(title.data, '未配置閘道器');
+    expect(title.maxLines, 1);
+    expect(
+      tester
+          .widget<Text>(find.byKey(const ValueKey('gateway-detail-$id')))
+          .data,
+      '…70F0',
+    );
+    expect(_connectText(tester), '連線到 未配置閘道器 …70F0');
+    await _checkPage(
+      tester,
+      'gateway list, not configured selected',
+      also: (where) => _checkConnectBar(tester, where),
+    );
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('gateway list while connecting: the button and the card '
+      '「連線中…」', (tester) async {
+    final fake = _SelectGateways()..hold = Completer<void>();
+    final container = await _toList(tester, fake: fake);
+    const id = 'A0:DD:6C:A3:70:F2';
+    await _select(tester, id);
+    await tester.tap(find.byKey(const Key('gateway-connect')));
+    await _frames(tester);
+    expect(container.read(commissionProvider).busy, isTrue);
+    expect(_connectText(tester), '連線中…');
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('gateway-selected-$id')),
+        matching: find.text('連線中…'),
+      ),
+      findsOneWidget,
+    );
+    await _checkPage(
+      tester,
+      'gateway list, connecting',
+      also: (where) => _checkConnectBar(tester, where),
+    );
+    fake.hold!.complete();
+    await tester.pumpAndSettle();
+    expect(container.read(commissionProvider).step, 2);
     await tester.pumpWidget(const SizedBox());
   });
 

@@ -39,6 +39,7 @@ import 'package:gateway_commissioning/presentation/gateway_discovery.dart';
 
 import 'gateway_discovery_test.dart' show LiveLink;
 import 'round15_direct_flow_test.dart' show PickGateway;
+import 'support/pick_gateway.dart';
 
 const _ownPtu = 'AA:BB:CC:00:00:01';
 const _base = 'https://example.invalid';
@@ -559,7 +560,7 @@ void main() {
         ),
       );
       // The gateway list: tap the gateway (fills the forms).
-      await tap(find.byKey(const ValueKey('demo-gateway')));
+      await pickGateway(tap, find.byKey(const ValueKey('demo-gateway')));
       expect(container.read(commissionProvider).step, 2);
       expect(container.read(commissionProvider).checkPassed, isTrue);
       expect(

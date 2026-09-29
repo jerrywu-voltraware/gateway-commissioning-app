@@ -63,6 +63,10 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   /// A global key keeps the list's state across that move.
   final _discoveryKey = GlobalKey(debugLabel: 'gateway-discovery');
 
+  /// 1.0.0+14: the gateway selected on the list, for the fixed bottom
+  /// button 〔連線到 …〕 ([GatewayConnectBar]).
+  final _gatewayChoice = GatewayChoice();
+
   /// Mirrors the selected backend URL (editable only for 其他網址); the
   /// source of truth is [backendEnvProvider].
   final _base = TextEditingController(text: productionApiBase);
@@ -908,6 +912,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   @override
   void dispose() {
     _pageScroll.dispose();
+    _gatewayChoice.dispose();
     _baseTyping?.cancel();
     _suggestTyping?.cancel();
     WidgetsBinding.instance.removeObserver(this);
@@ -1525,6 +1530,10 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               )
             : done
             ? _doneBar(state, controller)
+            // 1.0.0+14: the gateway list — a card's tap selects, this
+            // button connects (〔結束配置〕 stays at the end of the page).
+            : state.step == 1
+            ? GatewayConnectBar(choice: _gatewayChoice, enabled: !state.busy)
             : null,
         body: SafeArea(
           child: Center(
@@ -2923,9 +2932,11 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             key: _discoveryKey,
             enabled: enabled,
             // 1.0.0+9: 「辨識」 only blinks (connect → identify → disconnect)
-            // and stays on this list; the row's tap chooses the gateway.
+            // and stays on this list. 1.0.0+14: the card's tap selects the
+            // gateway, the fixed bottom button connects to it.
             onIdentify: c.identifyPeer,
             onConnect: (peer) => _connectPeer(c, peer),
+            choice: _gatewayChoice,
           ),
         ];
       case 2:

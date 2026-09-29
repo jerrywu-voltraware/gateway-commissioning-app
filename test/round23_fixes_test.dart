@@ -33,6 +33,7 @@ import 'network_check_test.dart' show WifiGateway;
 import 'round13_fixes_test.dart' show Round13Link;
 import 'round15_direct_flow_test.dart' show PickGateway;
 import 'round21_fixes_test.dart' show R21Assign;
+import 'support/pick_gateway.dart';
 
 const _phone = Size(360, 640);
 
@@ -626,6 +627,9 @@ void main() {
       final scrolled = tester.widget<Scrollable>(_page).controller!.offset;
       await tester.tap(gateway);
       await tester.pumpAndSettle();
+      // 1.0.0+14: the card's tap selects; the fixed bottom button connects.
+      await tester.tap(gatewayConnectButton);
+      await tester.pumpAndSettle();
 
       expect(title(tester), '6 / 10   站點選擇');
       expect(read().checkPassed, isTrue);
@@ -672,7 +676,10 @@ void main() {
       final fake = WifiGateway.station()..simulateWifi('disconnected');
       await pumpCheckApp(tester, fake);
       await tap(tester, find.text('檢查並開始'));
-      await tap(tester, find.byKey(const ValueKey('demo-gateway')));
+      await pickGateway(
+        (f) => tap(tester, f),
+        find.byKey(const ValueKey('demo-gateway')),
+      );
       expect(find.byKey(const Key('check-next')), findsNothing);
       final refresh = find.byKey(const Key('check-refresh'));
       await tester.scrollUntilVisible(refresh, 120, scrollable: _page);

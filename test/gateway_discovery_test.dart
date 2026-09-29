@@ -101,6 +101,9 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
       var connected = false;
+      // 1.0.0+14: the page's fixed bottom button connects the selection.
+      final choice = GatewayChoice();
+      addTearDown(choice.dispose);
       await tester.pumpWidget(
         ProviderScope(
           overrides: [linkProvider.overrideWithValue(link)],
@@ -109,12 +112,14 @@ void main() {
               body: SingleChildScrollView(
                 child: GatewayDiscovery(
                   enabled: true,
+                  choice: choice,
                   onConnect: (peer) async {
                     expect(link.stopped, isTrue);
                     connected = true;
                   },
                 ),
               ),
+              bottomNavigationBar: GatewayConnectBar(choice: choice),
             ),
           ),
         ),
@@ -128,7 +133,23 @@ void main() {
       // 1.0.0+10: the title only (the advertised name is not repeated).
       // 1.0.0+12: the factory name 1/1 is a gateway not configured —
       // 「未配置閘道器」 and its Wi-Fi MAC tail, not 「站 1 · 閘道器 1」.
-      expect(find.text('未配置閘道器 …EEFD'), findsOneWidget);
+      // 1.0.0+14: the title 「未配置閘道器」 (one line), the tail on line 3.
+      expect(
+        tester
+            .widget<Text>(
+              find.byKey(const ValueKey('gateway-title-AA:BB:CC:DD:EE:FF')),
+            )
+            .data,
+        '未配置閘道器',
+      );
+      expect(
+        tester
+            .widget<Text>(
+              find.byKey(const ValueKey('gateway-detail-AA:BB:CC:DD:EE:FF')),
+            )
+            .data,
+        '…EEFD',
+      );
       expect(find.text('站 1 · 閘道器 1'), findsNothing);
       expect(find.textContaining('GIOS-S1-GW01'), findsNothing);
       expect(find.textContaining('後端未知'), findsWidgets);
@@ -137,9 +158,16 @@ void main() {
       // 1.0.0+9: the row is an InkWell (no ListTile).
       final row = find.byKey(const ValueKey('AA:BB:CC:DD:EE:FF'));
       expect(tester.widget<InkWell>(row).onTap, isNotNull);
+      // 1.0.0+14: the row's tap selects (the scan goes on); the bottom
+      // button 〔連線到 未配置閘道器 …EEFD〕 connects.
       await tester.tap(row);
+      await tester.pump();
+      expect(link.stopped, isFalse);
+      expect(connected, isFalse);
+      expect(find.text('連線到 未配置閘道器 …EEFD'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('gateway-connect')));
       await tester.pump(const Duration(milliseconds: 500));
-      expect(link.stopped, isTrue, reason: 'tap must stop scanner');
+      expect(link.stopped, isTrue, reason: 'connect must stop scanner');
       await tester.runAsync(() async {
         await Future<void>.delayed(const Duration(milliseconds: 10));
       });

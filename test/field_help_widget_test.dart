@@ -14,6 +14,7 @@ import 'package:gateway_commissioning/data/contracts.dart';
 import 'package:gateway_commissioning/data/demo_system.dart';
 import 'package:gateway_commissioning/gateway_app.dart';
 import 'package:gateway_commissioning/presentation/field_help_sheet.dart';
+import 'support/pick_gateway.dart';
 
 /// Demo gateway + backend recording the rescue uploads ([mode] `ok` /
 /// `network`); [failOp] times out once. Logged in as [operatorName].
@@ -115,7 +116,10 @@ Future<void> _tap(WidgetTester tester, Finder finder) async {
 /// 檢查並開始 → the demo gateway (network check, 第 3–5 步).
 Future<void> _connect(WidgetTester tester) async {
   await _tap(tester, find.text('檢查並開始'));
-  await _tap(tester, find.byKey(const ValueKey('demo-gateway')));
+  await pickGateway(
+    (f) => _tap(tester, f),
+    find.byKey(const ValueKey('demo-gateway')),
+  );
 }
 
 /// A red box: re-reading the gateway times out. The page is scrolled back

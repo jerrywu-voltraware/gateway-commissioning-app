@@ -28,6 +28,7 @@ import 'package:gateway_commissioning/gateway_app.dart';
 import 'package:gateway_commissioning/presentation/commissioning_page.dart';
 
 import 'network_check_test.dart' show WifiGateway;
+import 'support/pick_gateway.dart';
 
 class _Prober implements LocalBackendProber {
   @override
@@ -220,7 +221,10 @@ void main() {
       _phoneView(tester);
       final fake = _ArchivedGateway();
       final container = await _pump(tester, fake);
-      await _tap(tester, find.byKey(const ValueKey('demo-gateway')));
+      await pickGateway(
+        (f) => _tap(tester, f),
+        find.byKey(const ValueKey('demo-gateway')),
+      );
       await _typeSite56(tester);
       expect(find.byKey(const Key('archived-confirm')), findsOneWidget);
       expect(find.text(archivedConfirmTitle), findsOneWidget);
@@ -267,7 +271,10 @@ void main() {
       _phoneView(tester);
       final fake = _ArchivedGateway();
       final container = await _pump(tester, fake);
-      await _tap(tester, find.byKey(const ValueKey('demo-gateway')));
+      await pickGateway(
+        (f) => _tap(tester, f),
+        find.byKey(const ValueKey('demo-gateway')),
+      );
       await _typeSite56(tester);
       await _tap(tester, find.byKey(const Key('archived-other-site')));
 

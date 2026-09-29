@@ -31,6 +31,7 @@ import 'package:gateway_commissioning/presentation/commissioning_page.dart';
 import 'package:gateway_commissioning/presentation/environment_switch.dart';
 import 'package:gateway_commissioning/presentation/gateway_discovery.dart';
 import 'package:gateway_commissioning/presentation/recent_data_page.dart';
+import 'support/pick_gateway.dart';
 
 class _Prober implements LocalBackendProber {
   @override
@@ -321,6 +322,9 @@ void main() {
       final link = _LiveLink();
       addTearDown(link.events.close);
       GatewayPeer? connected, identified;
+      // 1.0.0+14: the page's fixed bottom button connects the selection.
+      final choice = GatewayChoice();
+      addTearDown(choice.dispose);
       await tester.pumpWidget(
         ProviderScope(
           overrides: [linkProvider.overrideWithValue(link)],
@@ -329,6 +333,7 @@ void main() {
               body: SingleChildScrollView(
                 child: GatewayDiscovery(
                   enabled: true,
+                  choice: choice,
                   onConnect: (peer) async => connected = peer,
                   onIdentify: (peer) async {
                     identified = peer;
@@ -336,6 +341,7 @@ void main() {
                   },
                 ),
               ),
+              bottomNavigationBar: GatewayConnectBar(choice: choice),
             ),
           ),
         ),
@@ -462,8 +468,12 @@ void main() {
       await settle();
       expect(identified?.id, 'AA:BB:CC:DD:3B:02');
       expect(connected, isNull);
-      // Tapping the row selects it.
+      // Tapping the row selects it (1.0.0+14: and only that); the bottom
+      // button connects to it.
       await tester.tap(find.byKey(const ValueKey('AA:BB:CC:DD:3A:02')));
+      await settle();
+      expect(connected, isNull);
+      await tester.tap(find.byKey(const Key('gateway-connect')));
       await settle();
       expect(connected?.id, 'AA:BB:CC:DD:3A:02');
       expect(tester.takeException(), isNull);
@@ -629,7 +639,8 @@ void main() {
         find.descendant(of: chip, matching: find.byType(Container)).first,
       );
       expect((box.decoration as BoxDecoration).color, gatewayNearestColor);
-      // First in the list, its card outlined.
+      // First in the list. 1.0.0+14: its card is not outlined (an outline
+      // is the selection's only; 「最近」 is the green chip alone).
       expect(
         tester.getRect(find.byKey(const ValueKey('AA:BB:CC:DD:3A:02'))).top,
         lessThan(
@@ -644,7 +655,7 @@ void main() {
             )
             .first,
       );
-      expect(card.shape, isA<RoundedRectangleBorder>());
+      expect(card.shape, isNull);
       // 30 dB apart: no 「差距小」 warning.
       expect(find.byKey(const Key('gateway-close-hint')), findsNothing);
       expect(tester.takeException(), isNull);
@@ -685,7 +696,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.textContaining(identifiedHint), findsNothing);
       // The row's tap chooses the gateway and goes on.
-      await _tap(tester, find.byKey(const ValueKey('demo-gateway')));
+      await pickGateway(
+        (f) => _tap(tester, f),
+        find.byKey(const ValueKey('demo-gateway')),
+      );
       expect(read().peer?.id, 'demo-gateway');
       expect(read().step, greaterThanOrEqualTo(2));
       expect(fake.identifyRequests.length, 1);

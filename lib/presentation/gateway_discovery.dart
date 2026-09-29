@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../application/backend_environment.dart';
@@ -22,8 +23,221 @@ const identifiedHint = '已閃燈';
 /// 1.0.0+9: how long [identifiedHint] stays.
 const identifiedHintFor = Duration(seconds: 3);
 
-/// 1.0.0+10: the 「最近」 chip's fill and the nearest card's outline.
+/// 1.0.0+10: the 「最近」 chip's fill. 1.0.0+14: no longer the nearest
+/// card's outline — an outline is the selection's only (a green one was
+/// read as 「selected」).
 const gatewayNearestColor = Color(0xFF2E7D32);
+
+/// 1.0.0+14 (user on the phone: 「選擇這邊的時候沒有選擇的體感，會不知道是
+/// 不是真的選到我要選的」): a card's tap only selects its gateway — outlined
+/// in the primary colour, tinted, 「✓ 已選取」 on it — and the page's fixed
+/// bottom button ([GatewayConnectBar]) connects to it. Picking the
+/// neighbour's gateway (the wrong pile) is one of the worst field errors.
+const gatewaySelectedLabel = '已選取';
+
+/// 1.0.0+14: on the selected card and the bottom button while it connects.
+const gatewayConnectingLabel = '連線中…';
+
+/// 1.0.0+14: the bottom button while nothing is selected (disabled).
+const gatewayPickFirstLabel = '請先點選要連線的閘道器';
+
+/// 1.0.0+14: the bottom button for the gateway selected — [title] from the
+/// same source as the card's title (「站 80 · 閘道器 2」, 「未配置閘道器
+/// …70F0」).
+String gatewayConnectLabel(String title) => '連線到 $title';
+
+/// 1.0.0+14: the gateway selected on [GatewayDiscovery] (not connected
+/// yet), shared with the page's fixed [GatewayConnectBar]: the list writes
+/// it, the bar shows it and asks the list to connect ([connect]). Cleared
+/// when the list goes (〔結束配置〕, 返回, a connected gateway) and on
+/// 〔重新搜尋〕.
+class GatewayChoice extends ChangeNotifier {
+  GatewayPeer? _peer;
+  String? _title;
+  bool _connecting = false, _busy = false, _disposed = false;
+  VoidCallback? _connect;
+  Object? _owner;
+
+  /// The gateway selected; null while none is.
+  GatewayPeer? get peer => _peer;
+
+  /// Its title as the list shows it (the bottom button's text).
+  String? get title => _title;
+
+  /// Its connect runs (the button's spinner and 「連線中…」).
+  bool get connecting => _connecting;
+
+  /// The list runs something (a connect or 〔辨識〕): nothing to press.
+  bool get busy => _busy;
+
+  /// The bottom button: the list connects to [peer] (its own connect: the
+  /// scan stops first).
+  void connect() => _connect?.call();
+
+  void _set({
+    required GatewayPeer? peer,
+    required String? title,
+    required bool connecting,
+    required bool busy,
+  }) {
+    if (_disposed) return;
+    if (peer?.id == _peer?.id &&
+        title == _title &&
+        connecting == _connecting &&
+        busy == _busy) {
+      _peer = peer;
+      return;
+    }
+    _peer = peer;
+    _title = title;
+    _connecting = connecting;
+    _busy = busy;
+    notifyListeners();
+  }
+
+  /// Forgets the selection without telling the bar (a list being disposed
+  /// runs inside a frame); [_changed] tells it after the frame.
+  void _reset() {
+    _peer = null;
+    _title = null;
+    _connecting = false;
+    _busy = false;
+  }
+
+  void _changed() {
+    if (!_disposed) notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
+}
+
+/// 1.0.0+14: the gateway list's fixed bottom bar (the page's
+/// `bottomNavigationBar` on the list): 〔連線到 站 S · 閘道器 N〕 for the
+/// gateway selected ([GatewayChoice]), full width, 48 dp. While none is
+/// selected it stays, disabled, reading [gatewayPickFirstLabel] — the bar
+/// is always there, so selecting a card never moves the list, and it says
+/// what to do. While the connect runs: a spinner and 「連線中…」, disabled.
+/// A SnackBar (〔辨識〕's 「已閃燈」) sits above it (Scaffold).
+class GatewayConnectBar extends StatelessWidget {
+  const GatewayConnectBar({
+    super.key,
+    required this.choice,
+    this.enabled = true,
+  });
+  final GatewayChoice choice;
+
+  /// The page lets it run (nothing else is busy).
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: choice,
+    builder: (context, _) {
+      final colors = Theme.of(context).colorScheme;
+      final title = choice.title;
+      final connecting = choice.connecting;
+      return SafeArea(
+        top: false,
+        child: Material(
+          key: const Key('gateway-connect-bar'),
+          elevation: 8,
+          color: colors.surface,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+            child: FilledButton(
+              key: const Key('gateway-connect'),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(48),
+              ),
+              onPressed: enabled && title != null && !choice.busy
+                  ? choice.connect
+                  : null,
+              child: connecting
+                  ? const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        SizedBox(width: 10),
+                        Flexible(
+                          child: Text(
+                            gatewayConnectingLabel,
+                            key: Key('gateway-connect-text'),
+                            maxLines: 1,
+                            softWrap: false,
+                          ),
+                        ),
+                      ],
+                    )
+                  : Text(
+                      title == null
+                          ? gatewayPickFirstLabel
+                          : gatewayConnectLabel(title),
+                      key: const Key('gateway-connect-text'),
+                      maxLines: 2,
+                      textAlign: TextAlign.center,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+            ),
+          ),
+        ),
+      );
+    },
+  );
+}
+
+/// 1.0.0+14: 「✓ 已選取」 (or a spinner and 「連線中…」) on the selected
+/// card — white on the primary colour, the size of the other marks.
+class _SelectedMark extends StatelessWidget {
+  const _SelectedMark({super.key, required this.connecting});
+  final bool connecting;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final style = Theme.of(context).textTheme.labelMedium?.copyWith(
+      color: colors.onPrimary,
+      fontWeight: FontWeight.w700,
+      height: 1.2,
+    );
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: colors.primary,
+        border: Border.all(color: colors.primary),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (connecting)
+            SizedBox.square(
+              dimension: 12,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: colors.onPrimary,
+              ),
+            )
+          else
+            Icon(Icons.check, size: 14, color: colors.onPrimary),
+          const SizedBox(width: 3),
+          Text(
+            connecting ? gatewayConnectingLabel : gatewaySelectedLabel,
+            maxLines: 1,
+            softWrap: false,
+            style: style,
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 /// 1.0.0+11 (phone: 〔辨識〕 paused the scan 2–4 s and every row read
 /// 「未收到廣播」, cutting the title to 「站 80・閘道…」): a gateway heard
@@ -83,9 +297,17 @@ class GatewayDiscovery extends ConsumerStatefulWidget {
     required this.onConnect,
     this.onIdentify,
     this.now,
+    this.choice,
   });
   final bool enabled;
+
+  /// Connects to the gateway selected — 1.0.0+14: from [choice]'s bottom
+  /// button ([GatewayConnectBar]), never from a card's tap.
   final Future<void> Function(GatewayPeer) onConnect;
+
+  /// 1.0.0+14: the selection shared with the page's [GatewayConnectBar];
+  /// null: the list keeps its own (nothing outside can connect).
+  final GatewayChoice? choice;
 
   /// 「辨識」 on a row: blink it and stay on the list (1.0.0+9). Answers
   /// whether the identify was really sent (1.0.0+10: 「已閃燈」 only then —
@@ -160,9 +382,29 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
   bool _background = false;
   int _lifecycleEpoch = 0;
 
+  /// 1.0.0+14: the gateway selected (a card's tap), and its peer as heard
+  /// then; kept through 〔辨識〕 and a lost signal.
+  String? _selectedId;
+  GatewayPeer? _selectedPeer;
+
+  /// 1.0.0+14: the gateway whose connect runs (the bottom button).
+  String? _connectingId;
+
+  /// 1.0.0+14: the cards' order when a gateway was selected — kept while
+  /// one is, so the selected card does not move (RSSI and 「最近」 still
+  /// change); gateways heard since come after. [_shown]: the order last
+  /// built.
+  List<String>? _frozen;
+  var _shown = <String>[];
+
+  late GatewayChoice _choice;
+  GatewayChoice? _ownChoice;
+  bool _choiceSyncPending = false;
+
   @override
   void initState() {
     super.initState();
+    _attachChoice();
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _start();
@@ -209,8 +451,86 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
   @override
   void didUpdateWidget(covariant GatewayDiscovery oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.choice != oldWidget.choice) {
+      _detachChoice();
+      _attachChoice();
+      _scheduleChoiceSync();
+    }
     // The run that disabled the list (e.g. 〔辨識〕) is over.
     if (widget.enabled && !oldWidget.enabled && _resumePending) _resumeScan();
+  }
+
+  /// 1.0.0+14: [GatewayDiscovery.choice] (or one of its own) is this list's.
+  void _attachChoice() {
+    _choice = widget.choice ?? (_ownChoice ??= GatewayChoice());
+    _choice
+      .._reset()
+      .._connect = _connectSelected
+      .._owner = this;
+  }
+
+  /// 1.0.0+14: the list goes (〔結束配置〕, 返回, a gateway connected):
+  /// its selection goes too — the bar is told after this frame.
+  void _detachChoice() {
+    final choice = _choice;
+    if (!identical(choice._owner, this)) return;
+    choice
+      .._reset()
+      .._connect = null
+      .._owner = null;
+    if (!identical(choice, _ownChoice)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => choice._changed());
+    }
+  }
+
+  /// 1.0.0+14: tells [_choice] the selection, its title, and whether a
+  /// connect (or 〔辨識〕) runs.
+  void _syncChoice() {
+    final id = _selectedId;
+    final peer = id == null ? null : _heard[id]?.peer ?? _selectedPeer;
+    _choice._set(
+      peer: peer,
+      title: peer == null ? null : _titleOf(peer.name, peer.id).title,
+      connecting: _connectingId != null,
+      busy: _selecting,
+    );
+  }
+
+  /// After this frame (never while building: the bar is outside the list).
+  void _scheduleChoiceSync() {
+    if (_choiceSyncPending) return;
+    _choiceSyncPending = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _choiceSyncPending = false;
+      if (mounted) _syncChoice();
+    });
+  }
+
+  /// 1.0.0+14: a card's tap selects its gateway — never connects. Another
+  /// card moves the selection; the selected one tapped again keeps it.
+  void _select(GatewayPeer peer) {
+    if (_selecting || !widget.enabled) return;
+    unawaited(HapticFeedback.selectionClick());
+    setState(() {
+      _frozen ??= List.of(_shown);
+      _selectedId = peer.id;
+      _selectedPeer = peer;
+    });
+    _syncChoice();
+  }
+
+  void _clearSelection() {
+    _selectedId = null;
+    _selectedPeer = null;
+    _frozen = null;
+  }
+
+  /// 1.0.0+14: the bottom button ([GatewayChoice.connect]) — the gateway
+  /// selected, as last heard.
+  void _connectSelected() {
+    final id = _selectedId;
+    final peer = id == null ? null : _heard[id]?.peer ?? _selectedPeer;
+    if (peer != null) unawaited(_connect(peer));
   }
 
   /// Starts the live scan again when one is wanted and none runs; waits
@@ -240,6 +560,8 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
 
   @override
   void dispose() {
+    _detachChoice();
+    _ownChoice?.dispose();
     _identifiedTimer?.cancel();
     _heardTick?.cancel();
     WidgetsBinding.instance.removeObserver(this);
@@ -480,15 +802,35 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     );
   }
 
+  /// 1.0.0+14: from the bottom button only ([_connectSelected]); 「連線中…」
+  /// on the selected card and the button, the other cards faded and not
+  /// tappable. A failed connect leaves the selection as it was.
   Future<void> _connect(GatewayPeer peer) async {
     if (_selecting || !widget.enabled) return;
-    setState(() => _selecting = true);
+    setState(() {
+      _selecting = true;
+      _connectingId = peer.id;
+    });
+    _syncChoice();
     try {
       await _stop();
       if (mounted) await widget.onConnect(peer);
     } finally {
-      if (mounted) setState(() => _selecting = false);
+      if (mounted) {
+        setState(() {
+          _selecting = false;
+          _connectingId = null;
+        });
+        _syncChoice();
+      }
     }
+  }
+
+  /// 〔重新搜尋〕: a new list — 1.0.0+14: the selection goes.
+  Future<void> _restartByUser() {
+    setState(_clearSelection);
+    _syncChoice();
+    return _start();
   }
 
   /// 1.0.0+9: 〔辨識〕 blinks [peer] ([GatewayDiscovery.onIdentify]) and the
@@ -501,10 +843,12 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     final action = widget.onIdentify;
     if (_selecting || !widget.enabled || action == null) return;
     final resume = _scanning && _liveWanted;
+    // 1.0.0+14: the selection stays (〔辨識〕 is not a choice).
     setState(() {
       _selecting = true;
       _identified = null;
     });
+    _syncChoice();
     try {
       await _stop();
       final blinked = mounted && await action(peer);
@@ -535,7 +879,10 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
           );
       }
     } finally {
-      if (mounted) setState(() => _selecting = false);
+      if (mounted) {
+        setState(() => _selecting = false);
+        _syncChoice();
+      }
     }
     if (mounted && resume) _resumeScan();
   }
@@ -596,10 +943,16 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     final small = theme.bodySmall?.copyWith(color: colors.onSurfaceVariant);
     final identified = _identified == peer.id;
     final detail = [if (title == name) name, tail].join(' · ');
-    // 1.0.0+12: 「未配置閘道器 …70F0」 is too wide for one line at text
-    // scale 1.1 on a 360 dp phone: it takes two lines then (never cut), and
-    // its MAC tail is not repeated on line 3.
-    final showDetail = !(unconfigured && title.endsWith(tail));
+    // 1.0.0+14 (1.0.0+12's 「未配置閘道器 …70F0」 took two lines at text
+    // scale 1.1 on a 360 dp phone and looked cut): the card's title is
+    // 「未配置閘道器」 on one line, its MAC tail on line 3 like every card's;
+    // the SnackBar and the bottom button keep the full [title].
+    final cardTitle = unconfigured ? unconfiguredGatewayText : title;
+    // 1.0.0+14: the selection (a primary outline, a tint, 「✓ 已選取」),
+    // its connect (「連線中…」) and the other cards faded meanwhile.
+    final selected = _selectedId == peer.id;
+    final connecting = _connectingId == peer.id;
+    final faded = _connectingId != null && !connecting;
     // 1.0.0+10 (phone 360 dp at text scale 1.1: line 1 wrapped and pushed
     // the dBm to a second line, line 3 cut 「· …」, the name repeated the
     // title): three short lines per gateway —
@@ -608,102 +961,167 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     // 2. the marks as small chips: 「最近」 (filled green, the strongest
     //    gateway only), 「已配置」／「未配置」, the back office's short
     //    phrase (「已閃燈」 for 3 s after 〔辨識〕);
-    // 3. 「…3A00」 (bodySmall).
+    // 3. 「…3A00」 (bodySmall); 1.0.0+14: 「✓ 已選取」 at its right end.
     final (badgeKey, badgeText) = configured
         ? ('gateway-configured-', gatewayConfiguredLabel)
         : ('gateway-unconfigured-', gatewayUnconfiguredLabel);
-    return Card(
-      key: ValueKey('gateway-card-${peer.id}'),
-      margin: const EdgeInsets.symmetric(vertical: 2),
-      shape: nearest
-          ? RoundedRectangleBorder(
-              side: const BorderSide(color: gatewayNearestColor, width: 1.5),
-              borderRadius: BorderRadius.circular(4),
-            )
-          : null,
-      child: InkWell(
-        key: ValueKey(peer.id),
-        borderRadius: BorderRadius.circular(4),
-        onTap: widget.enabled && !_selecting
-            ? () => _connect(heard?.peer ?? peer)
+    // Always an Opacity (1 unless faded): the card's subtree is not built
+    // anew when a connect starts.
+    return Opacity(
+      key: ValueKey('gateway-fade-${peer.id}'),
+      opacity: faded ? 0.38 : 1,
+      child: Card(
+        key: ValueKey('gateway-card-${peer.id}'),
+        margin: const EdgeInsets.symmetric(vertical: 2),
+        // 1.0.0+14: an outline only for the selection (「最近」 is its green
+        // chip alone); the border does not move the content.
+        shape: selected
+            ? RoundedRectangleBorder(
+                side: BorderSide(color: colors.primary, width: 2),
+                borderRadius: BorderRadius.circular(4),
+              )
             : null,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 2, 8),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
+        color: selected
+            ? colors.primaryContainer.withValues(alpha: 0.45)
+            : null,
+        child: Semantics(
+          key: ValueKey('gateway-select-${peer.id}'),
+          container: true,
+          selected: selected,
+          child: InkWell(
+            key: ValueKey(peer.id),
+            borderRadius: BorderRadius.circular(4),
+            // 1.0.0+14: selects, never connects (the bottom button does).
+            onTap: widget.enabled && !_selecting
+                ? () => _select(heard?.peer ?? peer)
+                : null,
+            child: _tileBody(
+              peer,
+              cardTitle: cardTitle,
+              signal: signal,
+              signalWidth: signalWidth,
+              live: live,
+              nearest: nearest,
+              badgeKey: badgeKey,
+              badgeText: badgeText,
+              configured: configured,
+              identified: identified,
+              presence: presence,
+              detail: detail,
+              small: small,
+              selected: selected,
+              connecting: connecting,
+              onIdentify: widget.enabled && !_selecting
+                  ? () => _identify(heard?.peer ?? peer)
+                  : null,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// A card's three lines and its 〔辨識〕 bulb ([_tile]).
+  Widget _tileBody(
+    GatewayPeer peer, {
+    required String cardTitle,
+    required String signal,
+    required double signalWidth,
+    required bool live,
+    required bool nearest,
+    required String badgeKey,
+    required String badgeText,
+    required bool configured,
+    required bool identified,
+    required String presence,
+    required String detail,
+    required TextStyle? small,
+    required bool selected,
+    required bool connecting,
+    required VoidCallback? onIdentify,
+  }) {
+    final theme = Theme.of(context).textTheme;
+    final colors = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 2, 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  key: ValueKey('gateway-head-${peer.id}'),
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
                   children: [
-                    Row(
-                      key: ValueKey('gateway-head-${peer.id}'),
-                      crossAxisAlignment: CrossAxisAlignment.baseline,
-                      textBaseline: TextBaseline.alphabetic,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            title,
-                            key: ValueKey('gateway-title-${peer.id}'),
-                            maxLines: unconfigured ? 2 : 1,
-                            softWrap: unconfigured,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
+                    Expanded(
+                      child: Text(
+                        cardTitle,
+                        key: ValueKey('gateway-title-${peer.id}'),
+                        maxLines: 1,
+                        softWrap: false,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
                         ),
-                        const SizedBox(width: 8),
-                        // 1.0.0+11: a column at least as wide as 「-88 dBm」
-                        // and 「訊號中斷」 (right-aligned): the title's room
-                        // does not change with the text.
-                        ConstrainedBox(
-                          constraints: BoxConstraints(minWidth: signalWidth),
-                          child: Text(
-                            signal,
-                            key: ValueKey('gateway-signal-${peer.id}'),
-                            maxLines: 1,
-                            softWrap: false,
-                            textAlign: TextAlign.right,
-                            style: theme.bodyMedium?.copyWith(
-                              color: live ? null : colors.outline,
-                            ),
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
-                    const SizedBox(height: 4),
-                    Wrap(
-                      key: ValueKey('gateway-marks-${peer.id}'),
-                      spacing: 6,
-                      runSpacing: 4,
-                      children: [
-                        if (nearest)
-                          GatewayMark(
-                            gatewayNearestLabel,
-                            key: ValueKey('gateway-nearest-${peer.id}'),
-                            color: gatewayNearestColor,
-                            filled: true,
-                          ),
-                        GatewayMark(
-                          badgeText,
-                          key: ValueKey('$badgeKey${peer.id}'),
-                          color: configured
-                              ? colors.onSurfaceVariant
-                              : colors.outline,
+                    const SizedBox(width: 8),
+                    // 1.0.0+11: a column at least as wide as 「-88 dBm」
+                    // and 「訊號中斷」 (right-aligned): the title's room
+                    // does not change with the text.
+                    ConstrainedBox(
+                      constraints: BoxConstraints(minWidth: signalWidth),
+                      child: Text(
+                        signal,
+                        key: ValueKey('gateway-signal-${peer.id}'),
+                        maxLines: 1,
+                        softWrap: false,
+                        textAlign: TextAlign.right,
+                        style: theme.bodyMedium?.copyWith(
+                          color: live ? null : colors.outline,
                         ),
-                        GatewayMark(
-                          identified ? identifiedHint : presence,
-                          key: ValueKey('gateway-presence-${peer.id}'),
-                          color: identified
-                              ? colors.primary
-                              : colors.onSurfaceVariant,
-                        ),
-                      ],
+                      ),
                     ),
-                    if (showDetail) ...[
-                      const SizedBox(height: 2),
-                      Text(
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Wrap(
+                  key: ValueKey('gateway-marks-${peer.id}'),
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: [
+                    if (nearest)
+                      GatewayMark(
+                        gatewayNearestLabel,
+                        key: ValueKey('gateway-nearest-${peer.id}'),
+                        color: gatewayNearestColor,
+                        filled: true,
+                      ),
+                    GatewayMark(
+                      badgeText,
+                      key: ValueKey('$badgeKey${peer.id}'),
+                      color: configured
+                          ? colors.onSurfaceVariant
+                          : colors.outline,
+                    ),
+                    GatewayMark(
+                      identified ? identifiedHint : presence,
+                      key: ValueKey('gateway-presence-${peer.id}'),
+                      color: identified
+                          ? colors.primary
+                          : colors.onSurfaceVariant,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Row(
+                  key: ValueKey('gateway-line3-${peer.id}'),
+                  children: [
+                    Expanded(
+                      child: Text(
                         detail,
                         key: ValueKey('gateway-detail-${peer.id}'),
                         style: small,
@@ -711,25 +1129,38 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
                         softWrap: false,
                         overflow: TextOverflow.ellipsis,
                       ),
-                    ],
+                    ),
+                    const SizedBox(width: 6),
+                    // 1.0.0+14: its room kept on every card (unseen
+                    // unless selected): a selection moves nothing.
+                    Visibility(
+                      visible: selected,
+                      maintainSize: true,
+                      maintainAnimation: true,
+                      maintainState: true,
+                      child: _SelectedMark(
+                        key: selected
+                            ? ValueKey('gateway-selected-${peer.id}')
+                            : null,
+                        connecting: connecting,
+                      ),
+                    ),
                   ],
                 ),
-              ),
-              if (widget.onIdentify != null)
-                IconButton(
-                  key: ValueKey('identify-${peer.id}'),
-                  tooltip: identifyGatewayLabel,
-                  icon: Icon(
-                    identified ? Icons.lightbulb : Icons.lightbulb_outline,
-                  ),
-                  visualDensity: VisualDensity.compact,
-                  onPressed: widget.enabled && !_selecting
-                      ? () => _identify(heard?.peer ?? peer)
-                      : null,
-                ),
-            ],
+              ],
+            ),
           ),
-        ),
+          if (widget.onIdentify != null)
+            IconButton(
+              key: ValueKey('identify-${peer.id}'),
+              tooltip: identifyGatewayLabel,
+              icon: Icon(
+                identified ? Icons.lightbulb : Icons.lightbulb_outline,
+              ),
+              visualDensity: VisualDensity.compact,
+              onPressed: onIdentify,
+            ),
+        ],
       ),
     );
   }
@@ -777,12 +1208,25 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
       });
     });
     final recentIds = _recent.map((r) => r.peer.id).toSet();
+    final selectedId = _selectedId;
     // Round 28: the Wi-Fi MAC the back office shows is searchable too.
+    // 1.0.0+14: the selected card stays whatever the filter (the bottom
+    // button never names a gateway not on screen).
     bool matches(GatewayPeer peer) =>
+        peer.id == selectedId ||
         '${peer.name} ${gatewayTitle(peer.name)} ${peer.id} '
                 '${gatewayWifiMac(bleId: peer.id) ?? ''}'
             .toLowerCase()
             .contains(_query);
+    // 1.0.0+14: while a gateway is selected the cards keep the order they
+    // had then ([_frozen]); gateways heard since come after.
+    final frozen = _frozen;
+    int frozenAt(String id) {
+      if (frozen == null) return 0;
+      final at = frozen.indexOf(id);
+      return at < 0 ? frozen.length : at;
+    }
+
     // Round 30: both lists by the phone's signal, strongest first (a
     // recent gateway not heard keeps its place after the heard ones).
     // 1.0.0+10: configured ones no longer after the others — the strongest
@@ -792,6 +1236,8 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
           for (final (i, r) in _recent.indexed)
             if (matches(r.peer)) (i, r),
         ]..sort((a, b) {
+          final f = frozenAt(a.$2.peer.id) - frozenAt(b.$2.peer.id);
+          if (f != 0) return f;
           final c = _rankOf(a.$2.peer.id) - _rankOf(b.$2.peer.id);
           return c != 0 ? c : a.$1 - b.$1;
         });
@@ -800,9 +1246,34 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     // keeps the rows, 「最近」 and the hint above them.
     final heard = _heardPeers(now);
     final heardIds = {for (final peer in heard) peer.id};
-    final nearby = heard
-        .where((p) => !recentIds.contains(p.id) && matches(p))
-        .toList();
+    final selectedLost =
+        selectedId != null &&
+        !recentIds.contains(selectedId) &&
+        !heardIds.contains(selectedId);
+    final ranked = [
+      ...heard.where((p) => !recentIds.contains(p.id) && matches(p)),
+      // 1.0.0+14: the selected gateway stays listed when not heard for
+      // [gatewayHeardFor] (「訊號中斷」).
+      if (selectedLost) _heard[selectedId]?.peer ?? _selectedPeer!,
+    ].indexed.toList();
+    ranked.sort((a, b) {
+      final f = frozenAt(a.$2.id) - frozenAt(b.$2.id);
+      return f != 0 ? f : a.$1 - b.$1;
+    });
+    final nearby = [for (final (_, p) in ranked) p];
+    _shown = [
+      for (final r in recent) r.$2.peer.id,
+      for (final p in nearby) p.id,
+    ];
+    // 1.0.0+14: the bottom button's text follows the card's title (e.g. the
+    // back office's list arrived: 「未配置閘道器 …70F0」).
+    if (selectedId != null) {
+      final peer = _heard[selectedId]?.peer ?? _selectedPeer!;
+      if (_choice.peer?.id != selectedId ||
+          _choice.title != _titleOf(peer.name, peer.id).title) {
+        _scheduleChoiceSync();
+      }
+    }
     final nearest = heardIds.length >= 2 && heardIds.contains(_nearest?.nearest)
         ? _nearest
         : null;
@@ -834,7 +1305,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
           children: [
             FilledButton.icon(
               onPressed: widget.enabled && !_selecting
-                  ? (_scanning ? _stopByUser : _start)
+                  ? (_scanning ? _stopByUser : _restartByUser)
                   : null,
               icon: Icon(_scanning ? Icons.stop : Icons.search),
               label: Text(_scanning ? '停止搜尋' : '重新搜尋'),

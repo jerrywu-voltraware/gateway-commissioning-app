@@ -21,6 +21,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -46,6 +47,7 @@ import 'package:gateway_commissioning/presentation/gateway_swap_sheet.dart';
 import 'package:gateway_commissioning/presentation/gateway_status_page.dart';
 
 import 'network_check_test.dart' show WifiGateway;
+import 'support/pick_gateway.dart';
 
 /// The demo gateway's Wi-Fi MAC (`gateway_uid`).
 const _uid = 'AABBCCDDEEFF';
@@ -311,7 +313,10 @@ Future<void> _chooseSwap1(WidgetTester tester) async {
 
 /// Connected to the factory gateway (not in service), 80 typed.
 Future<void> _typeSite80(WidgetTester tester) async {
-  await _tap(tester, find.byKey(const ValueKey('demo-gateway')));
+  await pickGateway(
+    (f) => _tap(tester, f),
+    find.byKey(const ValueKey('demo-gateway')),
+  );
   expect(_title(tester), stationInputTitle);
   await tester.enterText(find.widgetWithText(TextField, siteFieldLabel), '80');
   await tester.pump(const Duration(milliseconds: 600));
@@ -372,6 +377,12 @@ const _recents =
 
 String _tileTitle(WidgetTester tester, GatewayPeer peer) =>
     tester.widget<Text>(find.byKey(ValueKey('gateway-title-${peer.id}'))).data!;
+
+/// 1.0.0+14: the card's line 3 (the MAC tail; for a gateway not configured
+/// too — its title is 「未配置閘道器」 alone).
+String _tileDetail(WidgetTester tester, GatewayPeer peer) => tester
+    .widget<Text>(find.byKey(ValueKey('gateway-detail-${peer.id}')))
+    .data!;
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
@@ -675,15 +686,20 @@ void main() {
       }
       link.scans.last.add(const [_gw81, _old80, _gw82, _gw83, _factory]);
       await tester.pump();
-      expect(_tileTitle(tester, _old80), '未配置閘道器 …70F0');
+      // 1.0.0+14: 「未配置閘道器」 as the title (one line), its MAC tail on
+      // line 3 (1.0.0+12 had 「未配置閘道器 …70F0」 on two lines).
+      expect(_tileTitle(tester, _old80), unconfiguredGatewayText);
+      expect(_tileDetail(tester, _old80), '…70F0');
       expect(_tileTitle(tester, _gw81), '站 81 · 閘道器 1');
       expect(_tileTitle(tester, _gw82), '站 82 · 閘道器 1');
-      expect(_tileTitle(tester, _gw83), '未配置閘道器 …3D00');
-      expect(_tileTitle(tester, _factory), '未配置閘道器 …3E00');
+      expect(_tileTitle(tester, _gw83), unconfiguredGatewayText);
+      expect(_tileDetail(tester, _gw83), '…3D00');
+      expect(_tileTitle(tester, _factory), unconfiguredGatewayText);
+      expect(_tileDetail(tester, _factory), '…3E00');
       expect(find.text('站 80 · 閘道器 2'), findsNothing);
       expect(find.text('站 83 · 閘道器 4'), findsNothing);
-      // 「已配置」 as before for 81/1; the tail on line 3 only when the
-      // title does not carry it.
+      // 「已配置」 as before for 81/1; every card's tail on line 3, never in
+      // the title.
       expect(
         find.byKey(ValueKey('gateway-configured-${_gw81.id}')),
         findsOneWidget,
@@ -692,18 +708,20 @@ void main() {
         find.byKey(ValueKey('gateway-unconfigured-${_old80.id}')),
         findsOneWidget,
       );
-      expect(find.byKey(ValueKey('gateway-detail-${_old80.id}')), findsNothing);
-      expect(
-        tester
-            .widget<Text>(find.byKey(ValueKey('gateway-detail-${_gw81.id}')))
-            .data,
-        '…3A00',
-      );
-      // Never cut: two lines when it does not fit one.
+      expect(find.textContaining('未配置閘道器 …'), findsNothing);
+      expect(_tileDetail(tester, _gw81), '…3A00');
+      // Never cut: one line, whole.
       final title = tester.widget<Text>(
         find.byKey(ValueKey('gateway-title-${_old80.id}')),
       );
-      expect(title.maxLines, 2);
+      expect(title.maxLines, 1);
+      final paragraph = tester.renderObject<RenderParagraph>(
+        find.descendant(
+          of: find.byKey(ValueKey('gateway-title-${_old80.id}')),
+          matching: find.byType(RichText),
+        ),
+      );
+      expect(paragraph.didExceedMaxLines, isFalse);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
     });
@@ -730,7 +748,8 @@ void main() {
       await tester.pump();
       expect(_tileTitle(tester, _old80), '站 80 · 閘道器 2');
       expect(_tileTitle(tester, _gw83), '站 83 · 閘道器 4');
-      expect(_tileTitle(tester, _factory), '未配置閘道器 …3E00');
+      expect(_tileTitle(tester, _factory), unconfiguredGatewayText);
+      expect(_tileDetail(tester, _factory), '…3E00');
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
     });
@@ -841,7 +860,10 @@ void main() {
       _phoneView(tester);
       final fake = _Site(site: 1, gateway: 1, fleet: _swap80());
       await _pump(tester, fake);
-      await _tap(tester, find.byKey(const ValueKey('demo-gateway')));
+      await pickGateway(
+        (f) => _tap(tester, f),
+        find.byKey(const ValueKey('demo-gateway')),
+      );
       expect(_title(tester), stationInputTitle);
       // No station typed yet: nothing numbered, no 換機.
       expect(find.byKey(const Key('gateway-assignment')), findsNothing);

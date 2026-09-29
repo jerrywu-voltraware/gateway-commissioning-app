@@ -15,6 +15,7 @@ import 'package:gateway_commissioning/data/contracts.dart';
 import 'package:gateway_commissioning/data/demo_system.dart';
 import 'package:gateway_commissioning/data/local_backend_probe.dart';
 import 'package:gateway_commissioning/gateway_app.dart';
+import 'support/pick_gateway.dart';
 
 const _lan = MqttTarget.local('192.168.1.50');
 const _local = BackendEnvState(
@@ -657,7 +658,10 @@ void main() {
 
     Future<void> connect(WidgetTester tester) async {
       await tap(tester, find.text('檢查並開始'));
-      await tap(tester, find.byKey(const ValueKey('demo-gateway')));
+      await pickGateway(
+        (f) => tap(tester, f),
+        find.byKey(const ValueKey('demo-gateway')),
+      );
     }
 
     String title(WidgetTester tester) =>
