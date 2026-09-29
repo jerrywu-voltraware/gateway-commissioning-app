@@ -295,7 +295,7 @@ void main() {
       expect(e.ts, DateTime.parse(_ts(3)).toLocal());
       expect(recentClockText(e.ts), matches(RegExp(r'^\d\d:\d\d:03$')));
       expect(verifyFeedCountText(e), '第 1 筆');
-      expect(verifyFeedValuesText(e), '53.2 V・2.72 A・36 °C・落後 1.0 秒');
+      expect(verifyFeedValuesText(e), '53.2 V・2.72 A・36 °C・落後 1 秒');
       expect(verifyFeedAnnounce(e, ptus: 1), '收到第 1 筆');
       expect(verifyFeedAnnounce(e, ptus: 3), 'PTU #1 收到第 1 筆');
     });
@@ -474,14 +474,16 @@ void main() {
       );
       expect(feed.single.ok, isTrue);
       expect(feed.single.inputMv, isNull);
-      expect(verifyFeedValuesText(feed.single), '落後 1.0 秒');
+      expect(verifyFeedValuesText(feed.single), '落後 1 秒');
       expect(counts[1], 1);
     });
   });
 
   group('2. copy', () {
     test('the goal, the pace and the footer in plain words', () {
-      expect(verifyGoalText, '連續收到 3 筆正常資料就算完成');
+      expect(verifyGoalText, '收到 3 筆正常資料就算完成');
+      expect(verifyLagText(3), '落後 3 秒');
+      expect(verifyLagText(2.6), '落後 3 秒');
       expect(verifyPollSeconds, 10);
       expect(verifyPaceText, '約每 10 秒收一筆，通常 30 秒內完成');
       expect(verifyFooterText(266), '約每 10 秒收一筆，通常 30 秒內完成・剩餘 266 秒');
@@ -581,10 +583,7 @@ void main() {
           final poll = 4 - i;
           expect(e.ts, DateTime.parse(fake.served[poll]![id]!).toLocal());
         }
-        expect(
-          verifyFeedValuesText(rows.first),
-          '53.2 V・2.72 A・36 °C・落後 1.0 秒',
-        );
+        expect(verifyFeedValuesText(rows.first), '53.2 V・2.72 A・36 °C・落後 1 秒');
       }
       // Green only once the data passed.
       expect(
@@ -675,7 +674,7 @@ void main() {
         );
         expect(
           _joined(tester, ValueKey('verify-feed-values-${rows[0].serial}')),
-          '53.2 V・2.72 A・36 °C・落後 1.0 秒',
+          '53.2 V・2.72 A・36 °C・落後 1 秒',
         );
         expect(
           tester.widget<Text>(find.byKey(Key('verify-count-$id'))).data,
@@ -723,7 +722,7 @@ void main() {
         );
         expect(
           _joined(tester, ValueKey('verify-feed-values-${late.serial}')),
-          '53.2 V・2.72 A・36 °C・落後 75.0 秒',
+          '53.2 V・2.72 A・36 °C・落後 75 秒',
         );
         final box = tester.widget<Container>(
           find.byKey(ValueKey('verify-feed-row-${late.serial}')),

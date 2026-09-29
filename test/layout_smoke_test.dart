@@ -18,7 +18,7 @@
 //
 // 1.0.0+18: the verify page's live data flow — two rows in under each PTU,
 // passed (the card green, 「資料正常上傳」), and one late row (red, its
-// reason); the widest values (12.35 A, 255 °C, 落後 75.0 秒).
+// reason); the widest values (12.35 A, 255 °C, 落後 75 秒).
 import 'dart:async';
 
 import 'package:flutter/material.dart';

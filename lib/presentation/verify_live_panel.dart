@@ -32,7 +32,7 @@ import 'recent_data_page.dart'
 
 /// The step's sentence (was 「逐台檢查資料時間、落後秒數與錯誤碼。連續三次
 /// 通過後才判定完成。」).
-const verifyGoalText = '連續收到 3 筆正常資料就算完成';
+const verifyGoalText = '收到 3 筆正常資料就算完成';
 
 /// The pace in plain words, from the poll the verification runs: one new
 /// row per PTU per poll ([verifyPollSeconds]), three of them.
@@ -58,8 +58,8 @@ const verifyFlowDuration = Duration(milliseconds: 800);
 /// A new row sliding in.
 const verifyFeedSlideDuration = Duration(milliseconds: 300);
 
-/// 「落後 1.0 秒」 (the back office's `lag_seconds`).
-String verifyLagText(num lag) => '落後 ${lag.toStringAsFixed(1)} 秒';
+/// 「落後 1 秒」 (the back office's `lag_seconds`, whole seconds).
+String verifyLagText(num lag) => '落後 ${lag.round()} 秒';
 
 /// A row's count part: 「第 2 筆」, 「重新計數：第 1/3 筆」, 「正常（已滿 3
 /// 筆）」, or 「未計入（維持 2/3）」.
@@ -71,7 +71,7 @@ String verifyFeedCountText(VerifyFeedEntry e) {
 }
 
 /// The values of a row, each with the separator after it but the last
-/// (「53.2 V・」「2.72 A・」「36 °C・」「落後 1.0 秒」): a narrow phone wraps
+/// (「53.2 V・」「2.72 A・」「36 °C・」「落後 1 秒」): a narrow phone wraps
 /// between them, never inside one. A value the row lacks is left out.
 List<String> verifyFeedValueParts(VerifyFeedEntry e) {
   final parts = [
@@ -86,7 +86,7 @@ List<String> verifyFeedValueParts(VerifyFeedEntry e) {
   ];
 }
 
-/// 「53.2 V・2.72 A・36 °C・落後 1.0 秒」 ([verifyFeedValueParts] in one).
+/// 「53.2 V・2.72 A・36 °C・落後 1 秒」 ([verifyFeedValueParts] in one).
 String verifyFeedValuesText(VerifyFeedEntry e) =>
     verifyFeedValueParts(e).join();
 
@@ -447,7 +447,7 @@ class _SlideIn extends StatelessWidget {
   );
 }
 
-/// One row: 「13:00:03  第 2 筆」, 「53.2 V・2.72 A・36 °C・落後 1.0 秒」
+/// One row: 「13:00:03  第 2 筆」, 「53.2 V・2.72 A・36 °C・落後 1 秒」
 /// under it (wrapping on a narrow phone), and, for a row not counted, red,
 /// its reason.
 class VerifyFeedRow extends StatelessWidget {
