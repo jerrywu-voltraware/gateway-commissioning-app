@@ -19,7 +19,7 @@ import 'connection_status.dart';
 const stepLabels = [
   '準備',
   '找到閘道器',
-  'Gateway 網路體檢',
+  '閘道器網路體檢',
   '對準上傳目標',
   '確認資料上傳',
   '站點選擇',
@@ -107,10 +107,10 @@ class NetworkCheck {
       : uploadPaused && wifiOk && targetOk
       ? '閘道器的資料上傳已暫停'
       : !wifiOk
-      ? 'Gateway 還沒連上 Wi-Fi'
+      ? '閘道器還沒連上 Wi-Fi'
       : !targetOk
-      ? 'Gateway 的資料還沒送到手機連的地方'
-      : 'Gateway 還沒開始上傳資料';
+      ? '閘道器的資料還沒送到手機連的地方'
+      : '閘道器還沒開始上傳資料';
 }
 
 NetworkCheck networkCheck({
@@ -132,7 +132,7 @@ NetworkCheck networkCheck({
   if (!supported) {
     wifi = CheckLine(
       '？',
-      'APP 無法讀取這台 Gateway 的 Wi-Fi（韌體 ${config['fw_version'] ?? '未知'} '
+      'APP 無法讀取這台閘道器的 Wi-Fi（韌體 ${config['fw_version'] ?? '未知'} '
           '較舊），最後的資料驗證會再確認。',
       StatusTone.neutral,
     );
@@ -153,10 +153,10 @@ NetworkCheck networkCheck({
       ),
       WifiVerdict.unknown =>
         polling
-            ? const CheckLine('⏳', '正在讀取 Gateway 的網路狀態…', StatusTone.pending)
+            ? const CheckLine('⏳', '正在讀取閘道器的網路狀態…', StatusTone.pending)
             : const CheckLine(
                 '？',
-                '還沒讀到 Gateway 的網路狀態，請按「重新檢查」。',
+                '還沒讀到閘道器的網路狀態，請按「重新檢查」。',
                 StatusTone.neutral,
               ),
     };
@@ -171,12 +171,12 @@ NetworkCheck networkCheck({
       target = current == null
           ? CheckLine(
               '？',
-              '還不確定 Gateway 把資料送到哪裡，要讓它改送到${placeOf(syncTarget!)}。',
+              '還不確定閘道器把資料送到哪裡，要讓它改送到${placeOf(syncTarget!)}。',
               StatusTone.warn,
             )
           : CheckLine(
               '⚠',
-              'Gateway 把資料送到${current.plainLabel}，但手機連的是'
+              '閘道器把資料送到${current.plainLabel}，但手機連的是'
                   '${syncTarget!.plainLabel}。',
               StatusTone.warn,
             );
@@ -194,23 +194,23 @@ NetworkCheck networkCheck({
     case SyncNeed.none:
       targetOk = true;
       if (!reportsMqttTarget(config)) {
-        target = const CheckLine('✓', 'Gateway 的資料送到正式站', StatusTone.ok);
+        target = const CheckLine('✓', '閘道器的資料送到正式站', StatusTone.ok);
       } else if (current == null) {
         target = const CheckLine(
           '？',
-          '還不確定 Gateway 把資料送到哪裡。',
+          '還不確定閘道器把資料送到哪裡。',
           StatusTone.neutral,
         );
       } else if (app.target == null) {
         target = CheckLine(
           '？',
-          'Gateway 的資料送到${current.plainLabel}；APP 無法從這個網址判斷是否一致。',
+          '閘道器的資料送到${current.plainLabel}；APP 無法從這個網址判斷是否一致。',
           StatusTone.neutral,
         );
       } else {
         target = CheckLine(
           '✓',
-          'Gateway 的資料送到${current.plainLabel}，和手機一致',
+          '閘道器的資料送到${current.plainLabel}，和手機一致',
           StatusTone.ok,
         );
       }
@@ -229,8 +229,8 @@ NetworkCheck networkCheck({
   final CheckLine upload;
   bool uploadOk = false;
   if (state.uploadWatch == UploadWatch.linkLost) {
-    upload = const CheckLine('✗', '手機和 Gateway 的藍牙斷了，無法確認。', StatusTone.bad);
-    hint = '請靠近 Gateway，按「結束並重新選擇閘道器」重新連線。';
+    upload = const CheckLine('✗', '手機和閘道器的藍牙斷了，無法確認。', StatusTone.bad);
+    hint = '請靠近閘道器，按「結束並重新選擇閘道器」重新連線。';
   } else if (state.testMode) {
     // Round 26 (field: 「✓ 資料上傳中」 from a gateway in test mode).
     upload = const CheckLine('⚠', testModeUploadText, StatusTone.warn);
@@ -255,13 +255,13 @@ NetworkCheck networkCheck({
   } else if (!wifiOk) {
     upload = const CheckLine(
       '—',
-      '等 Gateway 連上 Wi-Fi 後再確認',
+      '等閘道器連上 Wi-Fi 後再確認',
       StatusTone.neutral,
     );
   } else if (!targetOk) {
     upload = const CheckLine('—', '對準上傳目標後再確認', StatusTone.neutral);
   } else if (late) {
-    upload = const CheckLine('✗', 'Gateway 還沒開始上傳資料。', StatusTone.bad);
+    upload = const CheckLine('✗', '閘道器還沒開始上傳資料。', StatusTone.bad);
     final place = current ?? const MqttTarget.production();
     hint =
         subnetHint(place, gatewayIp, wifiAction: '重設 Wi-Fi') ??
@@ -269,7 +269,7 @@ NetworkCheck networkCheck({
   } else if (polling) {
     upload = const CheckLine(
       '⏳',
-      '等待 Gateway 開始上傳資料…（最多約 1 分鐘）',
+      '等待閘道器開始上傳資料…（最多約 1 分鐘）',
       StatusTone.pending,
     );
     // Another subnet is only a guess, so it waits like the status panel.

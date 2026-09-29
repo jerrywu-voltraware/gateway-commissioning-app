@@ -63,7 +63,7 @@ final apiProvider = Provider<GatewayApi>(
 
 /// r33: the conflict text when the back office flags one without its own.
 String identityConflictFallback(int site, int gw) =>
-    'ID 衝突：偵測到多台實體設備使用相同 Site $site / Gateway $gw。';
+    'ID 衝突：偵測到多台實體設備使用相同 Site $site / 閘道器 $gw。';
 
 /// How [CommissioningController.suggestGateway] found its answer.
 enum GatewaySuggestKind {
@@ -239,7 +239,7 @@ const gatewayNetKeys = [
 
 /// 「沿用目前站點」 refused because the gateway cannot upload yet.
 const reuseBlockedText =
-    'Gateway 還沒連上 Wi-Fi 或還沒開始上傳資料，暫時不能使用此站點。'
+    '閘道器還沒連上 Wi-Fi 或還沒開始上傳資料，暫時不能使用此站點。'
     '請先按「改用其他 Wi-Fi」，或回到網路體檢確認。';
 
 /// 09-28: 〔重新加入〕 running (restore, then reserve the station again).
@@ -251,7 +251,7 @@ const archivedCheckAfterSeconds = 60;
 
 /// Station kept after a Wi-Fi change: confirm upload before reviewing PTUs.
 const uploadNotReadyText =
-    '要等 Gateway 連上 Wi-Fi 並開始上傳資料，才能繼續選擇 PTU。'
+    '要等閘道器連上 Wi-Fi 並開始上傳資料，才能繼續選擇 PTU。'
     '請等「確認資料上傳」出現 ✓，或再重設一次 Wi-Fi。';
 
 /// Round 26: the Wi-Fi of a station was reset and its upload works — the
@@ -319,7 +319,7 @@ String ptuFailureText(Object? error) {
     return 'PTU 沒有回應';
   }
   if (text.contains('not found') || text.contains('not_found')) {
-    return 'Gateway 找不到這台 PTU，請重新掃描';
+    return '閘道器找不到這台 PTU，請重新掃描';
   }
   if (error is GatewayFailure && error.code != 'unexpected') {
     return error.message;
@@ -507,7 +507,7 @@ String readbackMismatchText(int actual, int wanted) =>
 /// Display labels for a saved [CommissionState.step] (restore prompt).
 const _savedStepLabels = {
   1: '第 2 步（找到閘道器）',
-  2: '第 3 步（Gateway 網路體檢）',
+  2: '第 3 步（閘道器網路體檢）',
   3: '第 5 步（確認資料上傳）',
   4: '第 7 步（選擇 PTU）',
   5: '第 8 步（開始監控）',
@@ -1001,7 +1001,9 @@ const gatewayStatusBusyText = '配置進行中不可用';
 
 /// 1.0.0+10: the menu item's text ([gatewayStatusMenuEnabled]).
 String gatewayStatusMenuText(CommissionState s) =>
-    gatewayStatusMenuEnabled(s) ? '閘道器狀態…' : '閘道器狀態（$gatewayStatusBusyText）';
+    gatewayStatusMenuEnabled(s)
+        ? '查看上傳資料…'
+        : '查看上傳資料（$gatewayStatusBusyText）';
 
 /// 1.0.0+10 (review P2-3): a bound PTU the gateway is still looking for
 /// (scanning / connecting) this soon after a boot is not called missing.
@@ -1205,8 +1207,8 @@ const doneBusyText = '正在處理，完成後再按〔完成〕。';
 /// Round 29: the done page's developer note, local test builds only
 /// ([EnvSwitchPolicy.localBuild]) — never the done page's main action.
 const devShipNoteText =
-    '開發環境提示（本地測試版才會出現，現場人員不用處理）：這台 Gateway 目前上傳到本地測試站，'
-    '出貨前需由開發人員把手機和 Gateway 一起切回正式站。';
+    '開發環境提示（本地測試版才會出現，現場人員不用處理）：這台閘道器目前上傳到本地測試站，'
+    '出貨前需由開發人員把手機和閘道器一起切回正式站。';
 
 /// Round 29: the developer note's small text button.
 const devShipSwitchLabel = '切回正式站';
@@ -2903,7 +2905,7 @@ class CommissioningController extends Notifier<CommissionState> {
               : rebooted
               ? gatewayRebootRetryText
               : !safe
-              ? '尚未確認 Gateway 已恢復監控，請重新連線核對設定。'
+              ? '尚未確認閘道器已恢復監控，請重新連線核對設定。'
               : detailed
               ? '資料驗證未通過：\n${diagnosis.$2}'
               : failure.message,
@@ -3152,7 +3154,7 @@ class CommissioningController extends Notifier<CommissionState> {
     if (state.busy || data == null || data['peer'] is! String) return;
     final peer = GatewayPeer(
       data['peer'] as String,
-      (data['peer_name'] as String?) ?? 'Gateway',
+      (data['peer_name'] as String?) ?? '閘道器',
       0,
     );
     final step = data['step'] as int? ?? 0;
@@ -3203,7 +3205,7 @@ class CommissioningController extends Notifier<CommissionState> {
       config: {...state.config, 'choose_station': false},
       results: {},
       assignStatus: {},
-      message: '已重新連線，由 Gateway 重新掃描 PTU。',
+      message: '已重新連線，由閘道器重新掃描 PTU。',
     );
     await discover();
     if (!ref.mounted || state.error != null || step != 5) return;
@@ -3957,7 +3959,7 @@ class CommissioningController extends Notifier<CommissionState> {
       report: '',
       message: station
           ? '保留目前站點與 PTU，只重設 Wi-Fi。請選 2.4 GHz 的 Wi-Fi。'
-          : '請先設定 Wi-Fi（Gateway 只能用 2.4 GHz），網路正常後再設定站號。',
+          : '請先設定 Wi-Fi（閘道器只能用 2.4 GHz），網路正常後再設定站號。',
     );
   }
 
@@ -3986,7 +3988,7 @@ class CommissioningController extends Notifier<CommissionState> {
       selected: station
           ? state.ptus.map((d) => d['mac'].toString()).toSet()
           : null,
-      message: '網路體檢：確認 Gateway 的 Wi-Fi 與資料上傳。',
+      message: '網路體檢：確認閘道器的 Wi-Fi 與資料上傳。',
     );
     _watchUploadIfPending();
   }
@@ -4002,7 +4004,7 @@ class CommissioningController extends Notifier<CommissionState> {
         'new_station': false,
         'wifi_only': false,
       },
-      message: '請選擇站點。沿用要等 Gateway 開始上傳資料。',
+      message: '請選擇站點。沿用要等閘道器開始上傳資料。',
     );
   }
 
@@ -4085,7 +4087,7 @@ class CommissioningController extends Notifier<CommissionState> {
           ? '請輸入新的站點 ID 與 Wi-Fi；儲存後才會變更閘道器。'
           : wifiOnly
           ? '保留目前站點與 PTU，僅更新 Wi-Fi。'
-          : '使用此站點，由 Gateway 搜尋 PTU，請確認要監控的裝置。',
+          : '使用此站點，由閘道器搜尋 PTU，請確認要監控的裝置。',
     );
     if (!newStation && !wifiOnly) await discover();
   }
@@ -5058,12 +5060,12 @@ class CommissioningController extends Notifier<CommissionState> {
             : state.scanResumePending
             ? phoneLinkLostText
             : state.uploadWatch == UploadWatch.linkLost
-            ? 'Gateway 掃描未完成：藍牙連線已中斷。請靠近 Gateway，再按「$rescanAfterLossLabel」。'
+            ? '閘道器掃描未完成：藍牙連線已中斷。請靠近閘道器，再按「$rescanAfterLossLabel」。'
             : state.testMode
             ? '閘道器在測試模式，不會掃描 PTU。請按「$leaveTestModeLabel」，切換後 APP 會自動重新掃描。'
             : directFlow
             ? '閘道器選台未完成，請查看錯誤後按「重新搜尋」。'
-            : 'Gateway 掃描未完成，請查看錯誤後按「$rescanLabel」。',
+            : '閘道器掃描未完成，請查看錯誤後按「$rescanLabel」。',
         error: state.error,
       );
     }
@@ -5364,7 +5366,7 @@ class CommissioningController extends Notifier<CommissionState> {
   Future<void> _listDiscover({
     bool autoReset = true,
     Set<String>? keep,
-  }) => _run(relinkStep: 4, 'Gateway 正在掃描周邊 PTU，請稍候', 75, (generation) async {
+  }) => _run(relinkStep: 4, '閘道器正在掃描周邊 PTU，請稍候', 75, (generation) async {
     final relink =
         state.uploadWatch == UploadWatch.linkLost || state.resumePending;
     if (relink) {
@@ -5410,7 +5412,7 @@ class CommissioningController extends Notifier<CommissionState> {
       starNotice: state.starNotice,
     );
     state = state.copy(
-      message: relink ? relinkReloadText : 'Gateway 正在掃描周邊 PTU，請稍候',
+      message: relink ? relinkReloadText : '閘道器正在掃描周邊 PTU，請稍候',
       ptus: [],
       selected: {},
       results: {},
@@ -5565,7 +5567,7 @@ class CommissioningController extends Notifier<CommissionState> {
           : '',
       message: ptus.isEmpty
           ? const GatewayFailure('no_devices').message
-          : 'Gateway 已回傳 ${ptus.length} 台 PTU，請選擇要監控的裝置，最多 $target 台',
+          : '閘道器已回傳 ${ptus.length} 台 PTU，請選擇要監控的裝置，最多 $target 台',
     );
     await _reconcileAssigned(generation, ptus);
   });
@@ -5643,7 +5645,7 @@ class CommissioningController extends Notifier<CommissionState> {
   /// 「開始驗證」 goes straight to step 9 when the gateway already monitors
   /// them; otherwise 「恢復監控」 sends join_fleet first. Never re-assigns.
   Future<void> finishConfigured() =>
-      _step8Run('正在確認 Gateway 監控狀態', 90, (generation) async {
+      _step8Run('正在確認閘道器監控狀態', 90, (generation) async {
         final chosen = state.ptus
             .where((p) => state.selected.contains(p['mac']))
             .toList();
@@ -7327,7 +7329,7 @@ class CommissioningController extends Notifier<CommissionState> {
         assignRunning: true,
         assignStatus: _assignStart(chosen, targets),
         message: targets.isEmpty
-            ? '正在確認 Gateway 監控狀態'
+            ? '正在確認閘道器監控狀態'
             : '繼續指派 ${targets.length} 台',
       );
       _startFinishChecklist(
@@ -7485,7 +7487,7 @@ class CommissioningController extends Notifier<CommissionState> {
         step: 4,
         assignFailed: failed,
         message:
-            '${failed.length} 台都指派失敗，Gateway 設定未變更；請確認 PTU 後按「重試這 ${failed.length} 台」。',
+            '${failed.length} 台都指派失敗，閘道器設定未變更；請確認 PTU 後按「重試這 ${failed.length} 台」。',
       );
       return;
     }
@@ -7677,8 +7679,8 @@ class CommissioningController extends Notifier<CommissionState> {
               .toList(),
           message: connected.isEmpty
               ? directFlow
-                    ? '閘道器還沒收到這台 PTU 的資料，請確認 PTU 電源後再按「是這台，開始配置」重試；Gateway 仍維持監控。'
-                    : '未連上任何 PTU，請確認 PTU 電源與距離後重試；Gateway 仍維持監控。'
+                    ? '閘道器還沒收到這台 PTU 的資料，請確認 PTU 電源後再按「是這台，開始配置」重試；閘道器仍維持監控。'
+                    : '未連上任何 PTU，請確認 PTU 電源與距離後重試；閘道器仍維持監控。'
               : '已調整為 ${connected.length} 台；請重新選擇已連線裝置或修復缺少的 PTU。',
         );
         throw const GatewayFailure('incomplete');
@@ -8792,12 +8794,12 @@ class CommissioningController extends Notifier<CommissionState> {
   }
 
   String get _uploadText => state.config['mqtt_connected'] == true
-      ? 'Gateway 已開始上傳資料。'
-      : 'Gateway 正在連線，APP 會自動確認（最多約 2 分鐘）。';
+      ? '閘道器已開始上傳資料。'
+      : '閘道器正在連線，APP 會自動確認（最多約 2 分鐘）。';
 
   /// Re-reads the running upload target and upload state.
   Future<void> refreshUploadTarget() async {
-    await _sideTask('重新讀取 Gateway 狀態', 20, (generation) async {
+    await _sideTask('重新讀取閘道器狀態', 20, (generation) async {
       final net = await _command(generation, 'get_net_status');
       _absorbTarget(net);
       _absorbNet(net);
@@ -8827,7 +8829,7 @@ class CommissioningController extends Notifier<CommissionState> {
   Future<void> _switchUploadTarget(
     MqttTarget wanted,
     bool waitUpload,
-  ) => _sideTask('正在把 Gateway 切到${wanted.plainLabel}（會重新開機，約 1 分鐘）', 120, (
+  ) => _sideTask('正在把閘道器切到${wanted.plainLabel}（會重新開機，約 1 分鐘）', 120, (
     generation,
   ) async {
     final peer = state.peer;
@@ -8873,7 +8875,7 @@ class CommissioningController extends Notifier<CommissionState> {
       _stopWatch(UploadWatch.idle);
       state = state.copy(
         uploadNotice:
-            '不用切換：Gateway 本來就送到${now.plainLabel}（沒有重新開機）。$_uploadText',
+            '不用切換：閘道器本來就送到${now.plainLabel}（沒有重新開機）。$_uploadText',
       );
       return;
     }
@@ -8897,7 +8899,7 @@ class CommissioningController extends Notifier<CommissionState> {
     final confirmed = await _readBackTarget(generation, wanted, waitUpload);
     state = state.copy(
       uploadNotice:
-          '已把 Gateway 切到${confirmed.plainLabel}，Gateway 已重新開機並重新連上。'
+          '已把閘道器切到${confirmed.plainLabel}，閘道器已重新開機並重新連上。'
           '${waitUpload ? _uploadText : '接著設定 Wi-Fi。'}',
     );
   });
@@ -9473,7 +9475,7 @@ class CommissioningController extends Notifier<CommissionState> {
     if (!ref.mounted) return;
     state = state.copy(
       resumePending: true,
-      error: safe ? null : '尚未確認 Gateway 已恢復監控，請按「重新連線並繼續」核對。',
+      error: safe ? null : '尚未確認閘道器已恢復監控，請按「重新連線並繼續」核對。',
       message: '已停止。已完成的 ${state.assignedOk.length} 台保留，可按「重新連線並繼續」接續。',
     );
     await _save();
@@ -9581,7 +9583,7 @@ class CommissioningController extends Notifier<CommissionState> {
         strayBindMac: null,
         directNotice: '',
         error: !safe
-            ? '尚未確認 Gateway 已恢復監控，請重新連線核對。'
+            ? '尚未確認閘道器已恢復監控，請重新連線核對。'
             : unbindFailure != null
             ? directUnbindFailedText(tempBound, restore)
             : null,

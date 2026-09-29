@@ -157,7 +157,7 @@ void main() {
       expect(s.config['wifi_only'], isFalse);
       expect(s.config['choose_station'], isFalse);
       expect(wifiFormOfCheck(s), isTrue);
-      expect(_shown(container), 'Gateway 網路體檢', reason: 'not 站點選擇');
+      expect(_shown(container), '閘道器網路體檢', reason: 'not 站點選擇');
       expect(keptWifiSsid(s), isNull, reason: 'the form asks the password');
       expect(fake.commands, isNot(contains('set_wifi')));
 
@@ -243,7 +243,7 @@ void main() {
       expect(s.checkPassed, isTrue);
       expect(s.config[wifiFirstKey], isTrue, reason: 'still the Wi-Fi form');
       expect(s.config['choose_station'], isFalse);
-      expect(_shown(container), 'Gateway 網路體檢');
+      expect(_shown(container), '閘道器網路體檢');
       expect(keptWifiSsid(s), isNull);
       expect(wifiFirstJoined(s), isFalse);
       expect(fake.count('set_site_identity'), 0);
@@ -323,7 +323,7 @@ void main() {
       var s = container.read(commissionProvider);
       expect(s.config['wifi_only'], isTrue);
       expect(s.config[wifiFirstKey], isFalse);
-      expect(_shown(container), 'Gateway 網路體檢');
+      expect(_shown(container), '閘道器網路體檢');
       fake.mqttConnected = false;
       await c.configureWifi(80, 1, 'Office-2G', 'password123');
       s = container.read(commissionProvider);
@@ -415,7 +415,7 @@ void main() {
       await tap(tester, find.byKey(const Key('wifi-save')));
     }
 
-    testWidgets('〔重設 Wi-Fi〕 → 「設定閘道器的 Wi-Fi」 (3 / 10 Gateway 網路體檢, '
+    testWidgets('〔重設 Wi-Fi〕 → 「設定閘道器的 Wi-Fi」 (3 / 10 閘道器網路體檢, '
         'no station field); a failure keeps it with its reason; joined → '
         '「請輸入這台要配置的站號」 with 「網路已正常」, identity only', (tester) async {
       final fake = _NewGateway(discReason: 15)
@@ -429,7 +429,7 @@ void main() {
       await tap(tester, find.text('重設 Wi-Fi'));
 
       expect(text(tester, 'task-title'), wifiTaskTitle);
-      expect(text(tester, 'step-title'), '3 / 10   Gateway 網路體檢');
+      expect(text(tester, 'step-title'), '3 / 10   閘道器網路體檢');
       expect(find.byKey(const Key('wifi-first-intro')), findsOneWidget);
       expect(find.widgetWithText(TextField, siteFieldLabel), findsNothing);
       expect(find.textContaining('站點'), findsNothing);
@@ -446,7 +446,7 @@ void main() {
         findsOneWidget,
       );
       expect(text(tester, 'task-title'), wifiTaskTitle);
-      expect(text(tester, 'step-title'), '3 / 10   Gateway 網路體檢');
+      expect(text(tester, 'step-title'), '3 / 10   閘道器網路體檢');
       expect(find.widgetWithText(TextField, siteFieldLabel), findsNothing);
       expect(fake.count('set_site_identity'), 0);
 

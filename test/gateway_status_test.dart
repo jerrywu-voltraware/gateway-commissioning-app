@@ -15,6 +15,7 @@
 //    three states (rows / none / no permission) and a row's tap; the
 //    scan stops when the page is left; the recent list's empty words.
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -595,7 +596,7 @@ void main() {
       SharedPreferences.setMockInitialValues({});
       final fake = DemoSystem();
       await _pumpApp(tester, fake);
-      // (b) the start page's secondary button, below 〔檢查並開始〕.
+      // (b) the start page's own row (1.0.0+16), below the start card.
       final button = find.byKey(const Key('home-gateway-status'));
       await tester.scrollUntilVisible(
         button,
@@ -628,6 +629,114 @@ void main() {
       // The flow is where it was.
       expect(find.text('檢查並開始'), findsOneWidget);
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('1.0.0+16 「查看上傳資料」', () {
+    testWidgets('a row under the start card, not a button in it', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues({});
+      await _pumpApp(tester, DemoSystem());
+      final row = find.byKey(const Key('home-gateway-status'));
+      await tester.scrollUntilVisible(
+        row,
+        250,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(gatewayStatusLabel, '查看上傳資料');
+      expect(
+        find.descendant(of: row, matching: find.text('查看上傳資料')),
+        findsOneWidget,
+      );
+      expect(find.text('閘道器狀態'), findsNothing);
+      expect(find.byIcon(Icons.cloud_done_outlined), findsOneWidget);
+      expect(find.byIcon(Icons.router_outlined), findsNothing);
+      expect(
+        find.text('架設完後，看資料有沒有正常送到後台'),
+        findsOneWidget,
+      );
+      // Not inside the start card (which holds 〔檢查並開始〕).
+      final start = find.text('檢查並開始');
+      expect(
+        find.ancestor(of: row, matching: find.byType(Card)),
+        findsNothing,
+      );
+      expect(
+        find.descendant(
+          of: find.ancestor(of: start, matching: find.byType(Card)).first,
+          matching: row,
+        ),
+        findsNothing,
+      );
+      expect(tester.getSize(row).height, greaterThanOrEqualTo(48));
+      await tester.tap(row);
+      await tester.pumpAndSettle();
+      expect(find.byType(GatewayStatusPage), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(AppBar),
+          matching: find.text('查看上傳資料'),
+        ),
+        findsOneWidget,
+      );
+      // Sections inside the page keep their names.
+      expect(find.text(gatewayStatusRecentTitle), findsOneWidget);
+    });
+
+    testWidgets('⋮ menu item says 「查看上傳資料…」', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      await _pumpApp(tester, DemoSystem());
+      await tester.tap(find.byKey(const Key('topology-menu')));
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('gateway-status-menu')),
+          matching: find.text('查看上傳資料…'),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('360 dp, text scale 1.3: the caption wraps whole', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues({});
+      tester.view.physicalSize = const Size(360, 740);
+      tester.view.devicePixelRatio = 1;
+      tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+        tester.platformDispatcher.clearAllTestValues();
+      });
+      await _pumpApp(tester, DemoSystem());
+      final row = find.byKey(const Key('home-gateway-status'));
+      await tester.scrollUntilVisible(
+        row,
+        250,
+        scrollable: find.byType(Scrollable).first,
+      );
+      final caption = tester.widget<Text>(
+        find.byKey(const Key('home-gateway-status-caption')),
+      );
+      expect(caption.maxLines, isNull);
+      expect(caption.overflow, isNull);
+      expect(tester.getSize(row).height, greaterThanOrEqualTo(48));
+      expect(tester.takeException(), isNull);
+    });
+
+    test('no user-visible 「Gateway」 wording in lib/', () {
+      // Identifiers (GatewayApi ...) are not matched: a bare word only.
+      final word = RegExp(r'(?<![A-Za-z0-9_])Gateway(?![A-Za-z0-9_])');
+      for (final f in Directory('lib').listSync(recursive: true)) {
+        if (f is! File || !f.path.endsWith('.dart')) continue;
+        for (final line in f.readAsLinesSync()) {
+          final code = line.trimLeft();
+          if (code.startsWith('//') || code.startsWith('*')) continue;
+          expect(word.hasMatch(line), isFalse, reason: '${f.path}: $line');
+        }
+      }
     });
   });
 

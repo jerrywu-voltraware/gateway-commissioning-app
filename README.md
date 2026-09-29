@@ -201,3 +201,9 @@ Wi-Fi 名稱下方可掃描手機周邊的 2.4 GHz 網路，依訊號排序，�
 - 步驟指示：從體檢頁〔重設 Wi-Fi〕開的 Wi-Fi 頁（未配置的 `wifi_first`，以及已配置的 `wifi_only`）顯示「3 / 10 Gateway 網路體檢」（`wifiFormOfCheck`；原本是「6 / 10 站點選擇」）；站點頁照舊 6 / 10。站號之後才出現的 Wi-Fi 頁（離線略過體檢，或站點頁〔改用其他 Wi-Fi〕）不變。
 - 不變：已配置的〔重設 Wi-Fi〕（只更新 Wi-Fi → 確認資料上傳 → 站點確認）；未配置且體檢一開始就通過 → 直接站點選擇；離線時體檢失敗的〔先離線配置新站點〕→ 站點 → 身份＋Wi-Fi 一起送。
 - 測試：新增 `test/wifi_first_test.dart`（Wi-Fi 表單而非站號頁、只送 set_wifi、連上後重讀並進站點、之後身份不再送 set_wifi 也不問密碼、MQTT 還在連也不擋、失敗顯示原因且不進站點並可重試、先換上傳目標再 set_wifi、目標沒對齊回體檢、已配置仍是「保留站點」、`keptWifiSsid` 規則、頁面流程與步驟指示、〔不改 Wi-Fi，返回〕、體檢直接通過不顯示新行）；`layout_smoke_test` 加「Wi-Fi 頁（未配置）」與「之後的站點頁」；`network_check_test` 的「new gateway: 設定 Wi-Fi…」與 `one_thing_screens_test` 的「a gateway on no Wi-Fi…」原本斷言「先站號、後 Wi-Fi、一起送」，改為新順序（先 Wi-Fi 只送 set_wifi，後站號只送 set_site_identity，斷言更多）。
+
+### 1.0.0+16（09-29 實機回饋：首頁〔閘道器狀態〕是系統用語，現場人員不知道用途；體檢等頁面寫英文「Gateway」，其他頁寫「閘道器」）：入口改名並移出開始卡片、文案統一（只改文案與版面，不動流程）
+- 首頁：〔閘道器狀態〕改為卡片下方獨立一列「查看上傳資料」（`lib/presentation/commissioning_page.dart` `_uploadDataRow`，`Key('home-gateway-status')`，`ListTile`、雲端打勾圖示 `Icons.cloud_done_outlined`、尾端 ›、≥ 48 dp，與「設備與連線資訊」同層）；下方小字副標「架設完後，看資料有沒有正常送到後台」（`Key('home-gateway-status-caption')`，可折行，360 dp／字級 1.3 不截字）。開始卡片內只剩〔檢查並開始〕。
+- 名稱：`gatewayStatusLabel`（`gateway_status_page.dart`）＝「查看上傳資料」，同時是狀態頁 AppBar 標題；⋮ 選單同名入口「查看上傳資料…」（`gatewayStatusMenuText`）。頁內分區標題（「最近配置」「附近閘道器」…）不動。
+- 文案：`lib/` 使用者可見字串中的英文「Gateway」全部改為「閘道器」（如「閘道器網路體檢」「閘道器找不到 Wi-Fi」「閘道器的資料送到正式站」）；識別字、類別名、註解、API 路徑、BLE 名稱不動。
+- 測試：`gateway_status_test` 新增「查看上傳資料」組（列在開始卡片外、點了進狀態頁與 AppBar 標題、選單文字、360 dp×1.3 副標折行、`lib/` 無使用者可見「Gateway」掃描）；既有測試中的「Gateway …」期望字串改為「閘道器 …」，`logic_fixes_v10_test` 選單文字期望改「查看上傳資料…」；`install_report_test` 第 4 組點〔分享安裝報告〕前多捲一段（文案變短後版面位移，該列被底部列蓋住）。

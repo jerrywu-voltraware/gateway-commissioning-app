@@ -160,7 +160,7 @@ void main() {
       expect(
         failure.message,
         startsWith(
-          '後端找不到此 Gateway（站 3 / Gateway 2）。Gateway 的資料可能上傳到其他後端環境'
+          '後端找不到此閘道器（站 3 / 閘道器 2）。閘道器的資料可能上傳到其他後端環境'
           '（例如正式站），而 APP 目前連的是 區域網路／本機後端 http://192.168.1.20:8000。',
         ),
       );
@@ -183,7 +183,7 @@ void main() {
     test('gateway fail ack and unexpected errors are not generic', () {
       expect(
         const GatewayFailure.gateway('invalid param').message,
-        'Gateway 回報失敗：invalid param',
+        '閘道器回報失敗：invalid param',
       );
       expect(
         const GatewayFailure.gateway('busy').message,
@@ -244,7 +244,7 @@ void main() {
         expect(e.status, 404);
         expect(e.detail, 'gateway_not_found');
         expect(e.endpoint, 'POST /api/gateways/5/1/reserve-identity');
-        expect(e.message, contains('後端找不到此 Gateway（站 5 / Gateway 1）'));
+        expect(e.message, contains('後端找不到此閘道器（站 5 / 閘道器 1）'));
         expect(e.message, isNot(contains('AABBCC')));
       }
     });
@@ -296,9 +296,9 @@ void main() {
         final error = container.read(commissionProvider).error!;
         expect(
           error,
-          contains('Gateway 的資料沒有進入目前連線的區域網路／本機後端 http://192.168.1.20:8000'),
+          contains('閘道器的資料沒有進入目前連線的區域網路／本機後端 http://192.168.1.20:8000'),
         );
-        expect(error, contains('Gateway 已確認上傳到本地 192.168.1.20:8883'));
+        expect(error, contains('閘道器已確認上傳到本地 192.168.1.20:8883'));
         expect(error, contains('防火牆已開放 TCP 8883'));
         expect(error, contains('憑證包含電腦目前的 IP 192.168.1.20'));
         expect(error, isNot(contains('其他後端環境')));
@@ -313,7 +313,7 @@ void main() {
         fake.noGatewayRow = true;
         await c.verify('http://192.168.1.20:8000', '', environment: 'local');
         final error = container.read(commissionProvider).error!;
-        expect(error, startsWith('後端找不到此 Gateway（站 1 / Gateway 1）'));
+        expect(error, startsWith('後端找不到此閘道器（站 1 / 閘道器 1）'));
         expect(error, contains('還沒連上該 MQTT broker'));
         expect(error, contains('本地 MQTT broker 已啟動'));
         expect(
@@ -339,7 +339,7 @@ void main() {
       const lan = MqttTarget.local('192.168.1.20');
       expect(
         missingGatewayCause(running: lan, wanted: lan, mqttConnected: false),
-        contains('Gateway 最近回報 MQTT 未連線'),
+        contains('閘道器最近回報 MQTT 未連線'),
       );
       const prod = MqttTarget.production(host: '46.250.255.172');
       final onProduction = missingGatewayCause(

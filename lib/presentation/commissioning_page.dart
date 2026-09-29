@@ -387,7 +387,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           _snack(
             connected
                 ? '已切換到${env.label}。'
-                : '已切換到${env.label}。${env.autoSync ? '連上 Gateway 後會自動讓它一起切換。' : '連上 Gateway 後可在「連線狀態」按「同步」。'}',
+                : '已切換到${env.label}。${env.autoSync ? '連上閘道器後會自動讓它一起切換。' : '連上閘道器後可在「連線狀態」按「同步」。'}',
           );
         }
       case SyncNeed.legacy:
@@ -403,7 +403,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           final ok = await confirmUploadTargetSwitch(context, wanted: target!);
           if (!ok || !mounted) return;
         } else {
-          _snack('正在把 Gateway 切到${target!.plainLabel}，約 1 分鐘，請留在 Gateway 旁。');
+          _snack('正在把閘道器切到${target!.plainLabel}，約 1 分鐘，請留在閘道器旁。');
         }
         // Without Wi-Fi the upload cannot start: do not wait for it.
         final wifi = ref.read(commissionProvider).wifi;
@@ -1833,6 +1833,10 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                         ),
                       ),
                     ),
+                  // 1.0.0+16: 〔查看上傳資料〕 - its own row under the start
+                  // card, level with 「設備與連線資訊」 (it was a button in the
+                  // card; the field did not know what 「閘道器狀態」 was for).
+                  if (!done && state.step == 0) _uploadDataRow(!state.busy),
                   if (!done)
                     _details(
                       state,
@@ -1885,7 +1889,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                       initialValue: ref.read(demoSystemProvider).wifiState,
                       isExpanded: true,
                       decoration: const InputDecoration(
-                        labelText: '模擬 Gateway 的 Wi-Fi',
+                        labelText: '模擬閘道器的 Wi-Fi',
                         border: OutlineInputBorder(),
                       ),
                       items: const [
@@ -2006,7 +2010,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                 ? '要使用此站點，請先按上方「$leaveTestModeLabel」（目前：$reason）。'
                 : check.uploadPaused && check.wifiOk && check.targetOk
                 ? '要使用此站點，請先按上方「$resumeUploadLabel」（目前：$reason）。'
-                : '要使用此站點，Gateway 必須先連上 Wi-Fi 並開始上傳資料（目前：$reason）。'
+                : '要使用此站點，閘道器必須先連上 Wi-Fi 並開始上傳資料（目前：$reason）。'
                       '請按「$otherWifiLabel」，或按「回到網路體檢」。',
             key: const Key('reuse-blocked'),
             style: TextStyle(color: theme.colorScheme.error),
@@ -2082,7 +2086,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       _gatewayAssignment(enabled: enabled),
     const Padding(
       padding: EdgeInsets.only(top: 4, bottom: 12),
-      child: Text('Gateway 只能用 2.4 GHz 的 Wi-Fi，5 GHz 的網路連不上。'),
+      child: Text('閘道器只能用 2.4 GHz 的 Wi-Fi，5 GHz 的網路連不上。'),
     ),
     Row(
       children: [
@@ -2521,6 +2525,27 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         )
       : const Text('連線時藍燈呼吸；更新韌體後可使用雙閃辨識。');
 
+  /// 1.0.0+16: the start page's 〔查看上傳資料〕 row (opens
+  /// [GatewayStatusPage]); a ListTile so the touch target is >= 48 dp and
+  /// the caption wraps at 360 dp / text scale 1.3.
+  Widget _uploadDataRow(bool enabled) {
+    return ListTile(
+      key: const Key('home-gateway-status'),
+      contentPadding: EdgeInsets.zero,
+      enabled: enabled,
+      minVerticalPadding: 12,
+      leading: const Icon(Icons.cloud_done_outlined, size: 20),
+      title: const Text(gatewayStatusLabel),
+      subtitle: Text(
+        gatewayStatusHomeCaption,
+        key: const Key('home-gateway-status-caption'),
+        style: Theme.of(context).textTheme.bodySmall,
+      ),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: enabled ? () => GatewayStatusPage.open(context) : null,
+    );
+  }
+
   /// One-thing screens (09-28): 「設備與連線資訊」, collapsed — the mode,
   /// the step list, the gateway's name / MAC / phone signal, its identify
   /// and, when all is fine, the connection panel. Errors, the Bluetooth
@@ -2934,18 +2959,6 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             }
             await c.prepare(current.base, '', offline: _offline);
           }, enabled),
-          // 1.0.0+5: 〔閘道器狀態〕 — the gateways finished on this phone and
-          // the back office's list, each opening 〔查看最近資料〕. Secondary
-          // to 〔檢查並開始〕; the flow itself is untouched.
-          Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: OutlinedButton.icon(
-              key: const Key('home-gateway-status'),
-              onPressed: enabled ? () => GatewayStatusPage.open(context) : null,
-              icon: const Icon(Icons.router_outlined, size: 20),
-              label: const Text(gatewayStatusLabel),
-            ),
-          ),
         ];
       case 1:
         return [
@@ -2982,7 +2995,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           const SizedBox(height: 12),
           const Text('確認閘道器不只連上 WiFi，後端也持續收到心跳。'),
           const SizedBox(height: 8),
-          Text('Gateway 自己回報：${check.upload.line}'),
+          Text('閘道器自己回報：${check.upload.line}'),
           // Round 30: its retry is in the bottom bar ([_checkNext]).
           const SizedBox(height: 8),
           Text(
@@ -3068,7 +3081,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                       ? autoRelinkingText
                       : s.uploadWatch == UploadWatch.linkLost || s.resumePending
                       ? rescanAfterLossLabel
-                      : '由 Gateway 重新掃描 PTU',
+                      : '由閘道器重新掃描 PTU',
                 ),
               ),
             Padding(
@@ -3251,13 +3264,13 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               ),
               children: [
                 Text(
-                  '由 Gateway 掃描附近的 PTU，再透過藍牙把清單傳回手機。'
+                  '由閘道器掃描附近的 PTU，再透過藍牙把清單傳回手機。'
                   '${c.directFlow
                       ? "直連模式：由閘道器自己選最近的 PTU（門檻內最強，或已綁定的那台），這裡只顯示它的選擇；請用「辨識此樁」確認是眼前這台，不是的話按「不是這台？」改選。"
                       : topology.isDirect
                       ? "直連模式：已自動選定訊號最強的一台。"
                       : "最多可選 ${ref.read(topologyProvider).starCount} 台。"}'
-                  'RSSI 是 Gateway 與 PTU 之間的訊號；未連線裝置顯示掃描值。「上次」表示暫停或過期，「快取」表示韌體未提供讀值時間。韌體 1.7.5 起可在配置期間量測；RSSI — 表示尚無有效讀值。',
+                  'RSSI 是閘道器與 PTU 之間的訊號；未連線裝置顯示掃描值。「上次」表示暫停或過期，「快取」表示韌體未提供讀值時間。韌體 1.7.5 起可在配置期間量測；RSSI — 表示尚無有效讀值。',
                 ),
                 // The step list is in 「設備與連線資訊」 (09-28).
               ],
@@ -3337,7 +3350,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             ),
             TextButton(
               onPressed: enabled ? c.rescanPtus : null,
-              child: const Text('返回選擇 PTU，由 Gateway 重新掃描'),
+              child: const Text('返回選擇 PTU，由閘道器重新掃描'),
             ),
             button(
               '開始資料驗證',
@@ -4149,7 +4162,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     return [
       // 1.0.0+10: a card title (titleSmall w700).
       Text(
-        recheck ? '確認資料上傳' : 'Gateway 網路體檢',
+        recheck ? '確認資料上傳' : '閘道器網路體檢',
         style: theme.textTheme.titleSmall?.copyWith(
           fontWeight: FontWeight.w700,
         ),
@@ -4157,11 +4170,11 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       const SizedBox(height: 4),
       Text(
         recheck
-            ? 'Wi-Fi 已更新。等 Gateway 開始上傳資料，再確認站點（沿用或設定新站點）。'
-            : '先確認 Gateway 能上網、資料送對地方，再選擇站點。',
+            ? 'Wi-Fi 已更新。等閘道器開始上傳資料，再確認站點（沿用或設定新站點）。'
+            : '先確認閘道器能上網、資料送對地方，再選擇站點。',
         style: muted,
       ),
-      item('Gateway 的 Wi-Fi', check.wifi, 'check-wifi'),
+      item('閘道器的 Wi-Fi', check.wifi, 'check-wifi'),
       // Joined but weak: red, with what to do (advice, not a blocker).
       if (check.wifiWeak != null)
         Padding(
@@ -4178,7 +4191,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           Padding(
             padding: const EdgeInsets.only(top: 6),
             child: Text(
-              '按下後會先讓 Gateway 改送到${placeOf(check.syncTarget!)}'
+              '按下後會先讓閘道器改送到${placeOf(check.syncTarget!)}'
               '（重新開機一次），再設定 Wi-Fi。',
               style: muted,
             ),
@@ -4194,7 +4207,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               key: const Key('check-sync'),
               onPressed: enabled ? () => _syncGateway(explicit: true) : null,
               child: Text(
-                '讓 Gateway 改送到${placeOf(check.syncTarget!)}（重新開機約 1 分鐘）',
+                '讓閘道器改送到${placeOf(check.syncTarget!)}（重新開機約 1 分鐘）',
               ),
             ),
           ),
@@ -4252,7 +4265,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         Text(
           station
               ? '沒有通過網路體檢時不能沿用目前站點；可以重設 Wi-Fi 或設定新站點。'
-              : '⚠ Gateway 的網路還沒確認好。設定完新站點後會再確認資料上傳，'
+              : '⚠ 閘道器的網路還沒確認好。設定完新站點後會再確認資料上傳，'
                     '最後的「驗證資料」也會檢查。',
           style: muted,
         ),
@@ -4369,7 +4382,7 @@ const uploadBadTaskTitle = '閘道器還沒開始上傳資料，請依下方提�
 const wifiTaskTitle = '設定閘道器的 Wi-Fi';
 
 /// 1.0.0+15: the Wi-Fi-first page of a gateway not in service.
-const wifiFirstPageText = '先讓 Gateway 連上 Wi-Fi，網路正常後再設定站號。';
+const wifiFirstPageText = '先讓閘道器連上 Wi-Fi，網路正常後再設定站號。';
 String stationQuestionTitle(int site) => '目前站號是 $site，這台要配置在本站嗎？';
 const stationInputTitle = '請輸入這台要配置的站號';
 const onlineRunningTaskTitle = '正在確認閘道器上線，請稍候';

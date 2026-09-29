@@ -89,7 +89,7 @@ void main() {
   tearDown(() => step7RetryGaps = keepGaps);
 
   test(
-    'empty existing station asks Gateway to discover before verification',
+    'empty existing station asks 閘道器 to discover before verification',
     () async {
       final fake = InventoryGateway();
       final (container, controller) = await connect(fake);
@@ -101,14 +101,14 @@ void main() {
       expect(state.step, 4);
       expect(state.ptus.single['mac'], fake.nearby.single['mac']);
       expect(fake.operations, ['scan_ble_discover', 'get_ble_devices']);
-      expect(fake.phoneScans, 1, reason: 'phone only scans for the Gateway');
+      expect(fake.phoneScans, 1, reason: 'phone only scans for the 閘道器');
       expect(fake.requests, isEmpty);
       expect(fake.config['site_id'], 80);
     },
   );
 
   test(
-    'Gateway results include all seven nearby and connected-only PTUs',
+    '閘道器 results include all seven nearby and connected-only PTUs',
     () async {
       final fake = InventoryGateway();
       fake.nearby = List.generate(
@@ -155,7 +155,7 @@ void main() {
       expect(state.selected, isEmpty);
       expect(state.uploadWatch, UploadWatch.linkLost);
       expect(state.networkReady, isFalse);
-      expect(state.message, contains('Gateway 掃描未完成'));
+      expect(state.message, contains('閘道器掃描未完成'));
       final status = connectionStatus(
         env: const BackendEnvState(),
         state: state,
@@ -222,8 +222,8 @@ void main() {
       await controller.connect(container.read(commissionProvider).peers.single);
       await controller.chooseStation(newStation: false);
       await tester.pumpAndSettle();
-      expect(find.text('Gateway 正在掃描周邊 PTU，請稍候'), findsNothing);
-      expect(find.textContaining('手機與 Gateway 都已連上'), findsNothing);
+      expect(find.text('閘道器正在掃描周邊 PTU，請稍候'), findsNothing);
+      expect(find.textContaining('手機與閘道器都已連上'), findsNothing);
       expect(find.textContaining('藍牙已中斷，上傳狀態待確認'), findsOneWidget);
       // Round 12: the automatic reconnect + rescan already ran (and failed
       // again); the banner and the bottom button both offer the retry.
@@ -241,7 +241,7 @@ void main() {
   );
 
   testWidgets(
-    'verification page rescans on Gateway and shows returned candidate',
+    'verification page rescans on 閘道器 and shows returned candidate',
     (tester) async {
       tester.view.physicalSize = const Size(800, 2400);
       tester.view.devicePixelRatio = 1;
@@ -267,13 +267,13 @@ void main() {
       await tester.runAsync(controller.configurePtus);
       await tester.pumpAndSettle();
       expect(container.read(commissionProvider).step, 6);
-      final button = find.text('返回選擇 PTU，由 Gateway 重新掃描');
+      final button = find.text('返回選擇 PTU，由閘道器重新掃描');
       await tester.ensureVisible(button);
       await tester.tap(button);
       await tester.pumpAndSettle();
       expect(container.read(commissionProvider).step, 4);
       expect(find.text('AA:BB:CC:00:00:01'), findsOneWidget);
-      expect(find.text('由 Gateway 重新掃描 PTU'), findsOneWidget);
+      expect(find.text('由閘道器重新掃描 PTU'), findsOneWidget);
       expect(find.text('開始資料驗證'), findsNothing);
       expect(tester.takeException(), isNull);
     },

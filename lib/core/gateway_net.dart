@@ -68,9 +68,9 @@ String wifiStateText(Object? raw) => switch (raw) {
   _ => '未知（$raw）',
 };
 
-String wifiOkText(String? ssid) => 'Gateway 已連上 ${_named(ssid)}';
+String wifiOkText(String? ssid) => '閘道器已連上 ${_named(ssid)}';
 
-const wifiConnectingText = 'Gateway 正在連 Wi-Fi…';
+const wifiConnectingText = '閘道器正在連 Wi-Fi…';
 
 /// Why the gateway has no network, in plain words ([ssid] empty: none is
 /// configured; null: not reported). [reason]: `wifi_last_disc_reason`
@@ -78,20 +78,20 @@ const wifiConnectingText = 'Gateway 正在連 Wi-Fi…';
 /// every likely cause.
 String wifiProblemText(String? ssid, {int? reason}) {
   if (ssid != null && ssid.isEmpty) {
-    return 'Gateway 還沒有設定 Wi-Fi，所以沒辦法上傳資料。';
+    return '閘道器還沒有設定 Wi-Fi，所以沒辦法上傳資料。';
   }
   return switch (wifiFailKindOf(reason)) {
     WifiFailKind.password =>
-      'Gateway 連不上 ${_named(ssid)}：密碼可能錯誤，請確認密碼（含大小寫）後重新輸入。',
+      '閘道器連不上 ${_named(ssid)}：密碼可能錯誤，請確認密碼（含大小寫）後重新輸入。',
     WifiFailKind.notFound =>
-      'Gateway 找不到 ${_named(ssid)}。請確認名稱正確、是 2.4 GHz'
-          '（Gateway 不支援 5 GHz），且基地台就在附近。',
+      '閘道器找不到 ${_named(ssid)}。請確認名稱正確、是 2.4 GHz'
+          '（閘道器不支援 5 GHz），且基地台就在附近。',
     WifiFailKind.weakOrOther =>
-      'Gateway 連不上 ${_named(ssid)}，可能是訊號太弱或基地台暫時拒絕連線。'
-          '請把 Gateway 移近基地台、避開金屬遮蔽後再試。',
+      '閘道器連不上 ${_named(ssid)}，可能是訊號太弱或基地台暫時拒絕連線。'
+          '請把閘道器移近基地台、避開金屬遮蔽後再試。',
     null =>
-      'Gateway 連不上 ${_named(ssid)}。這個 Wi-Fi 可能不在附近、密碼不對，'
-          '或是 5 GHz（Gateway 只能用 2.4 GHz）。',
+      '閘道器連不上 ${_named(ssid)}。這個 Wi-Fi 可能不在附近、密碼不對，'
+          '或是 5 GHz（閘道器只能用 2.4 GHz）。',
   };
 }
 
@@ -193,7 +193,7 @@ bool isWeakWifiRssi(Object? rssi) =>
 /// The red warning with what to do about it.
 String weakWifiText(num rssi) =>
     '⚠ Wi-Fi 訊號偏弱（${rssi.toInt()} dBm，低於 $weakWifiRssiDbm dBm），'
-    '資料可能時斷時續。建議把 Gateway 移近基地台、避開金屬遮蔽，或在附近加裝 Wi-Fi 延伸器。';
+    '資料可能時斷時續。建議把閘道器移近基地台、避開金屬遮蔽，或在附近加裝 Wi-Fi 延伸器。';
 
 /// [weakWifiText] when the gateway is joined and its signal is weak.
 String? weakWifiWarning(Map<String, dynamic> net) {
@@ -207,10 +207,10 @@ String? weakWifiWarning(Map<String, dynamic> net) {
 String wifiSetFailedText(int? reason) => switch (wifiFailKindOf(reason)) {
   WifiFailKind.password => '新 Wi-Fi 連線未成功：密碼可能錯誤，請確認密碼（含大小寫）後重試。',
   WifiFailKind.notFound =>
-    '新 Wi-Fi 連線未成功：Gateway 找不到這個 Wi-Fi。請確認名稱正確、是 2.4 GHz'
+    '新 Wi-Fi 連線未成功：閘道器找不到這個 Wi-Fi。請確認名稱正確、是 2.4 GHz'
         '（不支援 5 GHz），且基地台就在附近。',
   WifiFailKind.weakOrOther =>
-    '新 Wi-Fi 連線未成功：可能是訊號太弱或基地台暫時拒絕連線，請把 Gateway 移近基地台後重試。',
+    '新 Wi-Fi 連線未成功：可能是訊號太弱或基地台暫時拒絕連線，請把閘道器移近基地台後重試。',
   null => '新 WiFi 連線未成功，請檢查密碼與訊號後重試。',
 };
 

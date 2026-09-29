@@ -235,8 +235,8 @@ void main() {
         'error; the advice stays in the red box below', () {
       expect(checklistReason('等待超時，請確認裝置與網路後重試。'), '等待超時');
       expect(
-        checklistReason('後端找不到此 Gateway。可能在別的後台。\n[HTTP 404 · /x]'),
-        '後端找不到此 Gateway',
+        checklistReason('後端找不到此閘道器。可能在別的後台。\n[HTTP 404 · /x]'),
+        '後端找不到此閘道器',
       );
       expect(checklistReason('資料驗證未通過：\n#1 沒有資料'), '資料驗證未通過');
       expect(

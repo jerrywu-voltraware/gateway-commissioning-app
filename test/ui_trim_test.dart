@@ -215,7 +215,7 @@ void main() {
       expect(find.text(productionSheetHint), findsOneWidget);
       expect(_allText(tester), isNot(contains('客戶')));
       expect(find.byKey(const Key('auto-sync-switch')), findsNothing);
-      expect(find.text('連線 Gateway 時自動同步上傳目標'), findsNothing);
+      expect(find.text('連線閘道器時自動同步上傳目標'), findsNothing);
       expect(find.byType(SwitchListTile), findsNothing);
       expect(tester.takeException(), isNull);
     });

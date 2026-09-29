@@ -23,7 +23,8 @@ import 'recent_data_page.dart';
 
 /// Title of the page and of its entries (the start page's button, the
 /// topology menu's item).
-const gatewayStatusLabel = '閘道器狀態';
+const gatewayStatusLabel = '查看上傳資料';
+const gatewayStatusHomeCaption = '架設完後，看資料有沒有正常送到後台';
 const gatewayStatusRecentTitle = '最近配置（這支手機）';
 const gatewayStatusNearbyTitle = '附近閘道器（藍牙掃描）';
 const gatewayStatusFleetTitle = '後台在線閘道器';

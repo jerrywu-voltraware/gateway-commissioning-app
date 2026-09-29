@@ -18,22 +18,22 @@ String missingGatewayCause({
 }) {
   if (running != null && wanted != null && running.sameAs(wanted)) {
     final state = switch (mqttConnected) {
-      false => 'Gateway 最近回報 MQTT 未連線。',
-      true => 'Gateway 最近回報 MQTT 已連線，可能剛連上、心跳尚未送達，可稍候再驗證。',
+      false => '閘道器最近回報 MQTT 未連線。',
+      true => '閘道器最近回報 MQTT 已連線，可能剛連上、心跳尚未送達，可稍候再驗證。',
       _ => '',
     };
     final hint = running.isLocal
-        ? '請確認：Gateway 的 MQTT 已連線（按「重新讀取」查看）、電腦防火牆已開放 TCP '
+        ? '請確認：閘道器的 MQTT 已連線（按「重新讀取」查看）、電腦防火牆已開放 TCP '
               '${running.port}、本地 MQTT broker 已啟動，且 broker 憑證包含電腦目前的 IP '
-              '${running.host}（電腦 IP 若因 DHCP 變更，需重新產生憑證並把 Gateway 切到新 IP）。'
+              '${running.host}（電腦 IP 若因 DHCP 變更，需重新產生憑證並把閘道器切到新 IP）。'
         : '請確認現場網路可連到正式站（TCP ${running.port}），並按「重新讀取」查看 MQTT 是否已連線。';
-    return 'Gateway 已確認上傳到${running.label}（與 APP 所連後端一致），'
-        '但後端尚未收到它的心跳，表示 Gateway 還沒連上該 MQTT broker。$state\n$hint';
+    return '閘道器已確認上傳到${running.label}（與 APP 所連後端一致），'
+        '但後端尚未收到它的心跳，表示閘道器還沒連上該 MQTT broker。$state\n$hint';
   }
   if (wanted != null && !wanted.isLocal && running == null) {
-    return 'Gateway 可能尚未連上正式站的 MQTT，或上傳到其他後端環境（例如本地測試站）。';
+    return '閘道器可能尚未連上正式站的 MQTT，或上傳到其他後端環境（例如本地測試站）。';
   }
-  return 'Gateway 可能上傳到其他後端環境（例如正式站）。';
+  return '閘道器可能上傳到其他後端環境（例如正式站）。';
 }
 
 /// Reasons one PTU has not passed the current verification round.
@@ -93,18 +93,18 @@ String verifyDiagnosis({
   final lines = <String>[];
   if (fleet == null && rows.isEmpty) {
     lines.add(
-      'Gateway 的資料沒有進入目前連線的$backend：fleet-status 沒有站 $site / '
-      'Gateway $gateway 的心跳，/api/latest 也沒有任何資料。'
+      '閘道器的資料沒有進入目前連線的$backend：fleet-status 沒有站 $site / '
+      '閘道器 $gateway 的心跳，/api/latest 也沒有任何資料。'
       '${cause ?? missingGatewayCause()}',
     );
   } else if (fleet == null) {
-    lines.add('fleet-status 沒有站 $site / Gateway $gateway 的心跳紀錄。');
+    lines.add('fleet-status 沒有站 $site / 閘道器 $gateway 的心跳紀錄。');
   } else {
     if (fleet['online'] != true) {
-      lines.add('Gateway 在後端顯示離線（最後心跳 ${fleet['last_heartbeat'] ?? '無'}）。');
+      lines.add('閘道器在後端顯示離線（最後心跳 ${fleet['last_heartbeat'] ?? '無'}）。');
     }
     if (fleet['upload_paused'] == true) {
-      lines.add('Gateway 資料上傳為暫停狀態（已嘗試恢復）。');
+      lines.add('閘道器資料上傳為暫停狀態（已嘗試恢復）。');
     }
   }
   lines.add('連續通過 $consecutive / 3 次。');

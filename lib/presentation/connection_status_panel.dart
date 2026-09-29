@@ -150,7 +150,7 @@ class _ConnectionStatusPanelState extends ConsumerState<ConnectionStatusPanel> {
         ],
       ),
       row('手機 → 後端', status.phone),
-      row('Gateway → 資料上傳', status.gateway),
+      row('閘道器 → 資料上傳', status.gateway),
       if (status.wifiWeak != null)
         Padding(
           padding: const EdgeInsets.only(top: 6),
@@ -246,10 +246,10 @@ Future<bool> confirmUploadTargetSwitch(
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (context) => AlertDialog(
-      title: const Text('同時切換 Gateway？'),
+      title: const Text('同時切換閘道器？'),
       content: Text(
-        'Gateway 會改把資料送到${wanted.plainLabel}，並重新開機約 1 分鐘，'
-        '期間請留在 Gateway 旁。',
+        '閘道器會改把資料送到${wanted.plainLabel}，並重新開機約 1 分鐘，'
+        '期間請留在閘道器旁。',
       ),
       actions: [
         TextButton(

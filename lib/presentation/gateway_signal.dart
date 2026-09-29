@@ -151,7 +151,7 @@ class _GatewaySignalState extends State<GatewaySignal>
     return Padding(
       padding: const EdgeInsets.only(top: 4),
       child: Text(
-        '手機 ↔ Gateway：$status',
+        '手機 ↔ 閘道器：$status',
         key: const Key('gateway-signal'),
         style: Theme.of(context).textTheme.bodySmall,
       ),

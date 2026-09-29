@@ -213,7 +213,7 @@ void main() {
           .text,
       '192.168.1.50',
     );
-    expect(find.text('已切換到本地測試。連上 Gateway 後會自動讓它一起切換。'), findsOneWidget);
+    expect(find.text('已切換到本地測試。連上閘道器後會自動讓它一起切換。'), findsOneWidget);
     var prefs = await SharedPreferences.getInstance();
     expect(prefs.getString('backend_environment'), 'local');
     expect(
@@ -300,7 +300,7 @@ void main() {
       containsAllInOrder(['set_mqtt_target', 'ping', 'get_net_status']),
     );
     await _openDetails(tester);
-    expect(find.text('✓ 本地測試：手機與 Gateway 都已連上'), findsOneWidget);
+    expect(find.text('✓ 本地測試：手機與閘道器都已連上'), findsOneWidget);
     final state = container.read(commissionProvider);
     expect(parseMqttTarget(state.config)!.host, '192.168.1.50');
     expect(state.step, 2);
@@ -313,7 +313,7 @@ void main() {
       reason: 'logged in again to the local test host (build credential)',
     );
     expect(
-      find.text('同時切換 Gateway？'),
+      find.text('同時切換閘道器？'),
       findsNothing,
       reason: 'debug: no dialog',
     );
@@ -337,8 +337,8 @@ void main() {
     await _connectGateway(tester);
     expect(fake.targetRequests.single['host'], '192.168.1.50');
     await _openDetails(tester);
-    expect(find.text('✓ 本地測試：手機與 Gateway 都已連上'), findsOneWidget);
-    expect(find.text('同時切換 Gateway？'), findsNothing);
+    expect(find.text('✓ 本地測試：手機與閘道器都已連上'), findsOneWidget);
+    expect(find.text('同時切換閘道器？'), findsNothing);
   });
 
   testWidgets('release build: no auto sync, one-tap 同步 with a confirm', (
@@ -350,7 +350,7 @@ void main() {
     expect(fake.targetRequests, isEmpty);
     expect(find.text('⚠ 送到別處'), findsOneWidget);
     await _tap(tester, find.text('同步'));
-    expect(find.text('同時切換 Gateway？'), findsOneWidget);
+    expect(find.text('同時切換閘道器？'), findsOneWidget);
     await _tap(tester, find.text('先不要'));
     expect(fake.targetRequests, isEmpty);
     await _tap(tester, find.text('同步'));
@@ -377,7 +377,7 @@ void main() {
     await _chooseInSheet(tester, BackendEnv.local);
     expect(fake.targetRequests, isEmpty);
     expect(
-      find.text('這台 Gateway 韌體太舊（版本 1.7.2），只能送到正式站，請更新到 1.7.3 以上。'),
+      find.text('這台閘道器韌體太舊（版本 1.7.2），只能送到正式站，請更新到 1.7.3 以上。'),
       findsWidgets,
     );
   });

@@ -720,6 +720,10 @@ void main() {
       // 〔分享安裝報告〕 is still there, inside the report.
       await tester.scrollUntilVisible(report, 100, scrollable: page);
       await tester.ensureVisible(report);
+      // 1.0.0+16: shorter 「閘道器」 wording moved the tile under the bottom
+      // bar; scroll it clear of the bar before tapping.
+      await tester.drag(page, const Offset(0, -150));
+      await tester.pumpAndSettle();
       await tester.tap(report);
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('report-share')), findsOneWidget);

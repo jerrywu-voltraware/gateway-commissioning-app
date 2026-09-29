@@ -150,7 +150,7 @@ void main() {
       expect(data!['shown'], 3);
       expect(
         resumeText(data['step'] as int, [], 0, shown: data['shown'] as int),
-        startsWith('上次中斷於第 3 步（Gateway 網路體檢）'),
+        startsWith('上次中斷於第 3 步（閘道器網路體檢）'),
       );
     });
 

@@ -377,8 +377,8 @@ void main() {
 
     test('network check wording per cause; old firmware unchanged', () {
       const legacy =
-          'Gateway 連不上 Wi-Fi「Site-2G」。這個 Wi-Fi 可能不在附近、密碼不對，'
-          '或是 5 GHz（Gateway 只能用 2.4 GHz）。';
+          '閘道器連不上 Wi-Fi「Site-2G」。這個 Wi-Fi 可能不在附近、密碼不對，'
+          '或是 5 GHz（閘道器只能用 2.4 GHz）。';
       expect(wifiProblemText('Site-2G'), legacy);
       expect(wifiProblemText('Site-2G', reason: 15), contains('密碼可能錯誤'));
       expect(
@@ -586,7 +586,7 @@ void main() {
       );
       expect(
         status.details,
-        contains('Gateway 開機次數：41（上次開機原因：供電電壓不足（電源不穩或變壓器太弱））'),
+        contains('閘道器開機次數：41（上次開機原因：供電電壓不足（電源不穩或變壓器太弱））'),
       );
       expect(status.details.join('\n'), isNot(contains('brownout')));
     });

@@ -186,12 +186,12 @@ class GatewayFailure implements Exception {
     if (status == 404 && detail == 'gateway_not_found') {
       final where = match == null
           ? ''
-          : '（站 ${match.group(1)} / Gateway ${match.group(2)}）';
+          : '（站 ${match.group(1)} / 閘道器 ${match.group(2)}）';
       if (cause != null) {
-        return '後端找不到此 Gateway$where（APP 目前連的是 $_backendText）。$cause\n'
+        return '後端找不到此閘道器$where（APP 目前連的是 $_backendText）。$cause\n'
             '[HTTP 404 · $path · gateway_not_found]';
       }
-      return '後端找不到此 Gateway$where。Gateway 的資料可能上傳到其他後端環境'
+      return '後端找不到此閘道器$where。閘道器的資料可能上傳到其他後端環境'
           '（例如正式站），而 APP 目前連的是 $_backendText。\n'
           '[HTTP 404 · $path · gateway_not_found]';
     }
@@ -206,7 +206,7 @@ class GatewayFailure implements Exception {
   String get message {
     if (code == 'upload_target') return uploadTargetFailureText(detail ?? '');
     if (fromGateway && !_knownCodes.contains(code)) {
-      if (code.isEmpty) return 'Gateway 回報失敗（未提供原因）。';
+      if (code.isEmpty) return '閘道器回報失敗（未提供原因）。';
       final lower = code.toLowerCase();
       if (lower.contains('service not ready')) {
         return '閘道器藍牙服務尚未就緒，請稍後再試';
@@ -218,8 +218,8 @@ class GatewayFailure implements Exception {
       }
       if (lower.contains('timeout')) return 'PTU 沒有回應';
       // Never show a raw JSON ack in the banner (it stays in detail).
-      if (code.contains('{')) return 'Gateway 回報失敗，請查看詳細資訊。';
-      return 'Gateway 回報失敗：$code';
+      if (code.contains('{')) return '閘道器回報失敗，請查看詳細資訊。';
+      return '閘道器回報失敗：$code';
     }
     return switch (code) {
       'api' when status != null => _httpMessage,
@@ -232,16 +232,16 @@ class GatewayFailure implements Exception {
             '[${endpoint ?? ''}${detail == null ? '' : ' · $detail'}]',
       'unexpected' => 'APP 發生未預期錯誤：${detail ?? '未知'}',
       'target_mismatch' =>
-        'Gateway 目前把資料送到$detail，但手機連的是$expected，'
+        '閘道器目前把資料送到$detail，但手機連的是$expected，'
             '資料到不了手機連的這個後端，所以直接停止驗證（不必空等）。\n'
             '請在「連線狀態」按「同步」，或點右上角的環境按鈕重新選一次，'
-            '讓 Gateway 和手機連同一個地方後再驗證。',
+            '讓閘道器和手機連同一個地方後再驗證。',
       'target_readback' =>
-        'Gateway 重新連上後回報的資料上傳目的地是$detail，不是要求的$expected。'
+        '閘道器重新連上後回報的資料上傳目的地是$detail，不是要求的$expected。'
             '設定可能沒有生效，請在「連線狀態」按重新讀取確認，或再同步一次。',
       'target_reconnect' =>
-        'Gateway 已收到切換指令並重新開機，但 45 秒內未能重新連上藍牙。'
-            '請靠近 Gateway，按「結束並重新選擇閘道器」重新連線後看「連線狀態」。',
+        '閘道器已收到切換指令並重新開機，但 45 秒內未能重新連上藍牙。'
+            '請靠近閘道器，按「結束並重新選擇閘道器」重新連線後看「連線狀態」。',
       'target_unsupported' => legacyTargetText(detail),
       'ble_error' => bleErrorText(detail),
       _ => _baseMessage,
@@ -296,7 +296,7 @@ class GatewayFailure implements Exception {
     'timeout' => '等待超時，請確認裝置與網路後重試。',
     'cancelled' => '操作已取消，可從最近完成的步驟重試。',
     'monitor_unconfirmed' =>
-      '30 秒內未確認 Gateway 已恢復監控，可按「重新連線並繼續」重試，或「略過」直接驗證資料。',
+      '30 秒內未確認閘道器已恢復監控，可按「重新連線並繼續」重試，或「略過」直接驗證資料。',
     'conflict' => '此站點或編號已被使用，請選擇其他編號。',
     'replace_unsupported' => '後端版本不支援取代舊機，請改用下一個編號。裝置設定未變更。',
     'replace_pending' => '後台已登記為新機，但寫入裝置失敗。請重新執行配置，系統會沿用取代設定。',

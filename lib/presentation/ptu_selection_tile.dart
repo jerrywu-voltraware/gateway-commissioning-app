@@ -68,7 +68,7 @@ class PtuSelectionTile extends StatelessWidget {
               const SizedBox(height: 16),
               SelectableText('MAC：${ptu['mac']}'),
               if (ptu['name'] != null) Text('名稱：${ptu['name']}'),
-              Text(ptu['connected'] == true ? '已連線至此 Gateway' : '周邊未連線'),
+              Text(ptu['connected'] == true ? '已連線至此閘道器' : '周邊未連線'),
               Text('訊號：${rssi is num && rssi < 0 ? '$rssi dBm' : '尚無讀值'}'),
               Text('讀值狀態：${ptuRssiText(ptu)}'),
               const Text('此處為開啟時的讀值；動態數值請看清單。'),

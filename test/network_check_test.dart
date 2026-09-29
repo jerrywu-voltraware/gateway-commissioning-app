@@ -192,14 +192,14 @@ void main() {
       expect(check.wifi.text, _missingHomeWifi);
       expect(
         check.wifi.text,
-        'Gateway 連不上 Wi-Fi「Xiaomi_WU」。這個 Wi-Fi 可能不在附近、密碼不對，'
-        '或是 5 GHz（Gateway 只能用 2.4 GHz）。',
+        '閘道器連不上 Wi-Fi「Xiaomi_WU」。這個 Wi-Fi 可能不在附近、密碼不對，'
+        '或是 5 GHz（閘道器只能用 2.4 GHz）。',
       );
       expect(check.wifiProblem, isTrue);
       expect(check.ready, isFalse);
       expect(check.stage, CheckStage.wifi);
       expect(displayStep(s, _production), 2);
-      expect(check.reuseBlockedReason, 'Gateway 還沒連上 Wi-Fi');
+      expect(check.reuseBlockedReason, '閘道器還沒連上 Wi-Fi');
 
       // The controller refuses 沿用 however it is reached.
       await c.chooseStation(newStation: false);
@@ -223,8 +223,8 @@ void main() {
       final (container, c) = await _connected(fake);
       addTearDown(container.dispose);
       final check = _check(container);
-      expect(check.wifi.line, '✓ Gateway 已連上 Wi-Fi「Office-2G」');
-      expect(check.target.line, '✓ Gateway 的資料送到正式站，和手機一致');
+      expect(check.wifi.line, '✓ 閘道器已連上 Wi-Fi「Office-2G」');
+      expect(check.target.line, '✓ 閘道器的資料送到正式站，和手機一致');
       expect(check.upload.line, '✓ 資料上傳中');
       expect(check.ready, isTrue);
       expect(check.canSkip, isFalse);
@@ -335,7 +335,7 @@ void main() {
       addTearDown(container.dispose);
       var check = _check(container);
       expect(check.wifiVerdict, WifiVerdict.connecting);
-      expect(check.wifi.line, '⏳ Gateway 正在連 Wi-Fi…');
+      expect(check.wifi.line, '⏳ 閘道器正在連 Wi-Fi…');
       expect(check.canSkip, isFalse, reason: 'still waiting');
       expect(container.read(commissionProvider).networkReady, isFalse);
       await _sleep(160);
@@ -352,7 +352,7 @@ void main() {
       await _sleep(80);
       final joined = _check(container2);
       expect(joined.wifiVerdict, WifiVerdict.ok);
-      expect(joined.wifi.line, '✓ Gateway 已連上 Wi-Fi「Demo-2.4G」');
+      expect(joined.wifi.line, '✓ 閘道器已連上 Wi-Fi「Demo-2.4G」');
     });
 
     test('no Wi-Fi configured says so and offers 設定 Wi-Fi', () {
@@ -368,7 +368,7 @@ void main() {
       );
       expect(state.wifi, WifiVerdict.notConfigured);
       final check = networkCheck(state: state, env: _production);
-      expect(check.wifi.line, '✗ Gateway 還沒有設定 Wi-Fi，所以沒辦法上傳資料。');
+      expect(check.wifi.line, '✗ 閘道器還沒有設定 Wi-Fi，所以沒辦法上傳資料。');
       expect(
         connectionStatus(env: _production, state: state).hint,
         contains('請按「設定 Wi-Fi」'),
@@ -423,7 +423,7 @@ void main() {
 
         await _sleep(60);
         final done = _check(container, _local);
-        expect(done.target.line, '✓ Gateway 的資料送到本地測試主機（192.168.1.50），和手機一致');
+        expect(done.target.line, '✓ 閘道器的資料送到本地測試主機（192.168.1.50），和手機一致');
         expect(done.ready, isTrue);
       },
     );
@@ -452,7 +452,7 @@ void main() {
         addTearDown(container.dispose);
         var check = _check(container);
         expect(check.wifiOk, isTrue);
-        expect(check.upload.line, '⏳ 等待 Gateway 開始上傳資料…（最多約 1 分鐘）');
+        expect(check.upload.line, '⏳ 等待閘道器開始上傳資料…（最多約 1 分鐘）');
         expect(check.stage, CheckStage.upload);
         expect(check.canSkip, isFalse);
         fake.mqttConnected = true;
@@ -478,11 +478,11 @@ void main() {
       final s = container.read(commissionProvider);
       expect(s.uploadLate, isTrue);
       final check = _check(container, _local);
-      expect(check.upload.line, '✗ Gateway 還沒開始上傳資料。');
+      expect(check.upload.line, '✗ 閘道器還沒開始上傳資料。');
       expect(
         check.uploadHint,
-        'Gateway 目前在 192.168.0.x 網段，可能連不到測試主機 192.168.1.50。'
-        '請確認 Gateway 和這台電腦連同一個 Wi-Fi（可用「重設 Wi-Fi」）。',
+        '閘道器目前在 192.168.0.x 網段，可能連不到測試主機 192.168.1.50。'
+        '請確認閘道器和這台電腦連同一個 Wi-Fi（可用「重設 Wi-Fi」）。',
       );
       expect(check.canSkip, isTrue);
       await c.passNetworkCheck(skip: true);
@@ -510,14 +510,14 @@ void main() {
           state: late('local', '192.168.1.60'),
           env: _local,
         ).uploadHint,
-        '請確認電腦上的測試主機是否開著，以及 Gateway 是否連上和這台電腦同一個 Wi-Fi。',
+        '請確認電腦上的測試主機是否開著，以及閘道器是否連上和這台電腦同一個 Wi-Fi。',
       );
       expect(
         networkCheck(
           state: late('production', '10.0.0.8'),
           env: _production,
         ).uploadHint,
-        '請確認 Gateway 所在的 Wi-Fi 可以上網。',
+        '請確認閘道器所在的 Wi-Fi 可以上網。',
       );
     });
   });
@@ -542,7 +542,7 @@ void main() {
       );
       final status = connectionStatus(env: _production, state: state);
       expect(status.hint, startsWith(_missingHomeWifi));
-      expect(status.hint, contains('手機和 Gateway 的藍牙也斷了'));
+      expect(status.hint, contains('手機和閘道器的藍牙也斷了'));
       expect(status.hint, contains('按「結束並重新選擇閘道器」重新連線，再按「重設 Wi-Fi」'));
       expect(status.hint, isNot(contains('disconnected')));
       expect(status.gateway.status, '✗ Wi-Fi 沒連上');
@@ -559,7 +559,7 @@ void main() {
           config: state.config,
         ),
       );
-      expect(lost.hint, startsWith('手機和 Gateway 的藍牙已中斷'));
+      expect(lost.hint, startsWith('手機和閘道器的藍牙已中斷'));
     });
 
     test('technical details translate the Wi-Fi state', () {
@@ -697,7 +697,7 @@ void main() {
       );
       await connect(tester);
       expect(fake.targetRequests, isEmpty);
-      expect(title(tester), '3 / 10   Gateway 網路體檢');
+      expect(title(tester), '3 / 10   閘道器網路體檢');
       await tap(tester, find.text('重設 Wi-Fi'));
       expect(fake.targetRequests, hasLength(1));
       expect(find.text('保留站點 80／閘道器 1，只更新 Wi-Fi。'), findsOneWidget);
@@ -743,7 +743,7 @@ void main() {
       const expected = [
         '1 準備',
         '2 找到閘道器',
-        '3 Gateway 網路體檢',
+        '3 閘道器網路體檢',
         '4 對準上傳目標',
         '5 確認資料上傳',
         '6 站點選擇',
@@ -790,11 +790,11 @@ void main() {
       final fake = WifiGateway.station()..simulateWifi('disconnected');
       final container = await pumpApp(tester, fake);
       await connect(tester);
-      expect(title(tester), '3 / 10   Gateway 網路體檢');
+      expect(title(tester), '3 / 10   閘道器網路體檢');
       expect(find.text('✗ $_missingHomeWifi'), findsOneWidget);
       expect(find.text('重設 Wi-Fi'), findsOneWidget);
       // The panel names the Wi-Fi as the cause too, in plain words.
-      expect(find.textContaining('Gateway 連不上 Wi-Fi「Xiaomi_WU」'), findsWidgets);
+      expect(find.textContaining('閘道器連不上 Wi-Fi「Xiaomi_WU」'), findsWidgets);
       expect(find.textContaining('disconnected'), findsNothing);
 
       await tap(tester, find.byKey(const Key('check-skip')));
@@ -833,7 +833,7 @@ void main() {
         },
       );
       await connect(tester);
-      expect(title(tester), '3 / 10   Gateway 網路體檢');
+      expect(title(tester), '3 / 10   閘道器網路體檢');
       // The list builds lazily: scroll the check into view.
       Future<void> reveal(Finder finder) => tester.scrollUntilVisible(
         finder,
@@ -847,7 +847,7 @@ void main() {
       expect(find.text('✗ $_missingHomeWifi'), findsOneWidget);
       await reveal(find.textContaining('再設定 Wi-Fi'));
       expect(
-        find.text('按下後會先讓 Gateway 改送到本地測試主機（重新開機一次），再設定 Wi-Fi。'),
+        find.text('按下後會先讓閘道器改送到本地測試主機（重新開機一次），再設定 Wi-Fi。'),
         findsOneWidget,
       );
       await reveal(find.byKey(const Key('check-skip')));
@@ -856,9 +856,9 @@ void main() {
       expect(find.byKey(const Key('reuse-blocked')), findsOneWidget);
       await reveal(find.text('改用其他 Wi-Fi'));
       await tap(tester, find.text('改用其他 Wi-Fi'));
-      await reveal(find.text('Gateway 只能用 2.4 GHz 的 Wi-Fi，5 GHz 的網路連不上。'));
+      await reveal(find.text('閘道器只能用 2.4 GHz 的 Wi-Fi，5 GHz 的網路連不上。'));
       expect(
-        find.text('Gateway 只能用 2.4 GHz 的 Wi-Fi，5 GHz 的網路連不上。'),
+        find.text('閘道器只能用 2.4 GHz 的 Wi-Fi，5 GHz 的網路連不上。'),
         findsOneWidget,
       );
       expect(tester.takeException(), isNull);
@@ -889,7 +889,7 @@ void main() {
       expect(title(tester), '4 / 10   對準上傳目標');
       final sync = find.byKey(const Key('check-sync'));
       await reveal(sync);
-      expect(find.text('讓 Gateway 改送到本地測試主機（重新開機約 1 分鐘）'), findsOneWidget);
+      expect(find.text('讓閘道器改送到本地測試主機（重新開機約 1 分鐘）'), findsOneWidget);
       await tap(tester, sync);
       expect(fake.targetRequests.single, _lan.params);
       expect(container.read(commissionProvider).error, isNull);

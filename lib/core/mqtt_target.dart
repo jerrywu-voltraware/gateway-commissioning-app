@@ -192,7 +192,7 @@ AppUploadTarget desiredUploadTarget(String environment, String baseUrl) {
     if (host.isEmpty) {
       return AppUploadTarget.invalid(
         baseUrl.trim().isEmpty
-            ? '尚未輸入本地測試站網址，無法決定 Gateway 的上傳目標。'
+            ? '尚未輸入本地測試站網址，無法決定閘道器的上傳目標。'
             : '本地測試站網址「${baseUrl.trim()}」無法解析主機位址，'
                   '請輸入如 http://192.168.1.10:18000 的網址。',
       );
@@ -200,7 +200,7 @@ AppUploadTarget desiredUploadTarget(String environment, String baseUrl) {
     if (!isPrivateIpv4Literal(host)) {
       return AppUploadTarget.invalid(
         '本地測試站網址的主機「$host」不是區網私有 IPv4 位址'
-        '（10.x.x.x、172.16–31.x.x、192.168.x.x），Gateway 無法上傳到此後端。'
+        '（10.x.x.x、172.16–31.x.x、192.168.x.x），閘道器無法上傳到此後端。'
         '請把網址改成電腦的區網 IP。',
       );
     }
@@ -216,7 +216,7 @@ AppUploadTarget desiredUploadTarget(String environment, String baseUrl) {
 }
 
 /// Step 7 warning when the gateway still uploads to a local test backend.
-const localTargetShipWarning = '此 Gateway 目前上傳到本地測試站，出貨前請切回正式站。';
+const localTargetShipWarning = '此閘道器目前上傳到本地測試站，出貨前請切回正式站。';
 
 /// Upload-target lines of the install report.
 String reportTargetText(Map<String, dynamic> config) {
@@ -236,7 +236,7 @@ String reportTargetText(Map<String, dynamic> config) {
 
 String legacyTargetText(Object? version) {
   final v = version?.toString() ?? '';
-  return '這台 Gateway 韌體太舊（版本 ${v.isEmpty ? '未知' : v}），'
+  return '這台閘道器韌體太舊（版本 ${v.isEmpty ? '未知' : v}），'
       '只能送到正式站，請更新到 1.7.3 以上。';
 }
 
@@ -252,28 +252,28 @@ String? ipv4Prefix24(String ip) {
 /// Fail codes of `set_mqtt_target` (docs/mqtt_target.md §2).
 String uploadTargetFailureText(String code) {
   final text = switch (code) {
-    'invalid_params' => 'Gateway 拒絕切換：指令參數格式錯誤。請更新 APP 後重試。',
-    'invalid_target' => 'Gateway 拒絕切換：上傳目標名稱無效。請更新 APP 後重試。',
+    'invalid_params' => '閘道器拒絕切換：指令參數格式錯誤。請更新 APP 後重試。',
+    'invalid_target' => '閘道器拒絕切換：上傳目標名稱無效。請更新 APP 後重試。',
     'invalid_host' =>
-      'Gateway 拒絕切換：本地後端位址必須是區網私有 IPv4'
+      '閘道器拒絕切換：本地後端位址必須是區網私有 IPv4'
           '（10.x、172.16–31.x、192.168.x），不可使用主機名稱或公網 IP。',
-    'invalid_port' => 'Gateway 拒絕切換：MQTT 連接埠必須是 1–65535 的整數。',
-    'ota_in_progress' => 'Gateway 正在更新韌體（OTA），更新完成前無法切換上傳目標，請稍後重試。',
-    'nvs_write_failed' => 'Gateway 儲存設定失敗，上傳目標未變更、也沒有重新開機。請重試；若持續失敗請回報。',
+    'invalid_port' => '閘道器拒絕切換：MQTT 連接埠必須是 1–65535 的整數。',
+    'ota_in_progress' => '閘道器正在更新韌體（OTA），更新完成前無法切換上傳目標，請稍後重試。',
+    'nvs_write_failed' => '閘道器儲存設定失敗，上傳目標未變更、也沒有重新開機。請重試；若持續失敗請回報。',
     'ble_only' => '上傳目標只能在現場透過藍牙切換，不接受遠端指令。',
-    'otp_required' => '此 Gateway 已啟用一次性密碼（OTP），切換上傳目標需要 OTP，請聯絡管理員。',
-    'otp_invalid' => '一次性密碼（OTP）錯誤，Gateway 拒絕切換。',
+    'otp_required' => '此閘道器已啟用一次性密碼（OTP），切換上傳目標需要 OTP，請聯絡管理員。',
+    'otp_invalid' => '一次性密碼（OTP）錯誤，閘道器拒絕切換。',
     'otp_reused' => '此一次性密碼已使用過，請等下一組 OTP 後重試。',
-    'otp_locked' => 'OTP 錯誤次數過多，Gateway 暫時鎖定，請稍後再試。',
+    'otp_locked' => 'OTP 錯誤次數過多，閘道器暫時鎖定，請稍後再試。',
     'time_not_synced' =>
-      'Gateway 已啟用 OTP 但時間尚未同步（NTP），無法驗證。'
+      '閘道器已啟用 OTP 但時間尚未同步（NTP），無法驗證。'
           '若目前 Wi-Fi 無法連到網際網路，請先改用可連外的網路。',
-    'not_ready' => 'Gateway 仍在開機初始化，請稍候數秒後重試。',
-    'busy' => 'Gateway 正在處理其他指令，請稍候重試。',
+    'not_ready' => '閘道器仍在開機初始化，請稍候數秒後重試。',
+    'busy' => '閘道器正在處理其他指令，請稍候重試。',
     'invalid req_id' => 'APP 送出的指令編號無效，請重新連線後重試。',
-    'unknown op' => 'Gateway 韌體不支援切換上傳目標，需更新至 1.7.3 以上。',
-    '' => 'Gateway 拒絕切換上傳目標（未提供原因）。',
-    _ => 'Gateway 拒絕切換上傳目標。',
+    'unknown op' => '閘道器韌體不支援切換上傳目標，需更新至 1.7.3 以上。',
+    '' => '閘道器拒絕切換上傳目標（未提供原因）。',
+    _ => '閘道器拒絕切換上傳目標。',
   };
   return '$text\n[set_mqtt_target · ${code.isEmpty ? '—' : code}]';
 }

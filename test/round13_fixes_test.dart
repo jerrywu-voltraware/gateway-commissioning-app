@@ -354,7 +354,7 @@ void main() {
       );
       expect(find.byKey(const Key('ptu-resume')), findsNothing);
       expect(
-        find.text('手機和 Gateway 的藍牙已中斷，$autoRelinkingText'),
+        find.text('手機和閘道器的藍牙已中斷，$autoRelinkingText'),
         findsOneWidget,
       );
       expect(find.text(autoRelinkingText), findsOneWidget);
@@ -523,7 +523,7 @@ void main() {
       );
       expect(
         linkLostHint(lost.copy(relinking: true)),
-        '手機和 Gateway 的藍牙已中斷，$autoRelinkingText',
+        '手機和閘道器的藍牙已中斷，$autoRelinkingText',
       );
       expect(linkLostHint(lost), contains('請按「重新連線並繼續」'));
       expect(
@@ -532,7 +532,7 @@ void main() {
       );
       expect(
         linkLostHint(const CommissionState(step: 3)),
-        contains('請重新連線 Gateway 後再確認'),
+        contains('請重新連線閘道器後再確認'),
       );
     });
   });

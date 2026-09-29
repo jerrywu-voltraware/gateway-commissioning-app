@@ -48,16 +48,16 @@ void main() {
       addTearDown(link.changes.close);
       await show(tester, link);
       await tester.pump();
-      expect(find.text('手機 ↔ Gateway：-68 dBm'), findsOneWidget);
+      expect(find.text('手機 ↔ 閘道器：-68 dBm'), findsOneWidget);
       link.value = -82;
       await tester.pump(const Duration(seconds: 5));
       await tester.pump();
-      expect(find.text('手機 ↔ Gateway：-82 dBm'), findsOneWidget);
+      expect(find.text('手機 ↔ 閘道器：-82 dBm'), findsOneWidget);
       link.signalConnected = false;
       link.changes.add(false);
       await tester.pump();
       await tester.pump();
-      expect(find.text('手機 ↔ Gateway：已斷線・上次 -82 dBm'), findsOneWidget);
+      expect(find.text('手機 ↔ 閘道器：已斷線・上次 -82 dBm'), findsOneWidget);
       final reads = link.reads;
       await tester.pump(const Duration(seconds: 10));
       expect(link.reads, reads);
@@ -75,7 +75,7 @@ void main() {
       await show(tester, link, busy: true);
       await tester.pump(const Duration(seconds: 20));
       expect(link.reads, reads);
-      expect(find.text('手機 ↔ Gateway：上次 -68 dBm'), findsOneWidget);
+      expect(find.text('手機 ↔ 閘道器：上次 -68 dBm'), findsOneWidget);
       await show(tester, link);
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
       await tester.pump(const Duration(seconds: 5));
@@ -83,7 +83,7 @@ void main() {
       link.value = 0;
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       await tester.pump();
-      expect(find.text('手機 ↔ Gateway：上次 -68 dBm'), findsOneWidget);
+      expect(find.text('手機 ↔ 閘道器：上次 -68 dBm'), findsOneWidget);
       expect(find.textContaining('0 dBm'), findsNothing);
     },
   );
@@ -101,7 +101,7 @@ void main() {
       await tester.pump();
       link.pending!.complete(-30);
       await tester.pump();
-      expect(find.text('手機 ↔ Gateway：已斷線・掃描 -70 dBm'), findsOneWidget);
+      expect(find.text('手機 ↔ 閘道器：已斷線・掃描 -70 dBm'), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
       await tester.pump(const Duration(seconds: 10));
       expect(link.reads, 1);
@@ -119,12 +119,12 @@ void main() {
     await tester.pump();
     await tester.pump();
     expect(find.textContaining('-25 dBm'), findsNothing);
-    expect(find.text('手機 ↔ Gateway：掃描 -70 dBm'), findsOneWidget);
+    expect(find.text('手機 ↔ 閘道器：掃描 -70 dBm'), findsOneWidget);
     link.pending = null;
     link.value = -85;
     await tester.pump(const Duration(seconds: 5));
     await tester.pump();
-    expect(find.text('手機 ↔ Gateway：-85 dBm'), findsOneWidget);
+    expect(find.text('手機 ↔ 閘道器：-85 dBm'), findsOneWidget);
   });
 
   test('native disconnect error is mapped without exposing exception text', () {

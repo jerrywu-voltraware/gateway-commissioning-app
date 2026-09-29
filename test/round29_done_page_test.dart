@@ -515,7 +515,7 @@ void main() {
       );
       // Not the red box of before.
       expect(find.text(localTargetShipWarning), findsNothing);
-      expect(find.text('手機和 Gateway 都切回正式站'), findsNothing);
+      expect(find.text('手機和閘道器都切回正式站'), findsNothing);
       // The note's order in the page: after the summary.
       await tester.scrollUntilVisible(
         summary,

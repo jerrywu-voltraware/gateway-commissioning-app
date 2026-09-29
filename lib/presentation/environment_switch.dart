@@ -200,7 +200,7 @@ class _EnvironmentSheetState extends ConsumerState<_EnvironmentSheet> {
       Text('切換連線環境', style: theme.textTheme.titleLarge),
       const SizedBox(height: 4),
       Text(
-        '手機和已連上的 Gateway 會一起切換。',
+        '手機和已連上的閘道器會一起切換。',
         style: TextStyle(color: colors.onSurfaceVariant),
       ),
       const SizedBox(height: 12),

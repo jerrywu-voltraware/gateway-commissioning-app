@@ -255,7 +255,7 @@ void main() {
         'no second question', (tester) async {
       final fake = _Gateway()..config['wifi_ssid'] = 'Xiaomi_WU';
       fake.records['81/1'] = _other;
-      fake.conflicts['81/1'] = 'ID 衝突：偵測到多台實體設備使用相同 Site 81 / Gateway 1。';
+      fake.conflicts['81/1'] = 'ID 衝突：偵測到多台實體設備使用相同 Site 81 / 閘道器 1。';
       final container = await _pump(tester, fake);
       await _connect(tester);
       await _typeSite(tester, '81');
@@ -285,7 +285,7 @@ void main() {
 
   group('3. this gateway\'s own number flagged in conflict', () {
     const text =
-        'ID 衝突：偵測到多台實體設備使用相同 Site 80 / Gateway 1。'
+        'ID 衝突：偵測到多台實體設備使用相同 Site 80 / 閘道器 1。'
         '目前連線 MAC: AA:BB:CC:DD:EE:FF，被踢掉 MAC: AA:BB:CC:00:00:99';
 
     testWidgets('〔使用此站點〕: the back office text; 〔取代舊機〕 reserves '

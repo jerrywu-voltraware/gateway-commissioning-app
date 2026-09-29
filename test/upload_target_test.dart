@@ -162,7 +162,7 @@ void main() {
       expect(parseMqttTarget(odd), isNull);
       expect(
         legacyTargetText('1.7.2'),
-        '這台 Gateway 韌體太舊（版本 1.7.2），只能送到正式站，請更新到 1.7.3 以上。',
+        '這台閘道器韌體太舊（版本 1.7.2），只能送到正式站，請更新到 1.7.3 以上。',
       );
       expect(legacyTargetText(null), contains('版本 未知'));
     });
@@ -361,8 +361,8 @@ void main() {
         );
         expect(parseMqttTarget(s.config)!.sameAs(_lan), isTrue);
         expect(s.config['mqtt_connected'], isTrue);
-        expect(s.uploadNotice, contains('已把 Gateway 切到本地測試主機（192.168.1.50）'));
-        expect(s.uploadNotice, contains('Gateway 已開始上傳資料'));
+        expect(s.uploadNotice, contains('已把閘道器切到本地測試主機（192.168.1.50）'));
+        expect(s.uploadNotice, contains('閘道器已開始上傳資料'));
         // Commissioning state is untouched.
         expect(s.step, before.step);
         expect(s.peer, before.peer);
@@ -379,7 +379,7 @@ void main() {
       expect(s.error, isNull);
       expect(fake.connects, 1);
       expect(fake.commands.last, 'get_net_status');
-      expect(s.uploadNotice, startsWith('不用切換：Gateway 本來就送到正式站（沒有重新開機）。'));
+      expect(s.uploadNotice, startsWith('不用切換：閘道器本來就送到正式站（沒有重新開機）。'));
     });
     test('reconnect retries until the rebooted gateway answers', () async {
       final fake = TargetGateway();
@@ -560,7 +560,7 @@ void main() {
       expect(clock.elapsed, lessThan(const Duration(seconds: 5)));
       expect(
         s.error,
-        startsWith('Gateway 目前把資料送到正式站，但手機連的是本地測試主機（192.168.1.50）'),
+        startsWith('閘道器目前把資料送到正式站，但手機連的是本地測試主機（192.168.1.50）'),
       );
       expect(s.error, contains('按「同步」'));
       expect(fake.paths, isEmpty, reason: 'no bot-monitor PATCH');
@@ -582,7 +582,7 @@ void main() {
       await c.verify(productionApiBase, '', environment: 'production');
       expect(
         container.read(commissionProvider).error,
-        startsWith('Gateway 目前把資料送到本地測試主機（192.168.1.50），但手機連的是正式站'),
+        startsWith('閘道器目前把資料送到本地測試主機（192.168.1.50），但手機連的是正式站'),
       );
     });
     test('switch whose reconnect failed does not block step 7', () async {
@@ -616,7 +616,7 @@ void main() {
       await c.online(base: 'http://192.168.1.50:18000', environment: 'local');
       final s = container.read(commissionProvider);
       expect(clock.elapsed, lessThan(const Duration(seconds: 5)));
-      expect(s.error, startsWith('Gateway 目前把資料送到正式站'));
+      expect(s.error, startsWith('閘道器目前把資料送到正式站'));
       expect(s.step, 3);
       expect(fake.commands, isNot(contains('heartbeat_boost')));
       // Matching target: step 3 proceeds as before.

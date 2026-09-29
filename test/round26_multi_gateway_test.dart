@@ -192,7 +192,7 @@ void main() {
       expect(gatewayTitle('gios-s7-gw12'), '站 7 · 閘道器 12');
       // No identity yet / not the rule: the full name, never cut.
       expect(gatewayTitle('GIOS-S0-GW00'), 'GIOS-S0-GW00');
-      expect(gatewayTitle('Some-Gateway-Name'), 'Some-Gateway-Name');
+      expect(gatewayTitle('Some-閘道器-Name'), 'Some-閘道器-Name');
       expect(macTail(_gw2), '70F2');
       expect(macTailText(_gw1), 'MAC 後 4 碼 3A02');
       // Round 28: the Wi-Fi MAC (the back office's) is the one shown.

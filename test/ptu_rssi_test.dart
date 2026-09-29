@@ -24,7 +24,7 @@ class SignalGateway extends fixture.InventoryGateway {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   testWidgets(
-    'five-second timer refreshes visible Gateway RSSI and stops in background',
+    'five-second timer refreshes visible 閘道器 RSSI and stops in background',
     (tester) async {
       final scope = await compact.pumpSelection(tester, 1);
       final fake = scope.read(linkProvider) as DemoSystem;

@@ -111,14 +111,14 @@ String? subnetHint(
   if (gatewayNet == null || hostNet == null || gatewayNet == hostNet) {
     return null;
   }
-  return 'Gateway 目前在 $gatewayNet.x 網段，可能連不到測試主機 ${current.host}。'
-      '請確認 Gateway 和這台電腦連同一個 Wi-Fi（可用「$wifiAction」）。';
+  return '閘道器目前在 $gatewayNet.x 網段，可能連不到測試主機 ${current.host}。'
+      '請確認閘道器和這台電腦連同一個 Wi-Fi（可用「$wifiAction」）。';
 }
 
 /// What to check when a gateway with Wi-Fi does not upload to [current].
 String uploadCheckHint(MqttTarget current) => current.isLocal
-    ? '請確認電腦上的測試主機是否開著，以及 Gateway 是否連上和這台電腦同一個 Wi-Fi。'
-    : '請確認 Gateway 所在的 Wi-Fi 可以上網。';
+    ? '請確認電腦上的測試主機是否開著，以及閘道器是否連上和這台電腦同一個 Wi-Fi。'
+    : '請確認閘道器所在的 Wi-Fi 可以上網。';
 
 /// Main hint when the gateway has no Wi-Fi: the cause first, then how to
 /// get back to 「重設 Wi-Fi」 (after reconnecting Bluetooth if it dropped).
@@ -127,9 +127,9 @@ String wifiProblemHint(CommissionState state) {
   final reason = wifiDiscReasonOf(state.net);
   final action = ssid?.isEmpty == true ? '設定 Wi-Fi' : '重設 Wi-Fi';
   final next = state.uploadWatch == UploadWatch.linkLost && state.relinking
-      ? '手機和 Gateway 的藍牙也斷了，$autoRelinkingText'
+      ? '手機和閘道器的藍牙也斷了，$autoRelinkingText'
       : state.uploadWatch == UploadWatch.linkLost
-      ? '手機和 Gateway 的藍牙也斷了：請靠近 Gateway，按「結束並重新選擇閘道器」'
+      ? '手機和閘道器的藍牙也斷了：請靠近閘道器，按「結束並重新選擇閘道器」'
             '重新連線，再按「$action」。'
       : state.step == 2
       ? '請按「$action」，改成現場的 2.4 GHz Wi-Fi。'
@@ -143,14 +143,14 @@ String wifiProblemHint(CommissionState state) {
 /// shown (steps 7 / 8).
 String linkLostHint(CommissionState state) {
   // Round 22: back already (the list is read again) — not 「已中斷」 any more.
-  if (relinkBack(state)) return '手機已重新連上 Gateway，$relinkReloadText';
-  if (state.relinking) return '手機和 Gateway 的藍牙已中斷，$autoRelinkingText';
+  if (relinkBack(state)) return '手機已重新連上閘道器，$relinkReloadText';
+  if (state.relinking) return '手機和閘道器的藍牙已中斷，$autoRelinkingText';
   final action = switch (state.step) {
     4 when !state.resumePending => '請按「$rescanAfterLossLabel」。',
     4 || 5 => '請按「重新連線並繼續」。',
-    _ => '請重新連線 Gateway 後再確認。',
+    _ => '請重新連線閘道器後再確認。',
   };
-  return '手機和 Gateway 的藍牙已中斷，無法讀取目前狀態。$action';
+  return '手機和閘道器的藍牙已中斷，無法讀取目前狀態。$action';
 }
 
 String _envPlace(BackendEnv env) => switch (env) {
@@ -257,19 +257,19 @@ ConnectionStatus connectionStatus({
     // reboot if it already matches); otherwise read it again.
     if (!polling) {
       hint = need == SyncNeed.sync
-          ? '還不確定 Gateway 把資料送到哪裡。按「同步」讓 Gateway 改送到'
+          ? '還不確定閘道器把資料送到哪裡。按「同步」讓閘道器改送到'
                 '${placeOf(syncTarget!)}。'
-          : '還不確定 Gateway 把資料送到哪裡，請按「連線狀態」這一列最右邊的'
+          : '還不確定閘道器把資料送到哪裡，請按「連線狀態」這一列最右邊的'
                 '重新讀取圖示（↻）。';
     }
   } else if (need == SyncNeed.sync) {
     gateway = StatusRow(placeOf(current), '⚠ 送到別處', StatusTone.warn);
     hint = current.plainLabel == syncTarget!.plainLabel
         // Same place, other port: the difference is in 技術細節.
-        ? 'Gateway 的上傳設定和手機不一致（見技術細節）。按「同步」讓 Gateway 改送到'
+        ? '閘道器的上傳設定和手機不一致（見技術細節）。按「同步」讓閘道器改送到'
               '${placeOf(syncTarget)}。'
-        : 'Gateway 把資料送到${current.plainLabel}，但手機連的是'
-              '${syncTarget.plainLabel}。按「同步」讓 Gateway 改送到'
+        : '閘道器把資料送到${current.plainLabel}，但手機連的是'
+              '${syncTarget.plainLabel}。按「同步」讓閘道器改送到'
               '${placeOf(syncTarget)}。';
   } else if (held) {
     gateway = StatusRow(
@@ -326,10 +326,10 @@ ConnectionStatus connectionStatus({
       hint = subnet;
     } else if (gateway.tone == StatusTone.bad) {
       if (state.uploadWatch == UploadWatch.linkLost) {
-        hint = '手機和 Gateway 的藍牙斷了，請靠近 Gateway 後按「結束並重新選擇閘道器」重新連線。';
+        hint = '手機和閘道器的藍牙斷了，請靠近閘道器後按「結束並重新選擇閘道器」重新連線。';
       } else if (wifi == WifiVerdict.connecting) {
         hint =
-            'Gateway 還沒連上 Wi-Fi，請稍候；若一直連不上，請確認 Wi-Fi 名稱和密碼'
+            '閘道器還沒連上 Wi-Fi，請稍候；若一直連不上，請確認 Wi-Fi 名稱和密碼'
             '（可用「改用其他 Wi-Fi」）。';
       } else {
         hint = uploadCheckHint(current);
@@ -363,7 +363,7 @@ ConnectionStatus connectionStatus({
       current != null &&
       app.target == null &&
       app.error == null) {
-    hint = 'APP 無法從這個網址判斷 Gateway 該送到哪裡，這裡只顯示 Gateway 目前的設定，不會自動切換。';
+    hint = 'APP 無法從這個網址判斷閘道器該送到哪裡，這裡只顯示閘道器目前的設定，不會自動切換。';
   }
 
   final shipWarning = state.step >= 7 && current?.isLocal == true;
@@ -376,7 +376,7 @@ ConnectionStatus connectionStatus({
           gateway.tone == StatusTone.ok &&
           hint == null &&
           wifiWeak == null
-      ? '✓ ${env.label}：手機與 Gateway 都已連上'
+      ? '✓ ${env.label}：手機與閘道器都已連上'
       : null;
   final disc = wifi == WifiVerdict.ok ? null : wifiDiscDetail(net);
   final bootCount = bootCountOf(net);
@@ -385,25 +385,25 @@ ConnectionStatus connectionStatus({
     '手機連線的後端：${env.base.isEmpty ? '（未設定）' : env.base}',
     '後端健康檢查（GET /healthz）：${demo ? '模擬' : _probeText(probe)}',
     if (legacy)
-      'Gateway 上傳目標：正式站（韌體 ${config['fw_version'] ?? '未知'} 不支援切換）'
+      '閘道器上傳目標：正式站（韌體 ${config['fw_version'] ?? '未知'} 不支援切換）'
     else if (current != null)
-      'Gateway 上傳目標：MQTT ${current.isLocal ? '本地' : '正式站'} '
+      '閘道器上傳目標：MQTT ${current.isLocal ? '本地' : '正式站'} '
           '${current.host.isEmpty ? '' : current.host}:${current.port}（TLS）'
     else
-      'Gateway 上傳目標：${unconfirmed ? '未確認（切換結果尚未讀回）' : '無法辨識（${config['mqtt_target']}）'}',
+      '閘道器上傳目標：${unconfirmed ? '未確認（切換結果尚未讀回）' : '無法辨識（${config['mqtt_target']}）'}',
     '${state.uploadWatch == UploadWatch.linkLost ? '中斷前最後讀到的 MQTT 連線' : 'MQTT 連線'}：${switch (config['mqtt_connected']) {
       true => '已連線',
       false => '未連線',
       _ => '未知',
     }}',
     if (net.isNotEmpty || config['wifi_ssid'] != null)
-      'Gateway 網路：Wi-Fi「${net['ssid'] ?? config['wifi_ssid'] ?? ''}」'
+      '閘道器網路：Wi-Fi「${net['ssid'] ?? config['wifi_ssid'] ?? ''}」'
           '${gatewayIp.isEmpty ? '' : ' · IP $gatewayIp'}'
           '${net['rssi'] is num && net['rssi'] != 0 ? ' · 訊號 ${net['rssi']} dBm${isWeakWifiRssi(net['rssi']) ? '（偏弱）' : ''}' : ''}'
           '${net['wifi_state'] == null ? '' : ' · ${wifiStateText(net['wifi_state'])}'}',
     ?disc,
     if (bootCount != null)
-      'Gateway 開機次數：$bootCount'
+      '閘道器開機次數：$bootCount'
           '${net['reset_reason'] is String ? '（上次開機原因：${resetReasonText(net['reset_reason'])}）' : ''}',
     '韌體版本：${config['fw_version'] ?? '未知'}',
     if (config['mode'] != null)

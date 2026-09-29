@@ -587,7 +587,7 @@ void main() {
         gatewayStatusMenuText(const CommissionState(step: 1, busy: true)),
         contains(gatewayStatusBusyText),
       );
-      expect(gatewayStatusMenuText(const CommissionState()), '閘道器狀態…');
+      expect(gatewayStatusMenuText(const CommissionState()), '查看上傳資料…');
     });
   });
 

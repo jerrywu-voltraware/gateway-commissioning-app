@@ -223,8 +223,8 @@ void main() {
         'rssi': -61,
       };
       const hint =
-          'Gateway 目前在 192.168.0.x 網段，可能連不到測試主機 192.168.1.187。'
-          '請確認 Gateway 和這台電腦連同一個 Wi-Fi（可用「改用其他 Wi-Fi」）。';
+          '閘道器目前在 192.168.0.x 網段，可能連不到測試主機 192.168.1.187。'
+          '請確認閘道器和這台電腦連同一個 Wi-Fi（可用「改用其他 Wi-Fi」）。';
       // Just started polling: a /16 network may still connect, no guess yet.
       final early = connectionStatus(
         env: _local,
@@ -286,7 +286,7 @@ void main() {
         probe: _healthy,
       );
       expect(status.gateway.status, '✗ 連不上');
-      expect(status.hint, '請確認電腦上的測試主機是否開著，以及 Gateway 是否連上和這台電腦同一個 Wi-Fi。');
+      expect(status.hint, '請確認電腦上的測試主機是否開著，以及閘道器是否連上和這台電腦同一個 Wi-Fi。');
       final pending = connectionStatus(
         env: _local,
         state: _state(
@@ -309,7 +309,7 @@ void main() {
         probe: _healthy,
       );
       // Polling gave up: the last Wi-Fi state is the cause, in plain words.
-      expect(wifi.hint, startsWith('Gateway 連不上 Wi-Fi「Xiaomi_WU」'));
+      expect(wifi.hint, startsWith('閘道器連不上 Wi-Fi「Xiaomi_WU」'));
       expect(wifi.gateway.status, '✗ Wi-Fi 沒連上');
       final lost = connectionStatus(
         env: _production,
@@ -317,7 +317,7 @@ void main() {
         probe: _healthy,
       );
       expect(lost.gateway.status, '？ 藍牙已中斷，上傳狀態待確認');
-      expect(lost.hint, startsWith('手機和 Gateway 的藍牙已中斷'));
+      expect(lost.hint, startsWith('手機和閘道器的藍牙已中斷'));
     });
     test('all connected collapses to one line', () {
       final status = connectionStatus(
@@ -327,13 +327,13 @@ void main() {
       );
       expect(status.gateway.status, '✓ 資料上傳中');
       expect(status.hint, isNull);
-      expect(status.summary, '✓ 本地測試：手機與 Gateway 都已連上');
+      expect(status.summary, '✓ 本地測試：手機與閘道器都已連上');
       final production = connectionStatus(
         env: _production,
         state: _state(_target('production', connected: true), loggedIn: true),
         probe: const ProbeResult(ProbeOutcome.notBackend, status: 200),
       );
-      expect(production.summary, '✓ 正式站：手機與 Gateway 都已連上');
+      expect(production.summary, '✓ 正式站：手機與閘道器都已連上');
     });
     test('mismatch offers 同步 in plain words', () {
       final status = connectionStatus(
@@ -347,8 +347,8 @@ void main() {
       expect(status.gateway.status, '⚠ 送到別處');
       expect(
         status.hint,
-        'Gateway 把資料送到正式站，但手機連的是本地測試主機（192.168.1.187）。'
-        '按「同步」讓 Gateway 改送到本地測試主機。',
+        '閘道器把資料送到正式站，但手機連的是本地測試主機（192.168.1.187）。'
+        '按「同步」讓閘道器改送到本地測試主機。',
       );
       expect(status.hint, isNot(contains('MQTT')));
       expect(status.hint, isNot(contains('8883')));
@@ -361,7 +361,7 @@ void main() {
       );
       expect(status.need, SyncNeed.legacy);
       expect(status.gateway.status, '⚠ 送到別處');
-      expect(status.hint, '這台 Gateway 韌體太舊（版本 1.7.2），只能送到正式站，請更新到 1.7.3 以上。');
+      expect(status.hint, '這台閘道器韌體太舊（版本 1.7.2），只能送到正式站，請更新到 1.7.3 以上。');
       final onProduction = connectionStatus(
         env: _production,
         state: _state({'fw_version': '1.7.2'}),
@@ -395,7 +395,7 @@ void main() {
       );
       expect(status.shipWarning, isTrue);
       expect(status.allOk, isTrue);
-      expect(status.summary, '✓ 本地測試：手機與 Gateway 都已連上');
+      expect(status.summary, '✓ 本地測試：手機與閘道器都已連上');
     });
     test('step 7 on 正式站 has no shipping warning', () {
       final status = connectionStatus(
@@ -408,7 +408,7 @@ void main() {
         probe: _healthy,
       );
       expect(status.shipWarning, isFalse);
-      expect(status.summary, '✓ 正式站：手機與 Gateway 都已連上');
+      expect(status.summary, '✓ 正式站：手機與閘道器都已連上');
     });
     test('unknown upload target offers exactly one action', () {
       // The APP knows where it should go: 「同步」 settles it.
@@ -420,7 +420,7 @@ void main() {
       expect(sync.gateway.where, '未確認');
       expect(sync.gateway.status, '？ 未確認');
       expect(sync.need, SyncNeed.sync);
-      expect(sync.hint, '還不確定 Gateway 把資料送到哪裡。按「同步」讓 Gateway 改送到本地測試主機。');
+      expect(sync.hint, '還不確定閘道器把資料送到哪裡。按「同步」讓閘道器改送到本地測試主機。');
       expect(sync.allOk, isFalse);
       final details = sync.details.join('\n');
       expect(details, contains('未確認（切換結果尚未讀回）'));
@@ -473,7 +473,7 @@ void main() {
       expect(status.phone.where, '其他網址');
       expect(status.gateway.where, '正式站');
       expect(status.gateway.status, '✓ 資料上傳中');
-      expect(status.hint, contains('只顯示 Gateway 目前的設定，不會自動切換'));
+      expect(status.hint, contains('只顯示閘道器目前的設定，不會自動切換'));
       expect(status.allOk, isFalse);
     });
     test('the local host name never shows the port outside the details', () {
@@ -828,13 +828,13 @@ void main() {
         _state(_target('local', connected: true)),
         _local,
       );
-      expect(find.text('✓ 本地測試：手機與 Gateway 都已連上'), findsOneWidget);
+      expect(find.text('✓ 本地測試：手機與閘道器都已連上'), findsOneWidget);
       expect(find.text('手機 → 後端'), findsNothing);
-      await tester.tap(find.text('✓ 本地測試：手機與 Gateway 都已連上'));
+      await tester.tap(find.text('✓ 本地測試：手機與閘道器都已連上'));
       await tester.pumpAndSettle();
       expect(find.text('連線狀態'), findsOneWidget);
       expect(find.text('手機 → 後端'), findsOneWidget);
-      expect(find.text('Gateway → 資料上傳'), findsOneWidget);
+      expect(find.text('閘道器 → 資料上傳'), findsOneWidget);
       expect(find.text('✓ 資料上傳中'), findsOneWidget);
     });
     testWidgets('mismatch shows 同步; technical words stay collapsed', (
@@ -863,11 +863,11 @@ void main() {
         _state(_target('local', connected: true), step: 7),
         _local,
       );
-      expect(find.text('✓ 本地測試：手機與 Gateway 都已連上'), findsOneWidget);
-      await tester.tap(find.text('✓ 本地測試：手機與 Gateway 都已連上'));
+      expect(find.text('✓ 本地測試：手機與閘道器都已連上'), findsOneWidget);
+      await tester.tap(find.text('✓ 本地測試：手機與閘道器都已連上'));
       await tester.pumpAndSettle();
       expect(find.text(localTargetShipWarning), findsNothing);
-      expect(find.text('手機和 Gateway 都切回正式站'), findsNothing);
+      expect(find.text('手機和閘道器都切回正式站'), findsNothing);
       expect(find.byType(FilledButton), findsNothing);
     });
     testWidgets('step 7 on 正式站 shows no shipping warning', (tester) async {
@@ -876,12 +876,12 @@ void main() {
         _state(_target('production', connected: true), step: 7, loggedIn: true),
         _production,
       );
-      expect(find.text('✓ 正式站：手機與 Gateway 都已連上'), findsOneWidget);
-      await tester.tap(find.text('✓ 正式站：手機與 Gateway 都已連上'));
+      expect(find.text('✓ 正式站：手機與閘道器都已連上'), findsOneWidget);
+      await tester.tap(find.text('✓ 正式站：手機與閘道器都已連上'));
       await tester.pumpAndSettle();
       expect(find.text(localTargetShipWarning), findsNothing);
       expect(find.textContaining('出貨前請切回正式站'), findsNothing);
-      expect(find.text('手機和 Gateway 都切回正式站'), findsNothing);
+      expect(find.text('手機和閘道器都切回正式站'), findsNothing);
     });
     testWidgets('unknown target: 同步 or refresh, never both', (tester) async {
       final calls = await pumpPanel(tester, _state(_unconfirmed), _local);
@@ -947,10 +947,10 @@ void main() {
     );
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
-    expect(find.text('同時切換 Gateway？'), findsOneWidget);
+    expect(find.text('同時切換閘道器？'), findsOneWidget);
     expect(
       find.text(
-        'Gateway 會改把資料送到本地測試主機（192.168.1.50），並重新開機約 1 分鐘，期間請留在 Gateway 旁。',
+        '閘道器會改把資料送到本地測試主機（192.168.1.50），並重新開機約 1 分鐘，期間請留在閘道器旁。',
       ),
       findsOneWidget,
     );
