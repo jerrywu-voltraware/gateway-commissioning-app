@@ -583,8 +583,10 @@ class DemoSystem implements GatewayLink, GatewayApi, ForeignAcks {
       };
     }
     // 1.0.0+20: the back office's build-mode fallback (sent; before [tick]
-    // as well).
+    // as well). 1.0.0+21: the simulated gateway applies it at once, so the
+    // APP's get_config read-back confirms it (the demo's check as before).
     if (path.startsWith('/api/app/build-mode/')) {
+      config.addAll({'ds_enabled': true, 'ds_min_ms': 1000, 'ds_max_ms': 1000});
       return {'sent': true, 'req_id': 'demo-build-mode'};
     }
     tick++;

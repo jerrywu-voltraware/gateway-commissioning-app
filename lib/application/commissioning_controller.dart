@@ -1493,17 +1493,47 @@ enum BuildModeFallback {
   /// Not asked (build mode on, or no data check yet in this connect).
   none,
 
-  /// The back office sent it (`sent: true`): taken as on.
+  /// The back office sent it (`sent: true`) and the gateway's get_config
+  /// read back shows it ([buildModeConfirmedBy], 1.0.0+21): taken as on.
   sent,
+
+  /// 1.0.0+21: the back office sent it (`sent: true` only says the command
+  /// was published), but the read-back does not show it — the gateway did
+  /// not apply it (OTP, busy, lost) or the read failed: the gateway's own
+  /// interval, as for [failed]. The journal says `sent_unconfirmed`.
+  sentUnconfirmed,
 
   /// Any failure (an older back office's 404, the gateway offline, the
   /// throttle, no answer).
-  failed,
+  failed;
+
+  /// The name in the diagnostics package (`gateway.build_mode_fallback`).
+  String get wire => this == sentUnconfirmed ? 'sent_unconfirmed' : name;
+}
+
+/// 1.0.0+21: seconds between the fallback's `sent: true` and the BLE
+/// get_config that confirms it ([buildModeConfirmedBy]) — the back office
+/// answers once it has published, the gateway applies it a moment later.
+const buildModeConfirmSeconds = 4;
+
+/// 1.0.0+21: a get_config [config] read back after the fallback shows
+/// build mode: enabled, `ds_min_ms` ≤ 1000 and 0 < `ds_max_ms` ≤ 1000.
+/// Anything else (the old interval, missing keys) is not confirmed.
+bool buildModeConfirmedBy(Map<String, dynamic> config) {
+  final enabled = config['ds_enabled'];
+  final low = config['ds_min_ms'];
+  final high = config['ds_max_ms'];
+  return (enabled == true || (enabled is num && enabled != 0)) &&
+      low is num &&
+      low <= buildModeIntervalMs &&
+      high is num &&
+      high > 0 &&
+      high <= buildModeIntervalMs;
 }
 
 /// 1.0.0+20: build mode took (the gateway uploads every second) — the
-/// connect's own set_config, or the back office's fallback: the data check
-/// runs as before.
+/// connect's own set_config, or the back office's fallback confirmed by a
+/// read-back (1.0.0+21): the data check runs as before.
 bool buildModeTook(CommissionState s) =>
     s.buildMode == BuildModeStatus.on ||
     s.buildModeFallback == BuildModeFallback.sent;
@@ -3939,12 +3969,14 @@ class CommissioningController extends Notifier<CommissionState> {
   /// first poll. Build mode took ([buildModeTook]) → null, the check as
   /// before. Otherwise the back office is asked to send build mode itself
   /// ([buildModeFallbackPath]; it signs for a gateway with an OTP), at
-  /// most once per connect: sent → taken as on ([BuildModeFallback.sent]),
-  /// the check as before; any failure (a back office without the route,
-  /// the gateway offline, its throttle, no answer within
-  /// [buildModeFallbackTimeout]) → the gateway's own interval
-  /// ([verifyIntervalOf] its get_config). Never an error of the step; a
-  /// cancellation is rethrown.
+  /// most once per connect: sent → (1.0.0+21) confirmed by one get_config
+  /// read-back ([_buildModeConfirmed]) → taken as on
+  /// ([BuildModeFallback.sent]), the check as before; not confirmed
+  /// ([BuildModeFallback.sentUnconfirmed]) or any failure (a back office
+  /// without the route, the gateway offline, its throttle, no answer
+  /// within [buildModeFallbackTimeout]) → the gateway's own interval
+  /// ([verifyIntervalOf] its get_config, the read-back's when there is
+  /// one). Never an error of the step; a cancellation is rethrown.
   Future<void> _buildModeFallback(int generation) async {
     if (buildModeTook(state)) {
       if (state.verifyIntervalMs != null) {
@@ -3954,9 +3986,13 @@ class CommissioningController extends Notifier<CommissionState> {
     }
     if (_buildModeFallbackAsked &&
         _buildModeFallbackFor == _buildModeGeneration) {
-      // Asked in this connect and not sent: the gateway's own pace.
+      // Asked in this connect and not taken: the gateway's own pace (no
+      // second call, no second read-back).
       state = state.copy(
-        buildModeFallback: BuildModeFallback.failed,
+        buildModeFallback:
+            state.buildModeFallback == BuildModeFallback.sentUnconfirmed
+            ? BuildModeFallback.sentUnconfirmed
+            : BuildModeFallback.failed,
         verifyIntervalMs: verifyIntervalOf(state.config),
         error: state.error,
       );
@@ -3976,13 +4012,56 @@ class CommissioningController extends Notifier<CommissionState> {
     _check(generation);
     _buildModeFallbackAsked = true;
     _buildModeFallbackFor = _buildModeGeneration;
+    if (!sent) {
+      state = state.copy(
+        buildModeFallback: BuildModeFallback.failed,
+        verifyIntervalMs: verifyIntervalOf(state.config),
+        error: state.error,
+      );
+      return;
+    }
+    // 1.0.0+21 (APP-1): `sent` only says the command was published. Until
+    // the read-back shows it, not taken (a cancellation here leaves it so).
     state = state.copy(
-      buildModeFallback: sent
-          ? BuildModeFallback.sent
-          : BuildModeFallback.failed,
-      verifyIntervalMs: sent ? null : verifyIntervalOf(state.config),
+      buildModeFallback: BuildModeFallback.sentUnconfirmed,
       error: state.error,
     );
+    final took = await _buildModeConfirmed(generation);
+    state = state.copy(
+      buildModeFallback: took
+          ? BuildModeFallback.sent
+          : BuildModeFallback.sentUnconfirmed,
+      verifyIntervalMs: took ? null : verifyIntervalOf(state.config),
+      error: state.error,
+    );
+  }
+
+  /// 1.0.0+21: after the fallback's `sent: true`, waits
+  /// [buildModeConfirmSeconds] and reads get_config once over BLE (the
+  /// usual parsing; its ds_* keys go into the flow's config, so the pace
+  /// and the diagnostics follow what the gateway has). True when it shows
+  /// build mode ([buildModeConfirmedBy]); a failed read (any BLE error) is
+  /// not confirmed. A cancellation — or a newer run / connect
+  /// ([_check]) — is rethrown before anything is kept.
+  Future<bool> _buildModeConfirmed(int generation) async {
+    await _wait(buildModeConfirmSeconds, generation);
+    try {
+      final config = await _command(generation, 'get_config');
+      _check(generation);
+      state = state.copy(
+        config: {
+          ...state.config,
+          for (final key in buildModeParams.keys)
+            if (config.containsKey(key)) key: config[key],
+        },
+        error: state.error,
+      );
+      return buildModeConfirmedBy(config);
+    } catch (error) {
+      if (error is GatewayFailure && error.code == 'cancelled') rethrow;
+      _check(generation);
+      return false;
+    }
   }
 
   /// get_config plus what get_net_status says about the upload (MQTT).

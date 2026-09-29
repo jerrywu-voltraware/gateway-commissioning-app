@@ -6,8 +6,10 @@
 //    30 s / 10 min as before. The empty page names no fixed seconds.
 // 2. The data check: build mode on → exactly as before (no fallback, the
 //    same window, late limit and budget). Not on → `POST /api/app/build-
-//    mode/{site}/{gw}` once per connect: sent → as before; any failure (404
-//    of an older back office, no answer, network) → the gateway's own
+//    mode/{site}/{gw}` once per connect: sent → (1.0.0+21) one get_config
+//    read-back: 1000 / 1000 → as before; still the old interval or the
+//    read fails → `sent_unconfirmed`, widened as a failure; any failure
+//    (404 of an older back office, no answer, network) → the gateway's own
 //    interval (get_config `ds_max_ms`; missing 300000; `ds_enabled` false
 //    1000) widens the late limit max(60, 2·I + 10), the window max(180,
 //    3·I + 60), 「尚無資料」 and the budget; the pace text follows I.
@@ -63,10 +65,22 @@ class _Gw extends PickGateway {
   final bool rejectBuild;
 
   /// The fallback throws this when set, else answers [fallbackAnswer]
-  /// (default: the demo's `{sent: true}`); waits for [fallbackGate] first.
+  /// (default: the demo's `{sent: true}`, and the demo gateway applies
+  /// 1000 / 1000 at once); waits for [fallbackGate] first. A
+  /// [fallbackAnswer] is sent but never applied.
   Object? fallbackError;
   Map<String, dynamic>? fallbackAnswer;
   Completer<void>? fallbackGate;
+
+  /// 1.0.0+21: get_config between the fallback and the next /api/latest
+  /// poll (the read-back) — counted in [rereads]; the first waits for
+  /// [rereadGate] (used once) and answers [rereadAnswer] when set; each
+  /// throws [rereadError] when set.
+  int rereads = 0;
+  Completer<void>? rereadGate;
+  Map<String, dynamic>? rereadAnswer;
+  Object? rereadError;
+  int? _pollsAtFallback;
 
   /// The done page's `/api/upload-policy`: null — the demo's 5000; 0 — 404
   /// (an older back office); else this interval.
@@ -95,6 +109,24 @@ class _Gw extends PickGateway {
       ops.add((op, Map.of(params)));
       return {'message': 'config updated: 0 params changed, 3 rejected'};
     }
+    if (op == 'get_config' && _pollsAtFallback == latestPolls) {
+      rereads++;
+      final gate = rereadGate;
+      rereadGate = null;
+      if (gate != null) {
+        await gate.future;
+        final answer = rereadAnswer;
+        if (answer != null) {
+          ops.add((op, const {}));
+          return {...config, ...answer};
+        }
+      }
+      final error = rereadError;
+      if (error != null) {
+        ops.add((op, const {}));
+        throw error;
+      }
+    }
     return super.command(op, params);
   }
 
@@ -106,6 +138,7 @@ class _Gw extends PickGateway {
   ]) async {
     if (path.startsWith(_fallbackPrefix)) {
       fallbackCalls.add((method, path, body));
+      _pollsAtFallback = latestPolls;
       if (fallbackGate != null) await fallbackGate!.future;
       final error = fallbackError;
       if (error != null) throw error;
@@ -582,6 +615,9 @@ void main() {
       expect(s.buildModeFallback, BuildModeFallback.sent);
       expect(buildModeTook(s), isTrue);
       expect(s.verifyIntervalMs, isNull);
+      // 1.0.0+21: confirmed by one get_config read-back (1000 / 1000).
+      expect(fake.rereads, 1);
+      expect(s.config['ds_max_ms'], 1000);
       expect(fake.latestPolls, 18, reason: 'the 180 s window');
       for (final p in fake.installPaths) {
         expect(p, contains('threshold_minutes=2&'));
@@ -597,6 +633,7 @@ void main() {
       expect(s.error, isNull);
       expect(s.step, 7);
       expect(fake.fallbackCalls, hasLength(1));
+      expect(fake.rereads, 1, reason: 'no second read-back');
     });
 
     test('the fallback sends it, the data flows: passed as before', () async {
@@ -608,6 +645,215 @@ void main() {
       expect(s.error, isNull);
       expect(s.step, 7);
       expect(fake.fallbackCalls, hasLength(1));
+    });
+
+    // 1.0.0+21 (APP-1): `sent: true` only says the back office published the
+    // command; the gateway may not apply it (OTP, busy, lost).
+    test('sent, but the read-back still says 300000: not taken — window '
+        '960 s, late limit 610 s, sent_unconfirmed; 〔重試〕 the same', () async {
+      final fake = _Gw(max: 300000, rejectBuild: true)
+        ..fallbackAnswer = {'sent': true, 'req_id': 'x'}
+        ..frozen = true;
+      final (container, c) = await _toVerify(fake);
+      addTearDown(container.dispose);
+      await _verify(c);
+      var s = container.read(commissionProvider);
+      expect(fake.fallbackCalls, hasLength(1));
+      expect(fake.rereads, 1);
+      expect(s.step, 6);
+      expect(s.verified, isFalse);
+      expect(s.buildMode, BuildModeStatus.rejected);
+      expect(s.buildModeFallback, BuildModeFallback.sentUnconfirmed);
+      expect(buildModeTook(s), isFalse);
+      expect(s.verifyIntervalMs, 300000);
+      expect(verifyLagLimitFor(s.verifyIntervalMs), 610);
+      expect(fake.latestPolls, 960 ~/ verifyPollSeconds);
+      for (final p in fake.installPaths) {
+        expect(p, contains('threshold_minutes=11&'));
+      }
+      final diag = diagnosticSections(s, now: DateTime(2026, 9, 30));
+      expect(
+        (diag['gateway'] as Map)['build_mode_fallback'],
+        'sent_unconfirmed',
+      );
+      expect((diag['gateway'] as Map)['verify_interval_ms'], 300000);
+      expect(((diag['gateway'] as Map)['config'] as Map)['ds_max_ms'], 300000);
+      // 〔重試〕 in the same connect: no second call, no second read-back,
+      // the same widened pace.
+      final polls = fake.latestPolls;
+      await _verify(c);
+      s = container.read(commissionProvider);
+      expect(fake.fallbackCalls, hasLength(1));
+      expect(fake.rereads, 1);
+      expect(s.buildModeFallback, BuildModeFallback.sentUnconfirmed);
+      expect(s.verifyIntervalMs, 300000);
+      expect(fake.latestPolls - polls, 96);
+    });
+
+    test('sent, not applied, rows 600 s late (the gateway still at 5 '
+        'minutes): passes on the widened limit, first time', () async {
+      final fake = _Gw(max: 300000, rejectBuild: true)
+        ..fallbackAnswer = {'sent': true, 'req_id': 'x'}
+        ..lag = 600;
+      final (container, c) = await _toVerify(fake);
+      addTearDown(container.dispose);
+      await _verify(c);
+      final s = container.read(commissionProvider);
+      expect(s.error, isNull);
+      expect(s.step, 7);
+      expect(s.verified, isTrue);
+      expect(s.buildModeFallback, BuildModeFallback.sentUnconfirmed);
+      expect(fake.fallbackCalls, hasLength(1));
+    });
+
+    test('sent, the read-back shows 1000 / 1000 as numbers (ds_enabled 1): '
+        'taken as on, the +19 window', () async {
+      final fake = _Gw(max: 300000, rejectBuild: true)
+        ..fallbackAnswer = {'sent': true, 'req_id': 'x'}
+        ..rereadGate = (Completer<void>()..complete())
+        ..rereadAnswer = {'ds_enabled': 1, 'ds_min_ms': 1000, 'ds_max_ms': 1000}
+        ..frozen = true;
+      final (container, c) = await _toVerify(fake);
+      addTearDown(container.dispose);
+      await _verify(c);
+      final s = container.read(commissionProvider);
+      expect(fake.rereads, 1);
+      expect(s.buildModeFallback, BuildModeFallback.sent);
+      expect(buildModeTook(s), isTrue);
+      expect(s.verifyIntervalMs, isNull);
+      expect(fake.latestPolls, 18);
+      final diag = diagnosticSections(s, now: DateTime(2026, 9, 30));
+      expect((diag['gateway'] as Map)['build_mode_fallback'], 'sent');
+    });
+
+    for (final (name, error) in [
+      ('no answer', const GatewayFailure('timeout')),
+      ('the phone link lost', const GatewayFailure('disconnected')),
+    ]) {
+      test('sent, the read-back fails ($name): not taken, widened, never an '
+          'error of the step', () async {
+        // The gateway did apply it; the APP cannot tell.
+        final fake = _Gw(max: 300000, rejectBuild: true)..rereadError = error;
+        final (container, c) = await _toVerify(fake);
+        addTearDown(container.dispose);
+        await _verify(c);
+        final s = container.read(commissionProvider);
+        expect(s.error, isNull);
+        expect(s.step, 7);
+        expect(fake.rereads, 1);
+        expect(s.buildModeFallback, BuildModeFallback.sentUnconfirmed);
+        expect(s.verifyIntervalMs, 300000, reason: 'the connect\'s read');
+      });
+    }
+
+    test('stopped during the read-back (返回選擇 PTU): its late answer is not '
+        'kept; the next check in this connect neither asks nor reads again, '
+        'widened', () async {
+      final gate = Completer<void>();
+      final fake = _Gw(max: 300000, rejectBuild: true)
+        ..fallbackAnswer = {'sent': true, 'req_id': 'x'}
+        ..rereadGate = gate
+        ..rereadAnswer = {
+          'ds_enabled': true,
+          'ds_min_ms': 1000,
+          'ds_max_ms': 1000,
+        };
+      final (container, c) = await _toVerify(fake);
+      addTearDown(container.dispose);
+      final run = _verify(c);
+      await _until(() => fake.rereads > 0);
+      await c.backToSelection();
+      gate.complete();
+      await run;
+      var s = container.read(commissionProvider);
+      expect(s.buildModeFallback, BuildModeFallback.sentUnconfirmed);
+      expect(buildModeTook(s), isFalse);
+      expect(s.config['ds_max_ms'], 300000, reason: 'the late answer dropped');
+      await c.configurePtus();
+      expect(container.read(commissionProvider).step, 6);
+      final reads = fake.sent('get_config').length;
+      final polls = fake.latestPolls;
+      await _verify(c);
+      s = container.read(commissionProvider);
+      expect(s.step, 7);
+      expect(fake.fallbackCalls, hasLength(1));
+      expect(
+        fake.sent('get_config').length - reads,
+        1,
+        reason: 'only the in-service check after passing, no read-back',
+      );
+      expect(fake.latestPolls, greaterThan(polls));
+      expect(s.buildModeFallback, BuildModeFallback.sentUnconfirmed);
+      expect(s.verifyIntervalMs, 300000);
+    });
+
+    test('ended during the read-back, another gateway connected: the old '
+        'answer never lands on the new connect', () async {
+      final gate = Completer<void>();
+      final fake = _Gw(max: 300000, rejectBuild: true)
+        ..fallbackAnswer = {'sent': true, 'req_id': 'x'}
+        ..rereadGate = gate
+        ..rereadAnswer = {
+          'ds_enabled': true,
+          'ds_min_ms': 1000,
+          'ds_max_ms': 1000,
+        };
+      final (container, c) = await _toVerify(fake);
+      addTearDown(container.dispose);
+      final run = _verify(c);
+      await _until(() => fake.rereads > 0);
+      // 返回選擇 PTU, then 〔結束並重新選擇閘道器〕 and the next gateway.
+      await c.backToSelection();
+      await c.cancel();
+      fake.config.addAll({
+        'site_id': 1,
+        'gateway_id': 1,
+        'fleet_joined': false,
+        'gateway_uid': 'A0DD6CA370F0',
+      });
+      await c.scan();
+      await c.connect(container.read(commissionProvider).peers.single);
+      var s = container.read(commissionProvider);
+      expect(s.step, 2);
+      expect(s.buildModeFallback, BuildModeFallback.none);
+      expect(s.verifyIntervalMs, isNull);
+      gate.complete();
+      await run;
+      s = container.read(commissionProvider);
+      expect(s.step, 2);
+      expect(s.error, isNull);
+      expect(s.buildModeFallback, BuildModeFallback.none);
+      expect(buildModeTook(s), isFalse);
+      expect(s.verifyIntervalMs, isNull);
+      expect(s.config['ds_max_ms'], 300000);
+      expect(fake.fallbackCalls, hasLength(1));
+    });
+
+    test('buildModeConfirmedBy: enabled and both ≤ 1000 only', () {
+      Map<String, dynamic> ds(Object? on, Object? low, Object? high) => {
+        'ds_enabled': ?on,
+        'ds_min_ms': ?low,
+        'ds_max_ms': ?high,
+      };
+      expect(buildModeConfirmedBy(ds(true, 1000, 1000)), isTrue);
+      expect(buildModeConfirmedBy(ds(1, 1000.0, 1000)), isTrue);
+      expect(buildModeConfirmedBy(ds(true, 500, 1000)), isTrue);
+      expect(buildModeConfirmedBy(ds(true, 1000, 300000)), isFalse);
+      expect(buildModeConfirmedBy(ds(true, 5000, 5000)), isFalse);
+      expect(buildModeConfirmedBy(ds(true, 1001, 1000)), isFalse);
+      expect(buildModeConfirmedBy(ds(false, 1000, 1000)), isFalse);
+      expect(buildModeConfirmedBy(ds(0, 1000, 1000)), isFalse);
+      expect(buildModeConfirmedBy(ds(null, 1000, 1000)), isFalse);
+      expect(buildModeConfirmedBy(ds(true, null, 1000)), isFalse);
+      expect(buildModeConfirmedBy(ds(true, 1000, null)), isFalse);
+      expect(buildModeConfirmedBy(ds(true, 1000, 0)), isFalse);
+      expect(buildModeConfirmedBy(ds(true, '1000', 1000)), isFalse);
+      expect(buildModeConfirmedBy({}), isFalse);
+      expect(buildModeConfirmSeconds, inInclusiveRange(3, 5));
+      expect(BuildModeFallback.sentUnconfirmed.wire, 'sent_unconfirmed');
+      expect(BuildModeFallback.sent.wire, 'sent');
+      expect(BuildModeFallback.failed.wire, 'failed');
+      expect(BuildModeFallback.none.wire, 'none');
     });
 
     test('404 (an older back office), ds_max_ms 300000: window 960 s, late '
@@ -625,6 +871,7 @@ void main() {
       expect(s.buildModeFallback, BuildModeFallback.failed);
       expect(buildModeTook(s), isFalse);
       expect(s.verifyIntervalMs, 300000);
+      expect(fake.rereads, 0, reason: '1.0.0+21: no read-back without sent');
       expect(fake.latestPolls, 960 ~/ verifyPollSeconds);
       expect(fake.installPaths, isNotEmpty);
       for (final p in fake.installPaths) {

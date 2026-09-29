@@ -515,7 +515,7 @@ Map<String, dynamic> diagnosticSections(
       'build_mode': s.buildMode.name,
       // 1.0.0+20: the back office's fallback and the data check's pace
       // when build mode did not take.
-      'build_mode_fallback': s.buildModeFallback.name,
+      'build_mode_fallback': s.buildModeFallback.wire,
       'verify_interval_ms': s.verifyIntervalMs,
       'wifi': {
         'verdict': s.wifi.name,
