@@ -1869,7 +1869,10 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           number: true,
           onChanged: (_) {
             _scheduleGatewaySuggestion();
-            setState(() {});
+            // 1.0.0+12: a number picked belongs to the station it was
+            // picked for — another one typed is numbered again (also when
+            // 〔使用站點〕 comes before the lookup).
+            setState(() => _gatewayPicked = false);
           },
         ),
         if (typed != null && !(inService && typed == current))

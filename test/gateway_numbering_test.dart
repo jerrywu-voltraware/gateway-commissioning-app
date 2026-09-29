@@ -884,5 +884,36 @@ void main() {
       expect(_assignment(tester), '將配置為 站點 81 / 閘道器 1');
       expect(tester.takeException(), isNull);
     });
+
+    testWidgets('a number picked for 80, then 82 typed and 〔使用站點 82〕 '
+        'pressed before the lookup: 82 gets its own automatic number', (
+      tester,
+    ) async {
+      _phoneView(tester);
+      // 82 is known to the back office (no 「確定是新站？」 in between).
+      final fake = _Site(
+        site: 1,
+        gateway: 1,
+        fleet: [..._station80(), _row(82, 5, '11:22:33:44:55:82')],
+      );
+      await _pump(tester, fake);
+      await _typeSite80(tester);
+      await _tap(tester, find.byKey(const Key('gateway-number-change')));
+      await _tap(tester, find.byKey(const ValueKey('gateway-number-9')));
+      expect(_assignment(tester), '將配置為 站點 80 / 閘道器 9');
+      await tester.enterText(
+        find.widgetWithText(TextField, siteFieldLabel),
+        '82',
+      );
+      await tester.pump();
+      // At once (the 500 ms lookup has not run).
+      await tester.tap(find.byKey(const Key('station-use')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('new-site-confirm')), findsNothing);
+      expect(fake.identities, [
+        {'site_id': 82, 'gateway_id': 1},
+      ]);
+      expect(tester.takeException(), isNull);
+    });
   });
 }
