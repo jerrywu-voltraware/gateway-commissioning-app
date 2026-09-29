@@ -1331,6 +1331,26 @@ int verifyInstallMinutesFor(int? intervalMs) =>
 int verifyRunSecondsFor(int? intervalMs) =>
     verifyWindowFor(intervalMs) + backendRetryWindow.inSeconds + 40;
 
+/// 1.0.0+20: the done page's health check — every row this fresh reads
+/// 「資料持續更新」: `lag ≤ G = max(30, 2·I + 10)` seconds for the back
+/// office's interval I ([CommissionState.uploadIntervalMs]); unknown I:
+/// `lag < 30` as before. No lag counts as 999 s.
+bool healthLagFresh(num? lag, int? intervalMs) {
+  final l = lag ?? 999;
+  if (intervalMs == null) return l < 30;
+  return l * 1000 <= _healthGreenMs(intervalMs);
+}
+
+/// 1.0.0+20: a row this late is abnormal: `lag > R = max(300, G + 2·I)`
+/// seconds; unknown I: `lag > 300` as before.
+bool healthLagAbnormal(num? lag, int? intervalMs) {
+  final l = lag ?? 999;
+  if (intervalMs == null) return l > 300;
+  return l * 1000 > max(300000, _healthGreenMs(intervalMs) + 2 * intervalMs);
+}
+
+int _healthGreenMs(int intervalMs) => max(30000, 2 * intervalMs + 10000);
+
 /// 1.0.0+20: the back office's build-mode fallback (`POST`, no body; the
 /// APP key; the back office signs it when the gateway has an OTP).
 String buildModeFallbackPath(int site, int gateway) =>
@@ -9847,7 +9867,12 @@ class CommissioningController extends Notifier<CommissionState> {
       );
       if (stale()) return;
       final rows = (latest['items'] as List? ?? []).cast<Map>();
-      if (ref.mounted && backendRowsFresh(rows)) {
+      // 1.0.0+20: the limits follow the back office's interval (the done
+      // page's policy read, [CommissionState.uploadIntervalMs]); unknown →
+      // 30 s / 300 s as before.
+      final interval = state.uploadIntervalMs;
+      if (ref.mounted &&
+          backendRowsFresh(rows, lagLimit: verifyLagLimitFor(interval))) {
         state = state.copy(backendSeenAt: DateTime.now());
       }
       final expected = state.ptus.map((p) => p['device_number']).toSet();
@@ -9856,14 +9881,14 @@ class CommissioningController extends Notifier<CommissionState> {
           expected.every((id) => rows.any((r) => r['device_id'] == id));
       final fresh =
           complete &&
-          rows.every((r) => ((r['lag_seconds'] as num?) ?? 999) < 30);
+          rows.every((r) => healthLagFresh(r['lag_seconds'] as num?, interval));
       final abnormal =
           !complete ||
           rows.any(
             (r) =>
                 r['online'] != true ||
                 ((r['error_num'] as num?) ?? 0) > 0 ||
-                ((r['lag_seconds'] as num?) ?? 999) > 300,
+                healthLagAbnormal(r['lag_seconds'] as num?, interval),
           );
       // The first answer right after verification may still lag behind:
       // report 資料有異常 only when it is seen twice in a row.

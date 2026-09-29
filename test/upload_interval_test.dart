@@ -68,6 +68,10 @@ class _Gw extends PickGateway {
   Map<String, dynamic>? fallbackAnswer;
   Completer<void>? fallbackGate;
 
+  /// The done page's `/api/upload-policy`: null — the demo's 5000; 0 — 404
+  /// (an older back office); else this interval.
+  int? policyMs;
+
   /// Each /api/latest waits for it when set.
   Completer<void>? latestGate;
   bool frozen = false;
@@ -108,6 +112,18 @@ class _Gw extends PickGateway {
       final answer = fallbackAnswer;
       if (answer != null) return answer;
       return super.request(method, path, body);
+    }
+    if (path == '/api/upload-policy') {
+      final ms = policyMs;
+      if (ms == null) return super.request(method, path, body);
+      if (ms <= 0) {
+        throw const GatewayFailure.http(
+          status: 404,
+          endpoint: 'GET /api/upload-policy',
+          detail: 'Not Found',
+        );
+      }
+      return {'upload_interval_ms': ms};
     }
     if (path.contains('verify-installation')) installPaths.add(path);
     if (path.startsWith('/api/latest')) {
@@ -866,6 +882,125 @@ void main() {
       expect(s.buildModeFallback, BuildModeFallback.sent);
       expect(s.verifyIntervalMs, isNull);
     });
+  });
+
+  group('done page health check: the limits follow the interval', () {
+    test('no interval: lag < 30 fresh, > 300 abnormal (as +19)', () {
+      expect(healthLagFresh(0, null), isTrue);
+      expect(healthLagFresh(29, null), isTrue);
+      expect(healthLagFresh(29.9, null), isTrue);
+      expect(healthLagFresh(30, null), isFalse);
+      expect(healthLagFresh(null, null), isFalse);
+      expect(healthLagAbnormal(300, null), isFalse);
+      expect(healthLagAbnormal(301, null), isTrue);
+      expect(healthLagAbnormal(300.5, null), isTrue);
+      expect(healthLagAbnormal(null, null), isTrue);
+    });
+
+    test('I = 300000: G 610 s, R 1210 s', () {
+      const i = 300000;
+      expect(healthLagFresh(600, i), isTrue);
+      expect(healthLagFresh(610, i), isTrue);
+      expect(healthLagFresh(611, i), isFalse);
+      expect(healthLagAbnormal(611, i), isFalse);
+      expect(healthLagAbnormal(1210, i), isFalse);
+      expect(healthLagAbnormal(1211, i), isTrue);
+      expect(healthLagFresh(null, i), isFalse);
+      expect(healthLagAbnormal(null, i), isFalse, reason: '999 s < 1210 s');
+    });
+
+    test('I = 5000: G 30 s, R 300 s (the floors)', () {
+      expect(healthLagFresh(29, 5000), isTrue);
+      expect(healthLagFresh(31, 5000), isFalse);
+      expect(healthLagAbnormal(300, 5000), isFalse);
+      expect(healthLagAbnormal(301, 5000), isTrue);
+      // 60 s: G 130 s, R 300 s.
+      expect(healthLagFresh(130, 60000), isTrue);
+      expect(healthLagFresh(131, 60000), isFalse);
+      expect(healthLagAbnormal(300, 60000), isFalse);
+      expect(healthLagAbnormal(301, 60000), isTrue);
+    });
+
+    Future<(ProviderContainer, CommissioningController, _Gw)> done(
+      int? policy,
+    ) async {
+      final fake = _Gw()..policyMs = policy;
+      final (container, c) = await _toVerify(fake);
+      await _verify(c);
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      expect(container.read(commissionProvider).step, 7);
+      return (container, c, fake);
+    }
+
+    test('policy 300000: 600 s fresh; 611 s not fresh, not abnormal; over '
+        '1210 s abnormal (twice in a row)', () async {
+      final (container, c, fake) = await done(300000);
+      addTearDown(container.dispose);
+      CommissionState read() => container.read(commissionProvider);
+      expect(read().uploadIntervalMs, 300000);
+      // Still in build mode right after completion (every second).
+      fake.lag = 1;
+      await c.refreshHealth();
+      expect(read().message, '資料持續更新');
+      fake.lag = 600;
+      await c.refreshHealth();
+      expect(read().message, '資料持續更新');
+      expect(read().online, isTrue);
+      fake.lag = 611;
+      await c.refreshHealth();
+      await c.refreshHealth();
+      expect(read().message, '資料暫未更新');
+      expect(read().online, isFalse);
+      fake.lag = 1210;
+      await c.refreshHealth();
+      await c.refreshHealth();
+      expect(read().message, '資料暫未更新');
+      fake.lag = 1211;
+      await c.refreshHealth();
+      expect(read().message, healthPendingText);
+      await c.refreshHealth();
+      expect(read().message, '資料有異常，請檢查 PTU 與網路。');
+    });
+
+    test('policy unknown (404): 30 s / 300 s exactly as +19', () async {
+      final (container, c, fake) = await done(0);
+      addTearDown(container.dispose);
+      CommissionState read() => container.read(commissionProvider);
+      expect(read().uploadIntervalMs, isNull);
+      fake.lag = 29;
+      await c.refreshHealth();
+      expect(read().message, '資料持續更新');
+      expect(read().online, isTrue);
+      fake.lag = 30;
+      await c.refreshHealth();
+      expect(read().message, '資料暫未更新');
+      fake.lag = 300;
+      await c.refreshHealth();
+      await c.refreshHealth();
+      expect(read().message, '資料暫未更新');
+      fake.lag = 301;
+      await c.refreshHealth();
+      expect(read().message, healthPendingText);
+      await c.refreshHealth();
+      expect(read().message, '資料有異常，請檢查 PTU 與網路。');
+    });
+
+    test(
+      'policy 5000 (today): a row 301 s late is abnormal as before',
+      () async {
+        final (container, c, fake) = await done(null);
+        addTearDown(container.dispose);
+        CommissionState read() => container.read(commissionProvider);
+        expect(read().uploadIntervalMs, 5000);
+        fake.lag = 29;
+        await c.refreshHealth();
+        expect(read().message, '資料持續更新');
+        fake.lag = 301;
+        await c.refreshHealth();
+        await c.refreshHealth();
+        expect(read().message, '資料有異常，請檢查 PTU 與網路。');
+      },
+    );
   });
 }
 
