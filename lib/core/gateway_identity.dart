@@ -43,6 +43,31 @@ String gatewayTitle(String name) {
   return id == null ? name : gatewayIdText(id.site, id.gateway);
 }
 
+/// 1.0.0+12 (field: a gateway with an old test identity 80/2 left in its
+/// NVS was listed as 「站 80 · 閘道器 2」 although the back office had no
+/// 80/2): the title of a gateway known not to be configured — 「未配置閘道器
+/// …3A00」 with its Wi-Fi MAC tail ([tail], as the list shows it), never a
+/// station or number.
+const unconfiguredGatewayText = '未配置閘道器';
+
+/// 「未配置閘道器 …3A00」, or 「未配置閘道器」 without a MAC [tail].
+String unconfiguredGatewayTitle(String? tail) => tail == null || tail.isEmpty
+    ? unconfiguredGatewayText
+    : '$unconfiguredGatewayText $tail';
+
+/// 1.0.0+12: the advertising name carries the factory identity 1/1.
+bool isFactoryGatewayName(String? name) {
+  final id = parseGatewayName(name);
+  return id != null && id.site == 1 && id.gateway == 1;
+}
+
+/// 1.0.0+12: the Wi-Fi MAC tail of [unconfiguredGatewayTitle] — 「…70F0」
+/// ([gatewayWifiMac]); null when neither [uid] nor [bleId] is a MAC.
+String? gatewayTailText({Object? uid, String? bleId}) {
+  final wifi = gatewayWifiMac(uid: uid, bleId: bleId);
+  return wifi == null ? null : '…${wifi.substring(8)}';
+}
+
 /// Last 4 hex digits of a MAC address (「70F2」); null when [id] is not a
 /// 6-byte MAC (e.g. an iOS peripheral UUID).
 String? macTail(String? id) {

@@ -39,9 +39,10 @@ const gatewaySignalLostLabel = '訊號中斷';
 const gatewayNeverHeardLabel = '—';
 
 /// 1.0.0+11: the SnackBar after 〔辨識〕 blinked [name] — seen even when its
-/// row is off screen.
-String identifiedSnackText(String name) =>
-    '${gatewayTitle(name)} $identifiedHint';
+/// row is off screen. 1.0.0+12: [title], the row's title when given (e.g.
+/// 「未配置閘道器 …70F0」).
+String identifiedSnackText(String name, {String? title}) =>
+    '${title ?? gatewayTitle(name)} $identifiedHint';
 
 /// 1.0.0+10: a small mark on a gateway row (labelMedium): outlined, or
 /// [filled] (white text on [color]).
@@ -451,6 +452,34 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     return gatewayConfigured(uid, _fleet);
   }
 
+  /// The back office's list is current (logged in, read within 30 s).
+  bool get _backendCurrent =>
+      ref.read(commissionProvider).loggedIn &&
+      _backendAt != null &&
+      DateTime.now().difference(_backendAt!).inSeconds <= 30;
+
+  /// A row's title: 「站 80 · 閘道器 2」 (the name when it does not parse);
+  /// 1.0.0+12: 「未配置閘道器 …70F0」 for a gateway known not to be
+  /// configured ([gatewayKnownUnconfigured]) — not the station / number
+  /// it advertises (an old identity may be left in it). [name]: the name
+  /// heard (a recent entry keeps the one it had).
+  ({String title, bool unconfigured}) _titleOf(String name, String id) {
+    final uid = _recent.where((r) => r.peer.id == id).firstOrNull?.uid;
+    final unconfigured = gatewayKnownUnconfigured(
+      name: name,
+      uid: uid,
+      fleet: _fleet,
+      archived: _archived,
+      backendKnown: _backendCurrent,
+    );
+    return (
+      title: unconfigured
+          ? unconfiguredGatewayTitle(gatewayTailText(uid: uid, bleId: id))
+          : gatewayTitle(name),
+      unconfigured: unconfigured,
+    );
+  }
+
   Future<void> _connect(GatewayPeer peer) async {
     if (_selecting || !widget.enabled) return;
     setState(() => _selecting = true);
@@ -492,7 +521,15 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
           ..showSnackBar(
             SnackBar(
               key: const Key('gateway-identified-snack'),
-              content: Text(identifiedSnackText(peer.name)),
+              content: Text(
+                identifiedSnackText(
+                  peer.name,
+                  title: _titleOf(
+                    _heard[peer.id]?.peer.name ?? peer.name,
+                    peer.id,
+                  ).title,
+                ),
+              ),
               duration: identifiedHintFor,
             ),
           );
@@ -544,7 +581,9 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     // a recent entry keeps the name it had) only when it does not parse —
     // the title says the same (the filter still matches it).
     final name = heard?.peer.name ?? peer.name;
-    final title = gatewayTitle(name);
+    // 1.0.0+12: 「未配置閘道器 …70F0」 for a gateway known not to be
+    // configured (never an old identity it still advertises).
+    final (:title, :unconfigured) = _titleOf(name, peer.id);
     // Round 28 (field round 28: this list read 「70F2」, the help panel and
     // the back office 「70F0」): the Wi-Fi MAC tail the back office shows —
     // remembered from an earlier connect, else derived from the Bluetooth
@@ -557,6 +596,10 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     final small = theme.bodySmall?.copyWith(color: colors.onSurfaceVariant);
     final identified = _identified == peer.id;
     final detail = [if (title == name) name, tail].join(' · ');
+    // 1.0.0+12: 「未配置閘道器 …70F0」 is too wide for one line at text
+    // scale 1.1 on a 360 dp phone: it takes two lines then (never cut), and
+    // its MAC tail is not repeated on line 3.
+    final showDetail = !(unconfigured && title.endsWith(tail));
     // 1.0.0+10 (phone 360 dp at text scale 1.1: line 1 wrapped and pushed
     // the dBm to a second line, line 3 cut 「· …」, the name repeated the
     // title): three short lines per gateway —
@@ -602,8 +645,8 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
                           child: Text(
                             title,
                             key: ValueKey('gateway-title-${peer.id}'),
-                            maxLines: 1,
-                            softWrap: false,
+                            maxLines: unconfigured ? 2 : 1,
+                            softWrap: unconfigured,
                             overflow: TextOverflow.ellipsis,
                             style: theme.titleMedium?.copyWith(
                               fontWeight: FontWeight.w700,
@@ -658,15 +701,17 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
                         ),
                       ],
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      detail,
-                      key: ValueKey('gateway-detail-${peer.id}'),
-                      style: small,
-                      maxLines: 1,
-                      softWrap: false,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                    if (showDetail) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        detail,
+                        key: ValueKey('gateway-detail-${peer.id}'),
+                        style: small,
+                        maxLines: 1,
+                        softWrap: false,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                   ],
                 ),
               ),

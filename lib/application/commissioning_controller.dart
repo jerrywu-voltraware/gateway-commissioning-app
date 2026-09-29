@@ -21,6 +21,7 @@ import '../data/ble_gateway_link.dart';
 import '../data/contracts.dart';
 import '../data/recent_commissions.dart';
 import '../data/recent_gateways.dart';
+import '../data/written_identities.dart';
 import '../data/dashboard_api.dart';
 import '../data/demo_system.dart';
 import '../data/ptu_inventory.dart';
@@ -2059,6 +2060,59 @@ class CommissioningController extends Notifier<CommissionState> {
   /// Round 29: [_keepSite], for the page's 「設定新站點與 Wi-Fi」.
   int? get keptSite => _keepSite;
 
+  /// 1.0.0+12: the identity this phone wrote to the connected gateway
+  /// (set_site_identity acked, [WrittenIdentities.window]), read when it is
+  /// connected and set when it is written; null when there is none. Only
+  /// such an identity is kept as the proposal of a gateway not in service
+  /// ([_writtenHere]); any other one it carries (an old test identity left
+  /// in its NVS) is not.
+  WrittenIdentity? _written;
+
+  /// 1.0.0+12: [site] / [gw] is the identity this phone wrote a moment ago
+  /// ([_written]) to the gateway of [config] ([peerId]: its Bluetooth id).
+  bool _writtenHere(
+    int site,
+    int gw,
+    Map<String, dynamic> config,
+    String? peerId,
+  ) {
+    final written = _written;
+    return written != null &&
+        written.site == site &&
+        written.gateway == gw &&
+        written.freshAt(DateTime.now()) &&
+        written.sameGateway(uid: config['gateway_uid'], peerId: peerId);
+  }
+
+  /// 1.0.0+12: set_site_identity was acked — remembered on the phone, so a
+  /// failed reconnect after the restart does not lose it (round 26).
+  Future<void> _rememberWritten(int site, int gw) async {
+    final entry = WrittenIdentity(
+      uid: gatewayUid(state.config['gateway_uid']),
+      peerId: state.peer?.id ?? '',
+      site: site,
+      gateway: gw,
+      at: DateTime.now(),
+    );
+    _written = entry;
+    try {
+      await WrittenIdentities.remember(_link.demo, entry);
+    } catch (_) {
+      /* The in-memory record still serves this run. */
+    }
+  }
+
+  /// 1.0.0+12: the gateway is in service — its written identity is no
+  /// longer needed.
+  Future<void> _forgetWritten(Object? uid, String? peerId) async {
+    _written = null;
+    try {
+      await WrittenIdentities.forget(_link.demo, uid: uid, peerId: peerId);
+    } catch (_) {
+      /* Advisory only. */
+    }
+  }
+
   /// Round 29: [finishDone] is running (one tap, one finish).
   bool _finishing = false;
   int get site => (state.config['site_id'] as num?)?.toInt() ?? 1;
@@ -2465,6 +2519,8 @@ class CommissioningController extends Notifier<CommissionState> {
         update
           ..['fleet_joined'] = true
           ..['upload_paused'] = false;
+        // 1.0.0+12: in service — its written identity is not kept anymore.
+        unawaited(_forgetWritten(state.config['gateway_uid'], state.peer?.id));
     }
     if (update.isEmpty ||
         update.entries.every((e) => state.config[e.key] == e.value)) {
@@ -3623,6 +3679,9 @@ class CommissioningController extends Notifier<CommissionState> {
       rethrow;
     }
     if (config['fleet_joined'] == true) {
+      // 1.0.0+12: in service — an identity written before is not kept.
+      await _forgetWritten(config['gateway_uid'], peer.id);
+      _check(generation);
       state = state.copy(
         step: 2,
         peer: peer,
@@ -3645,13 +3704,29 @@ class CommissioningController extends Notifier<CommissionState> {
       var offline = !_loggedIn;
       // Round 26 (field: set_site_identity 80/2 went through, the reconnect
       // failed; connected again, the form offered 「站點 1 / 閘道器 1」 and
-      // 80 had to be typed again): a gateway that carries an identity other
-      // than the factory 1/1 (not yet in service, e.g. set a moment ago)
-      // keeps it as the proposal.
+      // 80 had to be typed again): the identity kept as the proposal.
+      // 1.0.0+12 (field: a gateway with an old test identity 80/2 left in
+      // its NVS was offered 「目前站號是 80」 and its number 2, although the
+      // back office had nothing on 80): only an identity this phone wrote
+      // itself a moment ago ([WrittenIdentities]) is kept; any other one a
+      // gateway not in service carries is ignored, as on a new gateway.
       final ownSite = (config['site_id'] as num?)?.toInt() ?? 0;
       final ownGw = (config['gateway_id'] as num?)?.toInt() ?? 0;
+      _written = null;
+      try {
+        _written = await WrittenIdentities.find(
+          _link.demo,
+          uid: config['gateway_uid'],
+          peerId: peer.id,
+        );
+      } catch (_) {
+        /* An unreadable store: nothing written here. */
+      }
+      _check(generation);
       final ownIdentity =
-          ownSite > 0 && ownGw > 0 && !(ownSite == 1 && ownGw == 1);
+          ownSite > 0 &&
+          ownGw > 0 &&
+          _writtenHere(ownSite, ownGw, config, peer.id);
       if (ownIdentity) {
         site = ownSite;
         gw = ownGw;
@@ -3662,7 +3737,7 @@ class CommissioningController extends Notifier<CommissionState> {
       final keep = _keepSite;
       var keptProposal = false;
       if (!ownIdentity && keep != null) {
-        final (g, kind) = await suggestGateway(keep);
+        final (g, kind) = await _suggestGateway(keep, config, peer.id);
         _check(generation);
         if (kind != GatewaySuggestKind.full) {
           site = keep;
@@ -3701,7 +3776,7 @@ class CommissioningController extends Notifier<CommissionState> {
             ).every((g) => occupied.contains('$s/$g'))) {
               continue; // known fully occupied: skip without a network call
             }
-            final (g, kind) = await suggestGateway(s);
+            final (g, kind) = await _suggestGateway(s, config, peer.id);
             _check(generation);
             if (kind == GatewaySuggestKind.online) {
               site = s;
@@ -3729,10 +3804,11 @@ class CommissioningController extends Notifier<CommissionState> {
       config['suggested_gateway_id'] = gw;
       config['suggested_offline'] = offline;
       // One-thing screens (09-28): the station page asks 「目前站號是 N，
-      // 這台要配置在本站嗎？」 only for a station this gateway already
-      // carries or the one just done (〔配置下一台〕); a guess from the
-      // free-slot search is never proposed as 「本站」 (second user
-      // rehearsal: a prefilled number was accepted by mistake).
+      // 這台要配置在本站嗎？」 only for a station this phone wrote to it a
+      // moment ago (1.0.0+12, not any identity it carries) or the one just
+      // done (〔配置下一台〕); a guess from the free-slot search is never
+      // proposed as 「本站」 (second user rehearsal: a prefilled number was
+      // accepted by mistake).
       config['suggested_site_known'] = ownIdentity || keptProposal;
     }
     state = state.copy(
@@ -3977,18 +4053,38 @@ class CommissioningController extends Notifier<CommissionState> {
   /// (`GIOS-S{site}-GW{n}`, from the step-1 scan) for the smallest unused n.
   /// This is the single source of truth for the auto-number: both the
   /// initial post-connect guess and the user-typed-site lookup call it.
-  Future<(int, GatewaySuggestKind)> suggestGateway(int forSite) async {
-    final curSite = (state.config['site_id'] as num?)?.toInt() ?? 0;
-    if (curSite != 0 && curSite == forSite) {
-      return (gateway, GatewaySuggestKind.online);
+  ///
+  /// 1.0.0+12: its own number is kept only for a gateway in service
+  /// (`fleet_joined`) or one whose identity this phone wrote a moment ago
+  /// (round 26); a gateway not in service with any other identity (an old
+  /// test identity left in its NVS) gets the smallest free number like a
+  /// new one.
+  Future<(int, GatewaySuggestKind)> suggestGateway(int forSite) =>
+      _suggestGateway(forSite, state.config, state.peer?.id);
+
+  /// [suggestGateway] for the gateway of [config] ([peerId]: its Bluetooth
+  /// id) — the connect's first guess runs before [state] has its config.
+  Future<(int, GatewaySuggestKind)> _suggestGateway(
+    int forSite,
+    Map<String, dynamic> config,
+    String? peerId,
+  ) async {
+    final curSite = (config['site_id'] as num?)?.toInt() ?? 0;
+    final curGateway = (config['gateway_id'] as num?)?.toInt() ?? 1;
+    if (curSite != 0 &&
+        curSite == forSite &&
+        (config['fleet_joined'] == true ||
+            _writtenHere(curSite, curGateway, config, peerId))) {
+      return (curGateway, GatewaySuggestKind.online);
     }
+    final uid = config['gateway_uid'];
     if (_loggedIn) {
       try {
         // Prefer fleet-status (one call) to find the smallest unused id,
         // confirmed by a single check-identity; only fall back to checking
         // every 1–kMaxGatewayId slot one by one when fleet-status itself is
         // unavailable, or its pick turns out stale.
-        final picked = await _pickFreeGatewayId(forSite);
+        final picked = await _pickFreeGatewayId(forSite, uid);
         if (picked != null) {
           final identity = await _api.request(
             'GET',
@@ -3996,8 +4092,7 @@ class CommissioningController extends Notifier<CommissionState> {
           );
           if (identity['exists'] != true ||
               (identity['last_seen_mac'] != null &&
-                  _mac(identity['last_seen_mac']) ==
-                      _mac(state.config['gateway_uid']))) {
+                  _mac(identity['last_seen_mac']) == _mac(uid))) {
             return (picked, GatewaySuggestKind.online);
           }
         }
@@ -4008,8 +4103,7 @@ class CommissioningController extends Notifier<CommissionState> {
           );
           if (identity['exists'] != true ||
               (identity['last_seen_mac'] != null &&
-                  _mac(identity['last_seen_mac']) ==
-                      _mac(state.config['gateway_uid']))) {
+                  _mac(identity['last_seen_mac']) == _mac(uid))) {
             return (g, GatewaySuggestKind.online);
           }
         }
@@ -4024,27 +4118,46 @@ class CommissioningController extends Notifier<CommissionState> {
   /// Smallest 1–[kMaxGatewayId] gateway id not already used by another
   /// gateway at [forSite], read from fleet-status; null when fleet-status
   /// itself fails (caller falls back to the one-by-one scan).
-  Future<int?> _pickFreeGatewayId(int forSite) async {
+  Future<int?> _pickFreeGatewayId(int forSite, Object? uid) async {
     try {
-      final fleet = await _api.request(
-        'GET',
-        '/api/gateways/fleet-status?site_id=$forSite',
-      );
-      final used = <int>{};
-      for (final item in (fleet['gateways'] as List? ?? [])) {
-        final row = Map<String, dynamic>.from(item as Map);
-        if (row['site_id'] != forSite) continue;
-        final uid = row['mac'] ?? row['last_seen_mac'];
-        if (uid != null && _mac(uid) == _mac(state.config['gateway_uid'])) {
-          continue;
-        }
-        final g = (row['gateway_id'] as num?)?.toInt();
-        if (g != null) used.add(g);
-      }
+      final used = await _usedAt(forSite, uid);
       for (int g = 1; g <= kMaxGatewayId; g++) {
-        if (!used.contains(g)) return g;
+        if (!used.containsKey(g)) return g;
       }
       return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// The gateway numbers at [forSite] that another gateway than [uid]
+  /// holds in fleet-status, with the MAC on record ('' when none). Throws
+  /// when fleet-status cannot be read.
+  Future<Map<int, String>> _usedAt(int forSite, Object? uid) async {
+    final fleet = await _api.request(
+      'GET',
+      '/api/gateways/fleet-status?site_id=$forSite',
+    );
+    final used = <int, String>{};
+    for (final item in (fleet['gateways'] as List? ?? [])) {
+      final row = Map<String, dynamic>.from(item as Map);
+      if (row['site_id'] != forSite) continue;
+      final mac = row['mac'] ?? row['last_seen_mac'];
+      if (mac != null && _mac(mac) == _mac(uid)) continue;
+      final g = (row['gateway_id'] as num?)?.toInt();
+      if (g != null) used[g] = mac?.toString() ?? '';
+    }
+    return used;
+  }
+
+  /// 1.0.0+12: the number picker's 「已使用」 — the numbers at [forSite]
+  /// another gateway holds (number → its MAC, '' when none on record);
+  /// null when it cannot tell (not logged in, the back office unreachable:
+  /// the picker says 「目前無法檢查是否重複」).
+  Future<Map<int, String>?> usedGatewayNumbers(int forSite) async {
+    if (!_loggedIn) return null;
+    try {
+      return await _usedAt(forSite, state.config['gateway_uid']);
     } catch (_) {
       return null;
     }
@@ -4285,6 +4398,9 @@ class CommissioningController extends Notifier<CommissionState> {
           'site_id': newSite,
           'gateway_id': newGateway,
         });
+        // 1.0.0+12: kept as this gateway's proposal should the reconnect
+        // after its restart fail (round 26).
+        await _rememberWritten(newSite, newGateway);
         await _wait(15, generation);
         await _link.connect(state.peer!, onStage: _stageFor(generation));
         await _wait(3, generation);

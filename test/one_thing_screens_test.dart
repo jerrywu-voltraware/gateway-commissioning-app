@@ -24,6 +24,7 @@ import 'package:gateway_commissioning/core/direct_mode.dart';
 import 'package:gateway_commissioning/core/gateway_topology.dart';
 import 'package:gateway_commissioning/data/demo_system.dart';
 import 'package:gateway_commissioning/data/local_backend_probe.dart';
+import 'package:gateway_commissioning/data/written_identities.dart';
 import 'package:gateway_commissioning/gateway_app.dart';
 import 'package:gateway_commissioning/presentation/commissioning_page.dart';
 import 'package:gateway_commissioning/presentation/gateway_signal.dart';
@@ -330,6 +331,20 @@ void main() {
       final fake = WifiGateway()
         ..config.addAll({'site_id': 80, 'gateway_id': 3});
       final container = await _pump(tester, fake);
+      // 1.0.0+12: set a moment ago by this phone — only then is it the
+      // proposal (any other identity it carries is typed again).
+      await tester.runAsync(
+        () => WrittenIdentities.remember(
+          true,
+          WrittenIdentity(
+            uid: 'AABBCCDDEEFF',
+            peerId: 'demo-gateway',
+            site: 80,
+            gateway: 3,
+            at: DateTime.now(),
+          ),
+        ),
+      );
       await _connect(tester);
       expect(container.read(commissionProvider).checkPassed, isTrue);
       expect(_title(tester), '目前站號是 80，這台要配置在本站嗎？');

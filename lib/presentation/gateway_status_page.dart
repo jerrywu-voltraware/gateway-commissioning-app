@@ -7,7 +7,12 @@ import 'package:permission_handler/permission_handler.dart';
 import '../application/app_session.dart';
 import '../application/commissioning_controller.dart';
 import '../application/nearby_gateways.dart';
-import '../core/gateway_identity.dart' show parseGatewayName;
+import '../core/gateway_identity.dart'
+    show
+        gatewayTailText,
+        isFactoryGatewayName,
+        parseGatewayName,
+        unconfiguredGatewayTitle;
 import '../core/protocol.dart';
 import '../data/contracts.dart' show GatewayPeer;
 import '../data/fleet_status_api.dart';
@@ -49,6 +54,21 @@ String unbrokenName(String name) => name.replaceAll('-', '\u2011');
 
 /// 1.0.0+10: the strongest nearby gateway's mark (as on the gateway list).
 const gatewayStatusNearestLabel = '最近';
+
+/// 1.0.0+12: a nearby gateway known not to be configured's second line —
+/// no station or number (an old identity may be left in its name).
+const gatewayStatusNearbyUnconfiguredText = '尚未配置，無法查看資料';
+
+/// 1.0.0+12: a nearby gateway known not to be configured — its name is the
+/// factory 1/1, or the back office's list ([fleet]; null: not read) has no
+/// gateway with the station and number it advertises. It is listed as
+/// 「未配置閘道器 …XXXX」, not its station / number.
+bool nearbyKnownUnconfigured(String name, List<FleetGateway>? fleet) {
+  if (isFactoryGatewayName(name)) return true;
+  final id = parseGatewayName(name);
+  if (id == null || fleet == null) return false;
+  return !fleet.any((g) => g.site == id.site && g.gateway == id.gateway);
+}
 
 /// Words for a failed nearby scan: the link's own (「需要藍牙權限…」, 「請開啟
 /// 手機藍牙後重試。」…) or a generic one.
@@ -437,6 +457,20 @@ class _GatewayStatusPageState extends ConsumerState<GatewayStatusPage> {
         leading: Icon(Icons.bluetooth, color: colors.onSurfaceVariant),
         title: p.name,
         line: '${p.rssi} dBm・$gatewayStatusNearbyUnnamedText',
+        lineKey: Key('gs-nearby-${p.id}-line'),
+        mark: mark,
+      );
+    }
+    // 1.0.0+12: known not to be configured — not listed by the station /
+    // number it advertises (an old test identity may be left in it), and
+    // nothing to look up in the back office.
+    if (nearbyKnownUnconfigured(p.name, _error == null ? _fleet : null)) {
+      return _tile(
+        context,
+        key: Key('gs-nearby-${p.id}'),
+        leading: Icon(Icons.bluetooth, color: colors.onSurfaceVariant),
+        title: unconfiguredGatewayTitle(gatewayTailText(bleId: p.id)),
+        line: '${p.rssi} dBm・$gatewayStatusNearbyUnconfiguredText',
         lineKey: Key('gs-nearby-${p.id}-line'),
         mark: mark,
       );

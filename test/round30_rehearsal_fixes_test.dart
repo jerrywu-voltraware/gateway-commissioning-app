@@ -33,6 +33,7 @@ import 'package:gateway_commissioning/core/protocol.dart';
 import 'package:gateway_commissioning/core/rescue_code.dart';
 import 'package:gateway_commissioning/data/contracts.dart';
 import 'package:gateway_commissioning/data/local_backend_probe.dart';
+import 'package:gateway_commissioning/data/written_identities.dart';
 import 'package:gateway_commissioning/gateway_app.dart';
 import 'package:gateway_commissioning/presentation/gateway_discovery.dart';
 
@@ -543,6 +544,20 @@ void main() {
         await tester.pumpAndSettle();
       }
 
+      // 1.0.0+12: 80/1 was written by this phone a moment ago — only then
+      // is a gateway not in service offered its station (else it is typed).
+      await tester.runAsync(
+        () => WrittenIdentities.remember(
+          true,
+          WrittenIdentity(
+            uid: fake.config['gateway_uid'].toString(),
+            peerId: 'demo-gateway',
+            site: 80,
+            gateway: 1,
+            at: DateTime.now(),
+          ),
+        ),
+      );
       // The gateway list: tap the gateway (fills the forms).
       await tap(find.byKey(const ValueKey('demo-gateway')));
       expect(container.read(commissionProvider).step, 2);

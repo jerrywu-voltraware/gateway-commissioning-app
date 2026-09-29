@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../core/gateway_identity.dart'
+    show isFactoryGatewayName, parseGatewayName;
 import 'contracts.dart';
 
 String gatewayUid(Object? value) =>
@@ -120,6 +122,37 @@ bool gatewayConfigured(String? uid, List<dynamic> fleet) {
   if (normalized.length != 12) return false;
   final matches = _matching(normalized, fleet);
   return matches.length == 1 && !_conflict(matches.single);
+}
+
+/// 1.0.0+12: a gateway known not to be configured — listed as 「未配置閘道器
+/// …XXXX」 instead of the station / number it advertises ([name]), which
+/// may be an old test identity left in its NVS. Known when its name is the
+/// factory 1/1, or the back office's list is current ([backendKnown]) and
+/// the gateway is not in it: its verified [uid] (a remembered connect) in
+/// no row of [fleet] / [archived], or without one, no row with the station
+/// and number of its [name]. A gateway already configured ([gatewayConfigured])
+/// never is; with the back office unknown only the factory name counts.
+bool gatewayKnownUnconfigured({
+  required String name,
+  String? uid,
+  required List<dynamic> fleet,
+  List<dynamic> archived = const [],
+  required bool backendKnown,
+}) {
+  if (backendKnown && gatewayConfigured(uid, fleet)) return false;
+  if (isFactoryGatewayName(name)) return true;
+  if (!backendKnown) return false;
+  final normalized = gatewayUid(uid);
+  if (normalized.length == 12) {
+    return _matching(normalized, fleet).isEmpty &&
+        _matching(normalized, archived).isEmpty;
+  }
+  final id = parseGatewayName(name);
+  if (id == null) return false;
+  bool at(Map row) =>
+      (row['site_id'] as num?)?.toInt() == id.site &&
+      (row['gateway_id'] as num?)?.toInt() == id.gateway;
+  return !fleet.whereType<Map>().any(at) && !archived.whereType<Map>().any(at);
 }
 
 /// r31: why the back-office query failed, for 「後端狀態未知・…」.

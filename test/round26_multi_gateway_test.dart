@@ -32,6 +32,7 @@ import 'package:gateway_commissioning/core/protocol.dart';
 import 'package:gateway_commissioning/data/contracts.dart';
 import 'package:gateway_commissioning/data/demo_system.dart';
 import 'package:gateway_commissioning/data/recent_gateways.dart';
+import 'package:gateway_commissioning/data/written_identities.dart';
 import 'package:gateway_commissioning/presentation/gateway_discovery.dart';
 
 import 'package:gateway_commissioning/core/app_theme.dart';
@@ -115,8 +116,22 @@ class OldGateway extends DemoSystem {
 Future<(ProviderContainer, CommissioningController)> _connected(
   DemoSystem fake, {
   GatewayTopology topology = GatewayTopology.star,
+  (int, int)? written,
 }) async {
   SharedPreferences.setMockInitialValues({});
+  // 1.0.0+12: [written] — the identity this phone wrote a moment ago.
+  if (written != null) {
+    await WrittenIdentities.remember(
+      true,
+      WrittenIdentity(
+        uid: fake.config['gateway_uid'].toString(),
+        peerId: 'demo-gateway',
+        site: written.$1,
+        gateway: written.$2,
+        at: DateTime.now(),
+      ),
+    );
+  }
   final container = ProviderContainer(
     overrides: [
       linkProvider.overrideWithValue(fake),
@@ -739,11 +754,14 @@ void main() {
       () async {
         final fake = OldGateway(station: false);
         fake.config.addAll({'site_id': 80, 'gateway_id': 2});
-        final (container, _) = await _connected(fake);
+        // 1.0.0+12: renamed by this phone (set_site_identity acked) — only
+        // such an identity is kept (see gateway_numbering_test).
+        final (container, _) = await _connected(fake, written: const (80, 2));
         addTearDown(container.dispose);
         final s = container.read(commissionProvider);
         expect(s.config['suggested_site_id'], 80);
         expect(s.config['suggested_gateway_id'], 2);
+        expect(s.config['suggested_site_known'], isTrue);
       },
     );
   });

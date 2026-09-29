@@ -25,6 +25,8 @@ import 'package:gateway_commissioning/data/contracts.dart';
 import 'package:gateway_commissioning/data/demo_system.dart';
 import 'package:gateway_commissioning/data/local_backend_probe.dart';
 import 'package:gateway_commissioning/gateway_app.dart';
+import 'package:gateway_commissioning/presentation/commissioning_page.dart'
+    show siteFieldLabel;
 import 'package:gateway_commissioning/presentation/gateway_status_page.dart';
 import 'package:gateway_commissioning/presentation/recent_data_page.dart';
 
@@ -57,6 +59,41 @@ class _TwoGateways extends DemoSystem {
     GatewayPeer('demo-gateway', 'GIOS-S81-GW01', -41),
     GatewayPeer('A0:DD:6C:A3:70:F2', 'GIOS-S80-GW02', -62),
   ];
+}
+
+/// 1.0.0+12: [_TwoGateways] with station 80's gateways 1 and 2 held by
+/// other devices (the number picker's 「已使用」).
+class _NumberedGateways extends _TwoGateways {
+  static const _held = {1: '11:22:33:44:55:01', 2: '11:22:33:44:55:02'};
+
+  @override
+  Future<Map<String, dynamic>> request(
+    String method,
+    String path, [
+    Map<String, dynamic>? body,
+  ]) async {
+    final identity = RegExp(
+      r'^/api/gateways/80/(\d+)/check-identity$',
+    ).firstMatch(path);
+    if (identity != null) {
+      final mac = _held[int.parse(identity[1]!)];
+      return {'exists': mac != null, 'last_seen_mac': mac};
+    }
+    final result = await super.request(method, path, body);
+    if (path.contains('fleet-status')) {
+      final site = Uri.parse(path).queryParameters['site_id'];
+      return {
+        ...result,
+        'gateways': [
+          ...result['gateways'] as List,
+          if (site == null || site == '80')
+            for (final e in _held.entries)
+              {'site_id': 80, 'gateway_id': e.key, 'last_seen_mac': e.value},
+        ],
+      };
+    }
+    return result;
+  }
 }
 
 /// r34's gateway in service, one-to-one, bound to a PTU that is gone.
@@ -498,6 +535,52 @@ void main() {
     await _checkPage(tester, 'done');
     await tester.pumpWidget(const SizedBox());
   });
+
+  // 1.0.0+12: 「將配置為 站點 80 / 閘道器 3」 with 〔修改〕, and the number
+  // picker (「已使用」 on 1 and 2; offline 「目前無法檢查是否重複」).
+  for (final offline in [false, true]) {
+    testWidgets('station with 〔修改〕 and the number picker'
+        '${offline ? ' (offline)' : ''}', (tester) async {
+      final container = offline
+          ? await _pumpApp(tester, _NumberedGateways())
+          : await _toList(tester, fake: _NumberedGateways());
+      CommissionState read() => container.read(commissionProvider);
+      await _run(tester, container, (c) async {
+        if (offline) {
+          await _topology(container, GatewayTopology.star);
+          await c.prepare('https://example.invalid', '', offline: true);
+        }
+        await c.scan();
+        await c.connect(_demoPeer(container));
+      });
+      expect(read().step, 2);
+      expect(read().checkPassed, isTrue);
+      await tester.enterText(
+        find.widgetWithText(TextField, siteFieldLabel),
+        '80',
+      );
+      await tester.pump(const Duration(milliseconds: 600));
+      await tester.pumpAndSettle();
+      final change = find.byKey(const Key('gateway-number-change'));
+      expect(change, findsOneWidget);
+      await _checkPage(tester, 'station with 〔修改〕${offline ? ' offline' : ''}');
+      await tester.ensureVisible(change);
+      await tester.pumpAndSettle();
+      await tester.tap(change);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('gateway-number-picker')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('gateway-number-used-1')),
+        offline ? findsNothing : findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('gateway-number-unchecked')),
+        offline ? findsOneWidget : findsNothing,
+      );
+      await _checkPage(tester, 'number picker${offline ? ' offline' : ''}');
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
 
   testWidgets('verify page (offline run: the data check waits)', (
     tester,

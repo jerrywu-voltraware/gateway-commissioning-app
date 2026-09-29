@@ -747,7 +747,9 @@ void main() {
         const GatewayPeer('AA:BB:CC:DD:EE:01', 'GIOS-S56-GW01', -58),
         const GatewayPeer('AA:BB:CC:DD:EE:00', 'GIOS-S0-GW00', -40),
       ]);
-      final api = _Api('empty');
+      // 1.0.0+12: the back office lists 56/1 (80/2 is not in it: listed as
+      // 「未配置閘道器 …EE00」, not tappable).
+      final api = _Api('data')..fleet = [_gw(56, 1)];
       await _pumpPage(tester, api, now, scanner: scanner);
       expect(scanner.scans, 1);
       expect(find.byKey(const Key('gs-nearby-scanning')), findsNothing);
@@ -766,13 +768,36 @@ void main() {
       final rows = tester
           .widgetList<ListTile>(find.byType(ListTile))
           .map((t) => (t.key as ValueKey<String>).value)
+          .where((key) => key.startsWith('gs-nearby-'))
           .toList();
       expect(rows, [
         'gs-nearby-AA:BB:CC:DD:EE:00',
         'gs-nearby-AA:BB:CC:DD:EE:01',
         'gs-nearby-AA:BB:CC:DD:EE:02',
       ]);
-      expect(find.text('站 56 閘道器 1'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('gs-nearby-AA:BB:CC:DD:EE:01')),
+          matching: find.text('站 56 閘道器 1'),
+        ),
+        findsOneWidget,
+      );
+      // 1.0.0+12: 80/2 is not in the back office — no station / number.
+      final unconfigured = find.byKey(const Key('gs-nearby-AA:BB:CC:DD:EE:02'));
+      expect(
+        find.descendant(of: unconfigured, matching: find.text('未配置閘道器 …EE00')),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<Text>(
+              find.byKey(const Key('gs-nearby-AA:BB:CC:DD:EE:02-line')),
+            )
+            .data,
+        '-71 dBm・$gatewayStatusNearbyUnconfiguredText',
+      );
+      expect(tester.widget<ListTile>(unconfigured).enabled, isFalse);
+      expect(find.text('站 80 閘道器 2'), findsNothing);
       expect(
         tester
             .widget<Text>(

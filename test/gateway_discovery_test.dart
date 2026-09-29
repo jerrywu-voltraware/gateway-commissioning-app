@@ -126,7 +126,10 @@ void main() {
       ]);
       await tester.pump();
       // 1.0.0+10: the title only (the advertised name is not repeated).
-      expect(find.text('站 1 · 閘道器 1'), findsOneWidget);
+      // 1.0.0+12: the factory name 1/1 is a gateway not configured —
+      // 「未配置閘道器」 and its Wi-Fi MAC tail, not 「站 1 · 閘道器 1」.
+      expect(find.text('未配置閘道器 …EEFD'), findsOneWidget);
+      expect(find.text('站 1 · 閘道器 1'), findsNothing);
       expect(find.textContaining('GIOS-S1-GW01'), findsNothing);
       expect(find.textContaining('後端未知'), findsWidgets);
       expect(find.byType(LinearProgressIndicator), findsOneWidget);

@@ -170,6 +170,20 @@ Future<void> _settleRun(
 String _title(WidgetTester tester) =>
     tester.widget<Text>(find.byKey(const Key('task-title'))).data!;
 
+/// 1.0.0+12: a gateway not in service is never offered the station it
+/// carries (56/1 here; this phone did not write it): 56 is typed, and the
+/// back office has no gateway listed there (archived), so 「確定是新站？」
+/// is answered first.
+Future<void> _typeSite56(WidgetTester tester) async {
+  expect(_title(tester), stationInputTitle);
+  await tester.enterText(find.widgetWithText(TextField, siteFieldLabel), '56');
+  await tester.pump(const Duration(milliseconds: 600));
+  await tester.pumpAndSettle();
+  expect(find.textContaining('將配置為 站點 56 / 閘道器 1'), findsOneWidget);
+  await _tap(tester, find.byKey(const Key('station-use')));
+  await _tap(tester, find.byKey(const Key('new-site-ok')));
+}
+
 Finder _bottom(String label) => find.descendant(
   of: find.byKey(const Key('check-next')),
   matching: find.text(label),
@@ -207,9 +221,7 @@ void main() {
       final fake = _ArchivedGateway();
       final container = await _pump(tester, fake);
       await _tap(tester, find.byKey(const ValueKey('demo-gateway')));
-      expect(_title(tester), '目前站號是 56，這台要配置在本站嗎？');
-
-      await _tap(tester, find.byKey(const Key('station-use')));
+      await _typeSite56(tester);
       expect(find.byKey(const Key('archived-confirm')), findsOneWidget);
       expect(find.text(archivedConfirmTitle), findsOneWidget);
       expect(find.text(archivedConfirmText(56, 1)), findsOneWidget);
@@ -256,7 +268,7 @@ void main() {
       final fake = _ArchivedGateway();
       final container = await _pump(tester, fake);
       await _tap(tester, find.byKey(const ValueKey('demo-gateway')));
-      await _tap(tester, find.byKey(const Key('station-use')));
+      await _typeSite56(tester);
       await _tap(tester, find.byKey(const Key('archived-other-site')));
 
       expect(find.byKey(const Key('archived-confirm')), findsNothing);

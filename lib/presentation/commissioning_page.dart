@@ -35,6 +35,7 @@ import 'gateway_status_page.dart';
 import 'gateway_signal.dart';
 import 'gateway_discovery.dart';
 import 'gateway_mode_card.dart';
+import 'gateway_number_picker.dart';
 
 /// The AppBar title (1.0.0+8: shown whole at 360 dp, never 「GIOS …」).
 const appBarTitle = 'GIOS 現場開通';
@@ -85,6 +86,12 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   /// r33: 〔取代舊機〕 chosen for this (site, gateway) on the 「閘道器編號
   /// 已被使用」 question; saving it uses force_replace without asking again.
   (int, int)? _replaceSlot;
+
+  /// 1.0.0+12: the gateway number shown was chosen in the number picker
+  /// (〔修改〕) for the station shown — not looked up again, and not asked
+  /// about again as a skipped number. A new station (typed) or another
+  /// gateway starts from the automatic number again.
+  bool _gatewayPicked = false;
 
   /// r33 (a fresh install defaults to star; a one-to-one gateway went
   /// through it silently as max 5): after a gateway picked from the list
@@ -144,6 +151,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       _otherSite = false;
       _wifiStage = false;
       _replaceSlot = null;
+      _gatewayPicked = false;
     }
   }
 
@@ -204,6 +212,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       if (kind != GatewaySuggestKind.full) _gateway.text = '$gw';
       _gatewayKind = kind;
       _suggestingGateway = false;
+      // 1.0.0+12: the station's automatic number (a number picked for
+      // another station no longer applies).
+      _gatewayPicked = false;
     });
   }
 
@@ -285,6 +296,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         _gatewayKind = next.config['suggested_offline'] == true
             ? GatewaySuggestKind.offline
             : GatewaySuggestKind.online;
+        _gatewayPicked = false;
         _ssid.text = next.config['wifi_ssid']?.toString() ?? '';
         _customWifi = false;
         // Remembered environment: sync the gateway to it.
@@ -427,6 +439,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         _gatewayKind = next.config['suggested_offline'] == true
             ? GatewaySuggestKind.offline
             : GatewaySuggestKind.online;
+        _gatewayPicked = false;
         _ssid.text = next.config['wifi_ssid']?.toString() ?? '';
         _wifi.clear();
         _customWifi = false;
@@ -909,7 +922,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   );
 
   /// Read-only auto-numbering shown instead of an editable 閘道器編號 field.
-  Widget _gatewayAssignment() {
+  /// 1.0.0+12: with 〔修改〕 — the number picker ([_pickGatewayNumber]); left
+  /// alone, the automatic number is used as before (nothing to type).
+  Widget _gatewayAssignment({bool enabled = true}) {
     final colors = Theme.of(context).colorScheme;
     if (_suggestingGateway) {
       return const Padding(
@@ -926,18 +941,126 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         ),
       );
     }
-    final offlineHint = _gatewayKind == GatewaySuggestKind.offline
-        ? ref.read(commissionProvider).peers.isEmpty
-              ? '（無法取得同站閘道器清單，暫配 1 號，請上線核對）'
-              : '（離線配號，上線後會再核對）'
-        : '';
+    final String offlineHint;
+    if (_gatewayPicked) {
+      offlineHint = _pickedUnchecked ? '（$gatewayNumberUncheckedText）' : '';
+    } else {
+      offlineHint = _gatewayKind == GatewaySuggestKind.offline
+          ? ref.read(commissionProvider).peers.isEmpty
+                ? '（無法取得同站閘道器清單，暫配 1 號，請上線核對）'
+                : '（離線配號，上線後會再核對）'
+          : '';
+    }
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
-      child: Text(
-        '將配置為 站點 ${_site.text} / 閘道器 ${_gateway.text}$offlineHint',
-        style: TextStyle(color: colors.primary),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              '將配置為 站點 ${_site.text} / 閘道器 ${_gateway.text}$offlineHint',
+              key: const Key('gateway-assignment'),
+              style: TextStyle(color: colors.primary),
+            ),
+          ),
+          const SizedBox(width: 8),
+          TextButton(
+            key: const Key('gateway-number-change'),
+            style: TextButton.styleFrom(minimumSize: const Size(64, 48)),
+            onPressed: enabled && !_stationWorking ? _pickGatewayNumber : null,
+            child: const Text(gatewayNumberChangeLabel),
+          ),
+        ],
       ),
     );
+  }
+
+  /// 1.0.0+12: the number picked in the picker was not checked against the
+  /// back office (it could not be asked).
+  bool _pickedUnchecked = false;
+
+  /// 1.0.0+12 〔修改〕: the gateway number from the picker (1–
+  /// [kMaxGatewayId]). A number another gateway of the station holds goes
+  /// through the same 「閘道器編號已被使用」 question as a skipped number
+  /// (〔取代舊機〕／〔改用閘道器 N〕, [_askNumberTaken]); a free one is used
+  /// as it is. Without the back office any number is taken, marked
+  /// 「目前無法檢查是否重複」.
+  Future<void> _pickGatewayNumber() async {
+    final c = ref.read(commissionProvider.notifier);
+    if (ref.read(commissionProvider).busy || _stationWorking) return;
+    // A station typed a moment ago: its automatic number first.
+    if (_suggestTyping?.isActive ?? false) {
+      _suggestTyping!.cancel();
+      await _refreshGatewaySuggestion();
+      if (!mounted) return;
+    }
+    final site = int.tryParse(_site.text);
+    if (site == null || site < 1 || site > 65535) return;
+    final current = int.tryParse(_gateway.text) ?? 0;
+    setState(() => _stationWorking = true);
+    Map<int, String>? used;
+    try {
+      used = await c.usedGatewayNumbers(site);
+    } finally {
+      if (mounted) setState(() => _stationWorking = false);
+    }
+    if (!mounted) return;
+    final picked = await showGatewayNumberPicker(
+      context,
+      site: site,
+      current: current,
+      used: used,
+    );
+    if (!mounted || picked == null) return;
+    if (picked == current && _gatewayPicked) return;
+    String? mac;
+    if (used != null) {
+      setState(() => _stationWorking = true);
+      try {
+        mac = await c.conflictingMac(site, picked);
+      } catch (_) {
+        /* the fleet list below says it */
+      } finally {
+        if (mounted) setState(() => _stationWorking = false);
+      }
+      if (!mounted) return;
+      mac ??= used[picked];
+    }
+    if (mac == null) {
+      setState(() {
+        _gateway.text = '$picked';
+        _gatewayPicked = true;
+        _pickedUnchecked = used == null;
+        _replaceSlot = null;
+      });
+      return;
+    }
+    // Taken: 〔取代舊機〕 keeps it, 〔改用閘道器 N〕 the smallest free one.
+    int? free;
+    for (var g = 1; g <= kMaxGatewayId; g++) {
+      if (g != picked && !used!.containsKey(g)) {
+        free = g;
+        break;
+      }
+    }
+    final action = await _askNumberTaken(
+      c,
+      site,
+      picked,
+      mac.isEmpty ? '未知' : mac,
+      free,
+    );
+    if (!mounted || action == null) return;
+    setState(() {
+      _gatewayPicked = true;
+      _pickedUnchecked = false;
+      if (action == 'replace') {
+        _gateway.text = '$picked';
+        _replaceSlot = (site, picked);
+      } else if (free != null) {
+        _gateway.text = '$free';
+        _replaceSlot = null;
+      }
+    });
   }
 
   /// Round 16: star mode 「每台 PTU 數」 — chosen in a dialog and confirmed
@@ -1738,7 +1861,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                 key: const Key('station-current'),
                 style: muted,
               )
-            : _gatewayAssignment()
+            : _gatewayAssignment(enabled: enabled)
       else ...[
         field(
           _site,
@@ -1750,7 +1873,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           },
         ),
         if (typed != null && !(inService && typed == current))
-          _gatewayAssignment(),
+          _gatewayAssignment(enabled: enabled),
       ],
       if (kept != null)
         _markedText(
@@ -1835,7 +1958,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         '保留站點 ${s.config['site_id']}／閘道器 ${s.config['gateway_id']}，只更新 Wi-Fi。',
       )
     else
-      _gatewayAssignment(),
+      _gatewayAssignment(enabled: enabled),
     const Padding(
       padding: EdgeInsets.only(top: 4, bottom: 12),
       child: Text('Gateway 只能用 2.4 GHz 的 Wi-Fi，5 GHz 的網路連不上。'),
@@ -1942,16 +2065,19 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         }
       }
       if (_site.text != '$site') _site.text = '$site';
-      // A typed station: its gateway number is looked up once more.
-      if (input) {
+      // A typed station: its gateway number is looked up once more
+      // (1.0.0+12: not a number picked for it with 〔修改〕).
+      if (input && !_gatewayPicked) {
         _suggestTyping?.cancel();
         await _refreshGatewaySuggestion();
         if (!mounted) return;
       }
       if (_gatewaySubmitBlocked) return;
       // r33: a number skipped by the auto-numbering (another device has
-      // it) is said, with 〔取代舊機〕 to take it over.
+      // it) is said, with 〔取代舊機〕 to take it over (1.0.0+12: a picked
+      // number was asked about when it was picked).
       if (input &&
+          !_gatewayPicked &&
           _gatewayKind == GatewaySuggestKind.online &&
           !await _confirmSkippedNumber(
             c,
@@ -2012,6 +2138,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         _otherSite = false;
         _site.text = '${s.config['site_id']}';
         _gateway.text = '${s.config['gateway_id']}';
+        _gatewayPicked = false;
         _ssid.text = s.config['wifi_ssid']?.toString() ?? '';
         _wifi.clear();
         _customWifi = false;
@@ -2036,6 +2163,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       _gatewayKind = s.config['suggested_offline'] == true
           ? GatewaySuggestKind.offline
           : GatewaySuggestKind.online;
+      _gatewayPicked = false;
     });
   }
 
@@ -2052,15 +2180,38 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     if (!mounted) return false;
     if (skipped == null) return true;
     final (taken, mac) = skipped;
+    final action = await _askNumberTaken(c, site, taken, mac, gw);
+    if (!mounted || action == null) return false;
+    if (action == 'replace') {
+      setState(() {
+        _gateway.text = '$taken';
+        _replaceSlot = (site, taken);
+      });
+    }
+    return true;
+  }
+
+  /// r33 「閘道器編號已被使用」: gateway [taken] at [site] is held by
+  /// another device ([mac]) — 〔取代舊機〕 ('replace') takes it over,
+  /// 〔改用閘道器 N〕 ('next') uses [gw] instead (no such button when [gw]
+  /// is null: no free number), 〔取消〕 null. 1.0.0+12: also asked for a
+  /// held number picked in the number picker.
+  Future<String?> _askNumberTaken(
+    CommissioningController c,
+    int site,
+    int taken,
+    String mac,
+    int? gw,
+  ) async {
     final conflict = await c.identityConflict(site, taken);
-    if (!mounted) return false;
-    final action = await showDialog<String>(
+    if (!mounted) return null;
+    return showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
         key: const Key('number-taken'),
         title: const Text(numberTakenTitle),
         content: Text(
-          '${numberTakenText(site, taken, gw)}\n'
+          '${gw == null ? numberTakenOnlyText(site, taken) : numberTakenText(site, taken, gw)}\n'
           '（閘道器 $taken 目前登記的 MAC：$mac）\n'
           '${conflict == null ? '' : '$conflict\n'}\n'
           '${numberTakenReplaceHint(taken)}',
@@ -2076,22 +2227,15 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             onPressed: () => Navigator.pop(context, 'replace'),
             child: Text(numberTakenReplaceLabel(taken)),
           ),
-          FilledButton(
-            key: const Key('number-taken-next'),
-            onPressed: () => Navigator.pop(context, 'next'),
-            child: Text(numberTakenNextLabel(gw)),
-          ),
+          if (gw != null)
+            FilledButton(
+              key: const Key('number-taken-next'),
+              onPressed: () => Navigator.pop(context, 'next'),
+              child: Text(numberTakenNextLabel(gw)),
+            ),
         ],
       ),
     );
-    if (!mounted || action == null) return false;
-    if (action == 'replace') {
-      setState(() {
-        _gateway.text = '$taken';
-        _replaceSlot = (site, taken);
-      });
-    }
-    return true;
   }
 
   /// r33 (a stale record of another MAC at 80/1: the back office flagged a
@@ -4052,6 +4196,10 @@ const archivedRejoinLabel = '重新加入並繼續';
 const numberTakenTitle = '閘道器編號已被使用';
 String numberTakenText(int site, int taken, int gw) =>
     '站 $site 的閘道器 $taken 已被其他設備使用，改用閘道器 $gw。';
+
+/// 1.0.0+12: [numberTakenText] when the station has no free number left.
+String numberTakenOnlyText(int site, int taken) =>
+    '站 $site 的閘道器 $taken 已被其他設備使用。';
 String numberTakenReplaceHint(int taken) =>
     '若這台是來取代那台舊機（舊機已拆除或斷電），按〔取代舊機〕沿用閘道器 $taken。';
 String numberTakenReplaceLabel(int taken) => '取代舊機（沿用閘道器 $taken）';

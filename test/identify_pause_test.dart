@@ -248,8 +248,11 @@ void main() {
       expect(read().step, 1);
       final snack = find.byKey(const Key('gateway-identified-snack'));
       expect(snack, findsOneWidget);
+      // 1.0.0+12: 80/2 is not in the back office's list (this fake's
+      // fleet-status has only its own row): the row and the SnackBar say
+      // 「未配置閘道器 …70F0」, never the old 80/2 it advertises.
       expect(
-        find.descendant(of: snack, matching: find.text('站 80 · 閘道器 2 已閃燈')),
+        find.descendant(of: snack, matching: find.text('未配置閘道器 …70F0 已閃燈')),
         findsOneWidget,
       );
       final rect = tester.getRect(snack);
