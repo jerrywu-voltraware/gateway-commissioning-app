@@ -1679,7 +1679,10 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                       footer: !state.busy
                           ? null
                           : state.step == 6
-                          ? verifyFooterText(state.seconds)
+                          ? verifyFooterText(
+                              state.seconds,
+                              intervalMs: state.verifyIntervalMs,
+                            )
                           : '最多等待 ${state.seconds} 秒',
                     ),
                   if (state.error != null)

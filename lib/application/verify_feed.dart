@@ -7,7 +7,7 @@
 /// here is read back by the verification.
 library;
 
-import 'verify_diagnosis.dart' show ptuVerifyReasons;
+import 'verify_diagnosis.dart' show ptuVerifyReasons, verifyLagLimit;
 
 /// Rows kept (and shown) per PTU, newest first.
 const verifyFeedPerPtu = 5;
@@ -114,8 +114,9 @@ num? _num(Object? v) => v is num ? v : null;
 /// per PTU, as [verifyTally] takes it) carries a time newer than [before]
 /// (the times known before [verifyTally] ran). [countsBefore] /
 /// [countsAfter]: the counts before and after [verifyTally]; [macs]: the
-/// selection's MAC per PTU. At most [verifyFeedPerPtu] entries per PTU
-/// are kept. Reads its arguments only.
+/// selection's MAC per PTU; [lagLimit]: the verification's own late limit
+/// (seconds). At most [verifyFeedPerPtu] entries per PTU are kept. Reads
+/// its arguments only.
 List<VerifyFeedEntry> verifyFeedAfterPoll({
   required List<VerifyFeedEntry> feed,
   required Iterable<int> ids,
@@ -124,6 +125,7 @@ List<VerifyFeedEntry> verifyFeedAfterPoll({
   required Map<int, int> countsBefore,
   required Map<int, int> countsAfter,
   Map<int, String> macs = const {},
+  int lagLimit = verifyLagLimit,
 }) {
   var serial = 0, poll = 0;
   for (final e in feed) {
@@ -141,7 +143,7 @@ List<VerifyFeedEntry> verifyFeedAfterPoll({
     if (seen != null && !stamp.isAfter(seen)) continue;
     final was = countsBefore[id] ?? 0;
     final now = countsAfter[id] ?? was;
-    final reasons = ptuVerifyReasons(latest: row);
+    final reasons = ptuVerifyReasons(latest: row, lagLimit: lagLimit);
     final counted = now > was;
     final ok = counted || (was >= verifyFeedNeed && reasons.isEmpty);
     final values = _values(row);

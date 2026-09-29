@@ -36,14 +36,22 @@ String missingGatewayCause({
   return '閘道器可能上傳到其他後端環境（例如正式站）。';
 }
 
+/// Step 9: a row whose back office `lag_seconds` is this or more is late
+/// (seconds) — while the gateway uploads every second (build mode).
+/// 1.0.0+20: a gateway left at a longer interval gets a longer limit
+/// (`verifyLagLimitFor` in the controller).
+const verifyLagLimit = 60;
+
 /// Reasons one PTU has not passed the current verification round.
 ///
 /// [install] is the device row from `verify-installation`, [latest] the row
-/// from `/api/latest`, [previous] the timestamp seen in the previous round.
+/// from `/api/latest`, [previous] the timestamp seen in the previous round;
+/// [lagLimit] (seconds): a `lag_seconds` this or more is late.
 List<String> ptuVerifyReasons({
   Map<String, dynamic>? install,
   Map<String, dynamic>? latest,
   DateTime? previous,
+  int lagLimit = verifyLagLimit,
 }) {
   final reasons = <String>[];
   final noBackendData =
@@ -63,7 +71,7 @@ List<String> ptuVerifyReasons({
   final lag = latest['lag_seconds'] as num?;
   if (lag == null) {
     reasons.add('延遲未知');
-  } else if (lag >= 60) {
+  } else if (lag >= lagLimit) {
     reasons.add('延遲 ${lag.round()} 秒');
   }
   if (latest['error_num'] != 0) reasons.add('error_num=${latest['error_num']}');
@@ -89,6 +97,7 @@ String verifyDiagnosis({
   required int consecutive,
   required String backend,
   String? cause,
+  int lagLimit = verifyLagLimit,
 }) {
   final lines = <String>[];
   if (fleet == null && rows.isEmpty) {
@@ -120,6 +129,7 @@ String verifyDiagnosis({
       install: installRows[id],
       latest: latest,
       previous: previous[id],
+      lagLimit: lagLimit,
     );
     if (reasons.isEmpty &&
         install['all_ok'] != true &&

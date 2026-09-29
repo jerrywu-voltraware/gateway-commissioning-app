@@ -33,6 +33,7 @@ import 'package:gateway_commissioning/application/local_backend_finder.dart';
 import 'package:gateway_commissioning/application/topology_settings.dart';
 import 'package:gateway_commissioning/core/app_theme.dart';
 import 'package:gateway_commissioning/core/gateway_topology.dart';
+import 'package:gateway_commissioning/core/protocol.dart' show GatewayFailure;
 import 'package:gateway_commissioning/data/contracts.dart';
 import 'package:gateway_commissioning/data/demo_system.dart';
 import 'package:gateway_commissioning/data/local_backend_probe.dart';
@@ -197,10 +198,15 @@ class _VerifyGateways extends _TwoGateways {
     this.holdAt,
     this.holdConfirm = false,
     this.lateAt = const {},
+    this.fallbackFails = false,
   });
   final int? holdAt;
   final bool holdConfirm;
   final Set<int> lateAt;
+
+  /// 1.0.0+20: the build-mode fallback answers 404 (an older back office):
+  /// the demo reports no ds_* — the 5-minute pace.
+  final bool fallbackFails;
   final hold = Completer<void>();
   bool held = false;
   int latestCalls = 0;
@@ -211,6 +217,13 @@ class _VerifyGateways extends _TwoGateways {
     String path, [
     Map<String, dynamic>? body,
   ]) async {
+    if (fallbackFails && path.startsWith('/api/app/build-mode/')) {
+      throw GatewayFailure.http(
+        status: 404,
+        endpoint: 'POST $path',
+        detail: 'Not Found',
+      );
+    }
     final result = await super.request(method, path, body);
     if (!path.startsWith('/api/latest')) return result;
     final n = ++latestCalls;
@@ -277,9 +290,14 @@ class _BoundGateway extends PickGateway implements SessionInfo {
 
 /// The back office for the recent-data and status pages.
 class _Api implements GatewayApi {
-  _Api(this.now, {this.star = false});
+  _Api(this.now, {this.star = false, this.intervalMs, this.empty = false});
   final DateTime now;
   final bool star;
+
+  /// 1.0.0+20: `upload_interval_ms` of the recent-data answer (none when
+  /// null); [empty]: nothing received yet.
+  final int? intervalMs;
+  final bool empty;
 
   @override
   Future<void> login(String base, String password) async {}
@@ -290,8 +308,18 @@ class _Api implements GatewayApi {
     String path, [
     Map<String, dynamic>? body,
   ]) async {
+    if (path.startsWith('/api/app/recent/') && empty) {
+      return {
+        'site_id': 81,
+        'gateway_id': 1,
+        'count': 0,
+        'items': [],
+        if (intervalMs != null) 'upload_interval_ms': intervalMs,
+      };
+    }
     if (path.startsWith('/api/app/recent/')) {
       return {
+        if (intervalMs != null) 'upload_interval_ms': intervalMs,
         'site_id': 81,
         'gateway_id': 1,
         'count': 20,
@@ -1062,6 +1090,11 @@ void main() {
       () => _VerifyGateways(holdConfirm: true),
     ),
     ('verify: one late row', () => _VerifyGateways(holdAt: 3, lateAt: {2})),
+    // 1.0.0+20: build mode not on, the fallback refused: the 5-minute pace.
+    (
+      'verify: 5-minute pace',
+      () => _VerifyGateways(holdAt: 3, fallbackFails: true),
+    ),
   ]) {
     testWidgets(page, (tester) async {
       final fake = make();
@@ -1109,6 +1142,13 @@ void main() {
         expect(
           find.textContaining('原因：延遲 75 秒'),
           fake.lateAt.isEmpty ? findsNothing : findsNWidgets(ids.length),
+        );
+      }
+      expect(s.verifyIntervalMs, fake.fallbackFails ? 300000 : isNull);
+      if (fake.fallbackFails) {
+        expect(
+          _keyText(tester, 'checklist-footer'),
+          startsWith('約每 5 分鐘收一筆，通常 15 分鐘內完成・剩餘 '),
         );
       }
       await _checkPage(tester, page);
@@ -1177,6 +1217,53 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('recent-table')), findsOneWidget);
       await _checkPage(tester, 'recent data${star ? ' (star)' : ''}');
+    });
+  }
+
+  // 1.0.0+20: a 5-minute interval — the data 11 minutes old (yellow) with
+  // the table open, and nothing received yet (the longer empty sentence).
+  for (final empty in [false, true]) {
+    testWidgets('recent data, 5-minute interval${empty ? ', empty' : ''}', (
+      tester,
+    ) async {
+      _phone(tester);
+      final now = DateTime(2026, 9, 29, 1, 34, 53);
+      SharedPreferences.setMockInitialValues({});
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            linkProvider.overrideWithValue(DemoSystem()),
+            apiProvider.overrideWithValue(
+              _Api(
+                now.add(const Duration(minutes: -11)),
+                intervalMs: 300000,
+                empty: empty,
+              ),
+            ),
+            backendKeyProvider.overrideWithValue('build-key'),
+          ],
+          child: MaterialApp(
+            theme: _theme(Brightness.light),
+            home: RecentDataPage(site: 81, gateway: 1, now: () => now),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      if (empty) {
+        expect(find.text(recentEmptyText(300000)), findsOneWidget);
+      } else {
+        expect(find.byKey(const Key('recent-banner-stale')), findsOneWidget);
+        await tester.scrollUntilVisible(
+          find.byKey(const Key('recent-table-tile')),
+          200,
+        );
+        await tester.tap(find.byKey(const Key('recent-table-tile')));
+        await tester.pumpAndSettle();
+      }
+      await _checkPage(
+        tester,
+        'recent data, 5 minutes${empty ? ', empty' : ''}',
+      );
     });
   }
 

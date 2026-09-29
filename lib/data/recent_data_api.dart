@@ -8,10 +8,14 @@
 /// {"site_id":80,"gateway_id":1,"count":2,
 ///  "items":[{"ts":"2026-09-28T13:00:00.123+08:00","seq":123,"device_id":1,
 ///            "ptu_mac":"90:5F:E8:9A:96:00","ptu_state":"POWER_TRANSFER",
-///            "input_mv":5000,"input_ma":120,"bus_mv":4980,"temp_c":31}]}
+///            "input_mv":5000,"input_ma":120,"bus_mv":4980,"temp_c":31}],
+///  "upload_interval_ms":300000}
 /// ```
 /// `count` 0 = nothing received yet; a non-2xx answer or no connection is
-/// a [GatewayFailure] from [GatewayApi.request].
+/// a [GatewayFailure] from [GatewayApi.request]. 1.0.0+20:
+/// `upload_interval_ms` — the longest this gateway goes without a row
+/// (the back office's upload policy); missing or null on an older back
+/// office.
 library;
 
 import '../core/protocol.dart';
@@ -77,6 +81,7 @@ class RecentData {
     required this.count,
     required this.items,
     this.serverOffset,
+    this.uploadIntervalMs,
   });
 
   final int siteId, gatewayId;
@@ -85,6 +90,11 @@ class RecentData {
   /// `Date` header ([ServerClock]); null when unknown (the phone's clock
   /// is used).
   final Duration? serverOffset;
+
+  /// 1.0.0+20: `upload_interval_ms` (ms); null when the back office did
+  /// not send a positive number (an older one) — the page's limits as
+  /// before.
+  final int? uploadIntervalMs;
 
   /// Rows the backend has (`count`); 0 = nothing received yet.
   final int count;
@@ -123,8 +133,23 @@ class RecentData {
       count: (json['count'] as num?)?.toInt() ?? items.length,
       items: items,
       serverOffset: serverOffset,
+      uploadIntervalMs: recentIntervalOf(json['upload_interval_ms']),
     );
   }
+}
+
+/// 1.0.0+20: `upload_interval_ms` as a positive whole number of ms, or null.
+int? recentIntervalOf(Object? value) {
+  if (value is! num || value <= 0) return null;
+  return value.toInt();
+}
+
+/// 1.0.0+20: an upload interval in plain words — 「5 分鐘」 for whole
+/// minutes, else 「20 秒」 (「1.5 秒」).
+String intervalWords(int ms) {
+  if (ms >= 60000 && ms % 60000 == 0) return '${ms ~/ 60000} 分鐘';
+  if (ms % 1000 == 0) return '${ms ~/ 1000} 秒';
+  return '${(ms / 1000).toStringAsFixed(1)} 秒';
 }
 
 /// `ts` as local time; null when it is not an ISO-8601 string.

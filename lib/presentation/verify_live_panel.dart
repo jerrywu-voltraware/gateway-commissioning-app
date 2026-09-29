@@ -25,7 +25,7 @@ import 'package:flutter/services.dart';
 import '../application/commissioning_controller.dart' show verifyPollSeconds;
 import '../application/connection_status.dart' show StatusTone;
 import '../application/verify_feed.dart';
-import '../data/recent_data_api.dart' show recentClockText;
+import '../data/recent_data_api.dart' show intervalWords, recentClockText;
 import 'connection_status_panel.dart' show toneColor;
 import 'recent_data_page.dart'
     show recentAmpsText, recentTempText, recentVoltsBigText;
@@ -39,9 +39,23 @@ const verifyGoalText = '收到 3 筆正常資料就算完成';
 const verifyPaceText =
     '約每 $verifyPollSeconds 秒收一筆，通常 ${verifyPollSeconds * 3} 秒內完成';
 
+/// 1.0.0+20: the pace of a data check whose gateway is not in build mode
+/// ([CommissionState.verifyIntervalMs]): one row per PTU every interval,
+/// three of them. null, or an interval not longer than a poll:
+/// [verifyPaceText] (the check as before).
+String verifyPaceTextFor(int? intervalMs) {
+  if (intervalMs == null || intervalMs <= verifyPollSeconds * 1000) {
+    return verifyPaceText;
+  }
+  return '約每 ${intervalWords(intervalMs)}收一筆，'
+      '通常 ${intervalWords(intervalMs * 3)}內完成';
+}
+
 /// The checklist's small print while the data check runs (was 「最多等待
-/// N 秒」): the pace, then the seconds left.
-String verifyFooterText(int seconds) => '$verifyPaceText・剩餘 $seconds 秒';
+/// N 秒」): the pace ([verifyPaceTextFor] [intervalMs]), then the seconds
+/// left.
+String verifyFooterText(int seconds, {int? intervalMs}) =>
+    '${verifyPaceTextFor(intervalMs)}・剩餘 $seconds 秒';
 
 /// The live line once the data passed.
 const verifyPassedText = '資料正常上傳';

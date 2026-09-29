@@ -513,6 +513,10 @@ Map<String, dynamic> diagnosticSections(
           : {'from': reboot.from, 'to': reboot.to, 'reason': reboot.reason},
       // 1.0.0+19: what the connect did about build mode.
       'build_mode': s.buildMode.name,
+      // 1.0.0+20: the back office's fallback and the data check's pace
+      // when build mode did not take.
+      'build_mode_fallback': s.buildModeFallback.name,
+      'verify_interval_ms': s.verifyIntervalMs,
       'wifi': {
         'verdict': s.wifi.name,
         'fail_kind': wifiFailKindOf(reason)?.name,

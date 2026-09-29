@@ -582,6 +582,11 @@ class DemoSystem implements GatewayLink, GatewayApi, ForeignAcks {
         'range': {'min_ms': 1000, 'max_ms': 20000},
       };
     }
+    // 1.0.0+20: the back office's build-mode fallback (sent; before [tick]
+    // as well).
+    if (path.startsWith('/api/app/build-mode/')) {
+      return {'sent': true, 'req_id': 'demo-build-mode'};
+    }
     tick++;
     if (path.contains('bot-monitor')) {
       monitored = body?['enabled'] == true;
@@ -630,6 +635,8 @@ class DemoSystem implements GatewayLink, GatewayApi, ForeignAcks {
               'temp_c': 31,
             },
         ],
+        // 1.0.0+20: the interval the page's limits follow.
+        'upload_interval_ms': 5000,
       };
     }
     if (path.contains('/api/latest')) {

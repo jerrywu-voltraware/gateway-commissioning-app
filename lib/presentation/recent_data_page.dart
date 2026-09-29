@@ -1,3 +1,5 @@
+import 'dart:math' show max;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -18,8 +20,16 @@ const recentDataPageTitle = '最近資料';
 String recentDataSubtitle(int site, int gateway) =>
     gatewayIdText(site, gateway);
 
-/// `count` 0: the back office has nothing from this gateway yet.
-const recentDataEmptyText = '後台尚未收到這台閘道器的資料，請稍等 20 秒再重新整理';
+/// `count` 0: the back office has nothing from this gateway yet (1.0.0+20:
+/// no fixed number of seconds — the interval can be up to 5 minutes).
+const recentDataEmptyText = '後台尚未收到這台閘道器的資料，請稍等一下再重新整理';
+
+/// 1.0.0+20: the empty page's sentence; with the back office's interval
+/// ([RecentData.uploadIntervalMs]) it says how often a row comes.
+String recentEmptyText(int? intervalMs) => intervalMs == null
+    ? recentDataEmptyText
+    : '後台尚未收到這台閘道器的資料；閘道器約每 ${intervalWords(intervalMs)}'
+          '上傳一筆，請稍後再重新整理';
 const recentDataOkText = '資料正常上傳中';
 const recentDataFaultText = 'PTU 回報故障';
 const recentDataRefreshLabel = '重新整理';
@@ -32,6 +42,20 @@ const recentFreshAge = Duration(seconds: 30);
 
 /// Stopped: the newest row is older than this (red, not yellow).
 const recentStoppedAge = Duration(minutes: 10);
+
+/// 1.0.0+20 (docs/design/upload_interval_5min_2026-09-29.md §4): green
+/// while the newest row is at most `G = max(30, 2·I + 10)` seconds old,
+/// for the back office's interval I ([RecentData.uploadIntervalMs]).
+Duration recentGreenAge(int intervalMs) =>
+    Duration(milliseconds: max(30000, 2 * intervalMs + 10000));
+
+/// 1.0.0+20: yellow up to `R = max(600, G + 2·I)` seconds, red after.
+Duration recentRedAge(int intervalMs) => Duration(
+  milliseconds: max(
+    600000,
+    recentGreenAge(intervalMs).inMilliseconds + 2 * intervalMs,
+  ),
+);
 
 // ---------------------------------------------------------------------------
 // PTU state words
@@ -148,10 +172,13 @@ class RecentBanner {
 }
 
 /// The banner for [data] at [now]: fresh (<30 s) green, 30 s – 10 min
-/// yellow, older red, count 0 grey.
+/// yellow, older red, count 0 grey. 1.0.0+20: with the back office's
+/// interval ([RecentData.uploadIntervalMs]) green up to [recentGreenAge],
+/// yellow up to [recentRedAge]; without it as before.
 RecentBanner recentBanner(RecentData data, DateTime now) {
+  final interval = data.uploadIntervalMs;
   if (data.isEmpty) {
-    return const RecentBanner(RecentBannerKind.empty, recentDataEmptyText);
+    return RecentBanner(RecentBannerKind.empty, recentEmptyText(interval));
   }
   final latest = data.latest;
   if (latest == null) {
@@ -160,12 +187,18 @@ RecentBanner recentBanner(RecentData data, DateTime now) {
   // 1.0.0+10: a row newer than now (clock skew) is 0 s old.
   final raw = now.difference(latest);
   final age = raw.isNegative ? Duration.zero : raw;
-  if (age < recentFreshAge) {
+  final fresh = interval == null
+      ? age < recentFreshAge
+      : age <= recentGreenAge(interval);
+  if (fresh) {
     return const RecentBanner(RecentBannerKind.ok, recentDataOkText);
   }
+  final stale = interval == null
+      ? age < recentStoppedAge
+      : age <= recentRedAge(interval);
   final text = '最近 ${recentAgeText(age)}沒有新資料';
   return RecentBanner(
-    age < recentStoppedAge ? RecentBannerKind.stale : RecentBannerKind.stopped,
+    stale ? RecentBannerKind.stale : RecentBannerKind.stopped,
     text,
   );
 }
@@ -424,7 +457,7 @@ class _RecentDataPageState extends ConsumerState<RecentDataPage> {
         children: [
           _Banner(
             kind: RecentBannerKind.empty,
-            text: recentDataEmptyText,
+            text: recentEmptyText(data?.uploadIntervalMs),
             action: OutlinedButton.icon(
               key: const Key('recent-empty-refresh'),
               onPressed: _loading ? null : _load,

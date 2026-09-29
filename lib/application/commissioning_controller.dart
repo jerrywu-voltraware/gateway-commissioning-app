@@ -1273,11 +1273,82 @@ const verifyPollSeconds = 10;
 /// Step 9: a PTU without a new row for this long gets 「尚無資料」 (seconds).
 const verifyIdleLimit = 60;
 
+/// Step 9 poll window (seconds of successful polls) while the gateway
+/// uploads every second (build mode).
+const verifyBaseWindow = 180;
+
+/// 1.0.0+20 (upload interval up to 5 minutes, docs/design/
+/// upload_interval_5min_2026-09-29.md §4): the interval assumed when
+/// get_config does not say it (no `ds_max_ms`), and the longest one the
+/// data check waits for.
+const verifyUnknownIntervalMs = 300000;
+
+/// 1.0.0+20: the interval (ms) a gateway left out of build mode uploads
+/// at, from its get_config [config]: `ds_max_ms` (at most one row per that
+/// long when nothing changes), [verifyUnknownIntervalMs] when missing,
+/// [buildModeIntervalMs] when the down-sampling is off (`ds_enabled`
+/// false: every reading). Kept within 1 s – 5 min.
+int verifyIntervalOf(Map<String, dynamic> config) {
+  final enabled = config['ds_enabled'];
+  if (enabled == false || (enabled is num && enabled == 0)) {
+    return buildModeIntervalMs;
+  }
+  final value = config['ds_max_ms'];
+  if (value is! num || value <= 0) return verifyUnknownIntervalMs;
+  return value.toInt().clamp(buildModeIntervalMs, verifyUnknownIntervalMs);
+}
+
+int _ceilSeconds(int ms) => (ms + 999) ~/ 1000;
+
+/// 1.0.0+20: the late limit of step 9 (seconds, [verifyLagLimit]) for a
+/// gateway at [intervalMs] — `max(60, 2·I + 10)`; null (build mode on):
+/// [verifyLagLimit].
+int verifyLagLimitFor(int? intervalMs) => intervalMs == null
+    ? verifyLagLimit
+    : max(verifyLagLimit, _ceilSeconds(2 * intervalMs + 10000));
+
+/// 1.0.0+20: the poll window of step 9 (seconds) — `max(180, 3·I + 60)`;
+/// null: [verifyBaseWindow].
+int verifyWindowFor(int? intervalMs) => intervalMs == null
+    ? verifyBaseWindow
+    : max(verifyBaseWindow, _ceilSeconds(3 * intervalMs + 60000));
+
+/// 1.0.0+20: 「尚無資料」 after this long without a new row (seconds) —
+/// the late limit ([verifyLagLimitFor]); null: [verifyIdleLimit].
+int verifyIdleLimitFor(int? intervalMs) => intervalMs == null
+    ? verifyIdleLimit
+    : max(verifyIdleLimit, verifyLagLimitFor(intervalMs));
+
+/// 1.0.0+20: `verify-installation?threshold_minutes=` — 2, or the late
+/// limit ([verifyLagLimitFor]) in whole minutes when that is longer (a
+/// PTU's `data_ok` must not lapse between two rows).
+int verifyInstallMinutesFor(int? intervalMs) =>
+    max(2, (verifyLagLimitFor(intervalMs) + 59) ~/ 60);
+
+/// 1.0.0+20: the whole step 9 budget (seconds): the poll window
+/// ([verifyWindowFor]), the backend retry window and one slow failing
+/// request on top (the same margin as before).
+int verifyRunSecondsFor(int? intervalMs) =>
+    verifyWindowFor(intervalMs) + backendRetryWindow.inSeconds + 40;
+
+/// 1.0.0+20: the back office's build-mode fallback (`POST`, no body; the
+/// APP key; the back office signs it when the gateway has an OTP).
+String buildModeFallbackPath(int site, int gateway) =>
+    '/api/app/build-mode/$site/$gateway';
+
+/// 1.0.0+20: the fallback's answer says it was sent (`{sent: true,
+/// req_id}`); anything else is a failure.
+bool buildModeFallbackSent(Map<String, dynamic> body) => body['sent'] == true;
+
+/// 1.0.0+20: the fallback is given this long; no answer is a failure.
+Duration buildModeFallbackTimeout = const Duration(seconds: 10);
+
 /// Step 9 per-PTU tally of one /api/latest answer: a fresh row with a newer
 /// timestamp than any counted before adds one (max 3). Round 10: counts are
 /// cumulative — a missing, offline, late or erroring row, or an unchanged
 /// timestamp, keeps the count (the reset made 3/3 fall back to 0/3). [lastNew] records the
-/// [elapsed] second of each PTU's latest new row.
+/// [elapsed] second of each PTU's latest new row. [lagLimit] (seconds,
+/// 1.0.0+20): a row this late or more is not counted.
 void verifyTally({
   required Iterable<int> ids,
   required List<Map<String, dynamic>> rows,
@@ -1285,6 +1356,7 @@ void verifyTally({
   required Map<int, int> counts,
   required Map<int, int> lastNew,
   required int elapsed,
+  int lagLimit = verifyLagLimit,
 }) {
   for (final id in ids) {
     final found = rows.where((p) => p['device_id'] == id).toList();
@@ -1293,7 +1365,7 @@ void verifyTally({
     final row = found.first;
     final stamp = DateTime.tryParse(row['ts']?.toString() ?? '');
     if (row['online'] != true ||
-        ((row['lag_seconds'] as num?) ?? 999) >= 60 ||
+        ((row['lag_seconds'] as num?) ?? 999) >= lagLimit ||
         row['error_num'] != 0 ||
         stamp == null) {
       // Not counted, but its timestamp is not "new" later either.
@@ -1332,10 +1404,13 @@ String verifyProgressText(
 /// Text for 「N 台在本次掃描未出現，已取消勾選」.
 String absentSelectionText(int n) => '$n 台在本次掃描未出現，已取消勾選';
 
-/// /api/latest rows show this gateway uploading within the last 60 s.
-bool backendRowsFresh(Iterable<Map> rows) => rows.any(
-  (r) => r['online'] == true && ((r['lag_seconds'] as num?) ?? 999) < 60,
-);
+/// /api/latest rows show this gateway uploading within the last 60 s
+/// ([lagLimit], 1.0.0+20: longer for a gateway at a longer interval).
+bool backendRowsFresh(Iterable<Map> rows, {int lagLimit = verifyLagLimit}) =>
+    rows.any(
+      (r) =>
+          r['online'] == true && ((r['lag_seconds'] as num?) ?? 999) < lagLimit,
+    );
 
 /// Star mode: fleet-status could not tell whether out-of-range PTUs' owner
 /// gateways are registered, so nothing was reset automatically.
@@ -1389,6 +1464,29 @@ enum BuildModeStatus {
   /// Not sent (OTP provisioned) or no usable answer (timeout, fail ack).
   failed,
 }
+
+/// 1.0.0+20: what the back office's build-mode fallback (`POST
+/// /api/app/build-mode`, asked when the data check starts and the connect
+/// did not get build mode on) did in this connect. The journal /
+/// diagnostics and [buildModeTook] only — never on screen.
+enum BuildModeFallback {
+  /// Not asked (build mode on, or no data check yet in this connect).
+  none,
+
+  /// The back office sent it (`sent: true`): taken as on.
+  sent,
+
+  /// Any failure (an older back office's 404, the gateway offline, the
+  /// throttle, no answer).
+  failed,
+}
+
+/// 1.0.0+20: build mode took (the gateway uploads every second) — the
+/// connect's own set_config, or the back office's fallback: the data check
+/// runs as before.
+bool buildModeTook(CommissionState s) =>
+    s.buildMode == BuildModeStatus.on ||
+    s.buildModeFallback == BuildModeFallback.sent;
 
 /// 1.0.0+19: `upload_interval_ms` of `GET /api/upload-policy`; null when
 /// missing or not a positive number.
@@ -1498,11 +1596,23 @@ class CommissionState {
     this.verifyPassed = false,
     this.buildMode = BuildModeStatus.off,
     this.uploadIntervalMs,
+    this.verifyIntervalMs,
+    this.buildModeFallback = BuildModeFallback.none,
   });
 
   /// 1.0.0+19: what the last connect did about build mode (every reading a
   /// second while commissioning). Diagnostics only, never shown.
   final BuildModeStatus buildMode;
+
+  /// 1.0.0+20: what the back office's build-mode fallback did in this
+  /// connect ([buildModeTook]). Diagnostics only, never shown.
+  final BuildModeFallback buildModeFallback;
+
+  /// 1.0.0+20: the upload interval (ms) the data check paces itself by —
+  /// null while build mode took ([buildModeTook]; the check as before),
+  /// else [verifyIntervalOf] the gateway's get_config: the late limit, the
+  /// window, 「尚無資料」 and the pace text grow with it.
+  final int? verifyIntervalMs;
 
   /// 1.0.0+19: the back office's upload interval (ms, `GET
   /// /api/upload-policy`) for the done page's 「目前每 N 秒」; null — not
@@ -1949,11 +2059,17 @@ class CommissionState {
     bool? verifyPassed,
     BuildModeStatus? buildMode,
     Object? uploadIntervalMs = _keep,
+    Object? verifyIntervalMs = _keep,
+    BuildModeFallback? buildModeFallback,
   }) => CommissionState(
     buildMode: buildMode ?? this.buildMode,
+    buildModeFallback: buildModeFallback ?? this.buildModeFallback,
     uploadIntervalMs: identical(uploadIntervalMs, _keep)
         ? this.uploadIntervalMs
         : uploadIntervalMs as int?,
+    verifyIntervalMs: identical(verifyIntervalMs, _keep)
+        ? this.verifyIntervalMs
+        : verifyIntervalMs as int?,
     // 1.0.0+18: the live feed and the green card belong to step 9.
     verifyFeed: (step ?? this.step) == 6
         ? verifyFeed ?? this.verifyFeed
@@ -2114,6 +2230,13 @@ class CommissioningController extends Notifier<CommissionState> {
   /// ([_enterBuildMode]) has ended — at most one set_config per connect,
   /// also when the link drops and [_connect] reads get_config again.
   int? _buildModeGeneration;
+
+  /// 1.0.0+20: the connect ([_buildModeGeneration]) whose build-mode
+  /// fallback ([_buildModeFallback]) has been asked — at most once per
+  /// connect; its answer stays in [CommissionState.buildMode] /
+  /// [CommissionState.verifyIntervalMs] for a retried data check.
+  int? _buildModeFallbackFor;
+  bool _buildModeFallbackAsked = false;
 
   /// 1.0.0+19: the latest [_loadUploadPolicy]; an older answer is dropped.
   int _uploadPolicyRun = 0;
@@ -3691,6 +3814,10 @@ class CommissioningController extends Notifier<CommissionState> {
       directNotice: '',
       // 1.0.0+19: this connect's own build mode ([_enterBuildMode]).
       buildMode: BuildModeStatus.off,
+      // 1.0.0+20: and its own fallback and data check pace
+      // ([_buildModeFallback]).
+      buildModeFallback: BuildModeFallback.none,
+      verifyIntervalMs: null,
       error: state.error,
       // 09-28: 「正在連線並檢查網路」 — 藍牙連線 first.
       checklist: connectChecklist().start(connectItemBle),
@@ -3784,6 +3911,58 @@ class CommissioningController extends Notifier<CommissionState> {
     _buildModeGeneration = generation;
     state = state.copy(buildMode: status, error: state.error);
     return result;
+  }
+
+  /// 1.0.0+20 (upload interval up to 5 minutes, docs/design/
+  /// upload_interval_5min_2026-09-29.md §4): the data check's pace
+  /// ([CommissionState.verifyIntervalMs]), once logged in, before its
+  /// first poll. Build mode took ([buildModeTook]) → null, the check as
+  /// before. Otherwise the back office is asked to send build mode itself
+  /// ([buildModeFallbackPath]; it signs for a gateway with an OTP), at
+  /// most once per connect: sent → taken as on ([BuildModeFallback.sent]),
+  /// the check as before; any failure (a back office without the route,
+  /// the gateway offline, its throttle, no answer within
+  /// [buildModeFallbackTimeout]) → the gateway's own interval
+  /// ([verifyIntervalOf] its get_config). Never an error of the step; a
+  /// cancellation is rethrown.
+  Future<void> _buildModeFallback(int generation) async {
+    if (buildModeTook(state)) {
+      if (state.verifyIntervalMs != null) {
+        state = state.copy(verifyIntervalMs: null, error: state.error);
+      }
+      return;
+    }
+    if (_buildModeFallbackAsked &&
+        _buildModeFallbackFor == _buildModeGeneration) {
+      // Asked in this connect and not sent: the gateway's own pace.
+      state = state.copy(
+        buildModeFallback: BuildModeFallback.failed,
+        verifyIntervalMs: verifyIntervalOf(state.config),
+        error: state.error,
+      );
+      return;
+    }
+    var sent = false;
+    try {
+      final body = await _request(
+        generation,
+        'POST',
+        buildModeFallbackPath(site, gateway),
+      ).timeout(buildModeFallbackTimeout);
+      sent = buildModeFallbackSent(body);
+    } catch (error) {
+      if (error is GatewayFailure && error.code == 'cancelled') rethrow;
+    }
+    _check(generation);
+    _buildModeFallbackAsked = true;
+    _buildModeFallbackFor = _buildModeGeneration;
+    state = state.copy(
+      buildModeFallback: sent
+          ? BuildModeFallback.sent
+          : BuildModeFallback.failed,
+      verifyIntervalMs: sent ? null : verifyIntervalOf(state.config),
+      error: state.error,
+    );
   }
 
   /// get_config plus what get_net_status says about the upload (MQTT).
@@ -7872,7 +8051,22 @@ class CommissioningController extends Notifier<CommissionState> {
     String password, {
     String? environment,
   }) async {
-    await _run('確認每台 PTU 的資料持續進入後端', _verifyRunSeconds, (generation) async {
+    // 1.0.0+20: build mode took → the budget as before. Otherwise the
+    // gateway's own interval ([verifyIntervalOf]) guards the run; until
+    // the fallback has answered ([_buildModeFallback]) the countdown
+    // assumes it will be sent and follows the answer.
+    final took = buildModeTook(state);
+    final guard = verifyRunSecondsFor(
+      took ? null : verifyIntervalOf(state.config),
+    );
+    final known =
+        took ||
+        (_buildModeFallbackAsked &&
+            _buildModeFallbackFor == _buildModeGeneration);
+    final countdown = known ? guard : verifyRunSecondsFor(null);
+    await _run('確認每台 PTU 的資料持續進入後端', guard, countdown: countdown, (
+      generation,
+    ) async {
       state = state.copy(
         verifyBackendDown: false,
         starList: StarListStatus.none,
@@ -7880,7 +8074,7 @@ class CommissioningController extends Notifier<CommissionState> {
       );
       _startDataChecklist();
       try {
-        await _verify(generation, base, password, environment);
+        await _verify(generation, base, password, environment, countdown);
       } on GatewayFailure catch (error) {
         if (error.code == 'backend_unavailable' && ref.mounted) {
           state = state.copy(verifyBackendDown: true);
@@ -8282,14 +8476,6 @@ class CommissioningController extends Notifier<CommissionState> {
     );
   }
 
-  /// Step 9 poll window (seconds of successful polls).
-  static const _verifyWindow = 180;
-
-  /// Overall step 9 budget: the poll window, the backend retry window and
-  /// one slow failing request on top.
-  int get _verifyRunSeconds =>
-      _verifyWindow + backendRetryWindow.inSeconds + 40;
-
   /// Step 9 progress kept when the backend stayed unavailable
   /// ('backend_unavailable'); the next verification of the same PTUs
   /// continues it instead of starting from 0/3.
@@ -8312,6 +8498,7 @@ class CommissioningController extends Notifier<CommissionState> {
     required Map<int, int> countsBefore,
     required Map<int, int> countsAfter,
     required Map<int, String> macs,
+    int lagLimit = verifyLagLimit,
   }) {
     try {
       return verifyFeedAfterPoll(
@@ -8322,17 +8509,20 @@ class CommissioningController extends Notifier<CommissionState> {
         countsBefore: countsBefore,
         countsAfter: countsAfter,
         macs: macs,
+        lagLimit: lagLimit,
       );
     } catch (_) {
       return state.verifyFeed;
     }
   }
 
+  /// [countdown]: the seconds the run's countdown started from ([verify]).
   Future<void> _verify(
     int generation,
     String base,
     String password,
     String? environment,
+    int countdown,
   ) async {
     if (!state.ptus.any((p) => state.selected.contains(p['mac']))) {
       state = state.copy(step: 4, verified: false, report: '');
@@ -8423,6 +8613,21 @@ class CommissioningController extends Notifier<CommissionState> {
       _diagnosis = (generation, unnumbered.join('\n'));
       throw const GatewayFailure('incomplete');
     }
+    // 1.0.0+20: build mode not on → the back office's fallback, else the
+    // gateway's own interval sets the pace.
+    await _buildModeFallback(generation);
+    final pace = state.verifyIntervalMs;
+    final adjust = verifyRunSecondsFor(pace) - countdown;
+    if (adjust != 0) {
+      state = state.copy(
+        seconds: max(0, state.seconds + adjust),
+        error: state.error,
+      );
+    }
+    final window = verifyWindowFor(pace);
+    final lagLimit = verifyLagLimitFor(pace);
+    final idleLimit = verifyIdleLimitFor(pace);
+    final installMinutes = verifyInstallMinutesFor(pace);
     // Round 13: continue the progress a backend outage interrupted.
     final carry = _verifyCarry;
     _verifyCarry = null;
@@ -8457,7 +8662,7 @@ class CommissioningController extends Notifier<CommissionState> {
     );
     var elapsed = start;
     try {
-      for (; elapsed < start + _verifyWindow; elapsed += verifyPollSeconds) {
+      for (; elapsed < start + window; elapsed += verifyPollSeconds) {
         final (fleet, install, latest) = await backend(() async {
           final fleet = await _fleet(generation);
           if (fleet != null && isTestMode(fleet)) {
@@ -8472,7 +8677,7 @@ class CommissioningController extends Notifier<CommissionState> {
           final install = await _request(
             generation,
             'GET',
-            '$_path/verify-installation?threshold_minutes=2&device_ids=${ids.join(',')}',
+            '$_path/verify-installation?threshold_minutes=$installMinutes&device_ids=${ids.join(',')}',
           );
           final latest = await _request(
             generation,
@@ -8535,7 +8740,7 @@ class CommissioningController extends Notifier<CommissionState> {
         }
         // Round 26: a heartbeat with the upload paused is no upload.
         if ((fleet?['online'] == true && fleet?['upload_paused'] != true) ||
-            backendRowsFresh(rows)) {
+            backendRowsFresh(rows, lagLimit: lagLimit)) {
           state = state.copy(backendSeenAt: DateTime.now());
         }
         final before = Map<int, DateTime>.of(previous);
@@ -8548,10 +8753,11 @@ class CommissioningController extends Notifier<CommissionState> {
           counts: counts,
           lastNew: lastNew,
           elapsed: elapsed,
+          lagLimit: lagLimit,
         );
         final waiting = {
           for (final id in ids)
-            if (elapsed - (lastNew[id] ?? 0) >= verifyIdleLimit) id,
+            if (elapsed - (lastNew[id] ?? 0) >= idleLimit) id,
         };
         // Round 9: a PTU the installer skipped (after staying idle) no longer
         // blocks the rest — judge pass/fail on the remaining, active PTUs only.
@@ -8587,6 +8793,7 @@ class CommissioningController extends Notifier<CommissionState> {
             consecutive: consecutive,
             backend: _backend,
             cause: cause,
+            lagLimit: lagLimit,
           ),
         );
         progress = verifyProgressText(ids, counts, waiting, skipped);
@@ -8601,6 +8808,7 @@ class CommissioningController extends Notifier<CommissionState> {
             countsBefore: countsBefore,
             countsAfter: counts,
             macs: expectedMacs,
+            lagLimit: lagLimit,
           ),
           verifyPassed: good,
         );
