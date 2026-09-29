@@ -573,6 +573,15 @@ class DemoSystem implements GatewayLink, GatewayApi, ForeignAcks {
     String path, [
     Map<String, dynamic>? body,
   ]) async {
+    // 1.0.0+19: the back office's upload policy (the done page's 「目前每
+    // 5 秒」). Before [tick] so the simulated upload times stay as before.
+    if (path == '/api/upload-policy') {
+      return {
+        'upload_interval_ms': 5000,
+        'updated_by': 'seed',
+        'range': {'min_ms': 1000, 'max_ms': 20000},
+      };
+    }
     tick++;
     if (path.contains('bot-monitor')) {
       monitored = body?['enabled'] == true;

@@ -943,6 +943,9 @@ void main() {
     expect(read().verified, isTrue);
     // 1.0.0+13: 「請在機殼上標示：」 and 「站 80 · 閘道器 1」 in large type.
     expect(find.byKey(const Key('done-label')), findsOneWidget);
+    // 1.0.0+19: the back office's upload interval under it.
+    expect(find.byKey(const Key('done-upload-rate')), findsOneWidget);
+    expect(find.text('資料上傳頻率由後台控制（目前每 5 秒）'), findsOneWidget);
     await _checkPage(tester, 'done');
     await tester.pumpWidget(const SizedBox());
   });

@@ -457,6 +457,11 @@ const gatewayConfigKeys = [
   'mqtt_port',
   'mqtt_connected',
   'boot_count',
+  // 1.0.0+19: the upload interval (build mode 1000 / 1000 while
+  // commissioning, the back office's policy afterwards).
+  'ds_enabled',
+  'ds_min_ms',
+  'ds_max_ms',
 ];
 
 String _assignOf(CommissionState s, String mac) {
@@ -506,6 +511,8 @@ Map<String, dynamic> diagnosticSections(
       'reboot': reboot == null
           ? null
           : {'from': reboot.from, 'to': reboot.to, 'reason': reboot.reason},
+      // 1.0.0+19: what the connect did about build mode.
+      'build_mode': s.buildMode.name,
       'wifi': {
         'verdict': s.wifi.name,
         'fail_kind': wifiFailKindOf(reason)?.name,

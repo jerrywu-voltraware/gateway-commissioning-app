@@ -1344,6 +1344,60 @@ const starOwnerUnknownText = '無法確認閘道器登記狀態，請手動重�
 /// [CommissionState.copy]: leave a nullable field as it is.
 const _keep = Object();
 
+/// 1.0.0+19 (upload policy): the upload interval while the APP commissions
+/// a gateway — 「建置模式」, one reading a second, so the data check gets
+/// its fresh rows quickly. The back office switches the gateway to the
+/// site-wide policy once the commissioning is completed; the APP never
+/// sends the policy itself.
+const buildModeIntervalMs = 1000;
+
+/// The `set_config` of build mode: the three ds_* keys only (cmd_contract.md
+/// Level 3 — written to NVS, no rescan, no restart; min = max = a fixed
+/// interval, whatever the firmware default is).
+const buildModeParams = <String, dynamic>{
+  'ds_enabled': true,
+  'ds_min_ms': buildModeIntervalMs,
+  'ds_max_ms': buildModeIntervalMs,
+};
+
+/// What get_config [config] says about build mode: null — no `ds_min_ms`
+/// (older firmware, the demo): nothing to send; true — already on
+/// (enabled, 1000 / 1000); false — to be sent.
+bool? buildModeOn(Map<String, dynamic> config) {
+  if (!config.containsKey('ds_min_ms')) return null;
+  final enabled = config['ds_enabled'];
+  final on = enabled == true || (enabled is num && enabled != 0);
+  return on &&
+      config['ds_min_ms'] is num &&
+      (config['ds_min_ms'] as num) == buildModeIntervalMs &&
+      config['ds_max_ms'] is num &&
+      (config['ds_max_ms'] as num) == buildModeIntervalMs;
+}
+
+/// 1.0.0+19: what the connect did about build mode ([buildModeParams]).
+/// For the field journal / diagnostics only — never on screen.
+enum BuildModeStatus {
+  /// Not tried: the firmware does not report `ds_min_ms` (or no connect yet).
+  off,
+
+  /// On: already 1000 / 1000, or the set_config went through.
+  on,
+
+  /// The gateway answered `M rejected` (a key refused).
+  rejected,
+
+  /// Not sent (OTP provisioned) or no usable answer (timeout, fail ack).
+  failed,
+}
+
+/// 1.0.0+19: `upload_interval_ms` of `GET /api/upload-policy`; null when
+/// missing or not a positive number.
+int? uploadIntervalOf(Map<String, dynamic> body) {
+  final value = body['upload_interval_ms'];
+  if (value is! num || value <= 0) return null;
+  return value.toInt();
+}
+
 /// Round 15b: 「是這台，開始監控」 is enabled — the gateway has a pick and,
 /// when the firmware can blink the PTU, it is the one the installer
 /// identified ([CommissionState.identifiedMac]).
@@ -1442,7 +1496,19 @@ class CommissionState {
     this.identityArchived = false,
     this.verifyFeed = const [],
     this.verifyPassed = false,
+    this.buildMode = BuildModeStatus.off,
+    this.uploadIntervalMs,
   });
+
+  /// 1.0.0+19: what the last connect did about build mode (every reading a
+  /// second while commissioning). Diagnostics only, never shown.
+  final BuildModeStatus buildMode;
+
+  /// 1.0.0+19: the back office's upload interval (ms, `GET
+  /// /api/upload-policy`) for the done page's 「目前每 N 秒」; null — not
+  /// read (offline, not logged in, any failure): the line says only
+  /// 「資料上傳頻率由後台控制」.
+  final int? uploadIntervalMs;
 
   /// 1.0.0+18: step 9's live feed ([verifyFeedAfterPoll]), newest first,
   /// at most [verifyFeedPerPtu] per PTU. Display only; kept while on step
@@ -1881,7 +1947,13 @@ class CommissionState {
     bool? identityArchived,
     List<VerifyFeedEntry>? verifyFeed,
     bool? verifyPassed,
+    BuildModeStatus? buildMode,
+    Object? uploadIntervalMs = _keep,
   }) => CommissionState(
+    buildMode: buildMode ?? this.buildMode,
+    uploadIntervalMs: identical(uploadIntervalMs, _keep)
+        ? this.uploadIntervalMs
+        : uploadIntervalMs as int?,
     // 1.0.0+18: the live feed and the green card belong to step 9.
     verifyFeed: (step ?? this.step) == 6
         ? verifyFeed ?? this.verifyFeed
@@ -2037,6 +2109,14 @@ class CommissioningController extends Notifier<CommissionState> {
   /// Round 28: 〔辨識並綁定〕 (bind-later card) — the next 「是這台」 binds
   /// the PTU even with 「確認後綁定 PTU」 turned off.
   bool _bindLaterRun = false;
+
+  /// 1.0.0+19: the connect run ([_generation]) whose build mode attempt
+  /// ([_enterBuildMode]) has ended — at most one set_config per connect,
+  /// also when the link drops and [_connect] reads get_config again.
+  int? _buildModeGeneration;
+
+  /// 1.0.0+19: the latest [_loadUploadPolicy]; an older answer is dropped.
+  int _uploadPolicyRun = 0;
 
   /// Saved progress read by [restore] (for 「重新連線並繼續」).
   Map? _saved;
@@ -3609,6 +3689,8 @@ class CommissioningController extends Notifier<CommissionState> {
       tempRestoreMac: null,
       strayBindMac: null,
       directNotice: '',
+      // 1.0.0+19: this connect's own build mode ([_enterBuildMode]).
+      buildMode: BuildModeStatus.off,
       error: state.error,
       // 09-28: 「正在連線並檢查網路」 — 藍牙連線 first.
       checklist: connectChecklist().start(connectItemBle),
@@ -3646,6 +3728,62 @@ class CommissioningController extends Notifier<CommissionState> {
       _check(generation);
       return null;
     }
+  }
+
+  /// 1.0.0+19 (upload policy): puts the gateway in build mode
+  /// ([buildModeParams]) right after the connect read its [config] — every
+  /// commissioning (a new gateway, a station in service: 更換 PTU, 重設
+  /// Wi-Fi; 〔配置下一台〕) connects here. Returns [config] as the gateway
+  /// now has it.
+  ///
+  /// Never blocks the flow: only a firmware reporting `ds_min_ms` gets it,
+  /// already 1000 / 1000 is left alone, at most one attempt per connect
+  /// ([_buildModeGeneration]), no retry and no read-back (every extra BLE
+  /// command costs the connect 1–2 s; the back office pushes its policy
+  /// later anyway). A refused key, a provisioned OTP (the APP cannot sign
+  /// set_config), a timeout or a fail ack is only recorded
+  /// ([CommissionState.buildMode], the journal); a cancellation or a lost
+  /// phone link is rethrown (the connect reconnects and tries again).
+  Future<Map<String, dynamic>> _enterBuildMode(
+    int generation,
+    Map<String, dynamic> config,
+  ) async {
+    final on = buildModeOn(config);
+    if (on == null || on || _buildModeGeneration == generation) {
+      if (_buildModeGeneration != generation) {
+        _buildModeGeneration = generation;
+        state = state.copy(
+          buildMode: on == true ? BuildModeStatus.on : BuildModeStatus.off,
+          error: state.error,
+        );
+      }
+      return config;
+    }
+    BuildModeStatus status;
+    var result = config;
+    if (config['otp_enabled'] == true) {
+      // [_command] would refuse it locally ('otp_enabled'); its check reads
+      // the flow's config, which is not this gateway's yet.
+      status = BuildModeStatus.failed;
+    } else {
+      try {
+        final ack = await _command(generation, 'set_config', buildModeParams);
+        if (setConfigRejected(ack)) {
+          status = BuildModeStatus.rejected;
+        } else {
+          status = BuildModeStatus.on;
+          result = {...config, ...buildModeParams};
+        }
+      } catch (error) {
+        if (error is GatewayFailure && error.code == 'cancelled') rethrow;
+        _check(generation);
+        if (isPhoneLinkFailure(error)) rethrow;
+        status = BuildModeStatus.failed;
+      }
+    }
+    _buildModeGeneration = generation;
+    state = state.copy(buildMode: status, error: state.error);
+    return result;
   }
 
   /// get_config plus what get_net_status says about the upload (MQTT).
@@ -3702,6 +3840,9 @@ class CommissioningController extends Notifier<CommissionState> {
         }
         config = await _command(generation, 'get_config');
         _check(generation);
+        // 1.0.0+19: one reading a second while commissioning (both the
+        // gateway in service and the new one; never blocks the connect).
+        config = await _enterBuildMode(generation, config);
         // Restarted since the last read (link drop, timeout, APP closed)?
         _noteBoot(config, peerId: peer.id);
         try {
@@ -6698,6 +6839,8 @@ class CommissioningController extends Notifier<CommissionState> {
         message: deferredDoneText,
       );
       _field.end('completed');
+      // 1.0.0+19: the done page's upload interval line (never waited).
+      unawaited(_loadUploadPolicy());
     });
   }
 
@@ -8510,6 +8653,8 @@ class CommissioningController extends Notifier<CommissionState> {
             message: verifiedText,
           );
           _field.end('completed');
+          // 1.0.0+19: the done page's upload interval line (never waited).
+          unawaited(_loadUploadPolicy());
           // 1.0.0+10 (review P2-10): verified (the install report goes out
           // now) — on the phone's 「閘道器狀態」 list at once, not only after
           // 〔完成〕 (same site / gateway kept once).
@@ -8639,7 +8784,37 @@ class CommissioningController extends Notifier<CommissionState> {
         _check(generation);
         _backend = describeBackend(Uri.tryParse(base.trim()));
         _loginOk(base, secret);
+        // 1.0.0+19: the done page's 〔登入並確認資料〕 — its upload
+        // interval line gets the number too.
+        if (state.step == 7) unawaited(_loadUploadPolicy());
       });
+
+  /// 1.0.0+19 (upload policy): `GET /api/upload-policy` with this flow's
+  /// APP-key session ([_withRelogin]: a 401 logs in again once) for the done
+  /// page's 「資料上傳頻率由後台控制（目前每 N 秒）」. Called on entering the
+  /// done page and after a login there; never awaited by a step. Not logged
+  /// in, or any failure (older back office without the route: 404, network,
+  /// a body without the number) → [CommissionState.uploadIntervalMs] null,
+  /// the line without a number. Reads the back office's policy, never the
+  /// gateway (still in build mode until the back office pushes it).
+  Future<void> _loadUploadPolicy() async {
+    final run = ++_uploadPolicyRun;
+    int? ms;
+    if (_loggedIn) {
+      const path = '/api/upload-policy';
+      final watch = Stopwatch()..start();
+      try {
+        ms = uploadIntervalOf(
+          await _withRelogin(() => _api.request('GET', path)),
+        );
+        _journalHttp('GET', path, watch);
+      } catch (error) {
+        _journalHttp('GET', path, watch, error: error);
+      }
+    }
+    if (!ref.mounted || run != _uploadPolicyRun || state.step != 7) return;
+    state = state.copy(uploadIntervalMs: ms, error: state.error);
+  }
 
   // ---- Background upload-state polling ----
 

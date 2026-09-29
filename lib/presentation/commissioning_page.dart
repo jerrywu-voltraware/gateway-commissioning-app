@@ -3623,6 +3623,13 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               key: const Key('done-upload'),
               color: toneColor(context, upload.tone),
             ),
+            // 1.0.0+19: the interval is the back office's (the APP only
+            // set one reading a second while commissioning); after
+            // 〔先完成配置〕 too.
+            line(
+              uploadRateText(s.uploadIntervalMs),
+              key: const Key('done-upload-rate'),
+            ),
             // 09-28 / r32: the report goes to the back office on its own;
             // its status (sent / queued / failed with 〔重送〕) sits in the
             // summary so it is on the first screen (r32: below the fold).
@@ -4464,6 +4471,17 @@ const doneLabelHint = '後台人員靠這個標示找到這台';
 /// 「請在機殼上標示：站 80 · 閘道器 2」 (the card read as one).
 String doneLabelText(int site, int gateway) =>
     '$doneLabelHead${gatewayIdText(site, gateway)}';
+
+/// 1.0.0+19: the done page's upload interval line — the back office's
+/// policy ([CommissionState.uploadIntervalMs]); null (not read): no number.
+const uploadRateHead = '資料上傳頻率由後台控制';
+String uploadRateText(int? ms) {
+  if (ms == null) return uploadRateHead;
+  final seconds = ms % 1000 == 0
+      ? '${ms ~/ 1000}'
+      : (ms / 1000).toStringAsFixed(1);
+  return '$uploadRateHead（目前每 $seconds 秒）';
+}
 
 const numberTakenTitle = '閘道器編號已被使用';
 String numberTakenText(int site, int taken, int gw) =>
