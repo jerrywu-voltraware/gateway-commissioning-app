@@ -35,7 +35,8 @@ import 'gateway_status_page.dart';
 import 'gateway_signal.dart';
 import 'gateway_discovery.dart';
 import 'gateway_mode_card.dart';
-import 'gateway_number_picker.dart';
+import 'gateway_swap_sheet.dart';
+import '../core/gateway_swap.dart';
 
 /// The AppBar title (1.0.0+8: shown whole at 360 dp, never 「GIOS …」).
 const appBarTitle = 'GIOS 現場開通';
@@ -87,11 +88,13 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   /// 已被使用」 question; saving it uses force_replace without asking again.
   (int, int)? _replaceSlot;
 
-  /// 1.0.0+12: the gateway number shown was chosen in the number picker
-  /// (〔修改〕) for the station shown — not looked up again, and not asked
-  /// about again as a skipped number. A new station (typed) or another
-  /// gateway starts from the automatic number again.
-  bool _gatewayPicked = false;
+  /// 1.0.0+13 換機 (replaces 1.0.0+12's 〔修改〕 number picker): the offline
+  /// gateway of the station shown that this one replaces
+  /// (〔這台是來換掉壞掉的舊機〕, [_chooseSwap]) — its number is shown and
+  /// sent through the replacement ([_saveWifi]); not looked up again,
+  /// not asked about as a skipped number. Another station typed, another
+  /// gateway or 〔取消換機〕 goes back to the automatic number.
+  SwapCandidate? _swap;
 
   /// r33 (a fresh install defaults to star; a one-to-one gateway went
   /// through it silently as max 5): after a gateway picked from the list
@@ -151,7 +154,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       _otherSite = false;
       _wifiStage = false;
       _replaceSlot = null;
-      _gatewayPicked = false;
+      _swap = null;
     }
   }
 
@@ -212,9 +215,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       if (kind != GatewaySuggestKind.full) _gateway.text = '$gw';
       _gatewayKind = kind;
       _suggestingGateway = false;
-      // 1.0.0+12: the station's automatic number (a number picked for
-      // another station no longer applies).
-      _gatewayPicked = false;
+      // 1.0.0+13: the station's automatic number (an old gateway chosen
+      // for another station no longer applies).
+      _clearSwap();
     });
   }
 
@@ -296,7 +299,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         _gatewayKind = next.config['suggested_offline'] == true
             ? GatewaySuggestKind.offline
             : GatewaySuggestKind.online;
-        _gatewayPicked = false;
+        _clearSwap();
         _ssid.text = next.config['wifi_ssid']?.toString() ?? '';
         _customWifi = false;
         // Remembered environment: sync the gateway to it.
@@ -439,7 +442,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         _gatewayKind = next.config['suggested_offline'] == true
             ? GatewaySuggestKind.offline
             : GatewaySuggestKind.online;
-        _gatewayPicked = false;
+        _clearSwap();
         _ssid.text = next.config['wifi_ssid']?.toString() ?? '';
         _wifi.clear();
         _customWifi = false;
@@ -503,8 +506,25 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       _wifi.clear();
       return;
     }
-    // r33: 〔取代舊機〕 was chosen on the 「閘道器編號已被使用」 question.
-    if (!wifiOnly && _replaceSlot == (site, gw)) {
+    // r33: 〔取代舊機〕 was chosen on the 「閘道器編號已被使用」 question;
+    // 1.0.0+13: or the old gateway on 〔這台是來換掉壞掉的舊機〕 ([_swap]).
+    final swap = _swap;
+    final swapping = swap != null && (swap.site, swap.gateway) == (site, gw);
+    if (!wifiOnly && (swapping || _replaceSlot == (site, gw))) {
+      // 1.0.0+13: asked once more right before it is sent — an old gateway
+      // online (again) is never replaced (two gateways on one number).
+      final online = await c.gatewayOnline(site, gw);
+      if (!mounted) return;
+      if (online == true) {
+        await _replaceRefused(gw);
+        return;
+      }
+      // 換機 takes over only a gateway known to be offline (r33's
+      // 〔取代舊機〕: unknown goes on as before).
+      if (swapping && online == null) {
+        _snack(swapNeedsNetworkText);
+        return;
+      }
       _replaceSlot = null;
       await c.configureWifi(
         site,
@@ -521,21 +541,27 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       if (conflictMac != null && mounted) {
         // r33: the back office's own conflict text, when it flags one.
         final conflict = await c.identityConflict(site, gw);
+        // 1.0.0+13: an old gateway online is never replaced (unknown: as
+        // before).
+        final online = await c.gatewayOnline(site, gw);
         if (!mounted) return;
         final action = await showDialog<String>(
           context: context,
           builder: (context) => AlertDialog(
+            key: const Key('save-number-taken'),
             title: const Text('編號已被使用'),
             content: Text(
               '站點 $site / 閘道器 $gw 目前登記給另一台裝置（MAC $conflictMac）。\n'
               '${conflict == null ? '' : '$conflict\n'}'
-              '請先確認舊機已斷電，否則後台會再次標記衝突。',
+              '${online == true ? numberTakenOnlineText(gw) : '請先確認舊機已斷電，否則後台會再次標記衝突。'}',
             ),
             actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, 'replace'),
-                child: const Text('取代舊機（沿用此編號）'),
-              ),
+              if (online != true)
+                TextButton(
+                  key: const Key('save-number-taken-replace'),
+                  onPressed: () => Navigator.pop(context, 'replace'),
+                  child: const Text('取代舊機（沿用此編號）'),
+                ),
               TextButton(
                 onPressed: () => Navigator.pop(context, 'next'),
                 child: const Text('改用下一個可用編號'),
@@ -921,10 +947,11 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     ),
   );
 
-  /// Read-only auto-numbering shown instead of an editable 閘道器編號 field.
-  /// 1.0.0+12: with 〔修改〕 — the number picker ([_pickGatewayNumber]); left
-  /// alone, the automatic number is used as before (nothing to type).
-  Widget _gatewayAssignment({bool enabled = true}) {
+  /// Read-only auto-numbering shown instead of an editable 閘道器編號 field
+  /// (1.0.0+13: the number is always automatic — 1.0.0+12's 〔修改〕 number
+  /// picker is gone). [swap] (the station page): 〔這台是來換掉壞掉的舊機〕
+  /// below it ([_swapEntry]).
+  Widget _gatewayAssignment({bool enabled = true, bool swap = false}) {
     final colors = Theme.of(context).colorScheme;
     if (_suggestingGateway) {
       return const Padding(
@@ -932,135 +959,194 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         child: Text('正在計算閘道器編號…'),
       );
     }
-    if (_gatewayKind == GatewaySuggestKind.full) {
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 14),
-        child: Text(
-          '本站閘道器已滿（1–$kMaxGatewayId 皆已使用），請確認站點 ID 或改用「取代舊機」。',
-          style: TextStyle(color: colors.error),
-        ),
+    final chosen = _swap;
+    final Widget line;
+    if (_gatewayKind == GatewaySuggestKind.full && chosen == null) {
+      line = Text(
+        '本站閘道器已滿（1–$kMaxGatewayId 皆已使用），請確認站點 ID 或改用「$swapLabel」。',
+        style: TextStyle(color: colors.error),
       );
-    }
-    final String offlineHint;
-    if (_gatewayPicked) {
-      offlineHint = _pickedUnchecked ? '（$gatewayNumberUncheckedText）' : '';
     } else {
-      offlineHint = _gatewayKind == GatewaySuggestKind.offline
-          ? ref.read(commissionProvider).peers.isEmpty
-                ? '（無法取得同站閘道器清單，暫配 1 號，請上線核對）'
-                : '（離線配號，上線後會再核對）'
-          : '';
+      final String hint;
+      if (chosen != null) {
+        hint = swapAssignmentHint(chosen.tail);
+      } else {
+        hint = _gatewayKind == GatewaySuggestKind.offline
+            ? ref.read(commissionProvider).peers.isEmpty
+                  ? '（無法取得同站閘道器清單，暫配 1 號，請上線核對）'
+                  : '（離線配號，上線後會再核對）'
+            : '';
+      }
+      line = Text(
+        '將配置為 站點 ${_site.text} / 閘道器 ${_gateway.text}$hint',
+        key: const Key('gateway-assignment'),
+        style: TextStyle(color: colors.primary),
+      );
     }
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              '將配置為 站點 ${_site.text} / 閘道器 ${_gateway.text}$offlineHint',
-              key: const Key('gateway-assignment'),
-              style: TextStyle(color: colors.primary),
-            ),
-          ),
-          const SizedBox(width: 8),
-          TextButton(
-            key: const Key('gateway-number-change'),
-            style: TextButton.styleFrom(minimumSize: const Size(64, 48)),
-            onPressed: enabled && !_stationWorking ? _pickGatewayNumber : null,
-            child: const Text(gatewayNumberChangeLabel),
-          ),
-        ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [line, if (swap) _swapEntry(enabled)],
       ),
     );
   }
 
-  /// 1.0.0+12: the number picked in the picker was not checked against the
-  /// back office (it could not be asked).
-  bool _pickedUnchecked = false;
+  /// 1.0.0+13: the back office can be asked (logged in, the number was not
+  /// guessed offline) — 換機 needs its list of offline gateways.
+  bool get _swapAvailable =>
+      ref.read(commissionProvider).loggedIn &&
+      _gatewayKind != GatewaySuggestKind.offline;
 
-  /// 1.0.0+12 〔修改〕: the gateway number from the picker (1–
-  /// [kMaxGatewayId]). A number another gateway of the station holds goes
-  /// through the same 「閘道器編號已被使用」 question as a skipped number
-  /// (〔取代舊機〕／〔改用閘道器 N〕, [_askNumberTaken]); a free one is used
-  /// as it is. Without the back office any number is taken, marked
-  /// 「目前無法檢查是否重複」.
-  Future<void> _pickGatewayNumber() async {
+  /// 1.0.0+13, under 「將配置為 …」 on the station page: 〔這台是來換掉壞掉
+  /// 的舊機〕 ([_chooseSwap]), 〔取消換機〕 once an old gateway was chosen,
+  /// or 「換機需要連上網路」 when the back office cannot be asked. A
+  /// secondary way: the normal install never needs it.
+  Widget _swapEntry(bool enabled) {
+    final theme = Theme.of(context);
+    if (_typedSite == null) return const SizedBox.shrink();
+    if (!_swapAvailable) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: Text(
+          swapNeedsNetworkText,
+          key: const Key('gateway-swap-offline'),
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      );
+    }
+    final chosen = _swap != null;
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: TextButton.icon(
+        key: Key(chosen ? 'gateway-swap-cancel' : 'gateway-swap'),
+        style: TextButton.styleFrom(
+          minimumSize: const Size(48, 48),
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+        ),
+        onPressed: enabled && !_stationWorking
+            ? (chosen ? _cancelSwap : _chooseSwap)
+            : null,
+        icon: Icon(chosen ? Icons.undo : Icons.swap_horiz, size: 20),
+        label: Text(chosen ? swapCancelLabel : swapLabel),
+      ),
+    );
+  }
+
+  /// 1.0.0+13: no old gateway chosen (nor a replacement asked for).
+  void _clearSwap() {
+    _swap = null;
+    _replaceSlot = null;
+  }
+
+  /// 1.0.0+13 〔這台是來換掉壞掉的舊機〕: the station's gateways the back
+  /// office lists as offline (not this one) in a sheet; one picked and
+  /// confirmed (「這台將接手 站 S · 閘道器 N。舊機（…XXXX）必須已拆除或斷電。」)
+  /// becomes the number shown, sent through the existing replacement
+  /// (reserve-identity force_replace first, [_saveWifi]).
+  Future<void> _chooseSwap() async {
     final c = ref.read(commissionProvider.notifier);
     if (ref.read(commissionProvider).busy || _stationWorking) return;
-    // A station typed a moment ago: its automatic number first.
+    // A station typed a moment ago: its lookup first.
     if (_suggestTyping?.isActive ?? false) {
       _suggestTyping!.cancel();
       await _refreshGatewaySuggestion();
       if (!mounted) return;
     }
-    final site = int.tryParse(_site.text);
-    if (site == null || site < 1 || site > 65535) return;
-    final current = int.tryParse(_gateway.text) ?? 0;
+    final site = _typedSite;
+    if (site == null) return;
     setState(() => _stationWorking = true);
-    Map<int, String>? used;
+    List<SwapCandidate>? candidates;
     try {
-      used = await c.usedGatewayNumbers(site);
+      candidates = await c.swapCandidates(site);
     } finally {
       if (mounted) setState(() => _stationWorking = false);
     }
     if (!mounted) return;
-    final picked = await showGatewayNumberPicker(
-      context,
-      site: site,
-      current: current,
-      used: used,
-    );
-    if (!mounted || picked == null) return;
-    if (picked == current && _gatewayPicked) return;
-    String? mac;
-    if (used != null) {
-      setState(() => _stationWorking = true);
-      try {
-        mac = await c.conflictingMac(site, picked);
-      } catch (_) {
-        /* the fleet list below says it */
-      } finally {
-        if (mounted) setState(() => _stationWorking = false);
-      }
-      if (!mounted) return;
-      mac ??= used[picked];
-    }
-    if (mac == null) {
-      setState(() {
-        _gateway.text = '$picked';
-        _gatewayPicked = true;
-        _pickedUnchecked = used == null;
-        _replaceSlot = null;
-      });
+    if (candidates == null) {
+      _snack(swapNeedsNetworkText);
       return;
     }
-    // Taken: 〔取代舊機〕 keeps it, 〔改用閘道器 N〕 the smallest free one.
-    int? free;
-    for (var g = 1; g <= kMaxGatewayId; g++) {
-      if (g != picked && !used!.containsKey(g)) {
-        free = g;
-        break;
-      }
-    }
-    final action = await _askNumberTaken(
-      c,
-      site,
-      picked,
-      mac.isEmpty ? '未知' : mac,
-      free,
+    final old = await showGatewaySwapSheet(
+      context,
+      site: site,
+      candidates: candidates,
     );
-    if (!mounted || action == null) return;
+    if (!mounted || old == null) return;
+    if (!await _confirmSwap(site, old) || !mounted) return;
+    if (_typedSite != site) return;
     setState(() {
-      _gatewayPicked = true;
-      _pickedUnchecked = false;
-      if (action == 'replace') {
-        _gateway.text = '$picked';
-        _replaceSlot = (site, picked);
-      } else if (free != null) {
-        _gateway.text = '$free';
-        _replaceSlot = null;
-      }
+      // A lookup still running no longer applies.
+      _suggestGeneration++;
+      _suggestingGateway = false;
+      _clearSwap();
+      _swap = old;
+      _gateway.text = '${old.gateway}';
     });
+  }
+
+  /// 1.0.0+13: 「這台將接手 站 S · 閘道器 N。舊機（…XXXX）必須已拆除或斷電。」
+  /// 〔確定換機〕／〔取消〕.
+  Future<bool> _confirmSwap(int site, SwapCandidate old) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        key: const Key('swap-confirm'),
+        title: const Text(swapConfirmTitle),
+        content: Text(
+          swapConfirmText(site, old.gateway, old.tail),
+          key: const Key('swap-confirm-text'),
+        ),
+        actions: [
+          TextButton(
+            key: const Key('swap-confirm-cancel'),
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            key: const Key('swap-confirm-ok'),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text(swapConfirmOkLabel),
+          ),
+        ],
+      ),
+    );
+    return ok == true;
+  }
+
+  /// 1.0.0+13 〔取消換機〕: the station's automatic number again.
+  Future<void> _cancelSwap() async {
+    setState(_clearSwap);
+    await _refreshGatewaySuggestion();
+  }
+
+  /// 1.0.0+13: the old gateway to be replaced (換機, or r33's 〔取代舊機〕)
+  /// is online (again) right before it would be sent — nothing is sent;
+  /// 「閘道器 N 目前在線上，請先把舊機斷電。」, then the station page with its
+  /// automatic number.
+  Future<void> _replaceRefused(int gw) async {
+    setState(() {
+      _clearSwap();
+      _wifiStage = false;
+    });
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        key: const Key('swap-online'),
+        content: Text(swapOnlineText(gw)),
+        actions: [
+          FilledButton(
+            key: const Key('swap-online-ok'),
+            onPressed: () => Navigator.pop(context),
+            child: const Text(swapOnlineOkLabel),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    await _refreshGatewaySuggestion();
   }
 
   /// Round 16: star mode 「每台 PTU 數」 — chosen in a dialog and confirmed
@@ -1099,8 +1185,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   }
 
   /// Blocks 「儲存並連接 WiFi」 when the site's 1–[kMaxGatewayId] gateway slots
-  /// are full.
-  bool get _gatewaySubmitBlocked => _gatewayKind == GatewaySuggestKind.full;
+  /// are full (1.0.0+13: unless an old gateway is replaced, [_swap]).
+  bool get _gatewaySubmitBlocked =>
+      _swap == null && _gatewayKind == GatewaySuggestKind.full;
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(commissionProvider),
@@ -1861,7 +1948,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                 key: const Key('station-current'),
                 style: muted,
               )
-            : _gatewayAssignment(enabled: enabled)
+            : _gatewayAssignment(enabled: enabled, swap: true)
       else ...[
         field(
           _site,
@@ -1869,14 +1956,14 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           number: true,
           onChanged: (_) {
             _scheduleGatewaySuggestion();
-            // 1.0.0+12: a number picked belongs to the station it was
-            // picked for — another one typed is numbered again (also when
-            // 〔使用站點〕 comes before the lookup).
-            setState(() => _gatewayPicked = false);
+            // 1.0.0+13: an old gateway chosen belongs to the station it
+            // was chosen for — another one typed is numbered again (also
+            // when 〔使用站點〕 comes before the lookup).
+            setState(_clearSwap);
           },
         ),
         if (typed != null && !(inService && typed == current))
-          _gatewayAssignment(enabled: enabled),
+          _gatewayAssignment(enabled: enabled, swap: true),
       ],
       if (kept != null)
         _markedText(
@@ -2068,19 +2155,22 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         }
       }
       if (_site.text != '$site') _site.text = '$site';
+      // 1.0.0+13: an old gateway chosen for another station does not
+      // apply here.
+      if (_swap != null && _swap!.site != site) setState(_clearSwap);
       // A typed station: its gateway number is looked up once more
-      // (1.0.0+12: not a number picked for it with 〔修改〕).
-      if (input && !_gatewayPicked) {
+      // (1.0.0+13: not when an old gateway's number is taken over).
+      if (input && _swap == null) {
         _suggestTyping?.cancel();
         await _refreshGatewaySuggestion();
         if (!mounted) return;
       }
       if (_gatewaySubmitBlocked) return;
       // r33: a number skipped by the auto-numbering (another device has
-      // it) is said, with 〔取代舊機〕 to take it over (1.0.0+12: a picked
-      // number was asked about when it was picked).
+      // it) is said, with 〔取代舊機〕 to take it over (1.0.0+13: not when
+      // an old gateway was chosen to be replaced).
       if (input &&
-          !_gatewayPicked &&
+          _swap == null &&
           _gatewayKind == GatewaySuggestKind.online &&
           !await _confirmSkippedNumber(
             c,
@@ -2141,7 +2231,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         _otherSite = false;
         _site.text = '${s.config['site_id']}';
         _gateway.text = '${s.config['gateway_id']}';
-        _gatewayPicked = false;
+        _clearSwap();
         _ssid.text = s.config['wifi_ssid']?.toString() ?? '';
         _wifi.clear();
         _customWifi = false;
@@ -2166,7 +2256,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       _gatewayKind = s.config['suggested_offline'] == true
           ? GatewaySuggestKind.offline
           : GatewaySuggestKind.online;
-      _gatewayPicked = false;
+      _clearSwap();
     });
   }
 
@@ -2197,8 +2287,12 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   /// r33 「閘道器編號已被使用」: gateway [taken] at [site] is held by
   /// another device ([mac]) — 〔取代舊機〕 ('replace') takes it over,
   /// 〔改用閘道器 N〕 ('next') uses [gw] instead (no such button when [gw]
-  /// is null: no free number), 〔取消〕 null. 1.0.0+12: also asked for a
-  /// held number picked in the number picker.
+  /// is null: no free number), 〔取消〕 null.
+  ///
+  /// 1.0.0+13: while the gateway holding [taken] is online (fleet-status
+  /// `online`), 〔取代舊機〕 is not offered — 「閘道器 N 目前在線上，不能
+  /// 取代；如果這台是來換掉它，請先把舊機斷電。」; when it cannot be told,
+  /// as before.
   Future<String?> _askNumberTaken(
     CommissioningController c,
     int site,
@@ -2207,6 +2301,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     int? gw,
   ) async {
     final conflict = await c.identityConflict(site, taken);
+    final online = await c.gatewayOnline(site, taken);
     if (!mounted) return null;
     return showDialog<String>(
       context: context,
@@ -2217,7 +2312,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           '${gw == null ? numberTakenOnlyText(site, taken) : numberTakenText(site, taken, gw)}\n'
           '（閘道器 $taken 目前登記的 MAC：$mac）\n'
           '${conflict == null ? '' : '$conflict\n'}\n'
-          '${numberTakenReplaceHint(taken)}',
+          '${online == true ? numberTakenOnlineText(taken) : numberTakenReplaceHint(taken)}',
         ),
         actions: [
           TextButton(
@@ -2225,11 +2320,12 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             onPressed: () => Navigator.pop(context),
             child: const Text('取消'),
           ),
-          TextButton(
-            key: const Key('number-taken-replace'),
-            onPressed: () => Navigator.pop(context, 'replace'),
-            child: Text(numberTakenReplaceLabel(taken)),
-          ),
+          if (online != true)
+            TextButton(
+              key: const Key('number-taken-replace'),
+              onPressed: () => Navigator.pop(context, 'replace'),
+              child: Text(numberTakenReplaceLabel(taken)),
+            ),
           if (gw != null)
             FilledButton(
               key: const Key('number-taken-next'),
@@ -3396,11 +3492,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               ],
             ),
             const SizedBox(height: 4),
-            line(
-              gatewayIdText(c.site, c.gateway),
-              key: const Key('done-gateway'),
-              strong: true,
-            ),
+            _doneLabelCard(c.site, c.gateway),
             line('模式：${topology.label}', key: const Key('done-mode')),
             if (bound != null)
               line(bound, key: const Key('direct-bound-note'))
@@ -3444,6 +3536,71 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             // Round 28/29: after 〔先完成配置〕 — the PTU connects once
             // powered, the binding is confirmed on site later.
             if (deferred) _deferredNote(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 1.0.0+13: the station and gateway in large type — 「請在機殼上標示：站 S
+  /// · 閘道器 N」 — so the installer writes it on the gateway's housing and
+  /// the back office can find the unit it means. Nothing to press.
+  Widget _doneLabelCard(int site, int gateway) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final fg = colors.onPrimaryContainer;
+    return Semantics(
+      container: true,
+      label: doneLabelText(site, gateway),
+      excludeSemantics: true,
+      child: Container(
+        key: const Key('done-label'),
+        margin: const EdgeInsets.only(top: 8, bottom: 4),
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        decoration: BoxDecoration(
+          color: colors.primaryContainer,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: colors.primary, width: 1.5),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Icon(Icons.edit_note, color: fg, size: 28),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    doneLabelHead,
+                    key: const Key('done-label-head'),
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      color: fg,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  Text(
+                    gatewayIdText(site, gateway),
+                    key: const Key('done-gateway'),
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      color: fg,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      doneLabelHint,
+                      key: const Key('done-label-hint'),
+                      style: theme.textTheme.bodySmall?.copyWith(color: fg),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -4196,6 +4353,15 @@ String archivedConfirmText(int site, int gw) =>
 const archivedRejoinLabel = '重新加入並繼續';
 
 /// r33: the auto-numbering skipped a number another device holds.
+/// 1.0.0+13: the done page's label card — 「請在機殼上標示：」, the station
+/// and gateway in large type, and why.
+const doneLabelHead = '請在機殼上標示：';
+const doneLabelHint = '後台人員靠這個標示找到這台';
+
+/// 「請在機殼上標示：站 80 · 閘道器 2」 (the card read as one).
+String doneLabelText(int site, int gateway) =>
+    '$doneLabelHead${gatewayIdText(site, gateway)}';
+
 const numberTakenTitle = '閘道器編號已被使用';
 String numberTakenText(int site, int taken, int gw) =>
     '站 $site 的閘道器 $taken 已被其他設備使用，改用閘道器 $gw。';
@@ -4203,6 +4369,11 @@ String numberTakenText(int site, int taken, int gw) =>
 /// 1.0.0+12: [numberTakenText] when the station has no free number left.
 String numberTakenOnlyText(int site, int taken) =>
     '站 $site 的閘道器 $taken 已被其他設備使用。';
+
+/// 1.0.0+13: instead of [numberTakenReplaceHint] (and without 〔取代舊機〕)
+/// while the gateway holding [taken] is online.
+String numberTakenOnlineText(int taken) =>
+    '閘道器 $taken 目前在線上，不能取代；如果這台是來換掉它，請先把舊機斷電。';
 String numberTakenReplaceHint(int taken) =>
     '若這台是來取代那台舊機（舊機已拆除或斷電），按〔取代舊機〕沿用閘道器 $taken。';
 String numberTakenReplaceLabel(int taken) => '取代舊機（沿用閘道器 $taken）';

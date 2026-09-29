@@ -684,13 +684,27 @@ void main() {
             .data,
         '排隊中，網路恢復後自動送（沒有網路或後台沒有回應）',
       );
+      // 1.0.0+13: the summary's label card (「請在機殼上標示：…」) pushes the
+      // report further down on a 360x640 phone — scrolled to it (the page
+      // builds lazily); the status is still above it.
+      final lineTop = tester.getRect(line).top;
       final report = find.byKey(const Key('done-report'));
+      final page = find
+          .descendant(
+            of: find.byType(ListView).first,
+            matching: find.byType(Scrollable),
+          )
+          .first;
+      await tester.scrollUntilVisible(report, 100, scrollable: page);
       expect(report, findsOneWidget);
+      final position = tester.state<ScrollableState>(page).position;
       expect(
-        tester.getRect(line).top,
-        lessThan(tester.getRect(report).top),
+        lineTop,
+        lessThan(tester.getRect(report).top + position.pixels),
         reason: 'the status is above the report',
       );
+      position.jumpTo(0);
+      await tester.pumpAndSettle();
 
       fake.installMode = 'ok';
       await tester.tap(find.byKey(const Key('install-report-resend')));
@@ -704,6 +718,7 @@ void main() {
       );
       expect(find.byKey(const Key('install-report-resend')), findsNothing);
       // 〔分享安裝報告〕 is still there, inside the report.
+      await tester.scrollUntilVisible(report, 100, scrollable: page);
       await tester.ensureVisible(report);
       await tester.tap(report);
       await tester.pumpAndSettle();

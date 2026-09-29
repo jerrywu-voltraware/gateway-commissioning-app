@@ -10,6 +10,7 @@ import '../core/direct_mode.dart';
 import '../core/gateway_identity.dart';
 import '../core/gateway_net.dart';
 import '../core/gateway_reboot.dart';
+import '../core/gateway_swap.dart';
 import '../core/gateway_topology.dart';
 import '../core/progress_checklist.dart';
 import '../core/ptu_rssi.dart';
@@ -4150,14 +4151,37 @@ class CommissioningController extends Notifier<CommissionState> {
     return used;
   }
 
-  /// 1.0.0+12: the number picker's 「已使用」 — the numbers at [forSite]
-  /// another gateway holds (number → its MAC, '' when none on record);
-  /// null when it cannot tell (not logged in, the back office unreachable:
-  /// the picker says 「目前無法檢查是否重複」).
-  Future<Map<int, String>?> usedGatewayNumbers(int forSite) async {
+  /// 1.0.0+13 〔這台是來換掉壞掉的舊機〕: the gateways at [forSite] the back
+  /// office lists as offline, other than this one ([offlineSwapCandidates]);
+  /// null when it cannot tell (not logged in, the back office unreachable).
+  /// Only such a gateway's number may be taken over (force_replace does not
+  /// check whether the old gateway is still online).
+  Future<List<SwapCandidate>?> swapCandidates(int forSite) async {
     if (!_loggedIn) return null;
     try {
-      return await _usedAt(forSite, state.config['gateway_uid']);
+      final fleet = await _api.request(
+        'GET',
+        '/api/gateways/fleet-status?site_id=$forSite',
+      );
+      return offlineSwapCandidates(fleet, forSite, state.config['gateway_uid']);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 1.0.0+13: whether the gateway holding [site] / [gw] is online now
+  /// (fleet-status `online`; check-identity carries no such field) — true
+  /// or false; null when it cannot tell (not logged in, the back office
+  /// unreachable, no such row). Asked before 〔取代舊機〕 is offered and once
+  /// more before a replacement is sent.
+  Future<bool?> gatewayOnline(int site, int gw) async {
+    if (!_loggedIn) return null;
+    try {
+      final fleet = await _api.request(
+        'GET',
+        '/api/gateways/fleet-status?site_id=$site',
+      );
+      return fleetRowOnline(fleet, site, gw);
     } catch (_) {
       return null;
     }

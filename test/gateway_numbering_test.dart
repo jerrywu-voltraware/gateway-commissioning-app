@@ -10,10 +10,14 @@
 // 2. The gateway list and 「閘道器狀態」 name a gateway known not to be
 //    configured 「未配置閘道器 …XXXX」 (no station / number); the back
 //    office unknown, the list reads as before.
-// 3. 〔修改〕 beside 「將配置為 站點 X / 閘道器 N」 opens the number picker:
-//    a number another gateway holds reads 「已使用」 and goes through
-//    〔取代舊機〕／〔改用閘道器 N〕; a free one is used; offline every number
-//    can be picked, 「目前無法檢查是否重複」.
+// 3. 1.0.0+13 (replaces 1.0.0+12's 〔修改〕 number picker: a number in use
+//    could be picked and 〔取代舊機〕 pressed while the old gateway was
+//    online — two gateways on one station and number): the number is
+//    always automatic; 〔這台是來換掉壞掉的舊機〕 under 「將配置為 站點 X /
+//    閘道器 N」 lists only the station's offline gateways (not this one),
+//    confirmed, sent through force_replace — and not sent when the old one
+//    is online again; r33's 「閘道器編號已被使用」 offers no 〔取代舊機〕 for
+//    an online gateway; the done page says 「請在機殼上標示：站 S · 閘道器 N」.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -26,6 +30,7 @@ import 'package:gateway_commissioning/application/field_report.dart';
 import 'package:gateway_commissioning/application/local_backend_finder.dart';
 import 'package:gateway_commissioning/application/topology_settings.dart';
 import 'package:gateway_commissioning/core/gateway_identity.dart';
+import 'package:gateway_commissioning/core/gateway_swap.dart';
 import 'package:gateway_commissioning/core/gateway_topology.dart';
 import 'package:gateway_commissioning/core/protocol.dart';
 import 'package:gateway_commissioning/data/contracts.dart';
@@ -37,13 +42,17 @@ import 'package:gateway_commissioning/data/written_identities.dart';
 import 'package:gateway_commissioning/gateway_app.dart';
 import 'package:gateway_commissioning/presentation/commissioning_page.dart';
 import 'package:gateway_commissioning/presentation/gateway_discovery.dart';
-import 'package:gateway_commissioning/presentation/gateway_number_picker.dart';
+import 'package:gateway_commissioning/presentation/gateway_swap_sheet.dart';
 import 'package:gateway_commissioning/presentation/gateway_status_page.dart';
 
 import 'network_check_test.dart' show WifiGateway;
 
 /// The demo gateway's Wi-Fi MAC (`gateway_uid`).
 const _uid = 'AABBCCDDEEFF';
+
+/// [_Site.calls]' entry for set_site_identity (a Bluetooth command, logged
+/// with the back office's requests so their order shows).
+const _setIdentity = 'BLE set_site_identity';
 
 /// A gateway on Wi-Fi Xiaomi_WU (MQTT up) carrying [site] / [gateway]
 /// ([joined]: in service), and the back office: [fleet] (other gateways'
@@ -92,6 +101,7 @@ class _Site extends WifiGateway {
     if (op == 'set_site_identity') {
       announced = true;
       identities.add(Map.of(params));
+      calls.add(_setIdentity);
     }
     return super.command(op, params);
   }
@@ -156,6 +166,27 @@ Map<String, dynamic> _row(int site, int gw, String mac) => {
 /// Two other gateways on station 80 (1 and 2).
 List<Map<String, dynamic>> _station80() => [
   _row(80, 1, 'A0:DD:6C:A3:70:F0'),
+  _row(80, 2, '11:22:33:44:55:66'),
+];
+
+/// 1.0.0+13: an offline gateway's fleet-status row, its last heartbeat
+/// [ago].
+Map<String, dynamic> _offline(
+  int site,
+  int gw,
+  String mac, {
+  Duration ago = const Duration(hours: 3),
+}) => {
+  'site_id': site,
+  'gateway_id': gw,
+  'last_seen_mac': mac,
+  'online': false,
+  'last_heartbeat': DateTime.now().subtract(ago).toIso8601String(),
+};
+
+/// Station 80: gateway 1 offline (…70F0, 3 hours ago), gateway 2 online.
+List<Map<String, dynamic>> _swap80() => [
+  _offline(80, 1, 'A0:DD:6C:A3:70:F0'),
   _row(80, 2, '11:22:33:44:55:66'),
 ];
 
@@ -270,6 +301,13 @@ String _title(WidgetTester tester) =>
 
 String _assignment(WidgetTester tester) =>
     tester.widget<Text>(find.byKey(const Key('gateway-assignment'))).data!;
+
+/// 1.0.0+13: 〔這台是來換掉壞掉的舊機〕 → 「閘道器 1」 → 〔確定換機〕.
+Future<void> _chooseSwap1(WidgetTester tester) async {
+  await _tap(tester, find.byKey(const Key('gateway-swap')));
+  await _tap(tester, find.byKey(const ValueKey('gateway-swap-1')));
+  await _tap(tester, find.byKey(const Key('swap-confirm-ok')));
+}
 
 /// Connected to the factory gateway (not in service), 80 typed.
 Future<void> _typeSite80(WidgetTester tester) async {
@@ -504,23 +542,35 @@ void main() {
       );
 
       test(
-        'usedGatewayNumbers: the numbers other gateways hold; null offline',
+        '1.0.0+13 swapCandidates: the offline gateways of the station but '
+        'this one; gatewayOnline: fleet-status online; null offline',
         () async {
           final fake = _Site(
-            fleet: [..._station80(), _row(81, 1, 'AA:BB:CC:00:00:81')],
+            site: 1,
+            gateway: 1,
+            fleet: [
+              _offline(80, 1, 'A0:DD:6C:A3:70:F0'),
+              _row(80, 2, '11:22:33:44:55:66'),
+              _offline(80, 4, 'AA:BB:CC:DD:EE:FF'), // this gateway's own MAC
+              _offline(81, 1, 'AA:BB:CC:00:00:81'),
+            ],
           );
           final container = _container(fake);
           addTearDown(container.dispose);
           final c = await _connect(container);
-          expect(await c.usedGatewayNumbers(80), {
-            1: 'A0:DD:6C:A3:70:F0',
-            2: '11:22:33:44:55:66',
-          });
-          expect(await c.usedGatewayNumbers(82), isEmpty);
-          final offline = _container(_Site(fleet: _station80()));
+          final found = await c.swapCandidates(80);
+          expect(found?.map((g) => (g.site, g.gateway, g.tail)), [
+            (80, 1, '…70F0'),
+          ]);
+          expect(await c.swapCandidates(82), isEmpty);
+          expect(await c.gatewayOnline(80, 1), isFalse);
+          expect(await c.gatewayOnline(80, 2), isTrue);
+          expect(await c.gatewayOnline(80, 9), isNull);
+          final offline = _container(_Site(fleet: _swap80()));
           addTearDown(offline.dispose);
           final o = await _connect(offline, offline: true);
-          expect(await o.usedGatewayNumbers(80), isNull);
+          expect(await o.swapCandidates(80), isNull);
+          expect(await o.gatewayOnline(80, 1), isNull);
         },
       );
     },
@@ -686,195 +736,443 @@ void main() {
     });
   });
 
-  group('3. 〔修改〕 the gateway number', () {
-    testWidgets('360x640: 〔修改〕 opens the picker (hint, 「已使用」 on 1 and 2, '
-        'the current 3 filled); a free number is used — no question, not '
-        'looked up again', (tester) async {
+  group('3. 換機: only an offline gateway of the station is replaced '
+      '(1.0.0+13, instead of 〔修改〕)', () {
+    test('offlineSwapCandidates / fleetRowOnline and the texts', () {
+      final fleet = <String, dynamic>{
+        'gateways': [
+          {
+            'site_id': 80,
+            'gateway_id': 3,
+            'last_seen_mac': '00:11:22:33:44:03',
+            'online': false,
+            'last_seen': '2026-09-29T10:00:00+08:00',
+          },
+          {
+            'site_id': 80,
+            'gateway_id': 1,
+            'mac': '00:11:22:33:44:01',
+            'online': false,
+            'last_heartbeat': '2026-09-29T09:00:00+08:00',
+            'last_seen': '2026-09-29T11:00:00+08:00',
+          },
+          {
+            'site_id': 80,
+            'gateway_id': 2,
+            'last_seen_mac': '00:11:22:33:44:02',
+            'online': true,
+          },
+          // This gateway itself (its MAC in another spelling).
+          {
+            'site_id': 80,
+            'gateway_id': 4,
+            'last_seen_mac': 'aa:bb:cc:dd:ee:ff',
+            'online': false,
+          },
+          // Online unknown: not listed.
+          {
+            'site_id': 80,
+            'gateway_id': 5,
+            'last_seen_mac': '00:11:22:33:44:05',
+          },
+          // No MAC on record.
+          {'site_id': 80, 'gateway_id': 6, 'online': false},
+          {
+            'site_id': 81,
+            'gateway_id': 1,
+            'last_seen_mac': '00:11:22:33:44:81',
+            'online': false,
+          },
+        ],
+      };
+      final found = offlineSwapCandidates(fleet, 80, _uid);
+      expect(found.map((g) => g.gateway), [1, 3, 6]);
+      expect(found.first.mac, '00:11:22:33:44:01');
+      expect(found.first.tail, '…4401');
+      // last_heartbeat first, else last_seen.
+      expect(
+        found.first.lastSeen,
+        DateTime.parse('2026-09-29T09:00:00+08:00').toLocal(),
+      );
+      expect(
+        found[1].lastSeen,
+        DateTime.parse('2026-09-29T10:00:00+08:00').toLocal(),
+      );
+      expect(found[2].tail, isNull);
+      expect(found[2].lastSeen, isNull);
+      expect(offlineSwapCandidates(fleet, 82, _uid), isEmpty);
+      expect(fleetRowOnline(fleet, 80, 2), isTrue);
+      expect(fleetRowOnline(fleet, 80, 1), isFalse);
+      expect(fleetRowOnline(fleet, 80, 5), isNull);
+      expect(fleetRowOnline(fleet, 80, 9), isNull);
+
+      final now = DateTime(2026, 9, 29, 12);
+      expect(
+        swapRowDetail(
+          SwapCandidate(
+            site: 80,
+            gateway: 1,
+            mac: 'A0:DD:6C:A3:70:F0',
+            lastSeen: now.subtract(const Duration(hours: 3)),
+          ),
+          now,
+        ),
+        '最後上線 3 小時前 · MAC …70F0',
+      );
+      expect(
+        swapRowDetail(const SwapCandidate(site: 80, gateway: 6), now),
+        '沒有上線紀錄',
+      );
+      expect(
+        swapConfirmText(80, 1, '…70F0'),
+        '這台將接手 站 80 · 閘道器 1。舊機（…70F0）必須已拆除或斷電。',
+      );
+      expect(swapOnlineText(1), '閘道器 1 目前在線上，請先把舊機斷電。');
+      expect(numberTakenOnlineText(1), '閘道器 1 目前在線上，不能取代；如果這台是來換掉它，請先把舊機斷電。');
+      expect(doneLabelText(80, 1), '請在機殼上標示：站 80 · 閘道器 1');
+    });
+
+    testWidgets('360x640: 〔修改〕 is gone — 「將配置為 站點 80 / 閘道器 3」 is '
+        'read-only; 〔這台是來換掉壞掉的舊機〕 under it (≥ 48 dp)', (tester) async {
       _phoneView(tester);
-      final fake = _Site(site: 1, gateway: 1, fleet: _station80());
+      final fake = _Site(site: 1, gateway: 1, fleet: _swap80());
+      await _pump(tester, fake);
+      await _tap(tester, find.byKey(const ValueKey('demo-gateway')));
+      expect(_title(tester), stationInputTitle);
+      // No station typed yet: nothing numbered, no 換機.
+      expect(find.byKey(const Key('gateway-assignment')), findsNothing);
+      expect(find.byKey(const Key('gateway-swap')), findsNothing);
+      await tester.enterText(
+        find.widgetWithText(TextField, siteFieldLabel),
+        '80',
+      );
+      await tester.pump(const Duration(milliseconds: 600));
+      await tester.pumpAndSettle();
+      expect(_assignment(tester), '將配置為 站點 80 / 閘道器 3');
+      expect(find.byKey(const Key('gateway-number-change')), findsNothing);
+      expect(find.byKey(const Key('gateway-number-picker')), findsNothing);
+      expect(find.text('修改'), findsNothing);
+      final swap = find.byKey(const Key('gateway-swap'));
+      expect(
+        find.descendant(of: swap, matching: find.text(swapLabel)),
+        findsOneWidget,
+      );
+      expect(tester.getSize(swap).height, greaterThanOrEqualTo(48));
+      expect(
+        tester.getTopLeft(swap).dy,
+        greaterThan(
+          tester.getTopLeft(find.byKey(const Key('gateway-assignment'))).dy,
+        ),
+      );
+      expect(find.text(swapNeedsNetworkText), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('offline (the back office cannot be asked): no 〔這台是來換掉'
+        '壞掉的舊機〕 but 「換機需要連上網路」', (tester) async {
+      _phoneView(tester);
+      final fake = _Site(site: 1, gateway: 1, fleet: _swap80());
+      await _pump(tester, fake, offline: true);
+      await _typeSite80(tester);
+      expect(_assignment(tester), startsWith('將配置為 站點 80 / 閘道器 1（'));
+      expect(find.byKey(const Key('gateway-swap')), findsNothing);
+      expect(find.byKey(const Key('gateway-swap-offline')), findsOneWidget);
+      expect(find.text(swapNeedsNetworkText), findsOneWidget);
+      expect(find.byKey(const Key('gateway-number-change')), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('the sheet lists only station 80\'s offline gateways other '
+        'than this one: 「閘道器 1」, 「最後上線 3 小時前 · MAC …70F0」', (tester) async {
+      _phoneView(tester);
+      final fake = _Site(
+        site: 1,
+        gateway: 1,
+        fleet: [
+          ..._swap80(),
+          _offline(80, 4, 'AA:BB:CC:DD:EE:FF'), // this gateway's own MAC
+          _offline(81, 1, 'AA:BB:CC:00:00:81'),
+        ],
+      );
       await _pump(tester, fake);
       await _typeSite80(tester);
-      expect(_assignment(tester), '將配置為 站點 80 / 閘道器 3');
-      final change = find.byKey(const Key('gateway-number-change'));
-      expect(
-        find.descendant(of: change, matching: find.text('修改')),
-        findsOneWidget,
-      );
-      expect(tester.getSize(change).height, greaterThanOrEqualTo(48));
-
-      await _tap(tester, change);
-      expect(find.byKey(const Key('gateway-number-picker')), findsOneWidget);
-      expect(find.text(gatewayNumberPickerTitle(80)), findsOneWidget);
-      expect(find.text(gatewayNumberPickerHint), findsOneWidget);
-      expect(find.byKey(const Key('gateway-number-unchecked')), findsNothing);
-      expect(
-        find.byKey(const ValueKey('gateway-number-used-1')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const ValueKey('gateway-number-used-2')),
-        findsOneWidget,
-      );
-      expect(find.byKey(const ValueKey('gateway-number-used-3')), findsNothing);
-      expect(
-        tester.widget(find.byKey(const ValueKey('gateway-number-3'))),
-        isA<FilledButton>(),
-      );
-      for (final n in [1, 25, kMaxGatewayId]) {
-        final button = find.byKey(ValueKey('gateway-number-$n'));
-        await tester.ensureVisible(button);
-        await tester.pumpAndSettle();
-        final size = tester.getSize(button);
-        expect(size.height, greaterThanOrEqualTo(48));
-        expect(size.width, greaterThanOrEqualTo(48));
+      await _tap(tester, find.byKey(const Key('gateway-swap')));
+      expect(find.byKey(const Key('gateway-swap-sheet')), findsOneWidget);
+      expect(find.text(swapSheetTitle(80)), findsOneWidget);
+      expect(find.text(swapSheetHint), findsOneWidget);
+      final row = find.byKey(const ValueKey('gateway-swap-1'));
+      expect(row, findsOneWidget);
+      for (final gw in [2, 3, 4]) {
+        expect(find.byKey(ValueKey('gateway-swap-$gw')), findsNothing);
       }
       expect(
-        find.byKey(ValueKey('gateway-number-${kMaxGatewayId + 1}')),
-        findsNothing,
+        find.descendant(of: row, matching: find.text('閘道器 1')),
+        findsOneWidget,
       );
-
-      await _tap(tester, find.byKey(const ValueKey('gateway-number-5')));
-      expect(find.byKey(const Key('gateway-number-picker')), findsNothing);
-      expect(find.byKey(const Key('number-taken')), findsNothing);
-      expect(_assignment(tester), '將配置為 站點 80 / 閘道器 5');
-
-      // 1 and 2 below 5 are held, but no 「閘道器編號已被使用」: 5 was chosen.
-      await _tap(tester, find.byKey(const Key('station-use')));
-      expect(find.byKey(const Key('number-taken')), findsNothing);
-      expect(fake.identities, [
-        {'site_id': 80, 'gateway_id': 5},
-      ]);
-      expect(fake.calls.where((c) => c.contains('force_replace')), isEmpty);
+      expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey('gateway-swap-detail-1')))
+            .data,
+        '最後上線 3 小時前 · MAC …70F0',
+      );
+      expect(tester.getSize(row).height, greaterThanOrEqualTo(48));
+      // 〔取消〕: nothing changes.
+      await _tap(tester, find.byKey(const Key('gateway-swap-close')));
+      expect(find.byKey(const Key('gateway-swap-sheet')), findsNothing);
+      expect(_assignment(tester), '將配置為 站點 80 / 閘道器 3');
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('a number another gateway holds: the 「閘道器編號已被使用」 '
-        'question — 〔取代舊機〕 keeps it (force_replace when saved)', (
-      tester,
-    ) async {
+    testWidgets('no offline gateway on the station: 「本站沒有離線的閘道器可以'
+        '取代」 and 〔關閉〕', (tester) async {
       _phoneView(tester);
       final fake = _Site(site: 1, gateway: 1, fleet: _station80());
       await _pump(tester, fake);
       await _typeSite80(tester);
-      await _tap(tester, find.byKey(const Key('gateway-number-change')));
-      await _tap(tester, find.byKey(const ValueKey('gateway-number-2')));
-      final taken = find.byKey(const Key('number-taken'));
-      expect(taken, findsOneWidget);
-      expect(find.text(numberTakenTitle), findsOneWidget);
+      await _tap(tester, find.byKey(const Key('gateway-swap')));
+      expect(find.byKey(const Key('gateway-swap-none')), findsOneWidget);
+      expect(find.text(swapNoneText), findsOneWidget);
+      expect(find.byKey(const ValueKey('gateway-swap-1')), findsNothing);
+      final close = find.byKey(const Key('gateway-swap-close'));
       expect(
-        find.descendant(
-          of: taken,
-          matching: find.textContaining(numberTakenText(80, 2, 3)),
-        ),
+        find.descendant(of: close, matching: find.text(swapCloseLabel)),
         findsOneWidget,
       );
+      await _tap(tester, close);
+      expect(find.byKey(const Key('gateway-swap-sheet')), findsNothing);
+      expect(_assignment(tester), '將配置為 站點 80 / 閘道器 3');
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('confirmed: 「將配置為 站點 80 / 閘道器 1（取代舊機 …70F0）」, '
+        'asked once more, then the existing replacement — force_replace '
+        'before set_site_identity; no 「閘道器編號已被使用」', (tester) async {
+      _phoneView(tester);
+      final fake = _Site(site: 1, gateway: 1, fleet: _swap80());
+      await _pump(tester, fake);
+      await _typeSite80(tester);
+      await _tap(tester, find.byKey(const Key('gateway-swap')));
+      await _tap(tester, find.byKey(const ValueKey('gateway-swap-1')));
+      expect(find.byKey(const Key('swap-confirm')), findsOneWidget);
+      expect(find.text(swapConfirmTitle), findsOneWidget);
       expect(
-        find.descendant(
-          of: taken,
-          matching: find.textContaining('11:22:33:44:55:66'),
-        ),
-        findsOneWidget,
+        tester.widget<Text>(find.byKey(const Key('swap-confirm-text'))).data,
+        '這台將接手 站 80 · 閘道器 1。舊機（…70F0）必須已拆除或斷電。',
       );
-      expect(find.text(numberTakenReplaceLabel(2)), findsOneWidget);
-      expect(find.text(numberTakenNextLabel(3)), findsOneWidget);
-      await _tap(tester, find.byKey(const Key('number-taken-replace')));
-      expect(_assignment(tester), '將配置為 站點 80 / 閘道器 2');
+      // 〔取消〕 first: nothing changes.
+      await _tap(tester, find.byKey(const Key('swap-confirm-cancel')));
+      expect(_assignment(tester), '將配置為 站點 80 / 閘道器 3');
+      expect(find.byKey(const Key('gateway-swap-cancel')), findsNothing);
+
+      await _chooseSwap1(tester);
+      expect(_assignment(tester), '將配置為 站點 80 / 閘道器 1（取代舊機 …70F0）');
+      expect(find.byKey(const Key('gateway-swap')), findsNothing);
+      expect(find.byKey(const Key('gateway-swap-cancel')), findsOneWidget);
       expect(fake.identities, isEmpty, reason: 'nothing sent yet');
 
-      await _tap(tester, find.byKey(const Key('station-use')));
-      expect(
-        fake.calls,
-        contains(
-          'POST /api/gateways/80/2/reserve-identity'
-          '?mac=$_uid&force_replace=true',
-        ),
-      );
-      expect(fake.identities, [
-        {'site_id': 80, 'gateway_id': 2},
-      ]);
-      expect(tester.takeException(), isNull);
-    });
-
-    testWidgets('a held number, 〔改用閘道器 3〕: the free number, asked once', (
-      tester,
-    ) async {
-      _phoneView(tester);
-      final fake = _Site(site: 1, gateway: 1, fleet: _station80());
-      await _pump(tester, fake);
-      await _typeSite80(tester);
-      await _tap(tester, find.byKey(const Key('gateway-number-change')));
-      await _tap(tester, find.byKey(const ValueKey('gateway-number-1')));
-      expect(
-        find.descendant(
-          of: find.byKey(const Key('number-taken')),
-          matching: find.textContaining(numberTakenText(80, 1, 3)),
-        ),
-        findsOneWidget,
-      );
-      await _tap(tester, find.byKey(const Key('number-taken-next')));
-      expect(_assignment(tester), '將配置為 站點 80 / 閘道器 3');
+      final before = fake.calls.length;
       await _tap(tester, find.byKey(const Key('station-use')));
       expect(find.byKey(const Key('number-taken')), findsNothing);
-      expect(fake.identities, [
-        {'site_id': 80, 'gateway_id': 3},
-      ]);
-      expect(fake.calls.where((c) => c.contains('force_replace')), isEmpty);
-      expect(tester.takeException(), isNull);
-    });
-
-    testWidgets('〔取消〕 in the picker keeps the number; left alone the '
-        'automatic number is used as before', (tester) async {
-      _phoneView(tester);
-      final fake = _Site(site: 1, gateway: 1);
-      await _pump(tester, fake);
-      await _typeSite80(tester);
-      expect(_assignment(tester), '將配置為 站點 80 / 閘道器 1');
-      await _tap(tester, find.byKey(const Key('gateway-number-change')));
-      await _tap(tester, find.byKey(const Key('gateway-number-cancel')));
-      expect(find.byKey(const Key('gateway-number-picker')), findsNothing);
-      expect(_assignment(tester), '將配置為 站點 80 / 閘道器 1');
-      await _tap(tester, find.byKey(const Key('station-use')));
-      await _tap(tester, find.byKey(const Key('new-site-ok')));
+      const reserve =
+          'POST /api/gateways/80/1/reserve-identity'
+          '?mac=$_uid&force_replace=true';
+      final sent = fake.calls.sublist(before);
+      expect(sent, contains(reserve));
+      expect(
+        sent.sublist(0, sent.indexOf(reserve)),
+        contains('GET /api/gateways/fleet-status?site_id=80'),
+        reason: 'asked once more whether it is offline',
+      );
+      expect(
+        sent.indexOf(reserve),
+        lessThan(sent.indexOf(_setIdentity)),
+        reason: 'the back office first, then the gateway',
+      );
       expect(fake.identities, [
         {'site_id': 80, 'gateway_id': 1},
       ]);
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('offline: every number can be picked, 「目前無法檢查是否重複」', (
+    testWidgets('〔取消換機〕: back to the automatic number, nothing replaced', (
       tester,
     ) async {
       _phoneView(tester);
-      final fake = _Site(site: 1, gateway: 1, fleet: _station80());
-      await _pump(tester, fake, offline: true);
+      final fake = _Site(site: 1, gateway: 1, fleet: _swap80());
+      await _pump(tester, fake);
       await _typeSite80(tester);
-      expect(_assignment(tester), startsWith('將配置為 站點 80 / 閘道器 1（'));
-      await _tap(tester, find.byKey(const Key('gateway-number-change')));
-      expect(find.byKey(const Key('gateway-number-unchecked')), findsOneWidget);
-      expect(find.text('⚠ $gatewayNumberUncheckedText'), findsOneWidget);
-      expect(find.textContaining(gatewayNumberUsedLabel), findsNothing);
-      await _tap(tester, find.byKey(const ValueKey('gateway-number-7')));
-      expect(
-        _assignment(tester),
-        '將配置為 站點 80 / 閘道器 7（$gatewayNumberUncheckedText）',
-      );
-      await _tap(tester, find.byKey(const Key('station-use')));
-      expect(fake.identities, [
-        {'site_id': 80, 'gateway_id': 7},
-      ]);
+      await _chooseSwap1(tester);
+      await _tap(tester, find.byKey(const Key('gateway-swap-cancel')));
+      expect(_assignment(tester), '將配置為 站點 80 / 閘道器 3');
+      expect(find.byKey(const Key('gateway-swap')), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('a station typed again goes back to its automatic number', (
-      tester,
-    ) async {
+    testWidgets('the old gateway online again before it is sent: nothing '
+        'sent, 「閘道器 1 目前在線上，請先把舊機斷電。」, the automatic number '
+        'again', (tester) async {
       _phoneView(tester);
-      final fake = _Site(site: 1, gateway: 1, fleet: _station80());
+      final fake = _Site(site: 1, gateway: 1, fleet: _swap80());
       await _pump(tester, fake);
       await _typeSite80(tester);
-      await _tap(tester, find.byKey(const Key('gateway-number-change')));
-      await _tap(tester, find.byKey(const ValueKey('gateway-number-9')));
-      expect(_assignment(tester), '將配置為 站點 80 / 閘道器 9');
+      await _chooseSwap1(tester);
+      expect(_assignment(tester), '將配置為 站點 80 / 閘道器 1（取代舊機 …70F0）');
+      fake.fleet.first['online'] = true; // powered on again
+      await _tap(tester, find.byKey(const Key('station-use')));
+      expect(find.byKey(const Key('swap-online')), findsOneWidget);
+      expect(find.text(swapOnlineText(1)), findsOneWidget);
+      await _tap(tester, find.byKey(const Key('swap-online-ok')));
+      expect(fake.identities, isEmpty);
+      expect(fake.calls.where((c) => c.contains('reserve-identity')), isEmpty);
+      expect(_assignment(tester), '將配置為 站點 80 / 閘道器 3');
+      expect(find.byKey(const Key('gateway-swap')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('its online state unknown right before it is sent (the '
+        'row gone): nothing sent, 「換機需要連上網路」, the choice kept', (tester) async {
+      _phoneView(tester);
+      final fake = _Site(site: 1, gateway: 1, fleet: _swap80());
+      await _pump(tester, fake);
+      await _typeSite80(tester);
+      await _chooseSwap1(tester);
+      fake.fleet.removeAt(0);
+      await tester.tap(find.byKey(const Key('station-use')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.text(swapNeedsNetworkText), findsOneWidget);
+      await tester.pumpAndSettle();
+      expect(fake.identities, isEmpty);
+      expect(fake.calls.where((c) => c.contains('reserve-identity')), isEmpty);
+      expect(_assignment(tester), '將配置為 站點 80 / 閘道器 1（取代舊機 …70F0）');
+      expect(tester.takeException(), isNull);
+    });
+
+    for (final online in [true, false, null]) {
+      final label = online == null
+          ? 'unknown'
+          : online
+          ? 'online'
+          : 'offline';
+      testWidgets('r33 「閘道器編號已被使用」, the holder of 1 $label: '
+          '〔取代舊機〕 ${online == true ? 'not offered' : 'offered'}', (
+        tester,
+      ) async {
+        _phoneView(tester);
+        final fake = _Site(
+          site: 1,
+          gateway: 1,
+          fleet: [
+            {
+              'site_id': 80,
+              'gateway_id': 1,
+              'last_seen_mac': 'A0:DD:6C:A3:70:F0',
+              'online': ?online,
+            },
+          ],
+        );
+        await _pump(tester, fake);
+        await _typeSite80(tester);
+        expect(_assignment(tester), '將配置為 站點 80 / 閘道器 2');
+        await _tap(tester, find.byKey(const Key('station-use')));
+        final taken = find.byKey(const Key('number-taken'));
+        expect(taken, findsOneWidget);
+        expect(find.byKey(const Key('number-taken-next')), findsOneWidget);
+        if (online == true) {
+          expect(find.byKey(const Key('number-taken-replace')), findsNothing);
+          expect(
+            find.descendant(
+              of: taken,
+              matching: find.textContaining(numberTakenOnlineText(1)),
+            ),
+            findsOneWidget,
+          );
+          await _tap(tester, find.byKey(const Key('number-taken-next')));
+          expect(fake.identities, [
+            {'site_id': 80, 'gateway_id': 2},
+          ]);
+          expect(fake.calls.where((c) => c.contains('force_replace')), isEmpty);
+        } else {
+          expect(find.byKey(const Key('number-taken-replace')), findsOneWidget);
+          expect(
+            find.descendant(
+              of: taken,
+              matching: find.textContaining(numberTakenReplaceHint(1)),
+            ),
+            findsOneWidget,
+          );
+          await _tap(tester, find.byKey(const Key('number-taken-replace')));
+          expect(
+            fake.calls,
+            contains(
+              'POST /api/gateways/80/1/reserve-identity'
+              '?mac=$_uid&force_replace=true',
+            ),
+          );
+          expect(fake.identities, [
+            {'site_id': 80, 'gateway_id': 1},
+          ]);
+        }
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    for (final online in [true, false]) {
+      testWidgets('the number taken between the station page and 〔儲存〕 '
+          '(「編號已被使用」), its holder ${online ? 'online' : 'offline'}: '
+          '〔取代舊機（沿用此編號）〕 ${online ? 'not offered' : 'offered'}', (
+        tester,
+      ) async {
+        _phoneView(tester);
+        final fake = _Site(site: 1, gateway: 1);
+        await _pump(tester, fake);
+        await _typeSite80(tester);
+        expect(_assignment(tester), '將配置為 站點 80 / 閘道器 1');
+        // 「改用其他 Wi-Fi」: the Wi-Fi page first.
+        await _tap(tester, find.byKey(const Key('wifi-change')));
+        await _tap(tester, find.byKey(const Key('new-site-ok')));
+        expect(find.byKey(const Key('wifi-save')), findsOneWidget);
+        fake.fleet.add({..._row(80, 1, 'A0:DD:6C:A3:70:F0'), 'online': online});
+        await tester.enterText(
+          find.widgetWithText(TextField, 'Wi-Fi 密碼'),
+          'pw123456',
+        );
+        await _tap(tester, find.byKey(const Key('wifi-save')));
+        final dialog = find.byKey(const Key('save-number-taken'));
+        expect(dialog, findsOneWidget);
+        expect(
+          find.byKey(const Key('save-number-taken-replace')),
+          online ? findsNothing : findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: dialog,
+            matching: find.textContaining(numberTakenOnlineText(1)),
+          ),
+          online ? findsOneWidget : findsNothing,
+        );
+        await _tap(
+          tester,
+          find.descendant(of: dialog, matching: find.text('取消')),
+        );
+        expect(fake.identities, isEmpty);
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    testWidgets('another station typed clears the old gateway chosen — also '
+        'when 〔使用站點〕 comes before the lookup', (tester) async {
+      _phoneView(tester);
+      // 82 is known to the back office (no 「確定是新站？」 in between).
+      final fake = _Site(
+        site: 1,
+        gateway: 1,
+        fleet: [..._swap80(), _row(82, 5, '11:22:33:44:55:82')],
+      );
+      await _pump(tester, fake);
+      await _typeSite80(tester);
+      await _chooseSwap1(tester);
+      expect(_assignment(tester), '將配置為 站點 80 / 閘道器 1（取代舊機 …70F0）');
       await tester.enterText(
         find.widgetWithText(TextField, siteFieldLabel),
         '81',
@@ -882,25 +1180,17 @@ void main() {
       await tester.pump(const Duration(milliseconds: 600));
       await tester.pumpAndSettle();
       expect(_assignment(tester), '將配置為 站點 81 / 閘道器 1');
-      expect(tester.takeException(), isNull);
-    });
-
-    testWidgets('a number picked for 80, then 82 typed and 〔使用站點 82〕 '
-        'pressed before the lookup: 82 gets its own automatic number', (
-      tester,
-    ) async {
-      _phoneView(tester);
-      // 82 is known to the back office (no 「確定是新站？」 in between).
-      final fake = _Site(
-        site: 1,
-        gateway: 1,
-        fleet: [..._station80(), _row(82, 5, '11:22:33:44:55:82')],
+      expect(find.byKey(const Key('gateway-swap')), findsOneWidget);
+      // Back on 80: its automatic number, not the old gateway chosen before.
+      await tester.enterText(
+        find.widgetWithText(TextField, siteFieldLabel),
+        '80',
       );
-      await _pump(tester, fake);
-      await _typeSite80(tester);
-      await _tap(tester, find.byKey(const Key('gateway-number-change')));
-      await _tap(tester, find.byKey(const ValueKey('gateway-number-9')));
-      expect(_assignment(tester), '將配置為 站點 80 / 閘道器 9');
+      await tester.pump(const Duration(milliseconds: 600));
+      await tester.pumpAndSettle();
+      expect(_assignment(tester), '將配置為 站點 80 / 閘道器 3');
+
+      await _chooseSwap1(tester);
       await tester.enterText(
         find.widgetWithText(TextField, siteFieldLabel),
         '82',
@@ -913,6 +1203,54 @@ void main() {
       expect(fake.identities, [
         {'site_id': 82, 'gateway_id': 1},
       ]);
+      expect(fake.calls.where((c) => c.contains('force_replace')), isEmpty);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('done page: 「請在機殼上標示：站 80 · 閘道器 2」 in large type '
+        'on the first screen, nothing to press', (tester) async {
+      _phoneView(tester);
+      final fake = _Site(site: 1, gateway: 1);
+      final container = await _pump(tester, fake);
+      await tester.runAsync(() async {
+        final c = container.read(commissionProvider.notifier);
+        await c.scan();
+        await c.connect(container.read(commissionProvider).peers.single);
+        await c.configureWifi(80, 2, 'Xiaomi_WU', '');
+        await c.online();
+        await c.discover();
+        await c.configurePtus();
+      });
+      await tester.pumpAndSettle();
+      expect(container.read(commissionProvider).step, 7);
+      final card = find.byKey(const Key('done-label'));
+      expect(card, findsOneWidget);
+      expect(
+        find.descendant(of: card, matching: find.text(doneLabelHead)),
+        findsOneWidget,
+      );
+      final id = find.descendant(of: card, matching: find.text('站 80 · 閘道器 2'));
+      expect(id, findsOneWidget);
+      expect(
+        find.descendant(of: card, matching: find.text(doneLabelHint)),
+        findsOneWidget,
+      );
+      expect(doneLabelHead, '請在機殼上標示：');
+      expect(doneLabelHint, '後台人員靠這個標示找到這台');
+      final semantics = tester.ensureSemantics();
+      expect(find.bySemanticsLabel('請在機殼上標示：站 80 · 閘道器 2'), findsOneWidget);
+      semantics.dispose();
+      expect(tester.widget<Text>(id).style?.fontSize, greaterThanOrEqualTo(22));
+      expect(
+        find.descendant(
+          of: card,
+          matching: find.byWidgetPredicate(
+            (w) => w is ButtonStyleButton || w is InkWell,
+          ),
+        ),
+        findsNothing,
+      );
+      expect(tester.getRect(card).bottom, lessThan(640));
       expect(tester.takeException(), isNull);
     });
   });

@@ -61,9 +61,12 @@ class _TwoGateways extends DemoSystem {
   ];
 }
 
-/// 1.0.0+12: [_TwoGateways] with station 80's gateways 1 and 2 held by
-/// other devices (the number picker's 「已使用」).
-class _NumberedGateways extends _TwoGateways {
+/// 1.0.0+13: [_TwoGateways] with station 80's gateways 1 and 2 held by
+/// other devices — 1 offline for 3 hours ([offline]; else online too, the
+/// sheet's 「本站沒有離線的閘道器可以取代」), 2 online.
+class _SwapGateways extends _TwoGateways {
+  _SwapGateways({this.offline = true});
+  final bool offline;
   static const _held = {1: '11:22:33:44:55:01', 2: '11:22:33:44:55:02'};
 
   @override
@@ -88,7 +91,15 @@ class _NumberedGateways extends _TwoGateways {
           ...result['gateways'] as List,
           if (site == null || site == '80')
             for (final e in _held.entries)
-              {'site_id': 80, 'gateway_id': e.key, 'last_seen_mac': e.value},
+              {
+                'site_id': 80,
+                'gateway_id': e.key,
+                'last_seen_mac': e.value,
+                'online': !(offline && e.key == 1),
+                'last_heartbeat': DateTime.now()
+                    .subtract(const Duration(hours: 3))
+                    .toIso8601String(),
+              },
         ],
       };
     }
@@ -532,18 +543,21 @@ void main() {
     await _run(tester, container, (c) => c.configurePtus());
     expect(read().step, 7);
     expect(read().verified, isTrue);
+    // 1.0.0+13: 「請在機殼上標示：」 and 「站 80 · 閘道器 1」 in large type.
+    expect(find.byKey(const Key('done-label')), findsOneWidget);
     await _checkPage(tester, 'done');
     await tester.pumpWidget(const SizedBox());
   });
 
-  // 1.0.0+12: 「將配置為 站點 80 / 閘道器 3」 with 〔修改〕, and the number
-  // picker (「已使用」 on 1 and 2; offline 「目前無法檢查是否重複」).
+  // 1.0.0+13: 「將配置為 站點 80 / 閘道器 3」 with 〔這台是來換掉壞掉的舊機〕
+  // (offline: 「換機需要連上網路」), its sheet (an offline gateway 1, or
+  // none) and the confirmation.
   for (final offline in [false, true]) {
-    testWidgets('station with 〔修改〕 and the number picker'
-        '${offline ? ' (offline)' : ''}', (tester) async {
+    testWidgets('station with 〔這台是來換掉壞掉的舊機〕'
+        '${offline ? ' (offline: 換機需要連上網路)' : ''}', (tester) async {
       final container = offline
-          ? await _pumpApp(tester, _NumberedGateways())
-          : await _toList(tester, fake: _NumberedGateways());
+          ? await _pumpApp(tester, _SwapGateways())
+          : await _toList(tester, fake: _SwapGateways());
       CommissionState read() => container.read(commissionProvider);
       await _run(tester, container, (c) async {
         if (offline) {
@@ -561,25 +575,62 @@ void main() {
       );
       await tester.pump(const Duration(milliseconds: 600));
       await tester.pumpAndSettle();
-      final change = find.byKey(const Key('gateway-number-change'));
-      expect(change, findsOneWidget);
-      await _checkPage(tester, 'station with 〔修改〕${offline ? ' offline' : ''}');
-      await tester.ensureVisible(change);
-      await tester.pumpAndSettle();
-      await tester.tap(change);
-      await tester.pumpAndSettle();
-      expect(find.byKey(const Key('gateway-number-picker')), findsOneWidget);
       expect(
-        find.byKey(const ValueKey('gateway-number-used-1')),
+        find.byKey(const Key('gateway-swap')),
         offline ? findsNothing : findsOneWidget,
       );
       expect(
-        find.byKey(const Key('gateway-number-unchecked')),
+        find.byKey(const Key('gateway-swap-offline')),
         offline ? findsOneWidget : findsNothing,
       );
-      await _checkPage(tester, 'number picker${offline ? ' offline' : ''}');
+      await _checkPage(tester, 'station with 換機${offline ? ' offline' : ''}');
       await tester.pumpWidget(const SizedBox());
     });
+  }
+
+  for (final none in [false, true]) {
+    testWidgets(
+      '換機 sheet (${none ? 'no offline gateway' : 'gateway 1 '
+                'offline'})${none ? '' : ' and its confirmation'}',
+      (tester) async {
+        final container = await _toList(
+          tester,
+          fake: _SwapGateways(offline: !none),
+        );
+        await _run(tester, container, (c) async {
+          await c.scan();
+          await c.connect(_demoPeer(container));
+        });
+        await tester.enterText(
+          find.widgetWithText(TextField, siteFieldLabel),
+          '80',
+        );
+        await tester.pump(const Duration(milliseconds: 600));
+        await tester.pumpAndSettle();
+        final swap = find.byKey(const Key('gateway-swap'));
+        await tester.ensureVisible(swap);
+        await tester.pumpAndSettle();
+        await tester.tap(swap);
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('gateway-swap-sheet')), findsOneWidget);
+        expect(
+          find.byKey(const Key('gateway-swap-none')),
+          none ? findsOneWidget : findsNothing,
+        );
+        expect(
+          find.byKey(const ValueKey('gateway-swap-1')),
+          none ? findsNothing : findsOneWidget,
+        );
+        await _checkPage(tester, '換機 sheet${none ? ' (none)' : ''}');
+        if (!none) {
+          await tester.tap(find.byKey(const ValueKey('gateway-swap-1')));
+          await tester.pumpAndSettle();
+          expect(find.byKey(const Key('swap-confirm')), findsOneWidget);
+          await _checkPage(tester, '換機 confirmation');
+        }
+        await tester.pumpWidget(const SizedBox());
+      },
+    );
   }
 
   testWidgets('verify page (offline run: the data check waits)', (

@@ -267,9 +267,23 @@ void main() {
           startsWith('資料上傳：✓ 資料上傳中'),
         );
         // Everything else is below the summary; no 結束並重新選擇閘道器.
+        // 1.0.0+13: the summary's label card (「請在機殼上標示：…」) pushes
+        // it further down at font 1.3 — scrolled to (the page builds
+        // lazily).
         final status = find.byKey(const Key('connection-status-ok'));
+        final page = find
+            .descendant(
+              of: find.byType(ListView).first,
+              matching: find.byType(Scrollable),
+            )
+            .first;
+        await tester.scrollUntilVisible(status, 100, scrollable: page);
         expect(status, findsOneWidget);
-        expect(tester.getRect(status).top, greaterThan(summary.bottom - 1));
+        final scrolled = tester.state<ScrollableState>(page).position.pixels;
+        expect(
+          tester.getRect(status).top + scrolled,
+          greaterThan(summary.bottom - 1),
+        );
         expect(find.byKey(const Key('page-cancel')), findsNothing);
         expect(find.byKey(const Key('step-title')), findsNothing);
         expect(container.read(commissionProvider).step, 7);
