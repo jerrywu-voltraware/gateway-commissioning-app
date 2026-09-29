@@ -22,6 +22,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:gateway_commissioning/application/commissioning_controller.dart';
 import 'package:gateway_commissioning/core/gateway_proximity.dart';
+import 'package:gateway_commissioning/core/protocol.dart';
 import 'package:gateway_commissioning/data/contracts.dart';
 import 'package:gateway_commissioning/data/demo_system.dart';
 import 'package:gateway_commissioning/gateway_app.dart';
@@ -30,8 +31,11 @@ import 'package:gateway_commissioning/presentation/gateway_discovery.dart';
 /// A live scan per start; the first [endAtOnce] scans end at once with
 /// nothing heard (the phone's scan that 「stopped」 by itself).
 class _Sessions extends DemoSystem implements GatewayScanner {
-  _Sessions({this.endAtOnce = 0});
+  _Sessions({this.endAtOnce = 0, this.failWith});
   final int endAtOnce;
+
+  /// The first scan fails with it (then ends, as the phone's link does).
+  final Object? failWith;
   final sessions = <StreamController<List<GatewayPeer>>>[];
   int stops = 0;
 
@@ -39,7 +43,12 @@ class _Sessions extends DemoSystem implements GatewayScanner {
   Stream<List<GatewayPeer>> scanLive() {
     final scan = StreamController<List<GatewayPeer>>();
     sessions.add(scan);
-    if (sessions.length <= endAtOnce) unawaited(scan.close());
+    if (sessions.length == 1 && failWith != null) {
+      scan.addError(failWith!);
+      unawaited(scan.close());
+    } else if (sessions.length <= endAtOnce) {
+      unawaited(scan.close());
+    }
     return scan.stream;
   }
 
@@ -72,12 +81,16 @@ String? _text(WidgetTester tester, Finder finder) =>
 double? _value(WidgetTester tester) =>
     tester.widget<LinearProgressIndicator>(_bar).value;
 
-Future<_Sessions> _pumpList(WidgetTester tester, {int endAtOnce = 0}) async {
+Future<_Sessions> _pumpList(
+  WidgetTester tester, {
+  int endAtOnce = 0,
+  Object? failWith,
+}) async {
   tester.view.physicalSize = const Size(360, 900);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
-  final link = _Sessions(endAtOnce: endAtOnce);
+  final link = _Sessions(endAtOnce: endAtOnce, failWith: failWith);
   await tester.pumpWidget(
     ProviderScope(
       overrides: [linkProvider.overrideWithValue(link)],
@@ -291,6 +304,45 @@ void main() {
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
   });
+
+  // A failed scan is not 「nothing found」: never searched again by itself,
+  // its error and guidance stay.
+  for (final (name, error, text, settings) in [
+    (
+      'Bluetooth off',
+      const GatewayFailure('bluetooth_off') as Object,
+      '請開啟手機藍牙後重試',
+      false,
+    ),
+    (
+      'permission denied',
+      const GatewayFailure('permission') as Object,
+      '需要藍牙權限',
+      true,
+    ),
+    ('a scan exception', StateError('scan broke') as Object, '搜尋失敗', true),
+  ]) {
+    testWidgets('$name: no second search, the error stays', (tester) async {
+      final link = await _pumpList(tester, failWith: error);
+      await _settle(tester);
+      expect(find.textContaining(text), findsOneWidget);
+      expect(_progressArea, findsNothing);
+      expect(find.text(gatewayRetryingText), findsNothing);
+      await _wait(tester, const Duration(seconds: 20));
+      expect(link.sessions, hasLength(1), reason: 'not searched again');
+      expect(find.textContaining(text), findsOneWidget);
+      expect(find.text(gatewayRetryingText), findsNothing);
+      expect(_notFound, findsNothing);
+      expect(_rescanMain, findsNothing);
+      expect(
+        find.byKey(const Key('gateway-open-settings')),
+        settings ? findsOneWidget : findsNothing,
+      );
+      expect(find.text('重新搜尋'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
 
   testWidgets('no filter box', (tester) async {
     final link = await _pumpList(tester);

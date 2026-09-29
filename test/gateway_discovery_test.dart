@@ -178,82 +178,78 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     },
   );
-  testWidgets(
-    'compact rows list many devices and update RSSI without moving',
-    (tester) async {
-      final link = LiveLink();
-      addTearDown(link.events.close);
-      tester.view.physicalSize = const Size(360, 900);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [linkProvider.overrideWithValue(link)],
-          child: MaterialApp(
-            home: Scaffold(
-              body: SingleChildScrollView(
-                child: Padding(
-                  padding: const EdgeInsets.all(40),
-                  child: GatewayDiscovery(
-                    enabled: true,
-                    onConnect: (_) async {},
-                  ),
-                ),
+  testWidgets('compact rows list many devices and update RSSI without moving', (
+    tester,
+  ) async {
+    final link = LiveLink();
+    addTearDown(link.events.close);
+    tester.view.physicalSize = const Size(360, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [linkProvider.overrideWithValue(link)],
+        child: MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.all(40),
+                child: GatewayDiscovery(enabled: true, onConnect: (_) async {}),
               ),
             ),
           ),
         ),
-      );
-      await tester.pump();
-      final peers = List.generate(
-        30,
-        (i) => GatewayPeer('AA:BB:CC:DD:EE:$i', 'GIOS-S80-GW$i', -60),
-      );
-      link.events.add(peers);
-      await tester.pump();
-      expect(
-        tester.getSize(find.byKey(const ValueKey('AA:BB:CC:DD:EE:0'))).height,
-        lessThanOrEqualTo(90),
-      );
-      final before = tester.getTopLeft(find.text('GIOS-S80-GW0'));
-      // Reading noise (2 dB) moves nothing.
-      link.events.add([
-        const GatewayPeer('AA:BB:CC:DD:EE:29', 'GIOS-S80-GW29', -58),
-        ...peers.take(29),
-      ]);
-      await tester.pump();
-      expect(tester.getTopLeft(find.text('GIOS-S80-GW0')), before);
-      // Round 30: a clearly stronger one rises to the top, marked nearest.
-      link.events.add([
-        const GatewayPeer('AA:BB:CC:DD:EE:29', 'GIOS-S80-GW29', -30),
-        ...peers.take(29),
-      ]);
-      await tester.pump();
-      expect(
-        tester.getTopLeft(find.text('站 80 · 閘道器 29')).dy,
-        lessThan(tester.getTopLeft(find.text('GIOS-S80-GW0')).dy),
-      );
-      expect(
-        find.byKey(const ValueKey('gateway-nearest-AA:BB:CC:DD:EE:29')),
-        findsOneWidget,
-      );
-      // 1.0.0+17: no filter box — every gateway heard stays listed.
-      expect(find.byType(TextField), findsNothing);
-      expect(
-        find.byWidgetPredicate(
-          (w) =>
-              w is Card &&
-              w.key is ValueKey<String> &&
-              (w.key as ValueKey<String>).value.startsWith('gateway-card-'),
-        ),
-        findsNWidgets(30),
-      );
-      expect(find.text('-30 dBm'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-      await tester.pumpWidget(const SizedBox());
-    },
-  );
+      ),
+    );
+    await tester.pump();
+    final peers = List.generate(
+      30,
+      (i) => GatewayPeer('AA:BB:CC:DD:EE:$i', 'GIOS-S80-GW$i', -60),
+    );
+    link.events.add(peers);
+    await tester.pump();
+    expect(
+      tester.getSize(find.byKey(const ValueKey('AA:BB:CC:DD:EE:0'))).height,
+      lessThanOrEqualTo(90),
+    );
+    final before = tester.getTopLeft(find.text('GIOS-S80-GW0'));
+    // Reading noise (2 dB) moves nothing.
+    link.events.add([
+      const GatewayPeer('AA:BB:CC:DD:EE:29', 'GIOS-S80-GW29', -58),
+      ...peers.take(29),
+    ]);
+    await tester.pump();
+    expect(tester.getTopLeft(find.text('GIOS-S80-GW0')), before);
+    // Round 30: a clearly stronger one rises to the top, marked nearest.
+    link.events.add([
+      const GatewayPeer('AA:BB:CC:DD:EE:29', 'GIOS-S80-GW29', -30),
+      ...peers.take(29),
+    ]);
+    await tester.pump();
+    expect(
+      tester.getTopLeft(find.text('站 80 · 閘道器 29')).dy,
+      lessThan(tester.getTopLeft(find.text('GIOS-S80-GW0')).dy),
+    );
+    expect(
+      find.byKey(const ValueKey('gateway-nearest-AA:BB:CC:DD:EE:29')),
+      findsOneWidget,
+    );
+    // 1.0.0+17: no filter box — every gateway heard stays listed.
+    expect(find.byType(TextField), findsNothing);
+    expect(
+      find.byWidgetPredicate(
+        (w) =>
+            w is Card &&
+            w.key is ValueKey<String> &&
+            (w.key as ValueKey<String>).value.startsWith('gateway-card-'),
+      ),
+      findsNWidgets(30),
+    );
+    expect(find.text('-30 dBm'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
   testWidgets(
     'rapid foreground return waits for scanner cleanup then restarts',
     (tester) async {

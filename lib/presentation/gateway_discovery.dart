@@ -425,6 +425,10 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
   /// 1.0.0+10: the last scan failed for want of a permission (or a
   /// location service) — only then 〔開啟權限設定〕 is shown.
   bool _needsSettings = false;
+
+  /// 1.0.0+17: the running scan failed (any error, not 「nothing heard」):
+  /// its search is not run again by itself.
+  bool _scanFailed = false;
   bool _scanning = false, _selecting = false;
 
   /// 1.0.0+9: the gateway 〔辨識〕 just blinked (「已閃燈」 on its row).
@@ -635,16 +639,18 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
 
   /// 1.0.0+17: the search's window is over (or its scan ended by itself):
   /// gateways heard — the scan goes on, one line says so; none — once more
-  /// after [gatewayRescanDelay] (not when a permission is missing), then
-  /// [gatewayNotFoundText] and the scan stops.
+  /// after [gatewayRescanDelay], then [gatewayNotFoundText] and the scan
+  /// stops. A scan that failed ([_scanFailed]: permission, location or
+  /// Bluetooth off, any error) is never searched again by itself — its
+  /// error and guidance stay.
   void _searchOver() {
     if (!mounted || _search != _Search.searching) return;
     _progress.stop();
-    if (_heardPeers(_heardClock()).isNotEmpty) {
+    if (_scanFailed || _heardPeers(_heardClock()).isNotEmpty) {
       setState(() => _search = _Search.idle);
       return;
     }
-    if (_attempt < 2 && !_needsSettings) {
+    if (_attempt < 2) {
       setState(() => _search = _Search.retrying);
       unawaited(_stop());
       _retryTimer?.cancel();
@@ -824,6 +830,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
       _live = {};
       _error = null;
       _needsSettings = false;
+      _scanFailed = false;
     });
     if (_search == _Search.searching) unawaited(_progress.forward());
     unawaited(_loadBackend());
@@ -873,7 +880,10 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
             error is! GatewayFailure ||
             error.code == 'permission' ||
             error.code == 'location_off';
+        _scanFailed = true;
       });
+      // 1.0.0+17: a failed scan ends its search now (no second search).
+      _searchOver();
     }
 
     if (link is GatewayScanner) {
