@@ -4,7 +4,7 @@
 // design never restores one by itself. The APP now asks instead of waiting:
 // 1. The station page: a number archived for this gateway asks 「這台閘道器
 //    之前在後台被移除（封存），要重新加入嗎？」 — 〔重新加入並繼續〕 restores
-//    it (PATCH restore, then reserve-identity) and carries on;
+//    it (reserve-identity provisions MQTT, then PATCH restore) and carries on;
 //    〔改用其他站號〕 opens the input with nothing sent.
 // 2. 確認上線: 60 s without heartbeats and the back office says archived →
 //    it stops on that item with the reason and 〔重新加入〕 in the bottom
@@ -215,7 +215,7 @@ void main() {
 
   group('1. the station page', () {
     testWidgets('〔使用此站點〕 on an archived station asks first; '
-        '〔重新加入並繼續〕 restores it, then reserves it, and carries on', (
+        '〔重新加入並繼續〕 reserves it, then restores it, and carries on', (
       tester,
     ) async {
       _phoneView(tester);
@@ -254,7 +254,8 @@ void main() {
         (c) => c.startsWith('POST $_path/reserve-identity?mac=AABBCCDDEEFF'),
       );
       expect(restore, greaterThanOrEqualTo(0));
-      expect(reserve, greaterThan(restore), reason: 'restore, then reserve');
+      expect(reserve, greaterThanOrEqualTo(0));
+      expect(reserve, lessThan(restore), reason: 'provision, then restore');
       expect(fake.api('PATCH $_path/restore'), 1);
       expect(fake.archived, isFalse);
       final s = container.read(commissionProvider);
@@ -356,11 +357,11 @@ void main() {
       expect(fake.api('PATCH $_path/restore'), 1);
       final restore = fake.calls.indexOf('PATCH $_path/restore');
       expect(
-        fake.calls.indexWhere(
+        fake.calls.lastIndexWhere(
           (c) => c.startsWith('POST $_path/reserve-identity'),
           restore,
         ),
-        greaterThan(restore),
+        allOf(greaterThan(start), lessThan(restore)),
       );
       expect(tester.takeException(), isNull);
     });

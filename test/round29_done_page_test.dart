@@ -188,6 +188,8 @@ Future<ProviderContainer> _pumpDeferredDone(
     await c.connect(container.read(commissionProvider).peers.single);
     await c.passNetworkCheck(skip: true);
     await c.configureWifi(80, 2, 'Office-2G', 'password123');
+    // Provisioning logs in; this fixture intentionally continues offline.
+    c.backendChanged('https://offline-fixture.invalid');
     await c.online(skip: true);
     await c.finishWithoutPtu();
   });

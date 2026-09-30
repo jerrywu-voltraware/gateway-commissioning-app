@@ -1,0 +1,19 @@
+# MQTT account provisioning progress (2026-09-30)
+
+- [x] Traced identity changes, replacement, archived rejoin, Wi-Fi-only, and offline resume paths. Normal configuration previously reserved the identity only after changing the gateway.
+- [x] Added selected-backend session restoration/login before identity reservation; normal and replacement configuration now reserve before writing identity or Wi-Fi. Wi-Fi-only paths retain their existing behavior.
+- [x] Added account recovery when the online check logs in after an older offline configuration. Archived identities still require explicit rejoin; failed recovery remains pending for retry.
+- [x] Independent review found that archived rejoin must provision before unarchiving. The order is now reserve-identity then PATCH restore; a 503 leaves the identity archived. Added a failure/retry test and updated the existing order assertions.
+- [x] Initial focused tests: 57 passed across mqtt_account_provisioning, gateway_numbering, wifi_first, and archived_rejoin. The new account-provisioning file now contains 14 tests including the subsequent archived-rejoin regression.
+- [x] Flutter analysis: no issues found. An initial style warning in the new test was corrected before this passing run.
+- [x] Whitespace check passed. Added content was compared with existing secret values in memory; match count was zero and no secret values were printed.
+- [x] The first full-suite attempt reached 1115 passing tests but exposed old offline widget fixtures: account provisioning now logs in, so their later pages automatically verify and advance. The attempt was stopped after collecting failures. In 13 existing test files, 19 setup paths now explicitly return to an offline backend after successful provisioning; their original assertions are preserved. Production state transitions were not altered to accommodate these fixtures.
+- [x] Only wait for backend environment loading when its state is not already loaded. Awaiting an already completed future across widget-test fake/real async zones had stalled a direct-mode fixture; that fixture now also loads the environment before entering the real async zone. Its isolated regression passed.
+- [x] The next full suite completed with 1178 successful non-loading JSON events and one additional offline fixture failure in round23. That fixture was corrected; its two related widget cases passed.
+- [x] Final full suite: `flutter test --reporter json --timeout 60s`, exit code 0, no failed tests. The wrapper counted 1179 successful non-loading `testDone` events; this includes framework setup/teardown events and is not the visible test-case count.
+- [x] Final `flutter analyze`: no issues, exit code 0. Final `git diff --check`: exit code 0. Final added-content secret scan: zero matches. No hardware acceptance has been performed.
+- [x] Parent integration read-back and independent source review passed. The parent will commit this source and build a signed production APK; phone installation, deployment, push, and hardware acceptance remain separate.
+
+The APP build number is 1.0.0+22. Gateway numbering remains 1-50; site numbering remains 1-65535. Final commit and APK evidence are recorded in the workspace-level `docs/test_results/MQTT_ACCOUNTS_2026-09-30.md`.
+
+After installation is separately authorized, hardware acceptance must cover an unused station such as 199, upper-bound station 65535, provisioning failure without identity/Wi-Fi changes, a phone Bluetooth interruption, and killing/reopening the APP to resume. Unit/widget tests do not replace those checks.

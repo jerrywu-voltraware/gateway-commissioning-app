@@ -2309,6 +2309,9 @@ class CommissioningController extends Notifier<CommissionState> {
   bool _pendingReplace = false;
   bool get pendingReplace => _pendingReplace;
 
+  // Keep a failed legacy/offline account recovery pending across retries.
+  bool _onlineReservationPending = false;
+
   /// Round 26 (field: a neighbouring gateway's own Bluetooth advertisement
   /// listed as 「未指派 PTU」 and preselected; in direct mode the gateway
   /// connected it): Bluetooth MACs known to be gateways — the phone's
@@ -4828,17 +4831,39 @@ class CommissioningController extends Notifier<CommissionState> {
     return ref.mounted && state.error == null;
   }
 
-  /// `PATCH restore` (no join_fleet: monitoring is joined at step 8 as
-  /// usual), then `reserve-identity` with this gateway's MAC.
+  /// Account provisioning must finish before the gateway changes identity.
+  /// Reuse the selected backend's saved session, then its built-in login.
+  Future<void> _ensureIdentityLogin(int generation) async {
+    if (_loggedIn) return;
+    if (!ref.read(backendEnvProvider).loaded) {
+      await ref.read(backendEnvProvider.notifier).ready;
+    }
+    _check(generation);
+    final base = ref.read(backendEnvProvider).base.trim();
+    if (await restoreSession(base)) {
+      _check(generation);
+      return;
+    }
+    _check(generation);
+    final secret = _passwordFor(base, null);
+    _backend = describeBackend(Uri.tryParse(base));
+    await _api.login(base, secret);
+    _check(generation);
+    _loginOk(base, secret);
+  }
+
+  /// Provision MQTT first so failure keeps the station archived. Restore
+  /// only after reservation succeeds; monitoring is joined at step 8.
   Future<void> _rejoin(int generation, int forSite, int forGateway) async {
     final path = '/api/gateways/$forSite/$forGateway';
-    await _request(generation, 'PATCH', '$path/restore');
     final uid = state.config['gateway_uid']?.toString() ?? '';
     await _request(
       generation,
       'POST',
       '$path/reserve-identity?mac=${Uri.encodeComponent(uid)}',
     );
+    await _request(generation, 'PATCH', '$path/restore');
+    _onlineReservationPending = false;
     state = state.copy(identityArchived: false, error: state.error);
   }
 
@@ -4889,7 +4914,8 @@ class CommissioningController extends Notifier<CommissionState> {
         password.isEmpty ? 'wifi_password_needed' : 'wifi_failed',
       );
     }
-    if (_loggedIn && !wifiOnly && !replaceExisting) {
+    if (!wifiOnly) await _ensureIdentityLogin(generation);
+    if (!wifiOnly && !replaceExisting) {
       final check = await _request(
         generation,
         'GET',
@@ -4902,28 +4928,31 @@ class CommissioningController extends Notifier<CommissionState> {
         throw const GatewayFailure('conflict');
       }
     }
-    // 「取代舊機」：先讓後端承認覆寫（force_replace），成功才動裝置；後端不支援
-    // （409 / 不認得參數）就中止，不呼叫 set_site_identity，裝置維持原樣。
-    if (_loggedIn && !wifiOnly && replaceExisting) {
+    // The reservation also provisions MQTT. A failure must leave the
+    // gateway's identity and Wi-Fi unchanged, including replacements.
+    if (!wifiOnly) {
       try {
         await _request(
           generation,
           'POST',
           '/api/gateways/$newSite/$newGateway/reserve-identity'
               '?mac=${Uri.encodeComponent(state.config['gateway_uid']?.toString() ?? '')}'
-              '&force_replace=true',
+              '${replaceExisting ? '&force_replace=true' : ''}',
         );
       } on GatewayFailure catch (error) {
         // 409 identity_conflict（force_replace 未生效或後端仍拒絕）或後端不認得
         // force_replace 參數（同樣以一般 4xx 回應）都視為不支援取代。
-        if (error.code == 'api' && (error.status ?? 0) < 500) {
+        if (replaceExisting &&
+            error.code == 'api' &&
+            (error.status ?? 0) < 500) {
           throw const GatewayFailure('replace_unsupported');
         }
         rethrow;
       }
       // Backend has granted the replacement; only writing it to the device
       // is left. A failure past this point must not re-run the reserve.
-      _pendingReplace = true;
+      if (replaceExisting) _pendingReplace = true;
+      _onlineReservationPending = false;
     }
     final identityChanged = newSite != site || newGateway != gateway;
     if (identityChanged) {
@@ -5051,13 +5080,6 @@ class CommissioningController extends Notifier<CommissionState> {
       );
       return;
     }
-    if (_loggedIn && !replaceExisting) {
-      await _request(
-        generation,
-        'POST',
-        '$_path/reserve-identity?mac=${Uri.encodeComponent(state.config['gateway_uid']?.toString() ?? '')}',
-      );
-    }
     _pendingReplace = false;
     state = state.copy(
       step: 3,
@@ -5167,6 +5189,7 @@ class CommissioningController extends Notifier<CommissionState> {
     if (!skip) _setChecklist(onlineChecklist().start(onlineItemBackend));
     // A failed 〔重新加入〕 keeps it (the bottom bar offers it again).
     if (!rejoin) state = state.copy(identityArchived: false);
+    if (!_loggedIn) _onlineReservationPending = true;
     final secret = base == null ? '' : _passwordFor(base, password);
     if (!skip && !_loggedIn && base != null && secret.isNotEmpty) {
       _backend = describeBackend(Uri.tryParse(base.trim()));
@@ -5189,6 +5212,24 @@ class CommissioningController extends Notifier<CommissionState> {
           kind: ChecklistKind.online,
         );
         rethrow;
+      }
+    }
+    // An older APP could change the identity while offline. Once it logs
+    // in here, provision that identity before waiting for MQTT heartbeats.
+    // Archived identities still require the explicit rejoin action.
+    if (_onlineReservationPending && !rejoin) {
+      final identity = await _request(
+        generation,
+        'GET',
+        '$_path/check-identity',
+      );
+      if (identity['archived'] != true) {
+        await _request(
+          generation,
+          'POST',
+          '$_path/reserve-identity?mac=${Uri.encodeComponent(state.config['gateway_uid']?.toString() ?? '')}',
+        );
+        _onlineReservationPending = false;
       }
     }
     await _command(generation, 'heartbeat_boost', {'duration': 300});

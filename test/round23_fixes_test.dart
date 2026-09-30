@@ -246,6 +246,8 @@ void main() {
         await c.scan();
         await c.connect(container.read(commissionProvider).peers.single);
         await c.configureWifi(1, 1, 'Office-2G', 'pw123456');
+        // Provisioning logs in; this fixture intentionally continues offline.
+        c.backendChanged('https://offline-fixture.invalid');
         await c.online(skip: true);
         await c.discover();
       });

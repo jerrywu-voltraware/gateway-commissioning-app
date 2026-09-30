@@ -283,6 +283,8 @@ void main() {
       await tester.runAsync(
         () => c.configureWifi(1, 1, 'Office-2G', 'pw123456'),
       );
+      // Provisioning logs in; this fixture intentionally continues offline.
+      c.backendChanged('https://offline-fixture.invalid');
       await c.online(skip: true);
       await c.discover();
       fake.dropsAt.add(1);
@@ -430,6 +432,8 @@ void main() {
         await c.scan();
         await c.connect(container.read(commissionProvider).peers.single);
         await c.configureWifi(1, 1, 'Office-2G', 'pw123456');
+        // Provisioning logs in; this fixture intentionally continues offline.
+        c.backendChanged('https://offline-fixture.invalid');
         await c.online(skip: true);
         await c.discover();
       });
@@ -519,6 +523,8 @@ void main() {
         await c.scan();
         await c.connect(container.read(commissionProvider).peers.single);
         await c.configureWifi(1, 1, 'Office-2G', 'pw123456');
+        // Provisioning logs in; this fixture intentionally continues offline.
+        c.backendChanged('https://offline-fixture.invalid');
         await c.online(skip: true);
         await c.discover();
       });

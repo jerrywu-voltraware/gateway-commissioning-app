@@ -60,6 +60,8 @@ Future<(ProviderContainer, CommissioningController)> atStep7(
   await c.scan();
   await c.connect(container.read(commissionProvider).peers.single);
   await tester.runAsync(() => c.configureWifi(1, 1, 'Office-2G', 'pw123456'));
+  // Provisioning logs in; this fixture intentionally continues offline.
+  c.backendChanged('https://offline-fixture.invalid');
   await c.online(skip: true);
   await c.discover();
   return (container, c);

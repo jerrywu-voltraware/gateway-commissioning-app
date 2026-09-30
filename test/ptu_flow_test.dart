@@ -262,6 +262,8 @@ void main() {
       await tester.runAsync(
         () => controller.configureWifi(1, 1, 'Office-2G', 'password123'),
       );
+      // Provisioning logs in; this fixture intentionally continues offline.
+      controller.backendChanged('https://offline-fixture.invalid');
       await controller.online(skip: true);
       await controller.discover();
       await tester.runAsync(controller.configurePtus);

@@ -131,6 +131,8 @@ Future<CommissioningController> _pileBToStep7(
   await c.connect(_peer(container, _gw2Ble));
   await c.passNetworkCheck(skip: true);
   await c.configureWifi(80, 2, 'Office-2G', 'password123');
+  // Provisioning logs in; this fixture intentionally continues offline.
+  c.backendChanged('https://offline-fixture.invalid');
   await c.online(skip: true);
   return c;
 }
@@ -199,6 +201,7 @@ Future<ProviderContainer> _pumpPileB(
   final container = ProviderScope.containerOf(
     tester.element(find.byType(GatewayApp)),
   );
+  await container.read(backendEnvProvider.notifier).ready;
   await tester.runAsync(() => _pileBToStep7(container));
   await tester.pump();
   return container;
