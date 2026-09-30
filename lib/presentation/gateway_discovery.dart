@@ -66,6 +66,9 @@ enum _Search {
 /// 1.0.0+8: the tile's badge for a gateway not yet configured.
 const gatewayUnconfiguredLabel = '未配置';
 
+/// No verified identity yet; absence of phone history is not unconfigured.
+const gatewayPendingLabel = '待核對';
+
 /// The identify button's tooltip (an icon since 1.0.0+8).
 const identifyGatewayLabel = '辨識閘道器';
 
@@ -919,7 +922,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
 
   /// r31: a remembered gateway the back office already knows (configured).
   bool _configured(String id) {
-    if (_backendAt == null) return false;
+    if (!_backendCurrent) return false;
     final uid = _recent.where((r) => r.peer.id == id).firstOrNull?.uid;
     return gatewayConfigured(uid, _fleet);
   }
@@ -1059,6 +1062,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     final found = heard == null || lost ? null : heard.peer;
     final last =
         recent ?? _recent.where((r) => r.peer.id == peer.id).firstOrNull;
+    final name = heard?.peer.name ?? peer.name;
     // 1.0.0+9: the back-office state as a short phrase (在線／離線／無紀錄／
     // 未知).
     final stale =
@@ -1066,7 +1070,12 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
         DateTime.now().difference(_backendAt!).inSeconds > 30;
     final presence = !ref.watch(commissionProvider).loggedIn || stale
         ? backendUnknownShort
-        : backendPresenceShort(last?.uid, _fleet, archived: _archived);
+        : backendPresenceShort(
+            last?.uid,
+            _fleet,
+            archived: _archived,
+            advertisedName: name,
+          );
     final configured = _configured(peer.id);
     // 1.0.0+11: never 「未收到廣播」 (wide: it cut the title) — the last RSSI
     // heard (grey while not live), 「—」 never heard, 「訊號中斷」 not heard
@@ -1082,7 +1091,6 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     // 閘道器 2」 as the title. 1.0.0+10: the advertised name (the live one:
     // a recent entry keeps the name it had) only when it does not parse —
     // the title says the same.
-    final name = heard?.peer.name ?? peer.name;
     // 1.0.0+12: 「未配置閘道器 …70F0」 for a gateway known not to be
     // configured (never an old identity it still advertises).
     final (:title, :unconfigured) = _titleOf(name, peer.id);
@@ -1119,7 +1127,9 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     // 3. 「…3A00」 (bodySmall); 1.0.0+14: 「✓ 已選取」 at its right end.
     final (badgeKey, badgeText) = configured
         ? ('gateway-configured-', gatewayConfiguredLabel)
-        : ('gateway-unconfigured-', gatewayUnconfiguredLabel);
+        : unconfigured
+        ? ('gateway-unconfigured-', gatewayUnconfiguredLabel)
+        : ('gateway-pending-', gatewayPendingLabel);
     // Always an Opacity (1 unless faded): the card's subtree is not built
     // anew when a connect starts.
     return Opacity(
@@ -1629,6 +1639,11 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
           ...nearby.map(tile),
         ],
         if (_backendAt != null) const Text('後端狀態每 15 秒更新，僅代表目前選擇的後端環境。'),
+        if (_backendCurrent)
+          const Text(
+            '沒有本機身分核對紀錄時，後端狀態只參考相同站號及閘道器編號；連線後再確認裝置身分。',
+            key: Key('gateway-backend-reference-note'),
+          ),
         // 1.0.0+9: the rows say 「後端未知」 only; the reason is this line.
         if (_backendAt == null && _backendError != null)
           Text(

@@ -372,10 +372,10 @@ void main() {
       final dbmRect = tester.getRect(find.text('-34 dBm'));
       expect((titleRect.center.dy - dbmRect.center.dy).abs(), lessThan(4));
       expect(dbmRect.left, greaterThanOrEqualTo(titleRect.right));
-      // Line 2: the marks as chips (labelMedium, 12 px): 「未配置」 and the
+      // Line 2: the marks as chips (labelMedium, 12 px): 「待核對」 and the
       // back office's short phrase.
       final badge = find.byKey(
-        const ValueKey('gateway-unconfigured-AA:BB:CC:DD:3B:02'),
+        const ValueKey('gateway-pending-AA:BB:CC:DD:3B:02'),
       );
       expect(badge, findsOneWidget);
       expect(
@@ -387,7 +387,7 @@ void main() {
             ?.fontSize,
         12,
       );
-      expect(find.text(gatewayUnconfiguredLabel), findsWidgets);
+      expect(find.text(gatewayPendingLabel), findsWidgets);
       expect(
         tester.getRect(badge).top,
         greaterThanOrEqualTo(
@@ -628,9 +628,7 @@ void main() {
         lessThanOrEqualTo(
           tester
               .getRect(
-                find.byKey(
-                  const ValueKey('gateway-unconfigured-AA:BB:CC:DD:3A:02'),
-                ),
+                find.byKey(const ValueKey('gateway-pending-AA:BB:CC:DD:3A:02')),
               )
               .left,
         ),

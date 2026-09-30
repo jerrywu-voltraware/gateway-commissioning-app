@@ -1929,6 +1929,11 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                     )
                   else
                     Card(
+                      // The busy indicator changes this ListView child's index
+                      // during identify. Keep the scanner's state and selection.
+                      key: state.step == 1
+                          ? const Key('gateway-discovery-card')
+                          : null,
                       child: Padding(
                         padding: EdgeInsets.all(selectingPtus ? 8 : 16),
                         child: Column(

@@ -91,11 +91,41 @@ String backendPresence(
 /// 1.0.0+9: the gateway list's short form of [backendPresence] — 「後端在線」
 /// ／「後端離線」／「後端無紀錄」／「後端已封存」／「後端未知」 (the reason
 /// stays in the list's footer line and the help panel).
+/// When no verified UID exists, [advertisedName] may show the backend record
+/// for that station/number as a reference. This never verifies the scanned
+/// device or changes [gatewayConfigured]; the UI must mark it pending identity
+/// verification. A known UID always takes precedence, including a mismatch.
 String backendPresenceShort(
   String? uid,
   List<dynamic> fleet, {
   List<dynamic> archived = const [],
+  String? advertisedName,
 }) {
+  if (gatewayUid(uid).length != 12 && advertisedName != null) {
+    final id = parseGatewayName(advertisedName);
+    // The shared factory name cannot identify a backend record.
+    if (id == null || isFactoryGatewayName(advertisedName)) {
+      return backendUnknownShort;
+    }
+    bool at(Map row) =>
+        row['site_id'] == id.site && row['gateway_id'] == id.gateway;
+    final matches = fleet.whereType<Map>().where(at).toList();
+    final removed = archived.whereType<Map>().where(at).toList();
+    if (matches.isEmpty && removed.isEmpty) return '後端無紀錄';
+    if (matches.isEmpty && removed.length == 1 && !_conflict(removed.single)) {
+      return '後端已封存';
+    }
+    if (matches.length != 1 ||
+        removed.isNotEmpty ||
+        _conflict(matches.single)) {
+      return backendUnknownShort;
+    }
+    return switch (matches.single['online']) {
+      true => '後端在線',
+      false => '後端離線',
+      _ => backendUnknownShort,
+    };
+  }
   final full = backendPresence(uid, fleet, archived: archived);
   if (full == '後端回報在線上') return '後端在線';
   if (full == '後端回報離線') return '後端離線';
