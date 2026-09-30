@@ -384,10 +384,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   /// 1.0.0+17: the search's progress (0→1 over [gatewaySearchWindow]);
   /// paused while the scan pauses (〔辨識〕, the background).
-  late final AnimationController _progress = AnimationController(
-    vsync: this,
-    duration: GatewayDiscovery.searchWindow,
-  )..addStatusListener(_progressStatus);
+  late final AnimationController _progress;
   var _search = _Search.idle;
 
   /// 1.0.0+17: 1 for the first search, 2 for the automatic second one.
@@ -479,6 +476,12 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
   @override
   void initState() {
     super.initState();
+    // Cancelling a run can mount a disabled list that never starts scanning.
+    // Create its ticker here, not lazily for the first time during dispose.
+    _progress = AnimationController(
+      vsync: this,
+      duration: GatewayDiscovery.searchWindow,
+    )..addStatusListener(_progressStatus);
     _attachChoice();
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {

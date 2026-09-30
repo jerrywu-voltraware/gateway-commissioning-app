@@ -30,6 +30,7 @@ import 'field_help_sheet.dart';
 import 'install_report_panel.dart';
 import 'local_backend_field.dart';
 import 'progress_checklist.dart';
+import 'station_change_progress.dart';
 import 'ptu_selection_tile.dart';
 import 'recent_data_page.dart';
 import 'gateway_status_page.dart';
@@ -983,6 +984,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       s.config['wifi_only'] == true,
       s.config['new_station'] == true,
       s.config[wifiFirstKey] == true,
+      s.activeStationChange != null,
     ].join('/');
     if (page(previous) != page(next)) _toTop();
   }
@@ -996,6 +998,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   /// One-thing screens (09-28): the one sentence at the top of every page
   /// but the done page — what this page asks, or what runs by itself.
   String _taskTitle(CommissionState s, BackendEnvState env) {
+    if (s.activeStationChange case final progress?) return progress.title;
     final directFlow = ref.read(commissionProvider.notifier).directFlow;
     switch (s.step) {
       case 0:
@@ -1562,6 +1565,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     // Round 29 (field drill: 「不知道該如何結束」): the done page — the
     // summary on top, 〔完成〕／〔配置下一台〕 fixed at the bottom.
     final done = state.step == 7;
+    final stationChange = state.activeStationChange;
     // One-thing screens (09-28): the gateway's identify stays on the page
     // where PTUs are chosen in a list (star, old firmware); elsewhere it is
     // in 「設備與連線資訊」 (the direct pick has its own in the bottom bar).
@@ -1906,7 +1910,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                   SizedBox(height: selectingPtus ? 4 : 12),
                   // The phone's signal row is in 「設備與連線資訊」; a lost
                   // Bluetooth link is said here, never behind the fold.
-                  if (state.peer != null && !done)
+                  if (state.peer != null &&
+                      !done &&
+                      stationChange?.expectedDisconnect != true)
                     GatewayLinkAlert(link: ref.watch(linkProvider)),
                   if (identifyAt && identifyOnPage) _identifyButton(state),
                   if (selectingPtus &&
@@ -1928,6 +1934,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                   // 〔辨識〕's own (the list's progress says what runs) —
                   // others (offline, 〔配置下一台〕's) and failures stay.
                   if (state.message.isNotEmpty &&
+                      stationChange == null &&
                       !done &&
                       (state.step != 1 ||
                           state.error != null ||
@@ -1972,19 +1979,22 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                       ),
                     ),
                   // Round 26: test mode / paused upload, with the way out.
-                  const GatewayModeCard(),
+                  if (stationChange == null) const GatewayModeCard(),
                   // Round 28: a PTU connected but never bound (〔先完成配置〕
                   // earlier): 〔辨識並綁定〕.
-                  if (state.step == 2 &&
+                  if (stationChange == null &&
+                      state.step == 2 &&
                       (state.bindLaterMac != null || state.bindLaterDeferred))
                     _bindLaterCard(state, controller),
                   // r34: bound, but the bound PTU is not connected:
                   // 〔更換 PTU〕 / 〔PTU 已上電，重新檢查〕.
-                  if (state.step == 2 && state.ptuMissingMac != null)
+                  if (stationChange == null &&
+                      state.step == 2 &&
+                      state.ptuMissingMac != null)
                     _ptuMissingCard(state, controller),
                   // Above the red box: the item that failed, then why in
                   // full and its retry.
-                  if (checklist != null)
+                  if (checklist != null && stationChange == null)
                     ProgressChecklist(
                       key: const Key('auto-checklist'),
                       items: checklist.items,
@@ -2114,7 +2124,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                         ),
                       ),
                     ),
-                  if (state.busy && checklist == null)
+                  if (state.busy && checklist == null && stationChange == null)
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       child: Row(
@@ -2134,7 +2144,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                   // Earliest page with the gateway connected and its config
                   // read; kept on step 7 so a local target is not shipped.
                   // 09-28: all fine, it is in 「設備與連線資訊」 instead.
-                  if (panelAt && !panelOk)
+                  if (panelAt && !panelOk && stationChange == null)
                     ConnectionStatusPanel(
                       state: state,
                       env: env,
@@ -2142,7 +2152,10 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                       onSync: () => _syncGateway(explicit: true),
                       onRefresh: controller.refreshUploadTarget,
                     ),
-                  if (state.step >= 1 && state.step <= 2 && !state.loggedIn)
+                  if (state.step >= 1 &&
+                      state.step <= 2 &&
+                      !state.loggedIn &&
+                      stationChange == null)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 12),
                       child: Text(
@@ -2152,7 +2165,12 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                     ),
                   // Round 29: the done page's other actions are secondary,
                   // below the summary and the 連線狀態 line (no card).
-                  if (done)
+                  if (stationChange != null)
+                    StationChangeProgress(
+                      key: const Key('station-change-progress'),
+                      progress: stationChange,
+                    )
+                  else if (done)
                     ...content(state, controller, demo)
                   // 1.0.0+18: step 9's card turns green once the data
                   // passed.
@@ -2181,7 +2199,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                   // card, level with 「設備與連線資訊」 (it was a button in the
                   // card; the field did not know what 「閘道器狀態」 was for).
                   if (!done && state.step == 0) _uploadDataRow(!state.busy),
-                  if (!done)
+                  if (!done && stationChange == null)
                     _details(
                       state,
                       controller,

@@ -13,6 +13,7 @@ import '../core/gateway_reboot.dart';
 import '../core/gateway_swap.dart';
 import '../core/gateway_topology.dart';
 import '../core/progress_checklist.dart';
+import '../core/station_change.dart';
 import '../core/ptu_rssi.dart';
 import '../core/mqtt_target.dart';
 import '../core/protocol.dart';
@@ -1642,6 +1643,7 @@ class CommissionState {
     this.ptuMissingOther,
     this.savedGateway = '',
     this.checklist,
+    this.stationChange,
     this.identityArchived = false,
     this.verifyFeed = const [],
     this.verifyPassed = false,
@@ -1707,6 +1709,11 @@ class CommissionState {
   /// ([Checklist]) — ticked on real events; the page shows it where it
   /// belongs ([shownChecklist]). Null: none.
   final Checklist? checklist;
+
+  /// Ephemeral progress for an intentional station change, never a saved run.
+  final StationChange? stationChange;
+  StationChange? get activeStationChange =>
+      busy && error == null ? stationChange : null;
 
   /// 09-28 (GC 刪除 56/1, then the same gateway configured again: 確認上線
   /// waited for heartbeats forever): 確認上線 stopped because this station
@@ -2105,6 +2112,7 @@ class CommissionState {
     Object? ptuMissingOther = _keep,
     String? savedGateway,
     Object? checklist = _keep,
+    Object? stationChange = _keep,
     bool? identityArchived,
     List<VerifyFeedEntry>? verifyFeed,
     bool? verifyPassed,
@@ -2138,6 +2146,9 @@ class CommissionState {
     checklist: identical(checklist, _keep)
         ? this.checklist
         : checklist as Checklist?,
+    stationChange: identical(stationChange, _keep)
+        ? this.stationChange
+        : stationChange as StationChange?,
     identityArchived: identityArchived ?? this.identityArchived,
     ptuDeferred: ptuDeferred ?? this.ptuDeferred,
     bindLaterMac: identical(bindLaterMac, _keep)
@@ -3056,6 +3067,7 @@ class CommissioningController extends Notifier<CommissionState> {
       message: label,
       seconds: countdown ?? timeout,
       reconnectFailed: false,
+      stationChange: null,
     );
     // r33: [untimed] (the permission dialogs) runs busy but before the
     // countdown and the time limit start; its failure fails the run.
@@ -3230,6 +3242,7 @@ class CommissioningController extends Notifier<CommissionState> {
           error: state.error,
           // 09-28: nothing keeps spinning once the run is over.
           checklist: state.checklist?.settle(),
+          stationChange: null,
           relinking: follows ? true : null,
           // Round 22: a new loss inside the automatic reconnect's round
           // (e.g. while step 8 assigned again) is 「重新連線中」 again at once.
@@ -4879,6 +4892,11 @@ class CommissioningController extends Notifier<CommissionState> {
     // service sends the Wi-Fi like 「保留站點」 (no identity, no backend).
     final wifiFirst = state.config[wifiFirstKey] == true;
     final wifiOnly = state.config['wifi_only'] == true || wifiFirst;
+    if (!wifiOnly && (newSite != site || newGateway != gateway)) {
+      state = state.copy(
+        stationChange: StationChange(site: newSite, gateway: newGateway),
+      );
+    }
     if (wifiOnly && (newSite != site || newGateway != gateway)) {
       throw const GatewayFailure('conflict');
     }
@@ -4963,13 +4981,16 @@ class CommissioningController extends Notifier<CommissionState> {
           'site_id': newSite,
           'gateway_id': newGateway,
         });
+        _stationChangeStage(generation, StationChangeStage.restarting);
         // 1.0.0+12: kept as this gateway's proposal should the reconnect
         // after its restart fail (round 26).
         await _rememberWritten(newSite, newGateway);
         await _wait(15, generation);
+        _stationChangeStage(generation, StationChangeStage.reconnecting);
         await _link.connect(state.peer!, onStage: _stageFor(generation));
         await _wait(3, generation);
         await _command(generation, 'ping');
+        _stationChangeStage(generation, StationChangeStage.confirming);
         state = state.copy(config: await _command(generation, 'get_config'));
         if (site != newSite || gateway != newGateway) {
           throw const GatewayFailure('conflict');
@@ -5092,6 +5113,14 @@ class CommissioningController extends Notifier<CommissionState> {
 
   String get _configureWifiLabel =>
       state.config[wifiFirstKey] == true ? wifiFirstRunLabel : '設定身份與 WiFi';
+
+  void _stationChangeStage(int generation, StationChangeStage stage) {
+    _check(generation);
+    final progress = state.stationChange;
+    if (progress != null) {
+      state = state.copy(stationChange: progress.at(stage), error: state.error);
+    }
+  }
 
   /// 1.0.0+15: the Wi-Fi-first form's [ssid] joined — the network check is
   /// read again on it; with the Wi-Fi and the upload target fine the
@@ -10163,6 +10192,7 @@ class CommissioningController extends Notifier<CommissionState> {
         // 09-29: the link is gone; a peer kept here made [GatewayLinkAlert]
         // show 「手機與閘道器的藍牙已斷線」 for a disconnect the APP did itself.
         clearPeer: true,
+        stationChange: null,
         net: const {},
         checkPassed: false,
         wifiGraceOver: false,
