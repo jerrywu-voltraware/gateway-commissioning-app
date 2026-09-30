@@ -301,7 +301,7 @@ void main() {
         verifyProgressText([3, 1], counts, waiting),
         '資料驗證 #1 3/3、#3 0/3\nPTU #3 尚無資料',
       );
-      expect(verifyPollSeconds, 10);
+      expect(verifyPollSeconds, 3);
     });
 
     test('demo verification ends with every PTU at 3/3', () async {

@@ -34,10 +34,9 @@ import 'recent_data_page.dart'
 /// 通過後才判定完成。」).
 const verifyGoalText = '收到 3 筆正常資料就算完成';
 
-/// The pace in plain words, from the poll the verification runs: one new
-/// row per PTU per poll ([verifyPollSeconds]), three of them.
-const verifyPaceText =
-    '約每 $verifyPollSeconds 秒收一筆，通常 ${verifyPollSeconds * 3} 秒內完成';
+/// The check cadence, not a promise that the gateway uploads at that rate.
+/// Every PTU still needs three distinct normal rows.
+const verifyPaceText = '每 $verifyPollSeconds 秒確認新資料，收到 3 筆正常資料即完成';
 
 /// 1.0.0+20: the pace of a data check whose gateway is not in build mode
 /// ([CommissionState.verifyIntervalMs]): one row per PTU every interval,

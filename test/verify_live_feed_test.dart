@@ -486,9 +486,9 @@ void main() {
       expect(verifyGoalText, '收到 3 筆正常資料就算完成');
       expect(verifyLagText(3), '落後 3 秒');
       expect(verifyLagText(2.6), '落後 3 秒');
-      expect(verifyPollSeconds, 10);
-      expect(verifyPaceText, '約每 10 秒收一筆，通常 30 秒內完成');
-      expect(verifyFooterText(266), '約每 10 秒收一筆，通常 30 秒內完成・剩餘 266 秒');
+      expect(verifyPollSeconds, 3);
+      expect(verifyPaceText, '每 3 秒確認新資料，收到 3 筆正常資料即完成');
+      expect(verifyFooterText(266), '每 3 秒確認新資料，收到 3 筆正常資料即完成・剩餘 266 秒');
       expect(verifyFooterText(266), isNot(contains('最多等待')));
     });
 

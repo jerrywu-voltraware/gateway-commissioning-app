@@ -463,20 +463,27 @@ void main() {
       );
     });
 
-    test('up to 10 s (and 1 s): the same numbers as build mode', () {
-      for (final i in [1000, 5000, 10000]) {
-        expect(verifyLagLimitFor(i), 60, reason: '$i');
-        expect(verifyWindowFor(i), 180);
-        expect(verifyIdleLimitFor(i), 60);
-        expect(verifyInstallMinutesFor(i), 2);
-        expect(verifyRunSecondsFor(i), verifyRunSecondsFor(null));
-        expect(verifyPaceTextFor(i), verifyPaceText);
-        expect(verifyFooterText(266, intervalMs: i), verifyFooterText(266));
-      }
-      // 60 s: max(60, 130), max(180, 240).
-      expect(verifyLagLimitFor(60000), 130);
-      expect(verifyWindowFor(60000), 240);
-    });
+    test(
+      'up to 10 s: same safety limits; copy follows the actual interval',
+      () {
+        for (final i in [1000, 5000, 10000]) {
+          expect(verifyLagLimitFor(i), 60, reason: '$i');
+          expect(verifyWindowFor(i), 180);
+          expect(verifyIdleLimitFor(i), 60);
+          expect(verifyInstallMinutesFor(i), 2);
+          expect(verifyRunSecondsFor(i), verifyRunSecondsFor(null));
+        }
+        for (final i in [1000, 2000, 3000]) {
+          expect(verifyPaceTextFor(i), verifyPaceText);
+          expect(verifyFooterText(266, intervalMs: i), verifyFooterText(266));
+        }
+        expect(verifyPaceTextFor(5000), '約每 5 秒收一筆，通常 15 秒內完成');
+        expect(verifyPaceTextFor(10000), '約每 10 秒收一筆，通常 30 秒內完成');
+        // 60 s: max(60, 130), max(180, 240).
+        expect(verifyLagLimitFor(60000), 130);
+        expect(verifyWindowFor(60000), 240);
+      },
+    );
 
     test('verifyTally counts a row under the late limit given', () {
       final stamp = DateTime(2030).toIso8601String();
@@ -540,7 +547,7 @@ void main() {
 
     test('pace text: 5 minutes, spoken, no Gateway / 客戶', () {
       expect(verifyPaceTextFor(null), verifyPaceText);
-      expect(verifyPaceText, '約每 10 秒收一筆，通常 30 秒內完成');
+      expect(verifyPaceText, '每 3 秒確認新資料，收到 3 筆正常資料即完成');
       expect(verifyPaceTextFor(300000), '約每 5 分鐘收一筆，通常 15 分鐘內完成');
       expect(verifyPaceTextFor(20000), '約每 20 秒收一筆，通常 1 分鐘內完成');
       expect(
@@ -572,18 +579,21 @@ void main() {
       }
     });
 
-    test('rows that stop: the check ends after the same 18 polls', () async {
-      final fake = _Gw()..frozen = true;
-      final (container, c) = await _toVerify(fake);
-      addTearDown(container.dispose);
-      await _verify(c);
-      final s = container.read(commissionProvider);
-      expect(s.step, 6);
-      expect(s.verified, isFalse);
-      expect(s.error, isNotNull);
-      expect(fake.latestPolls, 180 ~/ verifyPollSeconds);
-      expect(fake.fallbackCalls, isEmpty);
-    });
+    test(
+      'rows that stop: the check keeps the same 180 second window',
+      () async {
+        final fake = _Gw()..frozen = true;
+        final (container, c) = await _toVerify(fake);
+        addTearDown(container.dispose);
+        await _verify(c);
+        final s = container.read(commissionProvider);
+        expect(s.step, 6);
+        expect(s.verified, isFalse);
+        expect(s.error, isNotNull);
+        expect(fake.latestPolls, 180 ~/ verifyPollSeconds);
+        expect(fake.fallbackCalls, isEmpty);
+      },
+    );
 
     test('a row 600 s late is still not counted', () async {
       final fake = _Gw()..lag = 600;
@@ -593,7 +603,7 @@ void main() {
       final s = container.read(commissionProvider);
       expect(s.step, 6);
       expect(s.verified, isFalse);
-      expect(fake.latestPolls, 18);
+      expect(fake.latestPolls, 180 ~/ verifyPollSeconds);
     });
   });
 
@@ -618,7 +628,11 @@ void main() {
       // 1.0.0+21: confirmed by one get_config read-back (1000 / 1000).
       expect(fake.rereads, 1);
       expect(s.config['ds_max_ms'], 1000);
-      expect(fake.latestPolls, 18, reason: 'the 180 s window');
+      expect(
+        fake.latestPolls,
+        180 ~/ verifyPollSeconds,
+        reason: 'the 180 s window',
+      );
       for (final p in fake.installPaths) {
         expect(p, contains('threshold_minutes=2&'));
       }
@@ -687,7 +701,7 @@ void main() {
       expect(fake.rereads, 1);
       expect(s.buildModeFallback, BuildModeFallback.sentUnconfirmed);
       expect(s.verifyIntervalMs, 300000);
-      expect(fake.latestPolls - polls, 96);
+      expect(fake.latestPolls - polls, 960 ~/ verifyPollSeconds);
     });
 
     test('sent, not applied, rows 600 s late (the gateway still at 5 '
@@ -721,7 +735,7 @@ void main() {
       expect(s.buildModeFallback, BuildModeFallback.sent);
       expect(buildModeTook(s), isTrue);
       expect(s.verifyIntervalMs, isNull);
-      expect(fake.latestPolls, 18);
+      expect(fake.latestPolls, 180 ~/ verifyPollSeconds);
       final diag = diagnosticSections(s, now: DateTime(2026, 9, 30));
       expect((diag['gateway'] as Map)['build_mode_fallback'], 'sent');
     });
@@ -885,7 +899,7 @@ void main() {
       await _verify(c);
       expect(fake.fallbackCalls, hasLength(1));
       expect(container.read(commissionProvider).verifyIntervalMs, 300000);
-      expect(fake.latestPolls - polls, 96);
+      expect(fake.latestPolls - polls, 960 ~/ verifyPollSeconds);
     });
 
     test(
@@ -914,11 +928,11 @@ void main() {
       final s = container.read(commissionProvider);
       expect(s.step, 6);
       expect(s.verified, isFalse);
-      expect(fake.latestPolls, 96);
+      expect(fake.latestPolls, 960 ~/ verifyPollSeconds);
     });
 
     test(
-      '404, ds_max_ms 5000: as before (18 polls, 60 s limit, 2 minutes)',
+      '404, ds_max_ms 5000: same 180 s window, 60 s limit, 2 minutes',
       () async {
         final fake = _Gw(rejectBuild: true)
           ..fallbackError = _notFound
@@ -930,13 +944,13 @@ void main() {
         expect(s.step, 6);
         expect(s.verified, isFalse);
         expect(s.verifyIntervalMs, 5000);
-        expect(fake.latestPolls, 18);
+        expect(fake.latestPolls, 180 ~/ verifyPollSeconds);
         for (final p in fake.installPaths) {
           expect(p, contains('threshold_minutes=2&'));
         }
         expect(
           verifyFooterText(100, intervalMs: s.verifyIntervalMs),
-          verifyFooterText(100),
+          '約每 5 秒收一筆，通常 15 秒內完成・剩餘 100 秒',
         );
       },
     );
@@ -953,7 +967,7 @@ void main() {
       final s = container.read(commissionProvider);
       expect(fake.fallbackCalls, hasLength(1));
       expect(s.verifyIntervalMs, 300000);
-      expect(fake.latestPolls, 96);
+      expect(fake.latestPolls, 960 ~/ verifyPollSeconds);
     });
 
     test('404, ds_enabled false: every reading (as before)', () async {
@@ -965,7 +979,7 @@ void main() {
       await _verify(c);
       final s = container.read(commissionProvider);
       expect(s.verifyIntervalMs, 1000);
-      expect(fake.latestPolls, 18);
+      expect(fake.latestPolls, 180 ~/ verifyPollSeconds);
     });
 
     for (final (name, error) in [

@@ -1269,8 +1269,9 @@ String resumeText(
   return '上次中斷於$where，$doneText$inflightText$pendingText。閘道器仍在運作，不需重新上電。';
 }
 
-/// Step 9 polls /api/latest this often (seconds).
-const verifyPollSeconds = 10;
+/// Step 9 waits this long between completed verification polls (seconds).
+/// Faster checks still need three distinct, healthy rows from each selected PTU.
+const verifyPollSeconds = 3;
 
 /// Step 9: a PTU without a new row for this long gets 「尚無資料」 (seconds).
 const verifyIdleLimit = 60;
