@@ -53,6 +53,8 @@
   With -BuildNumber N, overrides only this Android APK's versionCode and
   names it app_<git short hash>_b<N>_<env>.apk. The shared pubspec version
   and iOS project are not changed. Omit it to use pubspec.yaml as before.
+  -BuildName X.Y.Z similarly overrides only this Android APK's versionName.
+  Neither option writes the shared pubspec version or iOS build settings.
   A dirty working tree is refused (the name would not match the source)
   unless -AllowDirty, which adds -dirty after the source hash in the name.
 
@@ -61,11 +63,18 @@
   flutter build apk --build-number. Use the same source and signing key
   with 20 and 21 to prepare a baseline APK and its update APK.
 
+.PARAMETER BuildName
+  Optional Android versionName, exactly three dot-separated numeric parts.
+  Passed to flutter build apk --build-name; omitted means use pubspec.yaml.
+
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File tools\build_apk.ps1 -Env local -OutDir C:\temp\apk
 
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File tools\build_apk.ps1 -Env prod -BuildNumber 20
+
+.EXAMPLE
+  powershell -ExecutionPolicy Bypass -File tools\build_apk.ps1 -Env prod -BuildNumber 21 -BuildName 1.0.1
 #>
 [CmdletBinding()]
 param(
@@ -78,6 +87,9 @@ param(
     [ValidatePattern('^[1-9][0-9]*$')]
     [ValidateScript({ [long]$_ -le 2100000000 })]
     [string]$BuildNumber,
+
+    [ValidatePattern('\A[0-9]+\.[0-9]+\.[0-9]+\z')]
+    [string]$BuildName,
 
     [switch]$AllowDirty
 )
@@ -292,6 +304,7 @@ Write-Host "keystore: $ks (alias $alias)"
 # ---------------------------------------------------------------- build
 $flutterArgs = @('build', 'apk', '--release')
 if ($PSBoundParameters.ContainsKey('BuildNumber')) { $flutterArgs += @('--build-number', $BuildNumber) }
+if ($PSBoundParameters.ContainsKey('BuildName')) { $flutterArgs += @('--build-name', $BuildName) }
 # Field rescue v1: the build the back office sees in every report (app.build).
 $flutterArgs += "--dart-define=APP_BUILD=$hash"
 if ($Env -eq 'local') { $flutterArgs += '--dart-define=LOCAL_DEVELOPMENT=true' }
