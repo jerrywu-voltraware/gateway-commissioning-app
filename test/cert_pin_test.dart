@@ -48,8 +48,8 @@ Future<HttpServer> _serve(List<String> chain, String key) async {
 }
 
 /// GET / through [apiHttpClientFor] with [server] as the production base.
-/// [apple] false: the Android / BoringSSL chain path; true: Apple's
-/// Security-framework platforms (iOS / macOS).
+/// [apple] selects the APP's Android CA path or Apple pinning path; it
+/// does not replace the host runtime's native TLS verifier.
 Future<int> _get(
   HttpServer server, {
   String ca = '',
@@ -190,14 +190,30 @@ void main() {
     // 09-30: Apple's Security framework refuses TLS server certificates
     // valid for more than 825 days (the production leaf: 20 years; this
     // fixture: 100 years), so on iOS / macOS the CA chain can never pass
-    // and a pin switches to leaf pinning. These run on any host: the
-    // Apple path never consults the platform verifier.
+    // and a pin switches to leaf pinning. Setting apple: true only selects
+    // the APP branch; badCertificateCallback still uses the native host's
+    // verifier. A sent CA reaches that callback on Windows / Linux, while
+    // Apple platforms provide the leaf. Keep both host outcomes explicit.
     group('09-30: Apple platforms pin the leaf instead of the CA chain', () {
-      test('CA + pin: the leaf pin alone admits the chain', () async {
-        final server = await _serve(['leaf.pem', 'ca.pem'], 'leaf.key');
-        addTearDown(() => server.close(force: true));
-        expect(await _get(server, ca: caB64, pin: leafPin, apple: true), 200);
-      });
+      test(
+        'CA + pin: full-chain leaf pinning follows the native host',
+        () async {
+          final server = await _serve(['leaf.pem', 'ca.pem'], 'leaf.key');
+          addTearDown(() => server.close(force: true));
+          if (Platform.isIOS || Platform.isMacOS) {
+            expect(
+              await _get(server, ca: caB64, pin: leafPin, apple: true),
+              200,
+            );
+          } else {
+            // The untrusted CA cannot match the leaf pin: fail closed.
+            await expectLater(
+              _get(server, ca: caB64, pin: leafPin, apple: true),
+              throwsA(isA<HandshakeException>()),
+            );
+          }
+        },
+      );
 
       test('CA + pin: a leaf alone is admitted by its pin', () async {
         final server = await _serve(['leaf.pem'], 'leaf.key');

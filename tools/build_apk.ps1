@@ -50,11 +50,22 @@
   signingConfig = null); this script signs it with apksigner, runs
   `apksigner verify --print-certs` and exits non-zero on any failure.
   Output: <OutDir>\app_<git short hash>_<env>.apk, its SHA-256 printed.
+  With -BuildNumber N, overrides only this Android APK's versionCode and
+  names it app_<git short hash>_b<N>_<env>.apk. The shared pubspec version
+  and iOS project are not changed. Omit it to use pubspec.yaml as before.
   A dirty working tree is refused (the name would not match the source)
-  unless -AllowDirty, which names the file app_<hash>-dirty_<env>.apk.
+  unless -AllowDirty, which adds -dirty after the source hash in the name.
+
+.PARAMETER BuildNumber
+  Optional Android versionCode (integer 1 through 2100000000). Passed to
+  flutter build apk --build-number. Use the same source and signing key
+  with 20 and 21 to prepare a baseline APK and its update APK.
 
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File tools\build_apk.ps1 -Env local -OutDir C:\temp\apk
+
+.EXAMPLE
+  powershell -ExecutionPolicy Bypass -File tools\build_apk.ps1 -Env prod -BuildNumber 20
 #>
 [CmdletBinding()]
 param(
@@ -63,6 +74,10 @@ param(
     [string]$Env,
 
     [string]$OutDir = '',
+
+    [ValidatePattern('^[1-9][0-9]*$')]
+    [ValidateScript({ [long]$_ -le 2100000000 })]
+    [string]$BuildNumber,
 
     [switch]$AllowDirty
 )
@@ -152,6 +167,7 @@ function Find-BuildTools([string]$Sdk) {
 }
 
 # ---------------------------------------------------------------- inputs
+$buildSuffix = if ($PSBoundParameters.ContainsKey('BuildNumber')) { "_b$BuildNumber" } else { '' }
 $Root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 if (-not $OutDir) { $OutDir = Join-Path $Root 'build\dist' }
 if (-not (Test-Path -LiteralPath $OutDir)) {
@@ -170,7 +186,7 @@ if ($LASTEXITCODE -ne 0) { Fail 'git status failed.' }
 if ($dirty.Count -gt 0) {
     if (-not $AllowDirty) {
         $dirty | ForEach-Object { Write-Host "  $_" }
-        Fail "working tree has uncommitted changes; commit first (or pass -AllowDirty for a test build named app_$hash-dirty_$Env.apk)."
+        Fail "working tree has uncommitted changes; commit first (or pass -AllowDirty for a test build named app_${hash}-dirty${buildSuffix}_$Env.apk)."
     }
     Write-Warning 'Building from a dirty working tree (-AllowDirty).'
     $hash = "$hash-dirty"
@@ -275,6 +291,7 @@ Write-Host "keystore: $ks (alias $alias)"
 
 # ---------------------------------------------------------------- build
 $flutterArgs = @('build', 'apk', '--release')
+if ($PSBoundParameters.ContainsKey('BuildNumber')) { $flutterArgs += @('--build-number', $BuildNumber) }
 # Field rescue v1: the build the back office sees in every report (app.build).
 $flutterArgs += "--dart-define=APP_BUILD=$hash"
 if ($Env -eq 'local') { $flutterArgs += '--dart-define=LOCAL_DEVELOPMENT=true' }
@@ -313,7 +330,7 @@ if (-not (Test-Path -LiteralPath $gradleOut)) { Fail "build output missing: $gra
 # ---------------------------------------------------------------- align + sign
 $work = Join-Path $OutDir ".build_apk_$PID"
 New-Item -ItemType Directory -Path $work -Force | Out-Null
-$final = Join-Path $OutDir "app_$($hash)_$Env.apk"
+$final = Join-Path $OutDir "app_${hash}${buildSuffix}_$Env.apk"
 $cert = ''
 try {
     $toSign = $gradleOut

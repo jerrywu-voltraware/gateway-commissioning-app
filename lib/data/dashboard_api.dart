@@ -6,6 +6,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../core/protocol.dart';
 import 'cert_pin.dart';
 import 'contracts.dart';
+import 'android_app_update.dart';
 
 bool isLocalApiHost(String host) {
   if (host == 'localhost') return true;
@@ -48,7 +49,8 @@ class DashboardApi
         SessionStore,
         SessionInfo,
         OperatorInfo,
-        ServerClock {
+        ServerClock,
+        AndroidUpdateDownload {
   DashboardApi({DateTime Function()? now}) : _now = now ?? DateTime.now;
 
   final DateTime Function() _now;
@@ -143,6 +145,80 @@ class DashboardApi
 
   @override
   Duration? get serverClockOffset => _serverOffset;
+
+  @override
+  Future<void> downloadAndroidUpdate(
+    AndroidAppRelease release,
+    File destination,
+    UpdateCancellation cancellation,
+    void Function(int received) onProgress,
+  ) async {
+    final base = _base;
+    final key = _key;
+    if (base == null || key == null) {
+      throw const GatewayFailure('authentication');
+    }
+    // Only the authenticated backend may receive this session credential.
+    if (!RegExp(
+      r'^/api/app/updates/android/android-v\d+\.\d+\.\d+-b\d+/apk$',
+    ).hasMatch(release.path)) {
+      throw const AppUpdateException('metadata');
+    }
+    final url = base.resolve(release.path);
+    if (url.origin != base.origin || url.hasQuery || url.hasFragment) {
+      throw const AppUpdateException('metadata');
+    }
+    HttpClientRequest? request;
+    final removeCancel = cancellation.listen(() => request?.abort());
+    var timedOut = false;
+    final deadline = Timer(const Duration(minutes: 5), () {
+      timedOut = true;
+      request?.abort();
+    });
+    try {
+      cancellation.check();
+      request = await _httpFor(
+        base,
+      ).getUrl(url).timeout(const Duration(seconds: 10));
+      cancellation.check();
+      request.followRedirects = false;
+      request.headers.set('X-API-Key', key);
+      final response = await request.close().timeout(
+        const Duration(seconds: 20),
+      );
+      if (response.statusCode == 401) {
+        await response.listen(null).cancel();
+        _key = null;
+        throw const GatewayFailure('authentication');
+      }
+      if (response.statusCode != 200 ||
+          (response.contentLength >= 0 &&
+              response.contentLength != release.sizeBytes)) {
+        await response.listen(null).cancel();
+        throw const AppUpdateException('download');
+      }
+      await writeVerifiedUpdate(
+        response.timeout(const Duration(seconds: 20)),
+        destination,
+        release,
+        cancellation,
+        onProgress,
+      );
+      if (timedOut) {
+        if (await destination.exists()) await destination.delete();
+        throw const AppUpdateException('timeout');
+      }
+    } on IOException {
+      cancellation.check();
+      throw AppUpdateException(timedOut ? 'timeout' : 'download');
+    } on TimeoutException {
+      throw const AppUpdateException('timeout');
+    } finally {
+      deadline.cancel();
+      removeCancel();
+      request?.abort();
+    }
+  }
 
   /// 1.0.0+10: an answer's `Date` header (RFC 1123) as the back office's
   /// clock offset; a missing or unreadable one keeps the last.

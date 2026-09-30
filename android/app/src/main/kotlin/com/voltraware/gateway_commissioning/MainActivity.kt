@@ -103,6 +103,8 @@ class MainActivity : FlutterActivity() {
     }
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "voltraware/app_update")
+            .setMethodCallHandler(AppUpdateBridge(this))
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "voltraware/wifi")
             .setMethodCallHandler { call, result ->
                 if (call.method == "scan") scanWifi(result) else result.notImplemented()

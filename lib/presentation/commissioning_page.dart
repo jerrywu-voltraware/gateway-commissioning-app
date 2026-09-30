@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../application/backend_environment.dart';
+import '../application/android_app_update.dart';
 import '../application/commissioning_controller.dart';
 import '../application/auto_checklist.dart';
 import '../application/connection_status.dart';
@@ -37,6 +38,7 @@ import 'gateway_discovery.dart';
 import 'gateway_mode_card.dart';
 import 'gateway_swap_sheet.dart';
 import 'verify_live_panel.dart';
+import 'android_app_update_dialog.dart';
 import '../core/gateway_swap.dart';
 
 /// The AppBar title (1.0.0+8: shown whole at 360 dp, never 「GIOS …」).
@@ -80,6 +82,65 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   bool _autoCheckPaused = false;
   bool _autoOnlineStarted = false;
   bool _autoFlowScheduled = false;
+  bool _autoUpdateChecked = false;
+  bool _updateChecking = false;
+  bool _updateDialogOpen = false;
+  bool _updateRestoreReady = false;
+  Timer? _autoUpdateTimer;
+
+  bool get _updateHomeSafe {
+    if (!mounted ||
+        !_foreground ||
+        !_updateRestoreReady ||
+        !ref.read(androidUpdateSupportedProvider) ||
+        ref.read(demoProvider)) {
+      return false;
+    }
+    final link = ref.read(linkProvider);
+    return appUpdateHomeAllowed(
+      ref.read(commissionProvider),
+      connected:
+          link is GatewaySignalSource &&
+          (link as GatewaySignalSource).signalConnected,
+    );
+  }
+
+  void _scheduleAutoUpdate() {
+    _autoUpdateTimer?.cancel();
+    if (_autoUpdateChecked || _updateChecking || !_updateHomeSafe) return;
+    _autoUpdateTimer = Timer(const Duration(seconds: 2), () {
+      if (_updateHomeSafe) _checkAppUpdate(manual: false);
+    });
+  }
+
+  Future<void> _checkAppUpdate({required bool manual}) async {
+    if (!_updateHomeSafe || _updateChecking || _updateDialogOpen) return;
+    _autoUpdateTimer?.cancel();
+    _autoUpdateChecked = true;
+    setState(() => _updateChecking = true);
+    try {
+      final check = await ref.read(androidUpdateServiceProvider).check();
+      if (!mounted || !_updateHomeSafe) return;
+      if (check.release == null) {
+        if (manual) _snack('目前已是最新版本');
+        return;
+      }
+      _updateDialogOpen = true;
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => AndroidAppUpdateDialog(
+          check: check,
+          isHomeSafe: () => _updateHomeSafe,
+        ),
+      );
+    } catch (_) {
+      if (manual && _updateHomeSafe) _snack('暫時無法檢查更新，請確認網路後重試');
+    } finally {
+      _updateDialogOpen = false;
+      if (mounted) setState(() => _updateChecking = false);
+    }
+  }
 
   /// One-thing screens (09-28): 「改用其他站號」 opened the station input;
   /// [_wifiStage]: a new identity goes on to its Wi-Fi page (the gateway is
@@ -905,12 +966,16 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     ref.listenManual(commissionProvider, _showStepPageFromTop);
     ref.listenManual(commissionProvider, _resetStationPages);
     ref.listenManual(commissionProvider, _showRemoteIdentify);
+    ref.listenManual(commissionProvider, (_, _) => _scheduleAutoUpdate());
     _host.addListener(() => _envController.setLocalHost(_host.text));
     _base.addListener(_onBaseEdited);
     WidgetsBinding.instance.addObserver(this);
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => ref.read(commissionProvider.notifier).restore(),
-    );
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await ref.read(commissionProvider.notifier).restore();
+      if (!mounted) return;
+      setState(() => _updateRestoreReady = true);
+      _scheduleAutoUpdate();
+    });
   }
 
   @override
@@ -918,11 +983,13 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     _foreground = state == AppLifecycleState.resumed;
     ref.read(commissionProvider.notifier).setForeground(_foreground);
     if (mounted) setState(() {});
+    _scheduleAutoUpdate();
   }
 
   @override
   void dispose() {
     _pageScroll.dispose();
+    _autoUpdateTimer?.cancel();
     _gatewayChoice.dispose();
     _baseTyping?.cancel();
     _suggestTyping?.cancel();
@@ -1211,6 +1278,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     final demo = ref.watch(demoProvider),
         colors = Theme.of(context).colorScheme;
     final env = ref.watch(backendEnvProvider);
+    final updateSupported = ref.watch(androidUpdateSupportedProvider);
     _scheduleAutoFlow(state);
     final topologySettings = ref.watch(topologyProvider);
     final topology = topologySettings.topology;
@@ -1325,6 +1393,8 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                   );
                 } else if (value == 'status') {
                   GatewayStatusPage.open(context);
+                } else if (value == 'app-update') {
+                  _checkAppUpdate(manual: true);
                 } else if (value.startsWith('theme:')) {
                   widget.onThemeChanged(
                     ThemeMode.values.firstWhere(
@@ -1372,6 +1442,13 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                       child: Text('每台 PTU 數：${topologySettings.starCount}…'),
                     ),
                   const PopupMenuDivider(),
+                  if (updateSupported && !demo)
+                    PopupMenuItem(
+                      key: const Key('app-update-menu'),
+                      value: 'app-update',
+                      enabled: _updateHomeSafe && !_updateChecking,
+                      child: Text(_updateChecking ? '正在檢查更新…' : '檢查更新'),
+                    ),
                   // 1.0.0+5: 「閘道器狀態」 from any page (the flow untouched).
                   // 1.0.0+10: greyed while a run is busy or a gateway is
                   // connected ([gatewayStatusMenuEnabled]).
