@@ -95,7 +95,10 @@ function Invoke-Native([string]$Exe, [string[]]$Arguments) {
     $old = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {
-        & $Exe @Arguments 2>&1 | ForEach-Object { "$_" }
+        & $Exe @Arguments 2>&1 | ForEach-Object {
+            # Flutter passes encoded credentials to Gradle. Never echo them.
+            "$_" -replace '(?i)((?:-P|--)dart-defines?=)\S+', '$1[REDACTED]'
+        }
     } finally {
         $ErrorActionPreference = $old
     }
@@ -287,12 +290,20 @@ $gradleOut = Join-Path $Root 'build\app\outputs\flutter-apk\app-release.apk'
 if (Test-Path -LiteralPath $gradleOut) { Remove-Item -LiteralPath $gradleOut -Force }
 
 Step ('flutter ' + ($flutterArgs -join ' '))
+$inheritedDebug = $env:DEBUG
+# gradlew.bat enables command echo when DEBUG is set, exposing dart-defines.
+Remove-Item Env:\DEBUG -ErrorAction SilentlyContinue
 Push-Location $Root
 try {
     Invoke-Native $flutter.Source $flutterArgs | ForEach-Object { Write-Host $_ }
     $buildExit = $LASTEXITCODE
 } finally {
     Pop-Location
+    if ($null -eq $inheritedDebug) {
+        Remove-Item Env:\DEBUG -ErrorAction SilentlyContinue
+    } else {
+        $env:DEBUG = $inheritedDebug
+    }
     Remove-Item -LiteralPath $DefineFile -Force -ErrorAction SilentlyContinue
     $DefineFile = $null
 }

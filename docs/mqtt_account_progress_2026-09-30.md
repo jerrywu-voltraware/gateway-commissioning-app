@@ -13,6 +13,7 @@
 - [x] Final full suite: `flutter test --reporter json --timeout 60s`, exit code 0, no failed tests. The wrapper counted 1179 successful non-loading `testDone` events; this includes framework setup/teardown events and is not the visible test-case count.
 - [x] Final `flutter analyze`: no issues, exit code 0. Final `git diff --check`: exit code 0. Final added-content secret scan: zero matches. No hardware acceptance has been performed.
 - [x] Parent integration read-back and independent source review passed. The parent will commit this source and build a signed production APK; phone installation, deployment, push, and hardware acceptance remain separate.
+- [x] Production build exposed inherited `DEBUG` command echo in Gradle, including encoded credential arguments. No value is recorded here. The build script now clears/restores `DEBUG` around Flutter and masks native `dart-define(s)` output. Independent PowerShell 5.1 synthetic checks passed for debug state, stdout/stderr masking, nonzero exit propagation, and exception cleanup. Before installation, authorized credential rotation and a rebuilt APK are required; artifacts using the old credential are validation-only.
 
 The APP build number is 1.0.0+22. Gateway numbering remains 1-50; site numbering remains 1-65535. Final commit and APK evidence are recorded in the workspace-level `docs/test_results/MQTT_ACCOUNTS_2026-09-30.md`.
 
