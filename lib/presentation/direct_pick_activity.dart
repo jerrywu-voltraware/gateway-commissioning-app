@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/direct_mode.dart';
+import 'wireless_charging_pad_icon.dart';
 
 /// The gateway's reported PTU pick, never an installer confirmation.
 class DirectPickActivity extends StatefulWidget {
@@ -188,9 +189,7 @@ class _DirectPickActivityState extends State<DirectPickActivity>
                         child: Stack(
                           alignment: Alignment.center,
                           children: [
-                            Icon(
-                              Icons.ev_station_outlined,
-                              size: 28,
+                            WirelessChargingPadIcon(
                               color: _picked ? selectedColor : mutedColor,
                             ),
                             if (ambiguous)

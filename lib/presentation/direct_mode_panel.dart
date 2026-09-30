@@ -133,38 +133,55 @@ class _DirectStatusPanelState extends ConsumerState<DirectStatusPanel> {
                 key: const Key('direct-state'),
               )
             else if (picked != null) ...[
-              Wrap(
-                spacing: 12,
-                crossAxisAlignment: WrapCrossAlignment.center,
+              const Divider(height: 16),
+              Text(
+                '裝置編號（MAC）',
+                style: text.bodySmall?.copyWith(color: colors.onSurfaceVariant),
+              ),
+              const SizedBox(height: 2),
+              MacText(
+                picked,
+                key: const Key('direct-linked'),
+                others: others,
+                style: text.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
+                fullBelow: true,
+              ),
+              const SizedBox(height: 8),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
                 children: [
-                  MacText(
-                    picked,
-                    key: const Key('direct-linked'),
-                    others: others,
-                    style: text.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
+                  Text(
+                    '訊號',
+                    style: text.bodySmall?.copyWith(
+                      color: colors.onSurfaceVariant,
                     ),
                   ),
-                  // Round 28: 「讀取中」 / the advertising RSSI until the
-                  // gateway reads the link (field: 「RSSI —」 for ~70 s).
-                  Text(
-                    directPickRssiText(
-                      direct,
-                      rowRssi: row?['rssi'],
-                      ptuText: row == null ? null : ptuRssiText(row),
-                      stale: stale,
-                      lastAdv: _lastAdv,
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _PickedSignal(
+                      // Preserve the existing source/staleness wording.
+                      value: directPickRssiText(
+                        direct,
+                        rowRssi: row?['rssi'],
+                        ptuText: row == null ? null : ptuRssiText(row),
+                        stale: stale,
+                        lastAdv: _lastAdv,
+                      ),
                     ),
-                    key: const Key('direct-rssi'),
-                    style: text.titleMedium,
                   ),
                 ],
               ),
               if (direct.reasonText != null)
-                Text(
-                  '選台依據：${direct.reasonText}',
-                  key: const Key('direct-reason'),
-                  style: text.bodySmall,
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    '選台依據：${direct.reasonText}',
+                    key: const Key('direct-reason'),
+                    style: text.bodySmall?.copyWith(
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
                 ),
             ] else
               Text(
@@ -261,15 +278,27 @@ class _DirectStatusPanelState extends ConsumerState<DirectStatusPanel> {
               ),
             if (direct != null)
               Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text(
-                  [
-                    if (direct.minRssi != null) '門檻 ${direct.minRssi} dBm',
-                    direct.boundMac == null
-                        ? '未綁定'
-                        : '已綁定 ${formatMac(direct.boundMac)}',
-                  ].join(' · '),
-                  style: text.bodySmall,
+                padding: const EdgeInsets.only(top: 6),
+                child: Wrap(
+                  spacing: 12,
+                  runSpacing: 4,
+                  children: [
+                    if (direct.minRssi != null)
+                      Text(
+                        '門檻 ${direct.minRssi} dBm',
+                        style: text.bodySmall?.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
+                      ),
+                    macRichText(
+                      direct.boundMac == null
+                          ? '未綁定'
+                          : '已綁定 ${formatMac(direct.boundMac)}',
+                      style: text.bodySmall?.copyWith(
+                        color: colors.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             // Round 28: this pile's PTU not found — causes, what to do,
@@ -330,6 +359,41 @@ class _DirectStatusPanelState extends ConsumerState<DirectStatusPanel> {
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Emphasize only the numeric reading; keep the source and freshness text
+/// verbatim so an advertising or cached value never looks like a live link.
+class _PickedSignal extends StatelessWidget {
+  const _PickedSignal({required this.value});
+
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final reading = RegExp(r'-\d+(?:\.\d+)? dBm').firstMatch(value);
+    return Text.rich(
+      TextSpan(
+        children: reading == null
+            ? [TextSpan(text: value)]
+            : [
+                TextSpan(text: value.substring(0, reading.start)),
+                TextSpan(
+                  text: reading.group(0),
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: theme.colorScheme.onSurface,
+                  ),
+                ),
+                TextSpan(text: value.substring(reading.end)),
+              ],
+      ),
+      key: const Key('direct-rssi'),
+      style: theme.textTheme.bodySmall?.copyWith(
+        color: theme.colorScheme.onSurfaceVariant,
       ),
     );
   }

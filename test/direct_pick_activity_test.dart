@@ -8,6 +8,7 @@ import 'package:gateway_commissioning/core/direct_mode.dart';
 import 'package:gateway_commissioning/core/gateway_topology.dart';
 import 'package:gateway_commissioning/presentation/direct_mode_panel.dart';
 import 'package:gateway_commissioning/presentation/direct_pick_activity.dart';
+import 'package:gateway_commissioning/presentation/wireless_charging_pad_icon.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'round15_direct_flow_test.dart' show PickGateway;
@@ -98,7 +99,8 @@ void main() {
           expect(rect.left, greaterThanOrEqualTo(0));
           expect(rect.right, lessThanOrEqualTo(360));
           expect(find.byIcon(Icons.router_outlined), findsOneWidget);
-          expect(find.byIcon(Icons.ev_station_outlined), findsOneWidget);
+          expect(find.byType(WirelessChargingPadIcon), findsOneWidget);
+          expect(find.byIcon(Icons.ev_station_outlined), findsNothing);
           expect(find.byIcon(Icons.check_circle), findsNothing);
         }
       });
