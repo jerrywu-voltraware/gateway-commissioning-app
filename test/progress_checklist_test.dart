@@ -29,6 +29,7 @@ import 'package:gateway_commissioning/data/demo_system.dart';
 import 'package:gateway_commissioning/data/local_backend_probe.dart';
 import 'package:gateway_commissioning/gateway_app.dart';
 import 'package:gateway_commissioning/presentation/progress_checklist.dart';
+import 'package:gateway_commissioning/presentation/heartbeat_activity.dart';
 
 import 'round15_direct_flow_test.dart' show PickGateway;
 
@@ -627,6 +628,17 @@ void main() {
       final list = tester.getRect(find.byKey(const Key('auto-checklist')));
       expect(list.right, lessThanOrEqualTo(360));
       expect(list.top, lessThan(640));
+      expect(tester.takeException(), isNull);
+      // A long error box can move the lower card beyond the list's cache.
+      await tester.scrollUntilVisible(
+        find.byType(HeartbeatActivity),
+        140,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(HeartbeatActivity), findsOneWidget);
+      expect(find.text('心跳 1/2'), findsOneWidget);
+      expect(find.byKey(const Key('heartbeat-flow-packet')), findsNothing);
       expect(tester.takeException(), isNull);
     });
   });

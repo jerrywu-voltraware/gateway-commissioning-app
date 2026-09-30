@@ -317,16 +317,16 @@ void main() {
       final during = fake.calls.sublist(start);
       final firstCheck = during.indexOf('GET $_path/check-identity');
       expect(firstCheck, greaterThanOrEqualTo(0));
-      // Asked after 60 s of waits (12 reads at 5 s), not at once and not
+      // Asked after 60 s of waits (60 reads at 1 s), not at once and not
       // only at the 90 s timeout.
       expect(
         during
             .sublist(0, firstCheck)
             .where((c) => c.contains('fleet-status'))
             .length,
-        12,
+        60,
       );
-      expect(during.where((c) => c.contains('fleet-status')).length, 12);
+      expect(during.where((c) => c.contains('fleet-status')).length, 60);
       final list = s.checklist!;
       expect(list.isDone(onlineItemBackend), isTrue);
       expect(list.item(onlineItemBeat1)!.status, CheckStatus.failed);
@@ -388,7 +388,7 @@ void main() {
       expect(s.identityArchived, isFalse);
       expect(s.error, isNot(identityArchivedText));
       final during = fake.calls.sublist(start);
-      expect(during.where((c) => c.contains('fleet-status')).length, 18);
+      expect(during.where((c) => c.contains('fleet-status')).length, 90);
       expect(during.where((c) => c.endsWith('/check-identity')).length, 1);
       expect(_bottom(confirmOnlineLabel), findsOneWidget);
       expect(tester.takeException(), isNull);

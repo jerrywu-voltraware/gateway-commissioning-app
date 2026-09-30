@@ -30,6 +30,7 @@ import 'field_help_sheet.dart';
 import 'install_report_panel.dart';
 import 'local_backend_field.dart';
 import 'progress_checklist.dart';
+import 'heartbeat_activity.dart';
 import 'station_change_progress.dart';
 import 'ptu_selection_tile.dart';
 import 'recent_data_page.dart';
@@ -3353,7 +3354,10 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       case 3:
         final check = networkCheck(state: s, env: env);
         return [
-          const Icon(Icons.cloud_outlined, size: 48),
+          HeartbeatActivity(
+            busy: s.busy && s.error == null,
+            checklist: s.checklist,
+          ),
           const SizedBox(height: 12),
           const Text('確認閘道器不只連上 WiFi，後端也持續收到心跳。'),
           const SizedBox(height: 8),

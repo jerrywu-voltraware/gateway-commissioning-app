@@ -5267,7 +5267,10 @@ class CommissioningController extends Notifier<CommissionState> {
     await _command(generation, 'heartbeat_boost', {'duration': 300});
     String? previous;
     var identityChecked = false;
-    for (int elapsed = 0; elapsed < 90; elapsed += 5) {
+    // Boosted firmware heartbeats arrive every 5 seconds. Poll faster so a
+    // newly received heartbeat need not wait another full heartbeat period.
+    // Success still requires two distinct backend heartbeat timestamps.
+    for (int elapsed = 0; elapsed < 90; elapsed++) {
       // 09-28: no heartbeats for [archivedCheckAfterSeconds]: a station
       // archived in the back office (GC 刪除) has them skipped, so they
       // would never come — stop on this item and offer 〔重新加入〕.
@@ -5324,7 +5327,7 @@ class CommissioningController extends Notifier<CommissionState> {
         return;
       }
       previous = heartbeat;
-      await _wait(5, generation);
+      await _wait(1, generation);
     }
     throw const GatewayFailure('timeout');
   });

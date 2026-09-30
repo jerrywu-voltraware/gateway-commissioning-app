@@ -9,6 +9,7 @@ import '../core/direct_calibration.dart';
 import '../core/direct_mode.dart';
 import '../core/ptu_rssi.dart';
 import 'direct_calibration_sheet.dart';
+import 'direct_pick_activity.dart';
 import 'field_help_sheet.dart';
 
 /// Step 7 (direct mode, firmware 1.7.20+): the PTU the gateway itself
@@ -109,6 +110,23 @@ class _DirectStatusPanelState extends ConsumerState<DirectStatusPanel> {
           children: [
             Text('閘道器選中的 PTU', style: text.titleSmall),
             const SizedBox(height: 4),
+            if (widget.actionsInBar) ...[
+              DirectPickActivity(
+                direct: direct,
+                busy: state.busy,
+                identifiedMac: state.identifiedMac,
+                identifyAvailable:
+                    state.config['identify_supported'] == true &&
+                    identifyPtuSupported(state.config),
+                unavailable:
+                    state.error != null ||
+                    state.relinking ||
+                    state.reconnectFailed ||
+                    state.resumePending ||
+                    state.uploadWatch == UploadWatch.linkLost,
+              ),
+              const SizedBox(height: 8),
+            ],
             if (direct == null)
               Text(
                 state.busy ? '正在讀取閘道器的選台結果…' : '尚未取得閘道器的選台結果，請按「重新搜尋」。',
