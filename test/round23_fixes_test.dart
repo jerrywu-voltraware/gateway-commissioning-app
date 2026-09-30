@@ -680,6 +680,8 @@ void main() {
         find.byKey(const ValueKey('demo-gateway')),
       );
       expect(find.byKey(const Key('check-next')), findsNothing);
+      expect(find.byKey(const Key('wifi-reset-prompt')), findsOneWidget);
+      await tap(tester, find.byKey(const Key('wifi-reset-later')));
       final refresh = find.byKey(const Key('check-refresh'));
       await tester.scrollUntilVisible(refresh, 120, scrollable: _page);
       await tester.pumpAndSettle();

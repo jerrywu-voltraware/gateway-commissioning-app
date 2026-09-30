@@ -6,6 +6,8 @@
 // restart; the upload target first when it must change), the check is read
 // again once it joined, and the station follows with that Wi-Fi kept (the
 // identity only). A failed Wi-Fi stays on the form with its reason.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -18,6 +20,7 @@ import 'package:gateway_commissioning/application/network_check.dart';
 import 'package:gateway_commissioning/core/gateway_net.dart';
 import 'package:gateway_commissioning/core/mqtt_target.dart';
 import 'package:gateway_commissioning/data/demo_system.dart';
+import 'package:gateway_commissioning/data/contracts.dart';
 import 'package:gateway_commissioning/data/local_backend_probe.dart';
 import 'package:gateway_commissioning/gateway_app.dart';
 import 'package:gateway_commissioning/presentation/commissioning_page.dart';
@@ -92,6 +95,15 @@ class _Prober implements LocalBackendProber {
   @override
   Future<ProbeResult> probe(Uri base, {Duration? connectTimeout}) async =>
       const ProbeResult(ProbeOutcome.healthy, status: 200);
+}
+
+class _SignalGateway extends _NewGateway implements GatewaySignalSource {
+  @override
+  bool signalConnected = true;
+  @override
+  Stream<bool> get signalConnections => const Stream.empty();
+  @override
+  Future<int> readSignal() async => -45;
 }
 
 Future<(ProviderContainer, CommissioningController)> _connected(
@@ -426,7 +438,8 @@ void main() {
         find.byKey(const ValueKey('demo-gateway')),
       );
       expect(text(tester, 'task-title'), wifiProblemTaskTitle);
-      await tap(tester, find.text('重設 Wi-Fi'));
+      expect(find.byKey(const Key('wifi-reset-prompt')), findsOneWidget);
+      await tap(tester, find.byKey(const Key('wifi-reset-confirm')));
 
       expect(text(tester, 'task-title'), wifiTaskTitle);
       expect(text(tester, 'step-title'), '3 / 10   閘道器網路體檢');
@@ -488,7 +501,7 @@ void main() {
         (f) => tap(tester, f),
         find.byKey(const ValueKey('demo-gateway')),
       );
-      await tap(tester, find.text('重設 Wi-Fi'));
+      await tap(tester, find.byKey(const Key('wifi-reset-confirm')));
       expect(text(tester, 'task-title'), wifiTaskTitle);
       await tap(tester, find.text('不改 Wi-Fi，返回'));
       final s = container.read(commissionProvider);
@@ -497,7 +510,195 @@ void main() {
       expect(text(tester, 'task-title'), wifiProblemTaskTitle);
       expect(fake.count('set_wifi'), 0);
       expect(fake.count('set_site_identity'), 0);
+      await tester.runAsync(
+        container.read(commissionProvider.notifier).refreshUploadTarget,
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('wifi-reset-prompt')), findsNothing);
       expect(tester.takeException(), isNull);
+    });
+
+    testWidgets(
+      'declining survives refresh and keeps the manual Wi-Fi action',
+      (tester) async {
+        final fake = _NewGateway();
+        final container = await pump(tester, fake);
+        await pickGateway(
+          (f) => tap(tester, f),
+          find.byKey(const ValueKey('demo-gateway')),
+        );
+        await tap(tester, find.byKey(const Key('wifi-reset-later')));
+        for (var i = 0; i < 2; i++) {
+          await tester.runAsync(
+            container.read(commissionProvider.notifier).refreshUploadTarget,
+          );
+          await tester.pumpAndSettle();
+          expect(find.byKey(const Key('wifi-reset-prompt')), findsNothing);
+        }
+        expect(container.read(commissionProvider).checkPassed, isFalse);
+        expect(fake.count('set_wifi'), 0);
+        expect(fake.count('set_site_identity'), 0);
+        await tester.scrollUntilVisible(
+          find.text('重設 Wi-Fi'),
+          160,
+          scrollable: find.byType(Scrollable).first,
+        );
+        await tap(tester, find.text('重設 Wi-Fi'));
+        expect(text(tester, 'task-title'), wifiTaskTitle);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets('confirmation preserves the existing station and PTUs', (
+      tester,
+    ) async {
+      final fake = WifiGateway.station()..simulateWifi('disconnected');
+      final container = await pump(tester, fake);
+      await pickGateway(
+        (f) => tap(tester, f),
+        find.byKey(const ValueKey('demo-gateway')),
+      );
+      final before = container.read(commissionProvider);
+      await tap(tester, find.byKey(const Key('wifi-reset-confirm')));
+      final after = container.read(commissionProvider);
+      expect(after.config['wifi_only'], isTrue);
+      expect(after.config['site_id'], before.config['site_id']);
+      expect(after.config['gateway_id'], before.config['gateway_id']);
+      expect(after.ptus, before.ptus);
+      expect(after.selected, before.selected);
+      expect(find.byKey(const Key('wifi-save')).hitTestable(), findsOneWidget);
+      expect(fake.count('set_wifi'), 0);
+      expect(fake.count('set_site_identity'), 0);
+      expect(tester.takeException(), isNull);
+    });
+
+    for (final scenario in [
+      'connecting',
+      'upload-only',
+      'unsupported',
+      'unknown',
+      'link-lost',
+    ]) {
+      testWidgets('$scenario does not prompt for Wi-Fi reset', (tester) async {
+        final fake = _SignalGateway();
+        switch (scenario) {
+          case 'connecting':
+            fake.simulateWifi('connecting');
+            fake.connectingReads = 100;
+          case 'upload-only':
+            fake.simulateWifi('got_ip');
+            fake.mqttConnected = false;
+          case 'unsupported':
+            fake.config['fw_version'] = '1.0.0';
+          case 'unknown':
+            fake.netNotReadyAfterReboot = true;
+            fake.connects = 2;
+          case 'link-lost':
+            fake.signalConnected = false;
+        }
+        await pump(tester, fake);
+        await pickGateway(
+          (f) => tap(tester, f),
+          find.byKey(const ValueKey('demo-gateway')),
+        );
+        expect(find.byKey(const Key('wifi-reset-prompt')), findsNothing);
+        expect(fake.count('set_wifi'), 0);
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    testWidgets(
+      'a gateway without Wi-Fi configured is offered the Wi-Fi form',
+      (tester) async {
+        final fake = _NewGateway()..config['wifi_ssid'] = '';
+        await pump(tester, fake);
+        await pickGateway(
+          (f) => tap(tester, f),
+          find.byKey(const ValueKey('demo-gateway')),
+        );
+        expect(find.byKey(const Key('wifi-reset-prompt')), findsOneWidget);
+        await tap(tester, find.byKey(const Key('wifi-reset-confirm')));
+        expect(text(tester, 'task-title'), wifiTaskTitle);
+        expect(fake.count('set_wifi'), 0);
+      },
+    );
+
+    for (final change in ['recovered', 'link-lost']) {
+      testWidgets('confirmation after $change does not open the Wi-Fi form', (
+        tester,
+      ) async {
+        final fake = _SignalGateway();
+        final container = await pump(tester, fake);
+        await pickGateway(
+          (f) => tap(tester, f),
+          find.byKey(const ValueKey('demo-gateway')),
+        );
+        expect(find.byKey(const Key('wifi-reset-prompt')), findsOneWidget);
+        if (change == 'recovered') {
+          fake.simulateWifi('got_ip');
+          await tester.runAsync(
+            container.read(commissionProvider.notifier).refreshUploadTarget,
+          );
+          await tester.pumpAndSettle();
+        } else {
+          fake.signalConnected = false;
+        }
+        await tap(tester, find.byKey(const Key('wifi-reset-confirm')));
+        expect(find.byKey(const Key('wifi-save')), findsNothing);
+        expect(fake.count('set_wifi'), 0);
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    testWidgets('Wi-Fi prompt waits until the app returns to the foreground', (
+      tester,
+    ) async {
+      final fake = _NewGateway();
+      await pump(tester, fake);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      await pickGateway(
+        (f) => tap(tester, f),
+        find.byKey(const ValueKey('demo-gateway')),
+      );
+      expect(find.byKey(const Key('wifi-reset-prompt')), findsNothing);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('wifi-reset-prompt')), findsOneWidget);
+      await tap(tester, find.byKey(const Key('wifi-reset-later')));
+    });
+
+    testWidgets('another dialog blocks the Wi-Fi prompt until dismissed', (
+      tester,
+    ) async {
+      final fake = _NewGateway();
+      final container = await pump(tester, fake);
+      await tester.runAsync(container.read(commissionProvider.notifier).scan);
+      await tester.pumpAndSettle();
+      unawaited(
+        showDialog<void>(
+          context: tester.element(find.byKey(const Key('step-title'))),
+          builder: (context) => AlertDialog(
+            title: const Text('Review'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Close'),
+              ),
+            ],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      unawaited(
+        container
+            .read(commissionProvider.notifier)
+            .connect(container.read(commissionProvider).peers.single),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('wifi-reset-prompt')), findsNothing);
+      await tap(tester, find.text('Close'));
+      expect(find.byKey(const Key('wifi-reset-prompt')), findsOneWidget);
+      await tap(tester, find.byKey(const Key('wifi-reset-later')));
     });
 
     testWidgets('the check passing at once: the station as before, no '

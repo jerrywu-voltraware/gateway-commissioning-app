@@ -44,6 +44,8 @@ import '../core/gateway_swap.dart';
 /// The AppBar title (1.0.0+8: shown whole at 360 dp, never 「GIOS …」).
 const appBarTitle = 'GIOS 現場開通';
 
+enum _AutomaticAction { wifiReset, networkCheck, online, verify }
+
 class CommissioningPage extends ConsumerStatefulWidget {
   const CommissioningPage({
     super.key,
@@ -82,6 +84,8 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   bool _autoCheckPaused = false;
   bool _autoOnlineStarted = false;
   bool _autoFlowScheduled = false;
+  bool _wifiFixPrompted = false;
+  int _wifiFixPromptEpoch = 0;
   bool _autoUpdateChecked = false;
   bool _updateChecking = false;
   bool _updateDialogOpen = false;
@@ -800,6 +804,85 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       !_connectingPeer &&
       (ModalRoute.of(context)?.isCurrent ?? false);
 
+  void _resetWifiFixPrompt(CommissionState? previous, CommissionState next) {
+    // Polling, declining, or returning from the form must not ask again.
+    // A new gateway selection starts a new opportunity to offer the fix.
+    if (previous?.peer != next.peer ||
+        (next.step < 2 && (previous?.step ?? 0) >= 2)) {
+      _wifiFixPrompted = false;
+      _wifiFixPromptEpoch++;
+    }
+  }
+
+  bool _autoFlowBlocked(CommissionState s) =>
+      s.busy ||
+      s.error != null ||
+      s.peer == null ||
+      s.relinking ||
+      s.resumePending ||
+      s.reconnectFailed ||
+      s.savedResume ||
+      s.gatewayReboot != null;
+
+  bool _needsWifiFix(CommissionState s) {
+    if (_autoFlowBlocked(s) ||
+        s.step != 2 ||
+        s.checkPassed ||
+        s.uploadWatch == UploadWatch.linkLost) {
+      return false;
+    }
+    final link = ref.read(linkProvider);
+    if (link is GatewaySignalSource &&
+        !(link as GatewaySignalSource).signalConnected) {
+      return false;
+    }
+    return networkCheck(
+      state: s,
+      env: ref.read(backendEnvProvider),
+    ).wifiProblem;
+  }
+
+  Future<void> _offerWifiFix() async {
+    final s = ref.read(commissionProvider);
+    final env = ref.read(backendEnvProvider);
+    final epoch = _wifiFixPromptEpoch;
+    _wifiFixPrompted = true;
+    final yes = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        key: const Key('wifi-reset-prompt'),
+        scrollable: true,
+        title: const Text('是否重設 Wi-Fi？'),
+        content: Text(
+          '${networkCheck(state: s, env: env).wifi.text}\n\n'
+          '按「是」將前往 Wi-Fi 設定。',
+        ),
+        actions: [
+          TextButton(
+            key: const Key('wifi-reset-later'),
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('暫不重設'),
+          ),
+          FilledButton(
+            key: const Key('wifi-reset-confirm'),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('是，重設 Wi-Fi'),
+          ),
+        ],
+      ),
+    );
+    if (yes != true || !mounted || !_canAutoAct) return;
+    final current = ref.read(commissionProvider);
+    if (epoch != _wifiFixPromptEpoch ||
+        current.peer != s.peer ||
+        ref.read(backendEnvProvider).base != env.base ||
+        !_needsWifiFix(current)) {
+      return;
+    }
+    await _fixWifi();
+  }
+
   /// Queue at most one action, then re-read state after the frame. Never
   /// reuse a captured state after a back action, disconnect, or dialog.
   void _scheduleAutoFlow(CommissionState s) {
@@ -821,9 +904,11 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         return;
       }
       final c = ref.read(commissionProvider.notifier);
-      if (action == 2) {
+      if (action == _AutomaticAction.wifiReset) {
+        await _offerWifiFix();
+      } else if (action == _AutomaticAction.networkCheck) {
         await c.passNetworkCheck();
-      } else if (action == 3) {
+      } else if (action == _AutomaticAction.online) {
         _autoOnlineStarted = true;
         final env = ref.read(backendEnvProvider);
         await c.online(base: env.base, environment: env.environment.name);
@@ -835,31 +920,25 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     });
   }
 
-  int? _automaticAction(CommissionState s) {
-    if (s.busy ||
-        s.error != null ||
-        s.peer == null ||
-        s.relinking ||
-        s.resumePending ||
-        s.reconnectFailed ||
-        s.savedResume ||
-        s.gatewayReboot != null) {
-      return null;
+  _AutomaticAction? _automaticAction(CommissionState s) {
+    if (_autoFlowBlocked(s)) return null;
+    if (!_wifiFixPrompted && _needsWifiFix(s)) {
+      return _AutomaticAction.wifiReset;
     }
     if (s.step == 2 &&
         !s.checkPassed &&
         !_autoCheckPaused &&
         networkCheck(state: s, env: ref.read(backendEnvProvider)).ready) {
-      return 2;
+      return _AutomaticAction.networkCheck;
     }
     if (s.step == 3 && !_autoOnlineStarted && s.loggedIn && !s.offline) {
-      return 3;
+      return _AutomaticAction.online;
     }
     if (s.step == 6 &&
         !_autoVerifyStarted &&
         s.loggedIn &&
         s.ptus.any((p) => s.selected.contains(p['mac']))) {
-      return 6;
+      return _AutomaticAction.verify;
     }
     return null;
   }
@@ -965,6 +1044,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     ref.listenManual(commissionProvider, _showDoneFromTop);
     ref.listenManual(commissionProvider, _showStepPageFromTop);
     ref.listenManual(commissionProvider, _resetStationPages);
+    ref.listenManual(commissionProvider, _resetWifiFixPrompt);
     ref.listenManual(commissionProvider, _showRemoteIdentify);
     ref.listenManual(commissionProvider, (_, _) => _scheduleAutoUpdate());
     _host.addListener(() => _envController.setLocalHost(_host.text));

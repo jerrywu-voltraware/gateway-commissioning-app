@@ -698,7 +698,8 @@ void main() {
       await connect(tester);
       expect(fake.targetRequests, isEmpty);
       expect(title(tester), '3 / 10   閘道器網路體檢');
-      await tap(tester, find.text('重設 Wi-Fi'));
+      expect(find.byKey(const Key('wifi-reset-prompt')), findsOneWidget);
+      await tap(tester, find.byKey(const Key('wifi-reset-confirm')));
       expect(fake.targetRequests, hasLength(1));
       expect(find.text('保留站點 80／閘道器 1，只更新 Wi-Fi。'), findsOneWidget);
     });
@@ -725,7 +726,8 @@ void main() {
       await tap(tester, find.text('先離線配置，稍後驗證資料'));
       await connect(tester);
       expect(container.read(commissionProvider).offline, isTrue);
-      await tap(tester, find.text('設定 Wi-Fi'));
+      expect(find.byKey(const Key('wifi-reset-prompt')), findsOneWidget);
+      await tap(tester, find.byKey(const Key('wifi-reset-confirm')));
       expect(container.read(commissionProvider).error, isNotNull);
       await tap(tester, find.byKey(const Key('check-skip')));
       expect(find.widgetWithText(TextField, '站號（1–65535）'), findsOneWidget);
@@ -791,6 +793,8 @@ void main() {
       final container = await pumpApp(tester, fake);
       await connect(tester);
       expect(title(tester), '3 / 10   閘道器網路體檢');
+      expect(find.byKey(const Key('wifi-reset-prompt')), findsOneWidget);
+      await tap(tester, find.byKey(const Key('wifi-reset-later')));
       expect(find.text('✗ $_missingHomeWifi'), findsOneWidget);
       expect(find.text('重設 Wi-Fi'), findsOneWidget);
       // The panel names the Wi-Fi as the cause too, in plain words.
@@ -834,6 +838,8 @@ void main() {
       );
       await connect(tester);
       expect(title(tester), '3 / 10   閘道器網路體檢');
+      expect(find.byKey(const Key('wifi-reset-prompt')), findsOneWidget);
+      await tap(tester, find.byKey(const Key('wifi-reset-later')));
       // The list builds lazily: scroll the check into view.
       Future<void> reveal(Finder finder) => tester.scrollUntilVisible(
         finder,

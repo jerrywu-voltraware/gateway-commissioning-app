@@ -295,7 +295,8 @@ void main() {
       await _connect(tester);
       expect(container.read(commissionProvider).checkPassed, isFalse);
       expect(_title(tester), wifiProblemTaskTitle);
-      await _tap(tester, find.text('重設 Wi-Fi'));
+      expect(find.byKey(const Key('wifi-reset-prompt')), findsOneWidget);
+      await _tap(tester, find.byKey(const Key('wifi-reset-confirm')));
 
       expect(_title(tester), wifiTaskTitle);
       expect(find.text(wifiFirstPageText), findsOneWidget);
@@ -435,6 +436,8 @@ void main() {
       final container = await _pump(tester, fake);
       await _connect(tester);
       final c = container.read(commissionProvider.notifier);
+      expect(find.byKey(const Key('wifi-reset-prompt')), findsOneWidget);
+      await _tap(tester, find.byKey(const Key('wifi-reset-later')));
       await _tap(tester, find.byKey(const Key('check-skip')));
       expect(find.byKey(const Key('reuse-blocked')), findsOneWidget);
       // A refused 使用此站點 (as a late tap would be).

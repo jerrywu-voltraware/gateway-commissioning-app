@@ -940,6 +940,10 @@ void main() {
     });
     expect(read().step, 2);
     expect(read().checkPassed, isFalse);
+    expect(find.byKey(const Key('wifi-reset-prompt')), findsOneWidget);
+    await _checkPage(tester, 'Wi-Fi reset prompt');
+    await tester.tap(find.byKey(const Key('wifi-reset-later')));
+    await tester.pumpAndSettle();
     await _checkPage(tester, 'network check');
     await tester.pumpWidget(const SizedBox());
   });
@@ -959,9 +963,8 @@ void main() {
       await c.connect(_demoPeer(container));
     });
     expect(read().checkPassed, isFalse);
-    final fix = find.text('重設 Wi-Fi');
-    await tester.ensureVisible(fix);
-    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('wifi-reset-prompt')), findsOneWidget);
+    final fix = find.byKey(const Key('wifi-reset-confirm'));
     await tester.tap(fix);
     await tester.pumpAndSettle();
     expect(read().config[wifiFirstKey], isTrue);
