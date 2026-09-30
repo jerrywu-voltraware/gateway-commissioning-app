@@ -555,6 +555,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   /// 「下一個編號」 instead of just failing with a generic error.
   Future<void> _saveWifi(bool wifiOnly) async {
     final c = ref.read(commissionProvider.notifier);
+    final peer = ref.read(commissionProvider).peer;
     // 1.0.0+15: the Wi-Fi-first form of a gateway not in service — the
     // Wi-Fi only; the station is chosen after it joined.
     if (wifiOnly && ref.read(commissionProvider).config[wifiFirstKey] == true) {
@@ -674,7 +675,21 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       }
     }
     await c.configureWifi(site, gw, _ssid.text, _wifi.text);
+    if (!mounted) return;
     _wifi.clear();
+    final next = ref.read(commissionProvider);
+    if (wifiOnly &&
+        next.peer == peer &&
+        !next.busy &&
+        next.error == null &&
+        next.step == 2 &&
+        !next.checkPassed &&
+        next.config['wifi_only'] == true) {
+      // Saving Wi-Fi is not a decision to reuse the old station. Ask now,
+      // even while MQTT reconnects; the existing reuse gate still applies.
+      _autoCheckPaused = false;
+      c.backToStationChoice();
+    }
   }
 
   bool _scanningWifi = false;
@@ -2395,7 +2410,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   }
 
   /// The Wi-Fi page: a station in service kept ([wifiOnly]: its number
-  /// stays, the upload is checked again next), or a new identity whose
+  /// stays, then the station is chosen again), or a new identity whose
   /// station was chosen on the page before (sent together with it).
   ///
   /// 1.0.0+15: [wifiOnly] is also a gateway not in service fixing its

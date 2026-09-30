@@ -342,7 +342,7 @@ void main() {
       expect(s.error, isNull);
       expect(s.checkPassed, isFalse, reason: 'the upload check next');
       expect(s.message, 'Wi-Fi 已更新，站點與 PTU 設定保留。接著確認資料有上傳。');
-      expect(s.config[wifiFirstSsidKey], isNull);
+      expect(s.config[wifiFirstSsidKey], 'Office-2G');
       expect(fake.count('set_site_identity'), 0);
     });
 
@@ -569,6 +569,171 @@ void main() {
       expect(find.byKey(const Key('wifi-save')).hitTestable(), findsOneWidget);
       expect(fake.count('set_wifi'), 0);
       expect(fake.count('set_site_identity'), 0);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('Wi-Fi reset returns to the station question even while '
+        'the upload is still reconnecting', (tester) async {
+      final fake = WifiGateway.station()..simulateWifi('disconnected');
+      final container = await pump(tester, fake);
+      await pickGateway(
+        (f) => tap(tester, f),
+        find.byKey(const ValueKey('demo-gateway')),
+      );
+      await tap(tester, find.byKey(const Key('wifi-reset-confirm')));
+      fake.mqttConnected = false;
+      await save(tester, 'password123');
+      final state = container.read(commissionProvider);
+      expect(state.error, isNull);
+      expect(state.wifi, WifiVerdict.ok);
+      expect(text(tester, 'task-title'), '目前站號是 80，這台要配置在本站嗎？');
+      expect(
+        find.byKey(const Key('station-change')).hitTestable(),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<FilledButton>(find.byKey(const Key('station-use')))
+            .onPressed,
+        isNull,
+      );
+      expect(fake.count('set_site_identity'), 0);
+      expect(fake.count('scan_ble_discover'), 0);
+      await tap(tester, find.byKey(const Key('station-change')));
+      expect(find.widgetWithText(TextField, siteFieldLabel), findsOneWidget);
+      expect(find.byKey(const Key('wifi-keep')), findsOneWidget);
+      await tester.enterText(
+        find.widgetWithText(TextField, siteFieldLabel),
+        '82',
+      );
+      await tester.pump(const Duration(milliseconds: 600));
+      await tester.pumpAndSettle();
+      await tap(tester, find.byKey(const Key('station-use')));
+      await tap(tester, find.byKey(const Key('new-site-ok')));
+      expect(fake.config['site_id'], 82);
+      expect(fake.count('set_wifi'), 1, reason: 'the verified Wi-Fi is kept');
+      expect(fake.count('set_site_identity'), 1);
+      expect(find.byKey(const Key('wifi-save')), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('successful reset waits for an explicit station choice before '
+        'scanning PTUs', (tester) async {
+      final fake = WifiGateway.station()..simulateWifi('disconnected');
+      final container = await pump(tester, fake);
+      await pickGateway(
+        (f) => tap(tester, f),
+        find.byKey(const ValueKey('demo-gateway')),
+      );
+      await tap(tester, find.byKey(const Key('wifi-reset-confirm')));
+      await save(tester, 'password123');
+      await tester.runAsync(
+        container.read(commissionProvider.notifier).refreshUploadTarget,
+      );
+      await tester.pumpAndSettle();
+      expect(text(tester, 'task-title'), '目前站號是 80，這台要配置在本站嗎？');
+      expect(fake.count('set_site_identity'), 0);
+      expect(fake.count('scan_ble_discover'), 0);
+      await tap(tester, find.byKey(const Key('station-use')));
+      expect(container.read(commissionProvider).step, 4);
+      expect(fake.count('scan_ble_discover'), greaterThan(0));
+      expect(fake.config['site_id'], 80);
+      expect(fake.count('set_wifi'), 1);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('reset after reviewing the network check still asks for the '
+        'station when saved', (tester) async {
+      final fake = WifiGateway.station();
+      final container = await pump(tester, fake);
+      await pickGateway(
+        (f) => tap(tester, f),
+        find.byKey(const ValueKey('demo-gateway')),
+      );
+      fake.simulateWifi('disconnected');
+      await tester.runAsync(
+        container.read(commissionProvider.notifier).refreshUploadTarget,
+      );
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('station-review-check')),
+        160,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tap(tester, find.byKey(const Key('station-review-check')));
+      await tap(tester, find.byKey(const Key('wifi-reset-confirm')));
+      await save(tester, 'password123');
+      expect(text(tester, 'task-title'), '目前站號是 80，這台要配置在本站嗎？');
+      expect(
+        find.byKey(const Key('station-change')).hitTestable(),
+        findsOneWidget,
+      );
+      expect(fake.count('set_site_identity'), 0);
+      expect(fake.count('scan_ble_discover'), 0);
+      expect(tester.takeException(), isNull);
+    });
+
+    for (final gate in ['test-mode', 'upload-paused', 'target-mismatch']) {
+      testWidgets('station reuse after Wi-Fi reset still respects $gate', (
+        tester,
+      ) async {
+        final fake = WifiGateway.station()..simulateWifi('disconnected');
+        if (gate == 'test-mode') fake.config['mode'] = 'test';
+        if (gate == 'upload-paused') fake.config['upload_paused'] = true;
+        final container = await pump(tester, fake);
+        await pickGateway(
+          (f) => tap(tester, f),
+          find.byKey(const ValueKey('demo-gateway')),
+        );
+        await tap(tester, find.byKey(const Key('wifi-reset-confirm')));
+        if (gate == 'target-mismatch') {
+          fake.config.addAll({
+            'mqtt_target': 'local',
+            'mqtt_host': '192.168.1.50',
+            'mqtt_port': 1883,
+          });
+        }
+        await save(tester, 'password123');
+        await tester.runAsync(
+          container.read(commissionProvider.notifier).refreshUploadTarget,
+        );
+        await tester.pumpAndSettle();
+        expect(text(tester, 'task-title'), '目前站號是 80，這台要配置在本站嗎？');
+        expect(
+          tester
+              .widget<FilledButton>(find.byKey(const Key('station-use')))
+              .onPressed,
+          isNull,
+        );
+        expect(find.byKey(const Key('station-change')), findsOneWidget);
+        expect(fake.count('set_site_identity'), 0);
+        expect(fake.count('scan_ble_discover'), 0);
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    testWidgets('a failed reset stays on the Wi-Fi form until retry succeeds', (
+      tester,
+    ) async {
+      final fake = WifiGateway.station()
+        ..simulateWifi('disconnected')
+        ..unreachableSsids.add('Xiaomi_WU');
+      final container = await pump(tester, fake);
+      await pickGateway(
+        (f) => tap(tester, f),
+        find.byKey(const ValueKey('demo-gateway')),
+      );
+      await tap(tester, find.byKey(const Key('wifi-reset-confirm')));
+      await save(tester, 'wrong-pass-1');
+      expect(container.read(commissionProvider).error, isNotNull);
+      expect(text(tester, 'task-title'), wifiTaskTitle);
+      expect(find.byKey(const Key('station-change')), findsNothing);
+      fake.unreachableSsids.clear();
+      await save(tester, 'password123');
+      expect(container.read(commissionProvider).error, isNull);
+      expect(text(tester, 'task-title'), '目前站號是 80，這台要配置在本站嗎？');
+      expect(fake.count('set_site_identity'), 0);
+      expect(fake.count('scan_ble_discover'), 0);
       expect(tester.takeException(), isNull);
     });
 

@@ -166,8 +166,8 @@ bool isStep8LinkLoss(Object? error, bool current) =>
 /// get_net_status, not joined, MQTT down, or 「保留站點，重設 Wi-Fi」 (a
 /// reset on purpose).
 ///
-/// 1.0.0+15: also the Wi-Fi this phone has just set on the network check of
-/// a gateway not in service ([wifiFirstSsidKey], 「先修網路、再設站號」)
+/// Also the Wi-Fi this phone has just set on the network check
+/// ([wifiFirstSsidKey], 「先修網路、再設站號」)
 /// while its MQTT still connects — the station after it writes the identity
 /// only (a new identity's upload is confirmed at 確認上線). The Wi-Fi form
 /// itself ([wifiFirstKey]) sets the Wi-Fi on purpose, like 「保留站點」.
@@ -196,7 +196,8 @@ String? keptWifiSsid(CommissionState s) {
 /// only, no identity, no restart).
 const wifiFirstKey = 'wifi_first';
 
-/// 1.0.0+15: config key of the SSID that form joined ([keptWifiSsid]).
+/// SSID verified after a Wi-Fi-only save, kept for the station choice even
+/// while MQTT reconnects ([keptWifiSsid]).
 const wifiFirstSsidKey = 'wifi_first_ssid';
 
 /// 1.0.0+15: busy label of the Wi-Fi-first form (no identity is written).
@@ -5072,10 +5073,12 @@ class CommissioningController extends Notifier<CommissionState> {
     );
     if (wifiFirst) return _wifiFirstJoined(generation, ssid);
     if (wifiOnly) {
-      // The station is kept and the next page verifies data, so the upload
-      // is confirmed first (網路體檢 → 確認資料上傳).
+      // The page asks for the station again. Remember this verified Wi-Fi
+      // so choosing a new station need not set it twice while MQTT starts.
+      // Reusing the old station still requires the existing upload gate.
       state = state.copy(
         checkPassed: false,
+        config: {...state.config, wifiFirstSsidKey: ssid},
         message: 'Wi-Fi 已更新，站點與 PTU 設定保留。接著確認資料有上傳。',
       );
       return;
