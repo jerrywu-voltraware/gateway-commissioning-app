@@ -259,15 +259,23 @@ class BleGatewayLink
   @override
   Future<void> prepare() async {
     _watchAdapter();
-    final sdk = (await DeviceInfoPlugin().androidInfo).version.sdkInt;
-    final permissions = sdk >= 31
-        ? [Permission.bluetoothScan, Permission.bluetoothConnect]
-        : [Permission.locationWhenInUse];
+    final androidSdk = defaultTargetPlatform == TargetPlatform.android
+        ? (await DeviceInfoPlugin().androidInfo).version.sdkInt
+        : null;
+    final permissions = switch (defaultTargetPlatform) {
+      TargetPlatform.android =>
+        androidSdk! >= 31
+            ? [Permission.bluetoothScan, Permission.bluetoothConnect]
+            : [Permission.locationWhenInUse],
+      TargetPlatform.iOS => [Permission.bluetooth],
+      _ => const <Permission>[],
+    };
     final result = await permissions.request();
     if (result.values.any((p) => !p.isGranted)) {
       throw const GatewayFailure('permission');
     }
-    if (sdk < 31 &&
+    if (androidSdk != null &&
+        androidSdk < 31 &&
         !await Permission.locationWhenInUse.serviceStatus.isEnabled) {
       throw const GatewayFailure('location_off');
     }

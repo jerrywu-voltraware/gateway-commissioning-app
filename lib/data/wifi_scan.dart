@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -22,6 +23,12 @@ List<WifiNetwork> selectableNetworks(List<dynamic> rows) {
 }
 
 Future<List<WifiNetwork>> scanWifiNetworks() async {
+  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
+    throw PlatformException(
+      code: 'unsupported',
+      message: 'Wi-Fi scanning is not available on iOS.',
+    );
+  }
   if (!await Permission.locationWhenInUse.request().isGranted) {
     throw PlatformException(code: 'permission');
   }

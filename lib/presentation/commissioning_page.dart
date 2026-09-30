@@ -629,6 +629,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           'wifi_off' => '請開啟手機 Wi-Fi 後重試，或選擇自訂網路。',
           'location_off' => '請開啟手機定位服務後重試，或選擇自訂網路。',
           'throttled' => '掃描太頻繁，請稍候重試，或選擇自訂網路。',
+          'unsupported' => 'iOS 不支援掃描周邊 Wi-Fi，請選擇自訂網路。',
           _ => '掃描未完成，請重試或選擇自訂網路。',
         };
       }
@@ -684,6 +685,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         'wifi_off' => '請先開啟手機 Wi-Fi。',
         'location_off' => '請先開啟手機定位服務，再重新掃描。',
         'throttled' => '系統暫時限制掃描，請稍候再試，或手動輸入名稱。',
+        'unsupported' => 'iOS 不支援掃描周邊 Wi-Fi，請手動輸入名稱。',
         _ => 'Wi-Fi 掃描未完成，請重試或手動輸入名稱。',
       };
       ScaffoldMessenger.of(
@@ -4257,9 +4259,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             child: FilledButton.tonal(
               key: const Key('check-sync'),
               onPressed: enabled ? () => _syncGateway(explicit: true) : null,
-              child: Text(
-                '讓閘道器改送到${placeOf(check.syncTarget!)}（重新開機約 1 分鐘）',
-              ),
+              child: Text('讓閘道器改送到${placeOf(check.syncTarget!)}（重新開機約 1 分鐘）'),
             ),
           ),
         ),

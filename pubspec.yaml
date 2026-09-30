@@ -33,7 +33,7 @@ dependencies:
   crypto: 3.0.7
   flutter_riverpod: 3.3.2
   permission_handler: 12.0.3
-  device_info_plus: 12.4.0
+  device_info_plus: 11.3.0
   shared_preferences: 2.5.3
   flutter_secure_storage: 9.2.4
 
