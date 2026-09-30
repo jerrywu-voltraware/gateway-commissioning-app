@@ -8,7 +8,7 @@
 ///   line (Semantics liveRegion: 「收到第 k 筆」, then 「資料正常上傳」 with a
 ///   tick that scales in once).
 /// - [VerifyFeedRows]: under each PTU, its last rows sliding in from the
-///   top — data time, V / A / °C, the lag, 「第 k 筆」 or, red, why not.
+///   top — data time, V / A / °C, 「第 k 筆」 or, red, why not.
 /// - [VerifyStepCard]: the step's card, green once the data passed.
 ///
 /// Presentation only: what the rows say comes from the verification's own
@@ -71,9 +71,6 @@ const verifyFlowDuration = Duration(milliseconds: 800);
 /// A new row sliding in.
 const verifyFeedSlideDuration = Duration(milliseconds: 300);
 
-/// 「落後 1 秒」 (the back office's `lag_seconds`, whole seconds).
-String verifyLagText(num lag) => '落後 ${lag.round()} 秒';
-
 /// A row's count part: 「第 2 筆」, 「重新計數：第 1/3 筆」, 「正常（已滿 3
 /// 筆）」, or 「未計入（維持 2/3）」.
 String verifyFeedCountText(VerifyFeedEntry e) {
@@ -84,14 +81,15 @@ String verifyFeedCountText(VerifyFeedEntry e) {
 }
 
 /// The values of a row, each with the separator after it but the last
-/// (「53.2 V・」「2.72 A・」「36 °C・」「落後 1 秒」): a narrow phone wraps
-/// between them, never inside one. A value the row lacks is left out.
+/// (「53.2 V・」「2.72 A・」「36 °C」): a narrow phone wraps between them,
+/// never inside one. A value the row lacks is left out. Normal transport lag
+/// stays out of this values line; an actual delay remains in the reasons,
+/// using the verification's own limit (which can vary with upload policy).
 List<String> verifyFeedValueParts(VerifyFeedEntry e) {
   final parts = [
     if (e.inputMv case final mv?) '${recentVoltsBigText(mv)} V',
     if (e.inputMa case final ma?) '${recentAmpsText(ma)} A',
     if (e.tempC case final c?) '${recentTempText(c)} °C',
-    if (e.lag case final lag?) verifyLagText(lag),
   ];
   return [
     for (final (i, part) in parts.indexed)
@@ -99,7 +97,7 @@ List<String> verifyFeedValueParts(VerifyFeedEntry e) {
   ];
 }
 
-/// 「53.2 V・2.72 A・36 °C・落後 1 秒」 ([verifyFeedValueParts] in one).
+/// 「53.2 V・2.72 A・36 °C」 ([verifyFeedValueParts] in one).
 String verifyFeedValuesText(VerifyFeedEntry e) =>
     verifyFeedValueParts(e).join();
 
@@ -460,7 +458,7 @@ class _SlideIn extends StatelessWidget {
   );
 }
 
-/// One row: 「13:00:03  第 2 筆」, 「53.2 V・2.72 A・36 °C・落後 1 秒」
+/// One row: 「13:00:03  第 2 筆」, 「53.2 V・2.72 A・36 °C」
 /// under it (wrapping on a narrow phone), and, for a row not counted, red,
 /// its reason.
 class VerifyFeedRow extends StatelessWidget {

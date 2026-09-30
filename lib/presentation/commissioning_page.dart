@@ -1523,6 +1523,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     required IconData icon,
     required String title,
     String? subtitle,
+    Widget? subtitleWidget,
     bool enabled = true,
     bool opensOptions = false,
   }) => ListTile(
@@ -1533,7 +1534,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     horizontalTitleGap: 12,
     leading: Icon(icon, size: 22),
     title: Text(title),
-    subtitle: subtitle == null ? null : Text(subtitle),
+    subtitle: subtitleWidget ?? (subtitle == null ? null : Text(subtitle)),
     trailing: opensOptions ? const Icon(Icons.chevron_right, size: 20) : null,
   );
 
@@ -1695,13 +1696,45 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                       key: const Key('app-update-menu'),
                       value: 'app-update',
                       enabled: updateEnabled,
-                      child: _moreMenuRow(
-                        icon: Icons.system_update,
-                        title: _updateChecking ? '正在檢查更新…' : '檢查更新',
-                        subtitle: updateEnabled || _updateChecking
-                            ? null
-                            : '返回首頁且結束配置後可用',
-                        enabled: updateEnabled,
+                      child: Consumer(
+                        builder: (context, ref, _) {
+                          final installed = ref
+                              .watch(installedAndroidAppProvider)
+                              .asData
+                              ?.value;
+                          final unavailable =
+                              !updateEnabled && !_updateChecking;
+                          return _moreMenuRow(
+                            icon: Icons.system_update,
+                            title: _updateChecking ? '正在檢查更新…' : '檢查更新',
+                            subtitleWidget: installed == null && !unavailable
+                                ? null
+                                : Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      if (installed != null)
+                                        Text(
+                                          '版本 ${installed.versionName.trim()} · Build ${installed.versionCode}',
+                                          key: const Key(
+                                            'app-installed-version',
+                                          ),
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodySmall
+                                              ?.copyWith(
+                                                color: Theme.of(
+                                                  context,
+                                                ).colorScheme.onSurfaceVariant,
+                                              ),
+                                        ),
+                                      if (unavailable)
+                                        const Text('返回首頁且結束配置後可用'),
+                                    ],
+                                  ),
+                            enabled: updateEnabled,
+                          );
+                        },
                       ),
                     ),
                   PopupMenuItem<String>(

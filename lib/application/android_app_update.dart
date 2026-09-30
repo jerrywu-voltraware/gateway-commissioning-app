@@ -10,6 +10,24 @@ final androidUpdateSupportedProvider = Provider<bool>(
 final androidUpdatePlatformProvider = Provider<AndroidUpdatePlatform>(
   (ref) => MethodChannelAndroidUpdate(),
 );
+
+/// Installed package metadata only; opening the menu never checks the network.
+final installedAndroidAppProvider = FutureProvider<InstalledAndroidApp?>((
+  ref,
+) async {
+  if (!ref.watch(androidUpdateSupportedProvider)) return null;
+  final platform = ref.watch(androidUpdatePlatformProvider);
+  try {
+    final installed = await platform.installed();
+    return installed.versionName.trim().isEmpty || installed.versionCode < 1
+        ? null
+        : installed;
+  } catch (_) {
+    // A missing platform response must not become a guessed build number.
+    return null;
+  }
+});
+
 final androidUpdateServiceProvider = Provider<AndroidUpdateService>(
   (ref) => AndroidUpdateService(
     ref.read(appSessionProvider),
