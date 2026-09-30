@@ -9,8 +9,9 @@
 // - during 〔辨識〕 the rows keep their last RSSI (grey), the hint stays and
 //   nothing in the list moves; afterwards a SnackBar 「站 80 · 閘道器 2
 //   已閃燈」 (the row's mark stays too);
-// - a remembered gateway never heard reads 「—」, one not heard for 30 s of
-//   scanning 「訊號中斷」; a stopped scan keeps its rows; no title cut.
+// - a remembered gateway never heard has no row; an unselected gateway
+//   leaves after 30 s without a signal, while the selected one stays with
+//   「訊號中斷」; a stopped scan keeps its rows; no title cut.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -207,8 +208,10 @@ void main() {
       });
       await _settle(tester);
       expect(read().step, 1);
-      // Before anything is heard: 「—」, not 「未收到廣播」.
-      expect(_signalText(tester, _gw80), gatewayNeverHeardLabel);
+      // History alone must not create a nearby gateway card.
+      expect(find.byKey(ValueKey('gateway-card-${_gw80.id}')), findsNothing);
+      expect(_signal(_gw80), findsNothing);
+      expect(find.text('最近使用'), findsNothing);
       expect(find.text('未收到廣播'), findsNothing);
 
       link.hear(const [_gw81, _gw80]);
@@ -344,15 +347,20 @@ void main() {
     const gw82 = GatewayPeer('AA:BB:CC:DD:3B:02', 'GIOS-S82-GW03', -70);
 
     for (final scale in _scales) {
-      testWidgets('@$scale 「—」 never heard; 「訊號中斷」 after 30 s of '
-          'scanning; a nearby one leaves', (tester) async {
+      testWidgets('@$scale history alone has no row; unselected remembered '
+          'and nearby gateways leave after 30 s without a signal', (
+        tester,
+      ) async {
         var clock = DateTime(2026, 9, 29, 3);
         final link = await pumpList(tester, scale, () => clock);
+        expect(find.byKey(ValueKey('gateway-card-${_gw80.id}')), findsNothing);
+        expect(find.byKey(ValueKey('gateway-card-${_gw81.id}')), findsNothing);
+        expect(find.text('最近使用'), findsNothing);
         link.hear(const [_gw80, gw82]);
         await tester.pump();
         expect(_signalText(tester, _gw80), '-62 dBm');
-        expect(_signalText(tester, _gw81), gatewayNeverHeardLabel);
-        expect(_grey(tester, _gw81), isTrue);
+        expect(find.byKey(ValueKey('gateway-card-${_gw81.id}')), findsNothing);
+        expect(_signal(_gw81), findsNothing);
         expect(find.byKey(ValueKey('gateway-card-${gw82.id}')), findsOneWidget);
         _noCut(tester, '@$scale heard');
 
@@ -364,23 +372,14 @@ void main() {
         expect(_grey(tester, _gw80), isTrue);
         expect(find.byKey(ValueKey('gateway-card-${gw82.id}')), findsOneWidget);
 
-        // Past 30 s: 「訊號中斷」; the nearby one is gone.
+        // Past 30 s: neither history nor a former scan result keeps a row.
         clock = clock.add(const Duration(seconds: 11));
         await tester.pump(const Duration(seconds: 5));
-        expect(_signalText(tester, _gw80), gatewaySignalLostLabel);
-        expect(_signalText(tester, _gw81), gatewayNeverHeardLabel);
+        expect(find.byKey(ValueKey('gateway-card-${_gw80.id}')), findsNothing);
+        expect(find.byKey(ValueKey('gateway-card-${_gw81.id}')), findsNothing);
         expect(find.byKey(ValueKey('gateway-card-${gw82.id}')), findsNothing);
+        expect(find.text('最近使用'), findsNothing);
         expect(find.text('未收到廣播'), findsNothing);
-        // The titles whole beside the short words.
-        for (final peer in [_gw80, _gw81]) {
-          final title = tester.renderObject<RenderParagraph>(
-            find.descendant(
-              of: find.byKey(ValueKey('gateway-title-${peer.id}')),
-              matching: find.byType(RichText),
-            ),
-          );
-          expect(title.didExceedMaxLines, isFalse);
-        }
         _noCut(tester, '@$scale lost');
         await tester.pumpWidget(const SizedBox());
       });
@@ -393,7 +392,8 @@ void main() {
       link.hear(const [_gw80, gw82]);
       await tester.pump();
       final width = tester.getSize(_signal(_gw80)).width;
-      expect(tester.getSize(_signal(_gw81)).width, width, reason: '「—」');
+      expect(tester.getSize(_signal(gw82)).width, width, reason: 'live RSSI');
+      expect(_signal(_gw81), findsNothing);
       await tester.tap(find.text('停止搜尋'));
       await _settle(tester, times: 2);
       expect(find.text('重新搜尋'), findsOneWidget);
@@ -409,12 +409,22 @@ void main() {
       await tester.pump(const Duration(seconds: 5));
       expect(_signalText(tester, _gw80), '-62 dBm');
       expect(find.byKey(ValueKey('gateway-card-${gw82.id}')), findsOneWidget);
-      // 11 s more of scanning without them: lost.
+      // Only an explicit selection keeps a gateway after its signal is lost.
+      await tester.ensureVisible(find.byKey(ValueKey(_gw80.id)));
+      await tester.tap(find.byKey(ValueKey(_gw80.id)));
+      await tester.pump();
+      expect(
+        find.byKey(ValueKey('gateway-selected-${_gw80.id}')),
+        findsOneWidget,
+      );
+      // 11 s more: the selected gateway stays; the other one leaves.
       clock = clock.add(const Duration(seconds: 11));
       await tester.pump(const Duration(seconds: 5));
       expect(_signalText(tester, _gw80), gatewaySignalLostLabel);
       expect(tester.getSize(_signal(_gw80)).width, width, reason: '訊號中斷');
       expect(find.byKey(ValueKey('gateway-card-${gw82.id}')), findsNothing);
+      expect(_signal(_gw81), findsNothing);
+      _noCut(tester, 'selected signal lost');
       await tester.pumpWidget(const SizedBox());
     });
   });

@@ -120,6 +120,8 @@ Future<(ProviderContainer, _FreshPhoneSystem)> _freshList(
   double scale = 1.1,
   bool offline = false,
   _FreshPhoneSystem? system,
+  RecentGateway? recent,
+  List<GatewayPeer> peers = const [_first, _second],
 }) async {
   tester.view.physicalSize = const Size(360, 740);
   tester.view.devicePixelRatio = 1;
@@ -150,6 +152,9 @@ Future<(ProviderContainer, _FreshPhoneSystem)> _freshList(
     await topology.setTopology(GatewayTopology.star);
     expect(await RecentGateways.load(false), isEmpty);
     expect(await RecentGateways.load(true), isEmpty);
+    if (recent != null) {
+      await RecentGateways.remember(true, recent.peer, recent.uid);
+    }
     await container
         .read(commissionProvider.notifier)
         .prepare(
@@ -160,7 +165,7 @@ Future<(ProviderContainer, _FreshPhoneSystem)> _freshList(
   });
   await _settle(tester);
   expect(container.read(commissionProvider).step, 1);
-  link.hear();
+  link.hear(peers);
   await tester.pump();
   return (container, link);
 }
@@ -219,6 +224,46 @@ void _noCardOverflow(WidgetTester tester, GatewayPeer peer) {
 
 void main() {
   setUpAll(() async => expect(await loadRealFonts(), isTrue));
+
+  testWidgets('backend-online history stays hidden until BLE hears it', (
+    tester,
+  ) async {
+    final (_, link) = await _freshList(
+      tester,
+      recent: const RecentGateway(_first, 'AABBCCDD3A00'),
+      peers: const [_factory],
+    );
+    expect(link.fleetQueries, greaterThan(0));
+    expect(_card(_first), findsNothing);
+    expect(find.text('最近使用'), findsNothing);
+    expect(_card(_factory), findsOneWidget);
+    expect(find.text('已找到 1 台'), findsOneWidget);
+    expect(find.text('附近裝置（1）'), findsOneWidget);
+
+    // A later advertisement makes the saved UID useful without creating
+    // a second card or connecting automatically.
+    link.hear(const [_factory, _first]);
+    await tester.pump();
+    expect(_card(_first), findsOneWidget);
+    expect(find.text('最近使用'), findsOneWidget);
+    expect(find.text('已找到 2 台'), findsOneWidget);
+    expect(
+      find.byKey(ValueKey('gateway-configured-${_first.id}')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: _card(_first), matching: find.text('後端在線')),
+      findsOneWidget,
+    );
+    expect(link.connections, isEmpty);
+    expect(link.commands, isEmpty);
+    await tester.runAsync(() async {
+      final saved = await RecentGateways.load(true);
+      expect(saved.single.uid, 'AABBCCDD3A00');
+    });
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
 
   group('unverified advertised identity is presence only', () {
     test('fresh 81/1 and 81/2 get their own online/offline hints', () {

@@ -297,8 +297,8 @@ class _SelectedMark extends StatelessWidget {
 /// 1.0.0+11 (phone: 〔辨識〕 paused the scan 2–4 s and every row read
 /// 「未收到廣播」, cutting the title to 「站 80・閘道…」): a gateway heard
 /// keeps its last RSSI (grey while not heard live) for this long; after
-/// that a remembered row reads [gatewaySignalLostLabel] and a nearby one
-/// leaves the list.
+/// that only a selected row stays with [gatewaySignalLostLabel]; other
+/// rows leave the list, including remembered gateways.
 const gatewayHeardFor = Duration(seconds: 30);
 
 /// 1.0.0+11: a remembered gateway not heard for [gatewayHeardFor].
@@ -1464,8 +1464,19 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
         _backendAt = null;
       });
     });
-    final recentIds = _recent.map((r) => r.peer.id).toSet();
     final selectedId = _selectedId;
+    final now = _heardClock();
+    // History provides identity metadata, never evidence of proximity.
+    // Keep the same scan grace period and pause behavior for both groups.
+    final heard = _heardPeers(now);
+    final heardIds = {for (final peer in heard) peer.id};
+    final recent = [
+      for (final (i, r) in _recent.indexed)
+        if (heardIds.contains(r.peer.id) ||
+            (r.peer.id == selectedId && _heard.containsKey(r.peer.id)))
+          (i, r),
+    ];
+    final recentIds = {for (final (_, r) in recent) r.peer.id};
     // 1.0.0+17: no filter box any more (the user: the list is short and the
     // flow should pick for the installer) — every gateway is listed.
     // 1.0.0+14: while a gateway is selected the cards keep the order they
@@ -1477,22 +1488,15 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
       return at < 0 ? frozen.length : at;
     }
 
-    // Round 30: both lists by the phone's signal, strongest first (a
-    // recent gateway not heard keeps its place after the heard ones).
+    // Round 30: both lists by the phone's signal, strongest first.
     // 1.0.0+10: configured ones no longer after the others — the strongest
     // (「最近」) is first in its group.
-    final recent = [for (final (i, r) in _recent.indexed) (i, r)]
-      ..sort((a, b) {
-        final f = frozenAt(a.$2.peer.id) - frozenAt(b.$2.peer.id);
-        if (f != 0) return f;
-        final c = _rankOf(a.$2.peer.id) - _rankOf(b.$2.peer.id);
-        return c != 0 ? c : a.$1 - b.$1;
-      });
-    final now = _heardClock();
-    // 1.0.0+11: heard within [gatewayHeardFor] (live or not): a pause
-    // keeps the rows, 「最近」 and the hint above them.
-    final heard = _heardPeers(now);
-    final heardIds = {for (final peer in heard) peer.id};
+    recent.sort((a, b) {
+      final f = frozenAt(a.$2.peer.id) - frozenAt(b.$2.peer.id);
+      if (f != 0) return f;
+      final c = _rankOf(a.$2.peer.id) - _rankOf(b.$2.peer.id);
+      return c != 0 ? c : a.$1 - b.$1;
+    });
     final selectedLost =
         selectedId != null &&
         !recentIds.contains(selectedId) &&
