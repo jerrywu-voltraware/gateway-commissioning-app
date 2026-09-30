@@ -25,7 +25,6 @@ import 'package:gateway_commissioning/data/local_backend_probe.dart';
 import 'package:gateway_commissioning/data/recent_data_api.dart';
 import 'package:gateway_commissioning/data/recent_gateways.dart';
 import 'package:gateway_commissioning/core/gateway_proximity.dart';
-import 'package:gateway_commissioning/core/gateway_topology.dart';
 import 'package:gateway_commissioning/gateway_app.dart';
 import 'package:gateway_commissioning/presentation/commissioning_page.dart';
 import 'package:gateway_commissioning/presentation/environment_switch.dart';
@@ -250,29 +249,23 @@ void main() {
         ),
       );
       expect(chipLabel.style?.fontSize, 12);
-      // One ⋮ button holds the topology items, 「閘道器狀態…」 and the theme.
+      // The small menu shows entry points; individual choices open separately.
       expect(find.byIcon(Icons.hub_outlined), findsNothing);
       await tester.tap(find.byKey(const Key('topology-menu')));
       await tester.pumpAndSettle();
-      expect(find.byKey(const Key('topology-heading')), findsOneWidget);
-      expect(find.text(GatewayTopology.direct.label), findsOneWidget);
-      expect(find.text(GatewayTopology.star.label), findsOneWidget);
+      expect(find.byKey(const Key('topology-settings-menu')), findsOneWidget);
       expect(find.byKey(const Key('gateway-status-menu')), findsOneWidget);
+      expect(find.byKey(const Key('theme-settings-menu')), findsOneWidget);
+      expect(find.byKey(const Key('topology-option-star')), findsNothing);
+      expect(find.text('跟隨系統'), findsNothing);
+      expect(find.text('深色'), findsNothing);
+      await tester.tap(find.byKey(const Key('theme-settings-menu')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('theme-options')), findsOneWidget);
       expect(find.text('跟隨系統'), findsOneWidget);
       expect(find.text('淺色'), findsOneWidget);
       expect(find.text('深色'), findsOneWidget);
-      final items = find.byWidgetPredicate((w) => w is PopupMenuItem<String>);
-      final firstTopology = tester.getTopLeft(
-        find.ancestor(
-          of: find.text(GatewayTopology.direct.label),
-          matching: items,
-        ),
-      );
-      final status = tester.getTopLeft(
-        find.byKey(const Key('gateway-status-menu')),
-      );
-      expect(firstTopology.dy, lessThan(status.dy));
-      await tester.tap(find.text('深色'));
+      await tester.tap(find.byKey(const Key('theme-option-dark')));
       await tester.pumpAndSettle();
       expect(
         tester.widget<MaterialApp>(find.byType(MaterialApp)).themeMode,

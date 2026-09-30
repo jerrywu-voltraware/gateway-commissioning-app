@@ -99,22 +99,23 @@ Future<ProviderContainer> _pump(
 }
 
 void main() {
-  testWidgets('native verification failure is not presented as a network error', (
-    tester,
-  ) async {
-    final api = _Api();
-    final platform = _Platform()
-      ..installError = PlatformException(code: 'update_verification_failed');
-    await _pump(tester, api, platform);
-    await tester.pump(const Duration(seconds: 3));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('立即更新'));
-    await tester.pumpAndSettle();
-    expect(api.downloads, 1);
-    expect(platform.installs, 1);
-    expect(find.text('更新檔的版本或簽章驗證失敗，請聯絡管理人員。'), findsOneWidget);
-    expect(find.textContaining('確認網路'), findsNothing);
-  });
+  testWidgets(
+    'native verification failure is not presented as a network error',
+    (tester) async {
+      final api = _Api();
+      final platform = _Platform()
+        ..installError = PlatformException(code: 'update_verification_failed');
+      await _pump(tester, api, platform);
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('立即更新'));
+      await tester.pumpAndSettle();
+      expect(api.downloads, 1);
+      expect(platform.installs, 1);
+      expect(find.text('更新檔的版本或簽章驗證失敗，請聯絡管理人員。'), findsOneWidget);
+      expect(find.textContaining('確認網路'), findsNothing);
+    },
+  );
   testWidgets(
     'failed download retries, then permission return continues without redownload',
     (tester) async {
@@ -197,6 +198,12 @@ void main() {
   testWidgets('a result arriving after commissioning starts is discarded', (
     tester,
   ) async {
+    tester.view.physicalSize = const Size(360, 740);
+    tester.view.devicePixelRatio = 1;
+    tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
     final api = _Api()..gate = Completer<void>();
     final container = await _pump(tester, api, _Platform());
     await tester.pump(const Duration(seconds: 3));
@@ -217,6 +224,14 @@ void main() {
       find.byKey(const Key('app-update-menu')),
     );
     expect(item.enabled, isFalse);
+    expect(find.text('返回首頁且結束配置後可用'), findsOneWidget);
+    expect(find.byType(PopupMenuItem<String>), findsNWidgets(4));
+    final first = tester.getRect(
+      find.byKey(const Key('topology-settings-menu')),
+    );
+    final last = tester.getRect(find.byKey(const Key('theme-settings-menu')));
+    expect(last.bottom - first.top, lessThan(370));
+    expect(tester.takeException(), isNull);
   });
   testWidgets('iOS does not read Android metadata or expose the update menu', (
     tester,

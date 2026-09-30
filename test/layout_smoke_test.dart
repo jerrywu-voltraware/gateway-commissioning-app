@@ -885,12 +885,46 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('⋮ menu', (tester) async {
+  testWidgets('compact ⋮ menu and its mode / appearance choices', (
+    tester,
+  ) async {
     await _toList(tester);
     await tester.tap(find.byKey(const Key('topology-menu')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('gateway-status-menu')), findsOneWidget);
-    await _checkPage(tester, '⋮ menu');
+    await _checkPage(
+      tester,
+      '⋮ menu',
+      also: (where) {
+        final items = find.byWidgetPredicate(
+          (widget) => widget is PopupMenuItem<String>,
+        );
+        final bounds = items
+            .evaluate()
+            .map((element) {
+              return tester.getRect(find.byWidget(element.widget));
+            })
+            .reduce((a, b) => a.expandToInclude(b));
+        final screen = tester.view.physicalSize / tester.view.devicePixelRatio;
+        expect(
+          bounds.height,
+          lessThan(screen.height / 2),
+          reason: '$where: menu covers more than half the screen',
+        );
+      },
+    );
+    await tester.tap(find.byKey(const Key('topology-settings-menu')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('topology-options')), findsOneWidget);
+    await _checkPage(tester, 'connection mode choices');
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('topology-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('theme-settings-menu')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('theme-options')), findsOneWidget);
+    await _checkPage(tester, 'appearance choices');
     await tester.pumpWidget(const SizedBox());
   });
 
@@ -1180,6 +1214,8 @@ void main() {
     await _checkPage(tester, 'PTU missing');
 
     await tester.tap(find.byKey(const Key('topology-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('topology-settings-menu')));
     await tester.pumpAndSettle();
     final settings = find.byKey(const Key('direct-settings'));
     expect(settings, findsOneWidget);

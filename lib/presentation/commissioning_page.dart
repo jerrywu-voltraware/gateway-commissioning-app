@@ -1235,6 +1235,10 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   /// Round 16: star mode 「每台 PTU 數」 — chosen in a dialog and confirmed
   /// with a snackbar; the topology switch never writes it.
   Future<void> _pickStarCount() async {
+    if (ref.read(commissionProvider).busy ||
+        !ref.read(topologyProvider).topology.isStar) {
+      return;
+    }
     final current = ref.read(topologyProvider).starCount;
     final picked = await showDialog<int>(
       context: context,
@@ -1262,10 +1266,177 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         ],
       ),
     );
-    if (!mounted || picked == null || picked == current) return;
+    if (!mounted ||
+        picked == null ||
+        picked == current ||
+        ref.read(commissionProvider).busy ||
+        !ref.read(topologyProvider).topology.isStar) {
+      return;
+    }
     await ref.read(topologyProvider.notifier).setStarCount(picked);
     if (mounted) _snack('星狀模式每台 PTU 數已改為 $picked 台');
   }
+
+  Future<void> _openTopologyOptions() async {
+    if (ref.read(commissionProvider).busy) return;
+    final picked = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => Consumer(
+        builder: (context, ref, _) {
+          final state = ref.watch(commissionProvider);
+          final settings = ref.watch(topologyProvider);
+          void select(String value) {
+            if (!ref.read(commissionProvider).busy) {
+              Navigator.pop(dialogContext, value);
+            }
+          }
+
+          return AlertDialog(
+            key: const Key('topology-options'),
+            title: const Text('連接模式'),
+            scrollable: true,
+            content: SizedBox(
+              width: double.maxFinite,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (final topology in GatewayTopology.values)
+                    ListTile(
+                      key: ValueKey('topology-option-${topology.name}'),
+                      contentPadding: EdgeInsets.zero,
+                      enabled: !state.busy,
+                      title: Text(topology.shortLabel),
+                      subtitle: Text(topology.isDirect ? '一對一' : '一對多'),
+                      selected: settings.topology == topology,
+                      trailing: settings.topology == topology
+                          ? const Icon(Icons.check)
+                          : null,
+                      onTap: state.busy
+                          ? null
+                          : () => select('topology:${topology.name}'),
+                    ),
+                  if (state.busy)
+                    const Text('操作進行中，完成後才能切換。')
+                  else if (settings.topology.isStar) ...[
+                    const Divider(),
+                    ListTile(
+                      key: const Key('star-count'),
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('每台 PTU 數'),
+                      subtitle: Text('${settings.starCount} 台'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => select('starcount'),
+                    ),
+                  ] else if (state.peer != null &&
+                      directAutoConnectSupported(state.config)) ...[
+                    const Divider(),
+                    ListTile(
+                      key: const Key('direct-settings'),
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('直連進階設定'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => select('direct:settings'),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('關閉'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    if (!mounted || picked == null || ref.read(commissionProvider).busy) return;
+    if (picked.startsWith('topology:')) {
+      await ref
+          .read(commissionProvider.notifier)
+          .switchTopology(
+            GatewayTopology.values.firstWhere(
+              (topology) => picked == 'topology:${topology.name}',
+            ),
+          );
+    } else if (picked == 'starcount') {
+      await _pickStarCount();
+    } else if (picked == 'direct:settings') {
+      final state = ref.read(commissionProvider);
+      if (!ref.read(topologyProvider).topology.isDirect ||
+          state.peer == null ||
+          !directAutoConnectSupported(state.config)) {
+        return;
+      }
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        builder: (_) => const DirectSettingsSheet(),
+      );
+    }
+  }
+
+  String _themeLabel(ThemeMode mode) => switch (mode) {
+    ThemeMode.system => '跟隨系統',
+    ThemeMode.light => '淺色',
+    ThemeMode.dark => '深色',
+  };
+
+  Future<void> _openThemeOptions() async {
+    final picked = await showDialog<ThemeMode>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        key: const Key('theme-options'),
+        title: const Text('外觀'),
+        scrollable: true,
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final mode in ThemeMode.values)
+                ListTile(
+                  key: ValueKey('theme-option-${mode.name}'),
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(_themeLabel(mode)),
+                  selected: widget.themeMode == mode,
+                  trailing: widget.themeMode == mode
+                      ? const Icon(Icons.check)
+                      : null,
+                  onTap: () => Navigator.pop(dialogContext, mode),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('關閉'),
+          ),
+        ],
+      ),
+    );
+    if (mounted && picked != null) widget.onThemeChanged(picked);
+  }
+
+  Widget _moreMenuRow({
+    required IconData icon,
+    required String title,
+    String? subtitle,
+    bool enabled = true,
+    bool opensOptions = false,
+  }) => ListTile(
+    contentPadding: EdgeInsets.zero,
+    dense: true,
+    enabled: enabled,
+    minLeadingWidth: 20,
+    horizontalTitleGap: 12,
+    leading: Icon(icon, size: 22),
+    title: Text(title),
+    subtitle: subtitle == null ? null : Text(subtitle),
+    trailing: opensOptions ? const Icon(Icons.chevron_right, size: 20) : null,
+  );
 
   /// Blocks 「儲存並連接 WiFi」 when the site's 1–[kMaxGatewayId] gateway slots
   /// are full (1.0.0+13: unless an old gateway is replaced, [_swap]).
@@ -1369,111 +1540,80 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                 onPressed: () => openFieldHelp(context, ref),
               ),
             EnvironmentChip(onPressed: _openEnvironmentSheet),
-            // ⋮: the topology items first (拓撲模式（進階）: 直連／星狀, the
-            // star 「每台 PTU 數」, 直連進階設定 — greyed while busy), then
-            // 「閘道器狀態…」, then the theme. One button keeps 360 dp free.
+            // Keep the first menu short; mode and appearance choices open
+            // separately so they do not cover the gateway list together.
             PopupMenuButton<String>(
               key: const Key('topology-menu'),
               tooltip: '更多',
+              constraints: const BoxConstraints(minWidth: 280, maxWidth: 300),
               onSelected: (value) {
-                if (value.startsWith('topology:')) {
-                  final t = GatewayTopology.values.firstWhere(
-                    (t) => t.name == value.substring('topology:'.length),
-                  );
-                  // Round 22: at step 7 the old mode's list is dropped and
-                  // read again (field: direct → star kept 「配置 1 台」).
-                  controller.switchTopology(t);
-                } else if (value == 'starcount') {
-                  _pickStarCount();
-                } else if (value == 'direct:settings') {
-                  showModalBottomSheet<void>(
-                    context: context,
-                    isScrollControlled: true,
-                    builder: (_) => const DirectSettingsSheet(),
-                  );
+                if (value == 'topology-settings') {
+                  _openTopologyOptions();
                 } else if (value == 'status') {
-                  GatewayStatusPage.open(context);
+                  if (gatewayStatusMenuEnabled(ref.read(commissionProvider))) {
+                    GatewayStatusPage.open(context);
+                  }
                 } else if (value == 'app-update') {
                   _checkAppUpdate(manual: true);
-                } else if (value.startsWith('theme:')) {
-                  widget.onThemeChanged(
-                    ThemeMode.values.firstWhere(
-                      (m) => m.name == value.substring('theme:'.length),
-                    ),
-                  );
+                } else if (value == 'theme-settings') {
+                  _openThemeOptions();
                 }
               },
               itemBuilder: (context) {
-                final heading = Theme.of(context).textTheme.labelSmall;
+                final statusEnabled = gatewayStatusMenuEnabled(state);
+                final updateEnabled = _updateHomeSafe && !_updateChecking;
                 return [
                   PopupMenuItem<String>(
-                    key: const Key('topology-heading'),
-                    enabled: false,
-                    height: 32,
-                    child: Text(
-                      state.busy ? '拓撲模式（操作進行中，完成後才能切換）' : '拓撲模式（進階）',
-                      style: heading,
+                    key: const Key('topology-settings-menu'),
+                    value: 'topology-settings',
+                    enabled: !state.busy,
+                    child: _moreMenuRow(
+                      icon: Icons.hub_outlined,
+                      title: '連接模式',
+                      subtitle: state.busy
+                          ? '操作完成後可切換'
+                          : topology.isDirect
+                          ? '直連 · 一對一'
+                          : '星狀 · 一對多',
+                      enabled: !state.busy,
+                      opensOptions: true,
                     ),
                   ),
-                  for (final t in GatewayTopology.values)
-                    CheckedPopupMenuItem(
-                      value: 'topology:${t.name}',
-                      checked: t == topology,
-                      enabled: !state.busy,
-                      child: Text(t.label),
-                    ),
-                  // 直連進階設定：只在直連、且已連上支援直連選台的韌體時出現。
-                  if (topology.isDirect &&
-                      state.peer != null &&
-                      directAutoConnectSupported(state.config))
-                    PopupMenuItem(
-                      key: const Key('direct-settings'),
-                      value: 'direct:settings',
-                      enabled: !state.busy,
-                      child: const Text('直連進階設定…'),
-                    ),
-                  // Round 16: the star count opens its own dialog — one
-                  // mis-tap beside the topology items no longer changes it.
-                  if (topology.isStar)
-                    PopupMenuItem(
-                      key: const Key('star-count'),
-                      value: 'starcount',
-                      enabled: !state.busy,
-                      child: Text('每台 PTU 數：${topologySettings.starCount}…'),
-                    ),
-                  const PopupMenuDivider(),
-                  if (updateSupported && !demo)
-                    PopupMenuItem(
-                      key: const Key('app-update-menu'),
-                      value: 'app-update',
-                      enabled: _updateHomeSafe && !_updateChecking,
-                      child: Text(_updateChecking ? '正在檢查更新…' : '檢查更新'),
-                    ),
-                  // 1.0.0+5: 「閘道器狀態」 from any page (the flow untouched).
-                  // 1.0.0+10: greyed while a run is busy or a gateway is
-                  // connected ([gatewayStatusMenuEnabled]).
-                  PopupMenuItem(
+                  PopupMenuItem<String>(
                     key: const Key('gateway-status-menu'),
                     value: 'status',
-                    enabled: gatewayStatusMenuEnabled(state),
-                    child: Text(gatewayStatusMenuText(state)),
-                  ),
-                  const PopupMenuDivider(),
-                  PopupMenuItem<String>(
-                    enabled: false,
-                    height: 32,
-                    child: Text('主題', style: heading),
-                  ),
-                  for (final (mode, label) in const [
-                    (ThemeMode.system, '跟隨系統'),
-                    (ThemeMode.light, '淺色'),
-                    (ThemeMode.dark, '深色'),
-                  ])
-                    CheckedPopupMenuItem(
-                      value: 'theme:${mode.name}',
-                      checked: widget.themeMode == mode,
-                      child: Text(label),
+                    enabled: statusEnabled,
+                    child: _moreMenuRow(
+                      icon: Icons.bar_chart_outlined,
+                      title: '查看上傳資料…',
+                      subtitle: statusEnabled ? null : gatewayStatusBusyText,
+                      enabled: statusEnabled,
                     ),
+                  ),
+                  if (updateSupported && !demo)
+                    PopupMenuItem<String>(
+                      key: const Key('app-update-menu'),
+                      value: 'app-update',
+                      enabled: updateEnabled,
+                      child: _moreMenuRow(
+                        icon: Icons.system_update,
+                        title: _updateChecking ? '正在檢查更新…' : '檢查更新',
+                        subtitle: updateEnabled || _updateChecking
+                            ? null
+                            : '返回首頁且結束配置後可用',
+                        enabled: updateEnabled,
+                      ),
+                    ),
+                  PopupMenuItem<String>(
+                    key: const Key('theme-settings-menu'),
+                    value: 'theme-settings',
+                    child: _moreMenuRow(
+                      icon: Icons.palette_outlined,
+                      title: '外觀',
+                      subtitle: _themeLabel(widget.themeMode),
+                      opensOptions: true,
+                    ),
+                  ),
                 ];
               },
             ),

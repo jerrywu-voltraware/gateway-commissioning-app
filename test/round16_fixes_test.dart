@@ -521,20 +521,28 @@ void main() {
       Future<void> openMenu() async {
         await tester.tap(find.byKey(const Key('topology-menu')));
         await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('topology-settings-menu')));
+        await tester.pumpAndSettle();
       }
 
       await openMenu();
       expect(find.byKey(const Key('star-count')), findsOneWidget);
-      expect(find.text('每台 PTU 數：5…'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('star-count')),
+          matching: find.text('5 台'),
+        ),
+        findsOneWidget,
+      );
       // No one-tap count items beside the topology items any more.
       expect(find.byKey(const ValueKey('star-count-4')), findsNothing);
-      await tester.tap(find.text(GatewayTopology.direct.label));
+      await tester.tap(find.byKey(const Key('topology-option-direct')));
       await tester.pumpAndSettle();
       expect(container.read(topologyProvider).topology.isDirect, isTrue);
 
       await openMenu();
       expect(find.byKey(const Key('star-count')), findsNothing);
-      await tester.tap(find.text(GatewayTopology.star.label));
+      await tester.tap(find.byKey(const Key('topology-option-star')));
       await tester.pumpAndSettle();
       expect(container.read(topologyProvider).topology.isStar, isTrue);
       expect(container.read(topologyProvider).starCount, 5);

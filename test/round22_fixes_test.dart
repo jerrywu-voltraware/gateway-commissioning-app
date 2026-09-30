@@ -714,12 +714,9 @@ void main() {
       fake.scanGate = Completer<void>();
       await tester.tap(find.byKey(const Key('topology-menu')));
       await tester.pumpAndSettle();
-      await tester.tap(
-        find.widgetWithText(
-          CheckedPopupMenuItem<String>,
-          GatewayTopology.star.label,
-        ),
-      );
+      await tester.tap(find.byKey(const Key('topology-settings-menu')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('topology-option-star')));
       for (var i = 0; i < 10; i++) {
         await tester.pump(const Duration(milliseconds: 50));
       }
