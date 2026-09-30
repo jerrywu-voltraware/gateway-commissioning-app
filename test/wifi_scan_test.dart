@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gateway_commissioning/data/wifi_scan.dart';
 
@@ -12,5 +14,21 @@ void main() {
     ]);
     expect(networks.map((n) => n.ssid), ['Office', '中文 WiFi ']);
     expect(networks.first.rssi, -40);
+  });
+
+  test('iOS reports Wi-Fi scan as unsupported', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+
+    await expectLater(
+      scanWifiNetworks(),
+      throwsA(
+        isA<PlatformException>().having(
+          (error) => error.code,
+          'code',
+          'unsupported',
+        ),
+      ),
+    );
   });
 }
