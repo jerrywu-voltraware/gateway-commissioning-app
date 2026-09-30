@@ -12,6 +12,26 @@ import 'package:gateway_commissioning/data/dashboard_api.dart';
 List<int> _fixture(String name) =>
     File('test/fixtures/tls/$name').readAsBytesSync();
 
+/// SHA-256 of a fixture certificate's DER (the PEM body).
+String _pemPin(String name) => sha256
+    .convert(
+      base64.decode(
+        utf8
+            .decode(_fixture(name))
+            .replaceAll(RegExp(r'-----[A-Z ]+-----'), '')
+            .replaceAll(RegExp(r'\s'), ''),
+      ),
+    )
+    .toString();
+
+/// The Android / BoringSSL chain path cannot be exercised on macOS: Dart
+/// hands verification to Apple's Security framework there, which refuses
+/// the 100-year fixture leaf (see the 09-30 group). Run these on Windows /
+/// Linux; on macOS the Apple group covers the production behaviour.
+final String? _macOsHostVerifier = Platform.isMacOS
+    ? 'macOS host verifier refuses the long-lived fixture leaf'
+    : null;
+
 /// An HTTPS server on 127.0.0.1 sending [chain] (PEM files, leaf first).
 Future<HttpServer> _serve(List<String> chain, String key) async {
   final context = SecurityContext()
@@ -28,13 +48,21 @@ Future<HttpServer> _serve(List<String> chain, String key) async {
 }
 
 /// GET / through [apiHttpClientFor] with [server] as the production base.
-Future<int> _get(HttpServer server, {String ca = '', String pin = ''}) async {
+/// [apple] false: the Android / BoringSSL chain path; true: Apple's
+/// Security-framework platforms (iOS / macOS).
+Future<int> _get(
+  HttpServer server, {
+  String ca = '',
+  String pin = '',
+  bool apple = false,
+}) async {
   final base = 'https://127.0.0.1:${server.port}';
   final client = apiHttpClientFor(
     Uri.parse(base),
     pin: pin,
     caPemB64: ca,
     productionBase: base,
+    applePlatform: apple,
   );
   try {
     final response = await (await client.getUrl(Uri.parse('$base/'))).close();
@@ -44,6 +72,7 @@ Future<int> _get(HttpServer server, {String ca = '', String pin = ''}) async {
     client.close(force: true);
   }
 }
+
 void main() {
   final der = List<int>.generate(300, (i) => i % 251);
   final pin = sha256.convert(der).toString();
@@ -97,29 +126,19 @@ void main() {
 
   group('r33: production trusts the build CA (API_CA_PEM_B64)', () {
     final caB64 = base64.encode(_fixture('ca.pem'));
-    // SHA-256 of the leaf's DER (the PEM body).
-    final leafPin = sha256
-        .convert(
-          base64.decode(
-            utf8
-                .decode(_fixture('leaf.pem'))
-                .replaceAll(RegExp(r'-----[A-Z ]+-----'), '')
-                .replaceAll(RegExp(r'\s'), ''),
-          ),
-        )
-        .toString();
+    final leafPin = _pemPin('leaf.pem');
 
     test('leaf + CA chain verifies against the CA (IP SAN)', () async {
       final server = await _serve(['leaf.pem', 'ca.pem'], 'leaf.key');
       addTearDown(() => server.close(force: true));
       expect(await _get(server, ca: caB64), 200);
-    });
+    }, skip: _macOsHostVerifier);
 
     test('a leaf alone (CA not sent) still verifies against the CA', () async {
       final server = await _serve(['leaf.pem'], 'leaf.key');
       addTearDown(() => server.close(force: true));
       expect(await _get(server, ca: caB64), 200);
-    });
+    }, skip: _macOsHostVerifier);
 
     test('a self-signed certificate is refused', () async {
       final server = await _serve(['self.pem'], 'self.key');
@@ -153,7 +172,7 @@ void main() {
         _get(server, ca: caB64, pin: 'ab' * 32),
         throwsA(isA<HandshakeException>()),
       );
-    });
+    }, skip: _macOsHostVerifier);
 
     test('a CA value that is not a PEM trusts nothing extra', () async {
       expect(caPemBytes(''), isNull);
@@ -165,6 +184,74 @@ void main() {
       await expectLater(
         _get(server, ca: base64.encode(utf8.encode('hello'))),
         throwsA(isA<HandshakeException>()),
+      );
+    });
+
+    // 09-30: Apple's Security framework refuses TLS server certificates
+    // valid for more than 825 days (the production leaf: 20 years; this
+    // fixture: 100 years), so on iOS / macOS the CA chain can never pass
+    // and a pin switches to leaf pinning. These run on any host: the
+    // Apple path never consults the platform verifier.
+    group('09-30: Apple platforms pin the leaf instead of the CA chain', () {
+      test('CA + pin: the leaf pin alone admits the chain', () async {
+        final server = await _serve(['leaf.pem', 'ca.pem'], 'leaf.key');
+        addTearDown(() => server.close(force: true));
+        expect(await _get(server, ca: caB64, pin: leafPin, apple: true), 200);
+      });
+
+      test('CA + pin: a leaf alone is admitted by its pin', () async {
+        final server = await _serve(['leaf.pem'], 'leaf.key');
+        addTearDown(() => server.close(force: true));
+        expect(await _get(server, ca: caB64, pin: leafPin, apple: true), 200);
+      });
+
+      test(
+        'CA + wrong pin is refused even though the chain is valid',
+        () async {
+          final server = await _serve(['leaf.pem', 'ca.pem'], 'leaf.key');
+          addTearDown(() => server.close(force: true));
+          await expectLater(
+            _get(server, ca: caB64, pin: 'ab' * 32, apple: true),
+            throwsA(isA<HandshakeException>()),
+          );
+        },
+      );
+
+      test('a CA-signed certificate for another IP is refused', () async {
+        final server = await _serve(['otherip.pem', 'ca.pem'], 'otherip.key');
+        addTearDown(() => server.close(force: true));
+        await expectLater(
+          _get(server, ca: caB64, pin: leafPin, apple: true),
+          throwsA(isA<HandshakeException>()),
+        );
+      });
+
+      test(
+        'a self-signed certificate matching the pin proves the pin path',
+        () async {
+          // The CA path would refuse this (no chain to the CA); only leaf
+          // pinning admits it.
+          final selfPin = _pemPin('self.pem');
+          final server = await _serve(['self.pem'], 'self.key');
+          addTearDown(() => server.close(force: true));
+          expect(await _get(server, ca: caB64, pin: selfPin, apple: true), 200);
+          await expectLater(
+            _get(server, ca: caB64, pin: selfPin),
+            throwsA(isA<HandshakeException>()),
+          );
+        },
+      );
+
+      test(
+        'without a pin the CA path is kept (a self-signed cert is refused)',
+        () async {
+          final server = await _serve(['self.pem'], 'self.key');
+          addTearDown(() => server.close(force: true));
+          await expectLater(
+            _get(server, ca: caB64, apple: true),
+            throwsA(isA<HandshakeException>()),
+          );
+        },
       );
     });
 

@@ -21,6 +21,16 @@
 ///
 /// Neither set: system trust only. Other hosts (local http, custom) always
 /// keep system trust.
+///
+/// Apple platforms (iOS / macOS, 09-30): Dart hands chain verification to
+/// Apple's Security framework, which refuses any TLS server certificate
+/// valid for more than 825 days — the production leaf is valid for 20
+/// years, so the CA path can never pass there (Android's BoringSSL has no
+/// such rule). With a pin set, Apple platforms therefore use the leaf
+/// pinning path instead of the CA chain: there the certificate handed to
+/// badCertificateCallback is the leaf (verified on macOS against the
+/// production host), so the pin matches exactly one certificate. Without a
+/// pin the CA path is kept (and fails closed).
 library;
 
 import 'dart:convert';
@@ -97,9 +107,15 @@ SecurityContext caSecurityContext(List<int> ca) {
   return context;
 }
 
+/// Whether chain verification goes through Apple's Security framework
+/// (iOS / macOS), which rejects the long-lived production leaf.
+final bool appleTrustPlatform = Platform.isIOS || Platform.isMacOS;
+
 /// HTTP client for [base]:
 /// * production + CA ([caPemB64]): chain verification against system roots
 ///   plus the CA, and — when [pin] is also set — the leaf's fingerprint;
+/// * production + pin on an Apple platform ([applePlatform]): the leaf
+///   pinning path, even with a CA (see the library comment);
 /// * production + pin only: the single self-signed certificate pinning;
 /// * anything else: a plain system-trust client.
 HttpClient apiHttpClientFor(
@@ -107,10 +123,12 @@ HttpClient apiHttpClientFor(
   String pin = apiCertSha256,
   String caPemB64 = apiCaPemB64,
   String? productionBase,
+  bool? applePlatform,
 }) {
   final prod = isProductionApi(base, productionBase: productionBase);
-  final ca = prod ? caPemBytes(caPemB64) : null;
   final want = pinFor(base, pin: pin, productionBase: productionBase);
+  final apple = applePlatform ?? appleTrustPlatform;
+  final ca = prod && !(apple && want != null) ? caPemBytes(caPemB64) : null;
   final HttpClient client;
   if (ca != null) {
     final context = caSecurityContext(ca);
