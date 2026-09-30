@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../application/android_app_update.dart';
 import '../data/android_app_update.dart';
@@ -86,9 +87,18 @@ class _AndroidAppUpdateDialogState extends ConsumerState<AndroidAppUpdateDialog>
       if (!mounted || cancellation.cancelled) return;
       setState(() {
         _error = true;
-        _message = error is AppUpdateException && error.code == 'integrity'
-            ? '更新檔驗證失敗，請重新下載。'
-            : '更新未完成，請確認網路或安裝權限後重試。';
+        if (error is PlatformException) {
+          _message = switch (error.code) {
+            'update_verification_failed' => '更新檔的版本或簽章驗證失敗，請聯絡管理人員。',
+            'update_install_failed' => '無法開啟系統安裝畫面，請返回 APP 後重試。',
+            'update_prepare_failed' => '無法準備更新檔，請確認手機儲存空間後重試。',
+            _ => '無法啟動更新安裝，請聯絡管理人員。',
+          };
+        } else {
+          _message = error is AppUpdateException && error.code == 'integrity'
+              ? '更新檔驗證失敗，請重新下載。'
+              : '更新下載未完成，請確認網路後重試。';
+        }
         _file = null;
       });
     } finally {

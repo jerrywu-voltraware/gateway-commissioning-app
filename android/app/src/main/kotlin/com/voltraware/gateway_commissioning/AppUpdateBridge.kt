@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import android.util.Log
 import androidx.core.content.FileProvider
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -25,6 +26,17 @@ class AppUpdateBridge(private val activity: Activity) : MethodChannel.MethodCall
     @Suppress("DEPRECATION")
     private fun flags(): Int = if (Build.VERSION.SDK_INT >= 28)
         PackageManager.GET_SIGNING_CERTIFICATES else PackageManager.GET_SIGNATURES
+
+    @Suppress("DEPRECATION")
+    private fun archiveFlags(): Int = if (Build.VERSION.SDK_INT == 28)
+        // Android 9 collects archive certificates only when this legacy flag is set.
+        flags() or PackageManager.GET_SIGNATURES else flags()
+
+    private fun failure(result: MethodChannel.Result, code: String, error: Exception) {
+        // Fixed codes and exception types only: no paths, messages, stack traces or credentials.
+        Log.w("AppUpdate", "$code ${error.javaClass.simpleName}")
+        result.error(code, "Unable to complete the app update", null)
+    }
 
     @Suppress("DEPRECATION")
     private fun installed(): PackageInfo = activity.packageManager.getPackageInfo(activity.packageName, flags())
@@ -66,8 +78,8 @@ class AppUpdateBridge(private val activity: Activity) : MethodChannel.MethodCall
                 "cancelInstall" -> { generation += 1; result.success(null) }
                 else -> result.notImplemented()
             }
-        } catch (_: Exception) {
-            result.error("update_rejected", "Unable to prepare the app update", null)
+        } catch (error: Exception) {
+            failure(result, "update_prepare_failed", error)
         }
     }
 
@@ -96,11 +108,12 @@ class AppUpdateBridge(private val activity: Activity) : MethodChannel.MethodCall
                 }
                 require(hex(digest.digest()) == expectedHash)
                 val current = installed()
-                val archive = activity.packageManager.getPackageArchiveInfo(allowed.path, flags())
+                val archive = activity.packageManager.getPackageArchiveInfo(allowed.path, archiveFlags())
                     ?: error("archive")
                 require(archive.packageName == activity.packageName)
                 require(version(archive) == expectedCode && expectedCode > version(current))
                 require(signers(current) == listOf(SIGNER) && signers(archive) == listOf(SIGNER))
+                Log.i("AppUpdate", "signatures_verified")
                 activity.runOnUiThread {
                     try {
                         check(!activity.isFinishing && !activity.isDestroyed)
@@ -109,6 +122,7 @@ class AppUpdateBridge(private val activity: Activity) : MethodChannel.MethodCall
                         if (Build.VERSION.SDK_INT >= 26 && !activity.packageManager.canRequestPackageInstalls()) {
                             activity.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
                                 Uri.parse("package:${activity.packageName}")))
+                            Log.i("AppUpdate", "permission_required")
                             result.success("permission_required")
                         } else {
                             val uri = FileProvider.getUriForFile(activity,
@@ -118,16 +132,17 @@ class AppUpdateBridge(private val activity: Activity) : MethodChannel.MethodCall
                                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                             }
                             activity.startActivity(intent)
+                            Log.i("AppUpdate", "installer_opened")
                             result.success("opened")
                         }
-                    } catch (_: Exception) {
-                        result.error("update_rejected", "Unable to open the app installer", null)
+                    } catch (error: Exception) {
+                        failure(result, "update_install_failed", error)
                     } finally { checking = false }
                 }
-            } catch (_: Exception) {
+            } catch (error: Exception) {
                 activity.runOnUiThread {
                     checking = false
-                    result.error("update_rejected", "App update verification failed", null)
+                    failure(result, "update_verification_failed", error)
                 }
             }
         }.start()

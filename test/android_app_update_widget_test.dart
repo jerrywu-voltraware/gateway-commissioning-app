@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -58,6 +59,7 @@ class _Platform extends AndroidUpdatePlatform {
   int reads = 0;
   int installs = 0;
   bool permissionRequired = false;
+  PlatformException? installError;
   @override
   Future<InstalledAndroidApp> installed() async {
     reads++;
@@ -69,6 +71,7 @@ class _Platform extends AndroidUpdatePlatform {
   @override
   Future<String> install(AndroidAppRelease release, File file) async {
     installs++;
+    if (installError != null) throw installError!;
     return permissionRequired ? 'permission_required' : 'opened';
   }
 }
@@ -96,6 +99,22 @@ Future<ProviderContainer> _pump(
 }
 
 void main() {
+  testWidgets('native verification failure is not presented as a network error', (
+    tester,
+  ) async {
+    final api = _Api();
+    final platform = _Platform()
+      ..installError = PlatformException(code: 'update_verification_failed');
+    await _pump(tester, api, platform);
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('立即更新'));
+    await tester.pumpAndSettle();
+    expect(api.downloads, 1);
+    expect(platform.installs, 1);
+    expect(find.text('更新檔的版本或簽章驗證失敗，請聯絡管理人員。'), findsOneWidget);
+    expect(find.textContaining('確認網路'), findsNothing);
+  });
   testWidgets(
     'failed download retries, then permission return continues without redownload',
     (tester) async {
