@@ -74,6 +74,18 @@ const gatewayUnconfiguredLabel = '未配置';
 /// No verified identity yet; absence of phone history is not unconfigured.
 const gatewayPendingLabel = '待核對';
 
+/// Guidance follows only the backend state already resolved for this card.
+const gatewayBackendOfflineNote =
+    '後台目前未收到此設備的連線訊號。請確認電源與 Wi-Fi；若已更換網路環境，請重新設定 Wi-Fi。';
+const gatewayBackendNoRecordNote =
+    '目前後台查無此設備紀錄。若尚未開通，請點選『開始開通』；若已開通，請確認連線狀態與所選站點。';
+
+String? gatewayBackendNoteFor(String presence) => switch (presence) {
+  '後端離線' => gatewayBackendOfflineNote,
+  '後端無紀錄' => gatewayBackendNoRecordNote,
+  _ => null,
+};
+
 /// The identify button's tooltip (an icon since 1.0.0+8).
 const identifyGatewayLabel = '閃燈辨識';
 
@@ -1656,6 +1668,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     final small = theme.bodySmall?.copyWith(color: colors.onSurfaceVariant);
     final identified = _identified == peer.id;
     final identifying = _identifyingId == peer.id;
+    final backendNote = gatewayBackendNoteFor(presence);
     final detail = [if (title == name) name, tail].join(' · ');
     // 1.0.0+14 (1.0.0+12's 「未配置閘道器 …70F0」 took two lines at text
     // scale 1.1 on a 360 dp phone and looked cut): the card's title is
@@ -1740,6 +1753,26 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
                       : null,
                 ),
               ),
+              if (backendNote != null)
+                Visibility(
+                  key: ValueKey('gateway-backend-note-visibility-${peer.id}'),
+                  // Identification temporarily replaces the backend mark.
+                  // Keep its room so blinking does not move adjacent cards.
+                  visible: !identified,
+                  maintainState: true,
+                  maintainAnimation: true,
+                  maintainSize: true,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                    child: Text(
+                      backendNote,
+                      key: ValueKey('gateway-backend-note-${peer.id}'),
+                      style: small,
+                      softWrap: true,
+                      overflow: TextOverflow.visible,
+                    ),
+                  ),
+                ),
               if (widget.onHold != null)
                 _cardActions(
                   heard?.peer ?? peer,

@@ -456,6 +456,19 @@ void main() {
         // Reaching the host's end can scroll the last gateway above the screen;
         // bring this last card to the viewport bottom before measuring access.
         final lastCardFinder = find.byKey(ValueKey('gateway-card-${last.id}'));
+        if (lastCardFinder.evaluate().isEmpty) {
+          // The host can lazily unmount discovery after we scroll beyond it.
+          // Scroll back to rebuild the requested card before resolving it.
+          await tester.scrollUntilVisible(
+            lastCardFinder,
+            -200,
+            scrollable: find
+                .descendant(of: _pageList, matching: find.byType(Scrollable))
+                .first,
+            maxScrolls: 30,
+          );
+          await _frames(tester);
+        }
         await Scrollable.ensureVisible(
           tester.element(lastCardFinder),
           alignment: 1,
