@@ -683,31 +683,32 @@ void main() {
     });
   }
 
-  testWidgets('〔辨識〕 does not change the selection; its SnackBar sits above '
-      'the button; 〔結束配置〕 at the end of the page is above the bar', (
-    tester,
-  ) async {
+  testWidgets('〔辨識〕: the selected, connected card\'s bulb alone (no bulb on '
+      'the other cards), over the kept link, the selection unchanged; its '
+      'SnackBar sits above the button; 〔結束配置〕 at the end of the page is '
+      'above the bar', (tester) async {
     final (container, link) = await _pumpList(tester);
     CommissionState read() => container.read(commissionProvider);
     // A PTU is connected to the gateway: the identify reaches it too, so the
     // SnackBar is the plain one (not the gateway-only warning).
     link.devices.first['connected'] = true;
+    // 1.0.0+22 (the phone trial): no bulb before a card is selected and
+    // its link is up.
+    for (final peer in [_gw81, _gw82, _new]) {
+      expect(find.byKey(ValueKey('identify-${peer.id}')), findsNothing);
+    }
     await _tapCard(tester, _gw81);
     // 1.0.0+22: its link is kept.
     await _settle(tester);
     expect(link.connected, [_gw81.id]);
-    // 〔辨識〕 on another gateway, held: nothing to press meanwhile.
-    link.hold = Completer<void>();
-    final identify = find.byKey(ValueKey('identify-${_new.id}'));
+    final identify = find.byKey(ValueKey('identify-${_gw81.id}'));
+    expect(identify, findsOneWidget);
+    expect(find.byKey(ValueKey('identify-${_new.id}')), findsNothing);
+    expect(find.byKey(ValueKey('identify-${_gw82.id}')), findsNothing);
+    // Its bulb: over the kept link — no run, nothing disabled meanwhile.
     await tester.ensureVisible(identify);
     await tester.pump();
     await tester.tap(identify);
-    await _settle(tester);
-    expect(read().busy, isTrue);
-    expect(_buttonEnabled(tester), isFalse);
-    expect(_mark(_gw81), findsOneWidget);
-    expect(_mark(_new), findsNothing);
-    link.hold!.complete();
     await _settle(tester);
     expect(read().busy, isFalse);
     expect(read().step, 1);
@@ -716,13 +717,12 @@ void main() {
     expect(_marks, findsOneWidget);
     expect(_buttonText(tester), '連線到 站 81 · 閘道器 1');
     expect(_buttonEnabled(tester), isTrue);
-    // 1.0.0+22: the blink's own connect (the selected gateway's kept link
-    // goes meanwhile — one link at a time), then 81/1 connected again.
-    expect(link.connected, [_gw81.id, _new.id, _gw81.id]);
+    expect(link.connected, [_gw81.id], reason: 'the bulb: no connect');
+    expect(link.identifyRequests, hasLength(1));
     final snack = find.byKey(const Key('gateway-identified-snack'));
     expect(snack, findsOneWidget);
     expect(
-      find.descendant(of: snack, matching: find.text('未配置閘道器 …70F0 已送出')),
+      find.descendant(of: snack, matching: find.text('站 81 · 閘道器 1 已送出')),
       findsOneWidget,
     );
     final bar = find.byKey(const Key('gateway-connect-bar'));

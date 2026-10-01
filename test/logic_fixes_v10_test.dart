@@ -209,6 +209,9 @@ Future<_ScanLink> _pumpList(
               enabled: true,
               onConnect: (_) async {},
               onIdentify: onIdentify ?? (_) async => true,
+              // 1.0.0+22: the bulb is on the selected card once its link
+              // is up (the card's tap stops the scan and keeps the link).
+              onHold: (_) async => true,
             ),
           ),
         ),
@@ -488,18 +491,21 @@ void main() {
     });
   });
 
-  group('P2-5 list scan resumes / 「已閃燈」 only when sent', () {
-    testWidgets('after 〔辨識〕 the live scan starts again; 「已閃燈」 shown', (
-      tester,
-    ) async {
+  group('P2-5 list scan paused while the link is kept / 「已閃燈」 only when '
+      'sent', () {
+    testWidgets('after the card\'s tap the scan stays stopped (the link is '
+        'kept); its bulb: 「已閃燈」 shown', (tester) async {
       final link = await _pumpList(tester);
       expect(link.scans, hasLength(1));
+      await tester.tap(find.byKey(const ValueKey('AA:BB:CC:DD:3A:02')));
+      await _run(tester);
+      expect(link.scans, hasLength(1), reason: 'no scan while held');
+      expect(link.scans.last.isClosed, isTrue);
       await tester.tap(
         find.byKey(const ValueKey('identify-AA:BB:CC:DD:3A:02')),
       );
       await _run(tester);
-      expect(link.scans, hasLength(2), reason: 'resumed');
-      expect(link.scans.last.isClosed, isFalse);
+      expect(link.scans, hasLength(1), reason: 'still held: no scan');
       // 1.0.0+11: on its row and in a SnackBar.
       expect(
         find.byKey(const ValueKey('gateway-presence-AA:BB:CC:DD:3A:02')),
@@ -513,7 +519,7 @@ void main() {
         findsOneWidget,
       );
       expect(find.byKey(const Key('gateway-identified-snack')), findsOneWidget);
-      // The rows heard before stay until the new scan answers.
+      // The rows heard before stay.
       expect(find.byKey(const ValueKey('AA:BB:CC:DD:3A:02')), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
     });
@@ -522,12 +528,14 @@ void main() {
       tester,
     ) async {
       final link = await _pumpList(tester, onIdentify: (_) async => false);
+      await tester.tap(find.byKey(const ValueKey('AA:BB:CC:DD:3A:02')));
+      await _run(tester);
       await tester.tap(
         find.byKey(const ValueKey('identify-AA:BB:CC:DD:3A:02')),
       );
       await _run(tester);
       expect(find.textContaining(identifiedHint), findsNothing);
-      expect(link.scans, hasLength(2), reason: 'the scan resumes anyway');
+      expect(link.scans, hasLength(1), reason: 'the link is still kept');
       await tester.pumpWidget(const SizedBox());
     });
 

@@ -332,6 +332,7 @@ void main() {
                     identified = peer;
                     return true;
                   },
+                  onHold: (_) async => true,
                 ),
               ),
               bottomNavigationBar: GatewayConnectBar(choice: choice),
@@ -452,20 +453,32 @@ void main() {
         await tester.pump(const Duration(milliseconds: 100));
       }
 
-      // The identify icon button (tooltip only, no text).
+      // The identify icon button (tooltip only, no text) — 1.0.0+22: on
+      // the selected card alone, once its link is up.
       expect(find.text('辨識閘道器'), findsNothing);
-      expect(find.byTooltip(identifyGatewayLabel), findsNWidgets(4));
+      expect(find.byTooltip(identifyGatewayLabel), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('AA:BB:CC:DD:3B:02')));
+      await settle();
+      expect(find.byTooltip(identifyGatewayLabel), findsOneWidget);
       await tester.tap(
         find.byKey(const ValueKey('identify-AA:BB:CC:DD:3B:02')),
       );
       await settle();
       expect(identified?.id, 'AA:BB:CC:DD:3B:02');
       expect(connected, isNull);
-      // Tapping the row selects it (1.0.0+14: and only that); the bottom
-      // button connects to it.
+      // Tapping another row selects it (1.0.0+14: and only that; 1.0.0+22:
+      // the bulb moves with the kept link); the bottom button connects.
       await tester.tap(find.byKey(const ValueKey('AA:BB:CC:DD:3A:02')));
       await settle();
       expect(connected, isNull);
+      expect(
+        find.byKey(const ValueKey('identify-AA:BB:CC:DD:3B:02')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('identify-AA:BB:CC:DD:3A:02')),
+        findsOneWidget,
+      );
       await tester.tap(find.byKey(const Key('gateway-connect')));
       await settle();
       expect(connected?.id, 'AA:BB:CC:DD:3A:02');
@@ -665,8 +678,19 @@ void main() {
       expect(read().step, 1);
       final row = find.byKey(const ValueKey('demo-gateway'));
       expect(row, findsOneWidget);
-      // 〔辨識〕: connect → identify (target both) → disconnect, step 1 kept.
-      await _tap(tester, find.byKey(const ValueKey('identify-demo-gateway')));
+      // 1.0.0+22: no bulb until the card is selected and its link is up;
+      // 〔辨識〕 then goes over that link (target both), step 1 kept.
+      final bulb = find.byKey(const ValueKey('identify-demo-gateway'));
+      expect(bulb, findsNothing);
+      await _tap(tester, row);
+      for (var i = 0; i < 5; i++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 20)),
+        );
+        await tester.pumpAndSettle();
+      }
+      expect(bulb, findsOneWidget);
+      await _tap(tester, bulb);
       expect(fake.identifyRequests, [
         {'target': 'both', 'duration_ms': 4000},
       ]);

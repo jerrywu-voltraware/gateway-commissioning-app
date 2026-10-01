@@ -19,12 +19,13 @@ const gatewayCloseDb = 6;
 /// 1.0.0+9: 「最近」 — the filled chip beside the strongest row's dBm.
 const gatewayNearestLabel = '最近';
 
-/// Above the list once two or more gateways are heard.
-const gatewayNearestHint = '本樁的閘道器通常是訊號最強的那台；不確定就按〔辨識閘道器〕看哪台閃燈';
+/// Above the list once two or more gateways are heard. 1.0.0+22: the bulb
+/// is on the selected card once its link is up — the advice says so.
+const gatewayNearestHint = '本樁的閘道器通常是訊號最強的那台；不確定就點選它，連線後按燈泡看哪台閃燈';
 
 /// With [gatewayNearestHint] when the two strongest are within
 /// [gatewayCloseDb].
-const gatewayCloseHint = '兩台距離相近，請用辨識確認';
+const gatewayCloseHint = '兩台距離相近，請連線後按燈泡辨識確認';
 
 /// A phone RSSI reading that means something (−127 / 0: unknown).
 bool validGatewayRssi(int rssi) => rssi > -127 && rssi < 0;

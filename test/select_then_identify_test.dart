@@ -5,16 +5,19 @@
 // - a card's tap selects the gateway and connects to it, keeping the link
 //   ([CommissioningController.holdPeer]); its card says 「連線中…」 then
 //   「已連線」 (or 「連線失敗」); the scan stops meanwhile;
+// - (the phone trial) the bulb is on the selected card alone, and only
+//   once its link is up: no bulb on the other rows, none while the card
+//   connects, failed or dropped — the bulb's room stays, so nothing moves;
 // - its bulb goes over that link: no connect, no get_config, no
-//   disconnect, nothing busy; pressed while the link still connects, it is
-//   sent once the link is up;
+//   disconnect, nothing busy;
 // - another card: the previous link goes, the new gateway is connected;
 // - 〔連線到 …〕 takes the link: no second connect, get_config and the
 //   one-to-one switch still run once ([CommissioningController.connect]);
-// - a dropped link: 「已斷線」 and a SnackBar; the next bulb connects again
-//   first; 〔重新搜尋〕 and the list closing let the link go;
-// - another row's bulb keeps its own connect → identify → disconnect; the
-//   selected gateway is connected again afterwards.
+// - a dropped link: 「已斷線」 and a SnackBar, the bulb goes; the card's tap
+//   connects again; 〔重新搜尋〕 and the list closing let the link go;
+// - the controller's own connect → identify → disconnect for a gateway not
+//   held ([CommissioningController.identifyPeer]) stays as its API — the
+//   list no longer presses it.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -380,8 +383,9 @@ void main() {
       },
     );
 
-    test('another row\'s identify: its own connect → identify → disconnect; '
-        'the kept link is gone (the list holds again afterwards)', () async {
+    test('identifyPeer of a gateway not held (the controller\'s API alone — '
+        'the list has no bulb there): its own connect → identify → '
+        'disconnect; the kept link is gone', () async {
       final fake = _Gateway()..config['max_connections'] = 1;
       final (_, c, _) = await _ready(fake);
       expect(await c.holdPeer(_a), isTrue);
@@ -442,17 +446,17 @@ void main() {
       expect(list.link.scans.length, scans);
     });
 
-    testWidgets('its bulb goes over that link at once (no second hold); '
-        'pressed while it connects, it waits for the link', (tester) async {
+    testWidgets('no bulb while the card connects; once held, its bulb goes '
+        'over that link at once (no second hold)', (tester) async {
       final list = await _pumpList(tester);
       await tester.tap(find.byKey(ValueKey(_a.id)));
       await _run(tester);
-      // Pressed while connecting: a spinner, nothing sent yet.
-      await tester.tap(_bulb(_a));
-      await tester.pump();
-      expect(_spinner(_a), findsOneWidget);
+      expect(_bulb(_a), findsNothing);
       expect(list.identified, isEmpty);
       list.holding.complete(true);
+      await _run(tester);
+      expect(_bulb(_a), findsOneWidget);
+      await tester.tap(_bulb(_a));
       await _run(tester);
       expect(list.identified, [_a.id]);
       expect(list.holds, [_a.id]);
@@ -463,6 +467,76 @@ void main() {
       await _run(tester);
       expect(list.identified, [_a.id, _a.id]);
       expect(list.holds, [_a.id], reason: 'no second connect');
+    });
+
+    testWidgets('the bulb is on the selected card alone, once its link is '
+        'up: none before a tap, none while it connects, none after a failed '
+        'connect, never on another row; its room is kept meanwhile', (
+      tester,
+    ) async {
+      final list = await _pumpList(tester);
+      expect(_bulb(_a), findsNothing);
+      expect(_bulb(_b), findsNothing);
+      expect(_room(_a), findsOneWidget);
+      expect(_room(_b), findsOneWidget);
+      await tester.tap(find.byKey(ValueKey(_a.id)));
+      await _run(tester);
+      expect(_markText(tester, _a), gatewayConnectingLabel);
+      expect(_bulb(_a), findsNothing);
+      expect(_room(_a), findsOneWidget);
+      list.holding.complete(false);
+      await _run(tester);
+      expect(_markText(tester, _a), gatewayHoldFailedLabel);
+      expect(_bulb(_a), findsNothing);
+      expect(_room(_a), findsOneWidget);
+      list.holding = Completer<bool>();
+      await tester.tap(find.byKey(ValueKey(_a.id)));
+      await _run(tester);
+      expect(_bulb(_a), findsNothing);
+      list.holding.complete(true);
+      await _run(tester);
+      expect(_markText(tester, _a), gatewayHeldLabel);
+      expect(_bulb(_a), findsOneWidget);
+      expect(_room(_a), findsNothing);
+      expect(_bulb(_b), findsNothing);
+      expect(_room(_b), findsOneWidget);
+      expect(find.byTooltip(identifyGatewayLabel), findsOneWidget);
+      expect(list.identified, isEmpty);
+    });
+
+    testWidgets('the bulb coming and going moves nothing: every card keeps '
+        'its size and place, its lines too, through 「連線中…」, 「已連線」 '
+        'and 「已斷線」', (tester) async {
+      final list = await _pumpList(tester);
+      Rect rect(String key) => tester.getRect(find.byKey(ValueKey(key)));
+      List<Object> places() => [
+        for (final peer in [_a, _b]) ...[
+          rect('gateway-card-${peer.id}'),
+          rect('gateway-head-${peer.id}').topLeft,
+          rect('gateway-head-${peer.id}').height,
+          rect('gateway-detail-${peer.id}').topLeft,
+          rect('gateway-detail-${peer.id}').height,
+        ],
+      ];
+      final before = places();
+      await tester.tap(find.byKey(ValueKey(_a.id)));
+      await _run(tester);
+      expect(places(), before, reason: 'connecting');
+      list.holding.complete(true);
+      await _run(tester);
+      expect(_bulb(_a), findsOneWidget);
+      expect(
+        tester.getSize(_bulb(_a)),
+        const Size(gatewayBulbBox, gatewayBulbBox),
+      );
+      expect(places(), before, reason: 'held: the bulb came');
+      await tester.tap(_bulb(_a));
+      await _run(tester);
+      expect(places(), before, reason: 'blinked');
+      list.lost.add(_a.id);
+      await _run(tester);
+      expect(_bulb(_a), findsNothing);
+      expect(places(), before, reason: 'lost: the bulb went');
     });
 
     testWidgets('another card: the new gateway is held, the old answer is '
@@ -501,42 +575,31 @@ void main() {
       expect(_markText(tester, _a), gatewayHeldLabel);
     });
 
-    testWidgets('a dropped link: 「已斷線」 and a SnackBar; the bulb connects '
-        'again first, then blinks', (tester) async {
+    testWidgets('a dropped link: 「已斷線」 and a SnackBar, the bulb goes; the '
+        'card\'s tap connects again and the bulb is back', (tester) async {
       final list = await _pumpList(tester);
       await tester.tap(find.byKey(ValueKey(_a.id)));
       list.holding.complete(true);
       await _run(tester);
+      expect(_bulb(_a), findsOneWidget);
       list.lost.add(_a.id);
       await _run(tester);
       expect(_markText(tester, _a), gatewayHoldLostLabel);
       expect(find.text(gatewayHoldLostText('站 81 · 閘道器 1')), findsOneWidget);
+      expect(_bulb(_a), findsNothing);
       list.holding = Completer<bool>();
-      await tester.tap(_bulb(_a));
+      await tester.tap(find.byKey(ValueKey(_a.id)));
       await _run(tester);
       expect(list.holds, [_a.id, _a.id]);
+      expect(_bulb(_a), findsNothing);
       expect(list.identified, isEmpty);
       list.holding.complete(true);
       await _run(tester);
+      expect(_markText(tester, _a), gatewayHeldLabel);
+      expect(_bulb(_a), findsOneWidget);
+      await tester.tap(_bulb(_a));
+      await _run(tester);
       expect(list.identified, [_a.id]);
-      expect(_markText(tester, _a), gatewayHeldLabel);
-    });
-
-    testWidgets('another row\'s bulb: its own identify, then the selected '
-        'gateway is held again', (tester) async {
-      final list = await _pumpList(tester);
-      await tester.tap(find.byKey(ValueKey(_a.id)));
-      list.holding.complete(true);
-      await _run(tester);
-      list.holding = Completer<bool>();
-      await tester.tap(_bulb(_b));
-      await _run(tester);
-      expect(list.identified, [_b.id]);
-      expect(list.holds, [_a.id, _a.id]);
-      expect(_markText(tester, _a), gatewayConnectingLabel);
-      list.holding.complete(true);
-      await _run(tester);
-      expect(_markText(tester, _a), gatewayHeldLabel);
     });
 
     testWidgets('〔重新搜尋〕 lets the link go and scans again; the list closing '
@@ -673,10 +736,9 @@ Future<void> _run(WidgetTester tester) async {
 
 Finder _bulb(GatewayPeer peer) => find.byKey(ValueKey('identify-${peer.id}'));
 
-Finder _spinner(GatewayPeer peer) => find.descendant(
-  of: _bulb(peer),
-  matching: find.byType(CircularProgressIndicator),
-);
+/// The bulb's empty room on a card without one.
+Finder _room(GatewayPeer peer) =>
+    find.byKey(ValueKey('identify-room-${peer.id}'));
 
 Finder _chip(GatewayPeer peer, String text) => find.descendant(
   of: find.byKey(ValueKey('gateway-presence-${peer.id}')),

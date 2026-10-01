@@ -547,6 +547,7 @@ void main() {
                   onIdentify: (_) async => true,
                   identifyGatewayOnly: () => true,
                   identifyGatewayOnlyReason: () => reason,
+                  onHold: (_) async => true,
                 ),
               ),
             ),
@@ -568,6 +569,9 @@ void main() {
 
       final bulb = find.byKey(ValueKey('identify-${peer.id}'));
       final snack = find.byKey(const Key('gateway-identified-snack'));
+      // 1.0.0+22: the bulb is on the selected card once its link is up.
+      await tester.tap(find.byKey(ValueKey(peer.id)));
+      await run();
       await tester.tap(bulb);
       await run();
       expect(

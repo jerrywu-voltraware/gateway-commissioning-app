@@ -3790,7 +3790,10 @@ class CommissioningController extends Notifier<CommissionState> {
   /// link is still connecting the identify waits for it (false when it did
   /// not come up: the list says why). Any other gateway keeps the connect →
   /// identify → disconnect above, and a link kept to another gateway ends
-  /// here (this connect replaces it).
+  /// here (this connect replaces it) — since the phone trial the list shows
+  /// a bulb on the selected, connected card alone, so that branch is no
+  /// longer reached from the list (kept as the controller's own API: the
+  /// reason detection's tests and any other entry still use it).
   Future<bool> identifyPeer(GatewayPeer peer) async {
     _identifyPeerGatewayOnly = false;
     _identifyPeerGatewayOnlyReason = null;

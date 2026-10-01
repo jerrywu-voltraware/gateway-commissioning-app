@@ -3400,9 +3400,10 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           GatewayDiscovery(
             key: _discoveryKey,
             enabled: enabled,
-            // 1.0.0+9: 「辨識」 only blinks (connect → identify → disconnect)
-            // and stays on this list. 1.0.0+14: the card's tap selects the
-            // gateway, the fixed bottom button connects to it.
+            // 1.0.0+9: 「辨識」 only blinks and stays on this list. 1.0.0+14:
+            // the card's tap selects the gateway, the fixed bottom button
+            // connects to it. 1.0.0+22: the bulb is on the selected card
+            // once its link is up, and goes over that link ([holdPeer]).
             onIdentify: c.identifyPeer,
             // Only the gateway blinked when it has no PTU connected: the
             // row and the SnackBar say so.
@@ -4844,7 +4845,7 @@ class AssignProgressHeader extends StatelessWidget {
 // ---- One-thing screens (09-28): each page's one sentence and its buttons.
 
 const startTaskTitle = '登入後台，開始配置';
-const pickGatewayTaskTitle = '請選擇眼前要配置的閘道器，可按辨識確認';
+const pickGatewayTaskTitle = '請點選眼前的閘道器，連線後可按燈泡辨識';
 const checkingTaskTitle = '正在連線並檢查網路，請稍候';
 const checkPassedTaskTitle = '網路檢查通過，看完請按下方繼續';
 const testModeTaskTitle = '閘道器在測試模式，請先切回正常模式';

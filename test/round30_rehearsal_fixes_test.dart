@@ -13,7 +13,7 @@
 //    set_wifi, no password, 〔改用其他 Wi-Fi〕 to change it.
 // 3. D — 4 min 53 s choosing between two gateways: the list is ranked by
 //    the phone's signal, the strongest marked 「最近（訊號最強）」, with
-//    advice; two within 6 dB → 「兩台距離相近，請用辨識確認」.
+//    advice; two within 6 dB → 「兩台距離相近，請連線後按燈泡辨識確認」.
 // 4. E — 「✓ 已連上後台；PTU 資料上傳暫停中…」 read as a fault (95 s
 //    wait, a help request): says the pause is normal and to press next;
 //    step 3's 「下一步：確認上線」 is in the bottom bar.
@@ -707,12 +707,13 @@ void main() {
       expect(find.byKey(const ValueKey('gateway-nearest-$gw2')), findsNothing);
       expect(find.text(gatewayNearestLabel), findsOneWidget);
       expect(find.text(gatewayNearestHint), findsOneWidget);
-      expect(gatewayNearestHint, contains('〔辨識閘道器〕'));
+      expect(gatewayNearestHint, contains('連線後按燈泡'));
       expect(find.byKey(const Key('gateway-close-hint')), findsOneWidget);
       expect(find.text('⚠ $gatewayCloseHint'), findsOneWidget);
-      // The button the advice names (1.0.0+8: a bulb icon with the
-      // tooltip).
-      expect(find.byTooltip('辨識閘道器'), findsNWidgets(2));
+      // The bulb the advice names (1.0.0+8: an icon with the tooltip;
+      // 1.0.0+22: on the selected card alone, once its link is up — none
+      // before a tap).
+      expect(find.byTooltip('辨識閘道器'), findsNothing);
       expect(find.text('辨識閘道器'), findsNothing);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());

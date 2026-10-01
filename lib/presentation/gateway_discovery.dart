@@ -152,15 +152,22 @@ const gatewayHeldLabel = '已連線';
 /// 1.0.0+22: on the selected card when its connect failed (tap it again).
 const gatewayHoldFailedLabel = '連線失敗';
 
-/// 1.0.0+22: on the selected card when its kept link dropped (tap it, or
-/// its bulb, to connect again).
+/// 1.0.0+22: on the selected card when its kept link dropped (tap it to
+/// connect again).
 const gatewayHoldLostLabel = '已斷線';
 
 /// 1.0.0+22: the SnackBar when the selected gateway's connect failed.
 String gatewayHoldFailedText(String title) => '無法連線 $title，請靠近後再點一次卡片';
 
 /// 1.0.0+22: the SnackBar when the selected gateway's kept link dropped.
-String gatewayHoldLostText(String title) => '$title 的藍牙連線已中斷，再點一次卡片或按燈泡會重新連線';
+String gatewayHoldLostText(String title) => '$title 的藍牙連線已中斷，請再點一次卡片重新連線';
+
+/// 1.0.0+22 (the phone trial): the bulb is on the selected card only once
+/// its link is up ([_Hold.held]); every other card — and the selected one
+/// while it connects, failed or dropped — keeps the bulb's room empty, so
+/// nothing moves when the bulb comes and goes. The compact [IconButton]'s
+/// box (a 24 dp icon in the 40 dp padded tap target).
+const gatewayBulbBox = 40.0;
 
 /// 1.0.0+22: the selected gateway's kept link ([GatewayDiscovery.onHold]).
 enum _Hold {
@@ -168,10 +175,10 @@ enum _Hold {
   /// or the flow took the link).
   none,
 
-  /// Its connect runs (「連線中…」; a bulb pressed now waits for it).
+  /// Its connect runs (「連線中…」; no bulb yet).
   connecting,
 
-  /// Up (「已連線」): its bulb blinks at once.
+  /// Up (「已連線」): the only state with a bulb — it blinks at once.
   held,
 
   /// Its connect failed (「連線失敗」).
@@ -583,8 +590,9 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
   bool _identifiedGatewayOnly = false;
   Timer? _identifiedTimer;
 
-  /// The row whose 〔辨識〕 is running: its bulb is a small progress
-  /// indicator until the identify ends, however it ends.
+  /// The row whose 〔辨識〕 is running (the selected, connected one): its
+  /// bulb is a small progress indicator until the identify ends, however
+  /// it ends.
   String? _identifyingId;
   int _epoch = 0, _backendEpoch = 0;
   StreamSubscription<List<GatewayPeer>>? _scan;
@@ -1298,64 +1306,20 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
   /// list stays; 「已閃燈」 on its row for [identifiedHintFor].
   ///
   /// 1.0.0+10: the hint only when the identify was really sent (not after
-  /// 〔取消操作〕 or a failure); a live scan running before starts again
-  /// afterwards.
+  /// 〔取消操作〕 or a failure).
   ///
-  /// 1.0.0+22: the selected gateway's bulb goes over its kept link
-  /// ([_identifySelected]). Another row's still connects for itself — the
-  /// selection stays (〔辨識〕 is not a choice), the selected gateway's
-  /// kept link goes meanwhile (one link at a time) and is made again
-  /// afterwards.
+  /// 1.0.0+22 (select_then_identify, then the phone trial): the bulb is on
+  /// the selected card alone, and only once its link is up ([_Hold.held]) —
+  /// the identify goes over that link at once: no scan stop, no connect,
+  /// the list stays usable; the bulb is a spinner meanwhile. (The old
+  /// connect → identify → disconnect of any other row is gone with its
+  /// bulb: pressing a bulb and then connecting to another gateway was the
+  /// wrong order on site.) Should the link have gone between the frame
+  /// that showed the bulb and the press, the hold is made again first.
   Future<void> _identify(GatewayPeer peer) async {
     final action = widget.onIdentify;
     if (_selecting || !widget.enabled || action == null) return;
-    if (_holds && peer.id == _selectedId) {
-      return _identifySelected(peer, action);
-    }
-    final resume = _scanning && _liveWanted;
-    final rehold = _holds;
-    // 1.0.0+14: the selection stays (〔辨識〕 is not a choice).
-    // The tapped row's bulb turns into a progress indicator at once, before
-    // the scan stops and the connect starts (those take seconds).
-    setState(() {
-      _selecting = true;
-      _identified = null;
-      _identifyingId = peer.id;
-      if (rehold) {
-        _holdEpoch++;
-        _holdFuture = null;
-        _holdPhase = _Hold.none;
-      }
-    });
-    _syncChoice();
-    try {
-      await _stop();
-      final blinked = mounted && await action(peer);
-      if (mounted && blinked) _showIdentified(peer);
-    } finally {
-      if (mounted) {
-        setState(() {
-          _selecting = false;
-          _identifyingId = null;
-        });
-        _syncChoice();
-      }
-    }
-    if (mounted && resume) _resumeScan();
-    if (mounted && rehold && _holds) unawaited(_holdSelected());
-  }
-
-  /// 1.0.0+22 (select_then_identify): the selected gateway's bulb, over
-  /// the link its card's tap made ([GatewayDiscovery.onHold]): sent at once
-  /// — no scan stop, no connect, the list stays usable. Pressed while that
-  /// link still connects, it goes as soon as the link is up; when the link
-  /// failed or dropped, it connects again first. The bulb is a spinner
-  /// meanwhile.
-  Future<void> _identifySelected(
-    GatewayPeer peer,
-    Future<bool> Function(GatewayPeer) action,
-  ) async {
-    if (_identifyingId != null) return;
+    if (!_holds || peer.id != _selectedId || _identifyingId != null) return;
     setState(() {
       _identified = null;
       _identifyingId = peer.id;
@@ -1696,28 +1660,42 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
               ],
             ),
           ),
+          // 1.0.0+22 (the phone trial): the bulb only on the selected card
+          // once its link is up; otherwise its room ([gatewayBulbBox]) is
+          // kept empty — the text column and the row height never move.
           if (widget.onIdentify != null)
-            IconButton(
-              key: ValueKey('identify-${peer.id}'),
-              tooltip: identifyGatewayLabel,
-              // While this row's identify runs: a small spinner in the
-              // icon's own 24 dp box, so the row does not change size.
-              icon: identifying
-                  ? SizedBox(
-                      key: ValueKey('identify-progress-${peer.id}'),
-                      width: 24,
-                      height: 24,
-                      child: const Padding(
-                        padding: EdgeInsets.all(3),
-                        child: CircularProgressIndicator(strokeWidth: 2.5),
-                      ),
-                    )
-                  : Icon(
-                      identified ? Icons.lightbulb : Icons.lightbulb_outline,
-                    ),
-              visualDensity: VisualDensity.compact,
-              onPressed: onIdentify,
-            ),
+            hold == _Hold.held
+                ? IconButton(
+                    key: ValueKey('identify-${peer.id}'),
+                    tooltip: identifyGatewayLabel,
+                    // While this row's identify runs: a small spinner in
+                    // the icon's own 24 dp box, so the row does not change
+                    // size.
+                    icon: identifying
+                        ? SizedBox(
+                            key: ValueKey('identify-progress-${peer.id}'),
+                            width: 24,
+                            height: 24,
+                            child: const Padding(
+                              padding: EdgeInsets.all(3),
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.5,
+                              ),
+                            ),
+                          )
+                        : Icon(
+                            identified
+                                ? Icons.lightbulb
+                                : Icons.lightbulb_outline,
+                          ),
+                    visualDensity: VisualDensity.compact,
+                    onPressed: onIdentify,
+                  )
+                : SizedBox(
+                    key: ValueKey('identify-room-${peer.id}'),
+                    width: gatewayBulbBox,
+                    height: gatewayBulbBox,
+                  ),
         ],
       ),
     );

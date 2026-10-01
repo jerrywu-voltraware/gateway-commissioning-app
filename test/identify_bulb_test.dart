@@ -1,7 +1,8 @@
-// The gateway list's 〔辨識〕 bulb (the light bulb on every row):
-// - the tapped row's bulb is a small spinner from the tap — before the scan
-//   even stops — until the identify ends (blinked, failed or cancelled), in
-//   the icon's own box so nothing moves; other rows keep their bulb;
+// The gateway list's 〔辨識〕 bulb (1.0.0+22, the phone trial: the light
+// bulb on the selected card alone, once its link is up — no other row has
+// one, nor the selected card while it connects):
+// - the bulb is a small spinner from the tap until the identify ends
+//   (blinked, failed or cancelled), in the icon's own box so nothing moves;
 // - [CommissioningController.identifyPeer] still answers true when the PTU
 //   side was not connected (the gateway alone blinked), and says so through
 //   `identifyPeerGatewayOnly`: either the old firmware's `not_connected`
@@ -60,10 +61,12 @@ class _Link extends DemoSystem {
   }
 }
 
-/// A live scan whose stop can be held (the scan takes a while to stop).
+/// A live scan whose stop can be held (the scan takes a while to stop);
+/// [holds]: every card tap's hold ([GatewayDiscovery.onHold]).
 class _ScanLink extends DemoSystem implements GatewayScanner {
   final scans = <StreamController<List<GatewayPeer>>>[];
   Completer<void>? holdStop;
+  final holds = <String>[];
 
   @override
   Stream<List<GatewayPeer>> scanLive() {
@@ -101,6 +104,10 @@ Future<_ScanLink> _pumpList(
               onConnect: (_) async {},
               onIdentify: onIdentify,
               identifyGatewayOnly: identifyGatewayOnly,
+              onHold: (peer) async {
+                link.holds.add(peer.id);
+                return true;
+              },
             ),
           ),
         ),
@@ -122,6 +129,14 @@ Future<void> _run(WidgetTester tester) async {
   );
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 100));
+}
+
+/// 1.0.0+22: selects [peer]'s card and lets its hold come up — the bulb
+/// is there afterwards.
+Future<void> _select(WidgetTester tester, GatewayPeer peer) async {
+  await tester.tap(find.byKey(ValueKey(peer.id)));
+  await _run(tester);
+  expect(_bulb(peer), findsOneWidget);
 }
 
 Finder _bulb(GatewayPeer peer) => find.byKey(ValueKey('identify-${peer.id}'));
@@ -191,14 +206,34 @@ Future<void> _tap(WidgetTester tester, Finder finder) async {
   await tester.pumpAndSettle();
 }
 
+/// Lets the controller's real async work (the hold's connect) run.
+Future<void> _settle(WidgetTester tester) async {
+  for (var i = 0; i < 5; i++) {
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 20)),
+    );
+    await tester.pumpAndSettle();
+  }
+}
+
+/// 1.0.0+22: selects the demo gateway's card and lets its link come up —
+/// the bulb is there afterwards.
+Future<void> _selectDemo(WidgetTester tester) async {
+  expect(_bulb(_demo), findsNothing);
+  await _tap(tester, find.byKey(const ValueKey('demo-gateway')));
+  await _settle(tester);
+  expect(_bulb(_demo), findsOneWidget);
+}
+
 const _demo = GatewayPeer('demo-gateway', 'GIOS-S1-GW01', -50);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('the bulb of the row being identified', () {
-    testWidgets('a spinner at once (before the scan stops), in the icon\'s own '
-        'box; a bulb again afterwards', (tester) async {
+    testWidgets('no bulb until the card\'s link is up (its tap stops the '
+        'scan first); then a spinner at once, in the icon\'s own box; a bulb '
+        'again afterwards', (tester) async {
       final identify = Completer<bool>();
       var calls = 0;
       final link = await _pumpList(
@@ -209,12 +244,39 @@ void main() {
         },
         identifyGatewayOnly: () => false,
       );
-      final bulbSize = tester.getSize(_bulb(_a));
       final cardA = find.byKey(ValueKey('gateway-card-${_a.id}'));
       final cardB = find.byKey(ValueKey('gateway-card-${_b.id}'));
       final cardSizeA = tester.getSize(cardA);
       final cardSizeB = tester.getSize(cardB);
       final topB = tester.getTopLeft(cardB);
+      // 1.0.0+22: nothing selected — no bulb anywhere.
+      expect(_bulb(_a), findsNothing);
+      expect(_bulb(_b), findsNothing);
+      expect(find.byTooltip(identifyGatewayLabel), findsNothing);
+
+      // The card's tap: the scan takes its time to stop, the hold has not
+      // even begun — 「連線中…」, still no bulb, nothing moves.
+      link.holdStop = Completer<void>();
+      await tester.tap(find.byKey(ValueKey(_a.id)));
+      await tester.pump();
+      expect(link.holds, isEmpty, reason: 'still stopping the scan');
+      expect(_bulb(_a), findsNothing);
+      expect(tester.getSize(cardA), cardSizeA);
+      expect(tester.getSize(cardB), cardSizeB);
+      expect(tester.getTopLeft(cardB), topB);
+
+      // Stopped, held: the bulb is there — on this card alone — and
+      // nothing moved or changed size.
+      link.holdStop!.complete();
+      await _run(tester);
+      expect(link.holds, [_a.id]);
+      expect(_bulb(_a), findsOneWidget);
+      expect(_bulb(_b), findsNothing);
+      expect(tester.getSize(cardA), cardSizeA);
+      expect(tester.getSize(cardB), cardSizeB);
+      expect(tester.getTopLeft(cardB), topB);
+      final bulbSize = tester.getSize(_bulb(_a));
+      expect(bulbSize, const Size(gatewayBulbBox, gatewayBulbBox));
       expect(_spinner(_a), findsNothing);
       expect(_icon(_a, Icons.lightbulb_outline), findsOneWidget);
       expect(
@@ -222,38 +284,29 @@ void main() {
         identifyGatewayLabel,
       );
 
-      // The scan takes its time to stop: the identify has not even begun.
-      link.holdStop = Completer<void>();
+      // The bulb: sent at once over the kept link, a spinner meanwhile.
       await tester.tap(_bulb(_a));
       await tester.pump();
-      expect(calls, 0, reason: 'still stopping the scan');
+      expect(calls, 1);
       expect(_spinner(_a), findsOneWidget);
       expect(_icon(_a, Icons.lightbulb_outline), findsNothing);
       expect(
         find.byKey(ValueKey('identify-progress-${_a.id}')),
         findsOneWidget,
       );
-      // The other row keeps its bulb, and nothing moves or changes size.
-      expect(_spinner(_b), findsNothing);
-      expect(_icon(_b, Icons.lightbulb_outline), findsOneWidget);
+      expect(_bulb(_b), findsNothing);
       expect(tester.getSize(_bulb(_a)), bulbSize);
       expect(tester.getSize(cardA), cardSizeA);
       expect(tester.getSize(cardB), cardSizeB);
       expect(tester.getTopLeft(cardB), topB);
-
-      // Stopped: the identify runs, the spinner stays.
-      link.holdStop!.complete();
-      await _run(tester);
-      expect(calls, 1);
-      expect(_spinner(_a), findsOneWidget);
-      expect(tester.getSize(_bulb(_a)), bulbSize);
+      expect(link.holds, [_a.id], reason: 'no second hold');
 
       // Blinked: the bulb is back, solid; the plain hint and SnackBar.
       identify.complete(true);
       await _run(tester);
       expect(_spinner(_a), findsNothing);
       expect(_icon(_a, Icons.lightbulb), findsOneWidget);
-      expect(_icon(_b, Icons.lightbulb_outline), findsOneWidget);
+      expect(_bulb(_b), findsNothing);
       expect(_bulb(_a), findsOneWidget);
       expect(tester.getSize(cardA), cardSizeA);
       expect(tester.getTopLeft(cardB), topB);
@@ -278,17 +331,22 @@ void main() {
     testWidgets('not blinked (failed, cancelled): the bulb is back as it was, '
         'no hint, no SnackBar, gateway-only never asked', (tester) async {
       var asked = 0;
+      // Over the kept link the identify goes at once: a pending answer
+      // keeps the spinner up (an answer within the frame never shows it).
+      var identify = Completer<bool>();
       await _pumpList(
         tester,
-        onIdentify: (_) async => false,
+        onIdentify: (_) => identify.future,
         identifyGatewayOnly: () {
           asked++;
           return true;
         },
       );
+      await _select(tester, _a);
       await tester.tap(_bulb(_a));
       await tester.pump();
       expect(_spinner(_a), findsOneWidget);
+      identify.complete(false);
       await _run(tester);
       expect(_spinner(_a), findsNothing);
       expect(_icon(_a, Icons.lightbulb_outline), findsOneWidget);
@@ -298,9 +356,11 @@ void main() {
       expect(_chip(_a, identifiedGatewayOnlyHint), findsNothing);
       expect(asked, 0);
       // The bulb works again.
+      identify = Completer<bool>();
       await tester.tap(_bulb(_a));
       await tester.pump();
       expect(_spinner(_a), findsOneWidget);
+      identify.complete(false);
       await _run(tester);
       expect(_spinner(_a), findsNothing);
       await tester.pumpWidget(const SizedBox());
@@ -315,6 +375,7 @@ void main() {
         onIdentify: (_) async => true,
         identifyGatewayOnly: () => true,
       );
+      await _select(tester, _a);
       await tester.tap(_bulb(_a));
       await _run(tester);
       // The solid bulb stays: the gateway did blink.
@@ -358,6 +419,7 @@ void main() {
           onIdentify: (_) async => true,
           identifyGatewayOnly: answer,
         );
+        await _select(tester, _b);
         await tester.tap(_bulb(_b));
         await _run(tester);
         expect(_chip(_b, identifiedHint), findsOneWidget);
@@ -476,25 +538,32 @@ void main() {
   });
 
   group('on the real page', () {
-    testWidgets('a spinner on the row while the connect is pending, a solid '
-        'bulb after; nothing else spins', (tester) async {
+    testWidgets('no bulb while the card\'s connect is pending (「連線中…」, '
+        'nothing busy); a bulb once held, solid after its blink', (
+      tester,
+    ) async {
       final fake = _Link()..devices.first['connected'] = true;
       final container = await _pumpApp(tester, fake);
       CommissionState read() => container.read(commissionProvider);
-      expect(_spinner(_demo), findsNothing);
+      expect(_bulb(_demo), findsNothing);
       fake.holdConnect = Completer<void>();
-      await tester.ensureVisible(_bulb(_demo));
-      await tester.pumpAndSettle();
-      await tester.tap(_bulb(_demo));
+      await tester.tap(find.byKey(const ValueKey('demo-gateway')));
       await tester.pump();
-      expect(_spinner(_demo), findsOneWidget);
+      expect(_bulb(_demo), findsNothing);
+      expect(find.text(gatewayConnectingLabel), findsOneWidget);
       for (var i = 0; i < 5; i++) {
         await tester.pump(const Duration(milliseconds: 100));
       }
-      expect(read().busy, isTrue, reason: 'the identify is still connecting');
-      expect(_spinner(_demo), findsOneWidget, reason: 'the page rebuilt');
+      expect(read().busy, isFalse, reason: 'a hold is not a run');
+      expect(_bulb(_demo), findsNothing, reason: 'still connecting');
       fake.holdConnect!.complete();
-      await tester.pumpAndSettle();
+      await _settle(tester);
+      expect(find.text(gatewayHeldLabel), findsOneWidget);
+      expect(_bulb(_demo), findsOneWidget);
+      expect(_spinner(_demo), findsNothing);
+      expect(_icon(_demo, Icons.lightbulb_outline), findsOneWidget);
+      await _tap(tester, _bulb(_demo));
+      await _settle(tester);
       expect(read().busy, isFalse);
       expect(_spinner(_demo), findsNothing);
       expect(_icon(_demo, Icons.lightbulb), findsOneWidget);
@@ -506,6 +575,7 @@ void main() {
         '「已送出」', (tester) async {
       final fake = _Link()..devices.first['connected'] = true;
       await _pumpApp(tester, fake);
+      await _selectDemo(tester);
       await _tap(tester, _bulb(_demo));
       expect(fake.identifyRequests, [
         {'target': 'both', 'duration_ms': 4000},
@@ -532,6 +602,7 @@ void main() {
         'and the SnackBar say only the gateway blinked', (tester) async {
       final fake = _Link();
       final container = await _pumpApp(tester, fake);
+      await _selectDemo(tester);
       await _tap(tester, _bulb(_demo));
       expect(fake.identifyRequests, [
         {'target': 'both', 'duration_ms': 4000},
@@ -554,6 +625,7 @@ void main() {
         'same warning', (tester) async {
       final fake = _Link()..bothFailsNotConnected = true;
       final container = await _pumpApp(tester, fake);
+      await _selectDemo(tester);
       await _tap(tester, _bulb(_demo));
       expect(fake.identifyRequests, [
         {'target': 'both', 'duration_ms': 4000},

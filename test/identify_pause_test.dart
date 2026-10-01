@@ -6,9 +6,10 @@
 // scratch, losing all of it.
 //
 // Now, with real fonts (support/real_fonts.dart) at 1.1 and 1.3:
-// - during 〔辨識〕 the rows keep their last RSSI (grey), the hint stays and
-//   nothing in the list moves; afterwards a SnackBar 「站 80 · 閘道器 2
-//   已送出」 (the row's mark stays too);
+// - 1.0.0+22: the card's tap connects and keeps the link (the scan stops),
+//   the bulb is on that card once it is up; meanwhile the rows keep their
+//   last RSSI (grey), the hint stays and nothing in the list moves; after
+//   the bulb a SnackBar 「站 80 · 閘道器 2 已送出」 (the row's mark stays too);
 // - a remembered gateway never heard has no row; an unselected gateway
 //   leaves after 30 s without a signal, while the selected one stays with
 //   「訊號中斷」; a stopped scan keeps its rows; no title cut.
@@ -174,8 +175,10 @@ void main() {
   });
 
   for (final scale in _scales) {
-    testWidgets('@$scale 〔辨識〕: the rows keep their RSSI (grey), the hint '
-        'stays, nothing moves; then a SnackBar', (tester) async {
+    testWidgets('@$scale a card\'s tap connects, then its bulb: the rows keep '
+        'their RSSI (grey), the hint stays, nothing moves; then a SnackBar', (
+      tester,
+    ) async {
       _phone(tester, scale);
       SharedPreferences.setMockInitialValues({
         'backend_environment': 'production',
@@ -219,7 +222,12 @@ void main() {
 
       link.hear(const [_gw81, _gw80]);
       await tester.pump();
-      await tester.ensureVisible(find.byKey(ValueKey('identify-${_gw80.id}')));
+      final bulb80 = find.byKey(ValueKey('identify-${_gw80.id}'));
+      final bulb81 = find.byKey(ValueKey('identify-${_gw81.id}'));
+      // 1.0.0+22: no bulb before a card is selected and its link is up.
+      expect(bulb80, findsNothing);
+      expect(bulb81, findsNothing);
+      await tester.ensureVisible(find.byKey(ValueKey(_gw80.id)));
       await tester.pump();
       expect(_signalText(tester, _gw80), '-62 dBm');
       expect(_signalText(tester, _gw81), '-41 dBm');
@@ -228,12 +236,15 @@ void main() {
       final before = _places(tester);
       _noCut(tester, '@$scale heard');
 
-      // 〔辨識〕 on 80/2, the connect held: the scan is paused.
+      // 80/2's tap, its connect held: the scan is paused (a hold is not a
+      // run: nothing busy), the rows keep their RSSI (grey), the hint
+      // stays, nothing moves, still no bulb.
       link.hold = Completer<void>();
-      await tester.tap(find.byKey(ValueKey('identify-${_gw80.id}')));
+      await tester.tap(find.byKey(ValueKey(_gw80.id)));
       await _settle(tester);
-      expect(read().busy, isTrue);
-      expect(read().message, identifyPeerLabel);
+      expect(read().busy, isFalse);
+      expect(find.text(gatewayConnectingLabel), findsOneWidget);
+      expect(bulb80, findsNothing);
       expect(_signalText(tester, _gw80), '-62 dBm');
       expect(_signalText(tester, _gw81), '-41 dBm');
       expect(_grey(tester, _gw80), isTrue);
@@ -245,10 +256,20 @@ void main() {
         findsOneWidget,
       );
       expect(_places(tester), before, reason: 'the list does not move');
-      _noCut(tester, '@$scale identifying');
+      _noCut(tester, '@$scale connecting');
 
-      // Blinked: the row's mark and a SnackBar at the bottom.
+      // Connected: 「已連線」 and the bulb on 80/2 alone; nothing moves.
       link.hold!.complete();
+      await _settle(tester);
+      expect(find.text(gatewayHeldLabel), findsOneWidget);
+      expect(bulb80, findsOneWidget);
+      expect(bulb81, findsNothing);
+      expect(_places(tester), before, reason: 'the bulb moves nothing');
+      _noCut(tester, '@$scale connected');
+
+      // The bulb: over the kept link; the row's mark and a SnackBar at the
+      // bottom; the scan stays paused.
+      await tester.tap(bulb80);
       await _settle(tester);
       expect(read().busy, isFalse);
       expect(read().step, 1);
@@ -271,18 +292,7 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(link.scans, hasLength(2), reason: 'the scan resumed');
-      expect(_signalText(tester, _gw80), '-62 dBm');
-      expect(find.byKey(const Key('gateway-nearest-hint')), findsOneWidget);
-      expect(_places(tester), before);
-      _noCut(tester, '@$scale blinked');
-
-      // The resumed scan's first answer has 81/1 only: 80/2 keeps its RSSI
-      // (grey), the hint and 「最近」 stay.
-      link.hear(const [GatewayPeer('AA:BB:CC:DD:3A:02', 'GIOS-S81-GW01', -43)]);
-      await tester.pump();
-      expect(_signalText(tester, _gw81), '-43 dBm');
-      expect(_grey(tester, _gw81), isFalse);
+      expect(link.scans, hasLength(1), reason: 'no scan while the link is kept');
       expect(_signalText(tester, _gw80), '-62 dBm');
       expect(_grey(tester, _gw80), isTrue);
       expect(find.byKey(const Key('gateway-nearest-hint')), findsOneWidget);
@@ -291,7 +301,7 @@ void main() {
         findsOneWidget,
       );
       expect(_places(tester), before);
-      _noCut(tester, '@$scale resumed');
+      _noCut(tester, '@$scale blinked');
 
       // Both marks go after 3 s.
       await tester.pump(identifiedHintFor + const Duration(milliseconds: 100));

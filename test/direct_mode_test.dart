@@ -393,7 +393,8 @@ void main() {
     });
   });
 
-  testWidgets('gateway list row 「辨識」 stops the scan and calls onIdentify', (
+  testWidgets('gateway list row 「辨識」: the selected card\'s tap stops the '
+      'scan and holds the link; its bulb then calls onIdentify', (
     tester,
   ) async {
     final link = _LiveLink();
@@ -413,23 +414,33 @@ void main() {
                   identified = peer;
                   return true;
                 },
+                onHold: (_) async => true,
               ),
             ),
           ),
         ),
       ),
     );
+    Future<void> settle() async {
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.runAsync(() async {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      });
+      await tester.pump();
+    }
+
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
     link.events.add([const GatewayPeer('AA:BB', 'GIOS-S1-GW01', -42)]);
     await tester.pump();
-    await tester.tap(find.byKey(const ValueKey('identify-AA:BB')));
-    await tester.pump(const Duration(milliseconds: 500));
-    await tester.runAsync(() async {
-      await Future<void>.delayed(const Duration(milliseconds: 10));
-    });
-    await tester.pump();
+    // 1.0.0+22: the bulb is on the selected card once its link is up.
+    expect(find.byKey(const ValueKey('identify-AA:BB')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('AA:BB')));
+    await settle();
     expect(link.stopped, isTrue);
+    expect(identified, isNull);
+    await tester.tap(find.byKey(const ValueKey('identify-AA:BB')));
+    await settle();
     expect(identified?.id, 'AA:BB');
     expect(connected, isFalse);
   });
