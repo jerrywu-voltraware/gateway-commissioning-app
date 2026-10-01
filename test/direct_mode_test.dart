@@ -265,13 +265,13 @@ void main() {
       addTearDown(container.dispose);
       await c.configurePtus();
       await c.identify();
-      expect(fake.sent('identify').last, {'target': 'both', 'duration_ms': 6000});
+      expect(fake.sent('identify').last, {'target': 'both', 'duration_ms': 4000});
       final message = container.read(commissionProvider).message;
       expect(message, contains('AA:BB:CC:00:00:01'));
       expect(message, contains('-40 dBm'));
       expect(message, contains('已送出'));
       await c.identify(target: 'ptu');
-      expect(fake.sent('identify').last, {'target': 'ptu', 'duration_ms': 6000});
+      expect(fake.sent('identify').last, {'target': 'ptu', 'duration_ms': 4000});
     });
 
     test(
@@ -284,7 +284,7 @@ void main() {
         await c.identify();
         // Single ack, no fallback resend: target=both never failed.
         expect(fake.sent('identify'), [
-          {'target': 'both', 'duration_ms': 6000},
+          {'target': 'both', 'duration_ms': 4000},
         ]);
         final state = container.read(commissionProvider);
         expect(state.error, isNull);
@@ -302,7 +302,7 @@ void main() {
       // A single failed ack; target=ptu does not fall back to blinking the
       // gateway only (that fallback is target=both-specific).
       expect(fake.sent('identify'), [
-        {'target': 'ptu', 'duration_ms': 6000},
+        {'target': 'ptu', 'duration_ms': 4000},
       ]);
       final state = container.read(commissionProvider);
       expect(state.error, contains('尚未連上 PTU'));
@@ -316,7 +316,7 @@ void main() {
       addTearDown(container.dispose);
       await c.configurePtus();
       await c.identify();
-      expect(fake.sent('identify').last, {'target': 'both', 'duration_ms': 6000});
+      expect(fake.sent('identify').last, {'target': 'both', 'duration_ms': 4000});
       final message = container.read(commissionProvider).message;
       expect(message, contains('已送出'));
       expect(message, contains('AA:BB:CC:00:00:01'));
@@ -343,6 +343,9 @@ void main() {
       final fake = DirectGateway(newFirmware: false);
       final (container, c) = await _connect(fake, toStep7: false);
       addTearDown(container.dispose);
+      // Pre-PTU firmware takes only its fixed six seconds (the APP default
+      // 4 is refused; see identify_seconds_test), so pick 6 here.
+      await container.read(topologyProvider.notifier).setIdentifySeconds(6);
       await c.identify();
       expect(fake.sent('identify'), [<String, dynamic>{}]);
       expect(container.read(commissionProvider).message, contains('雙閃'));

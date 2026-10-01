@@ -83,18 +83,22 @@ class TopologySettingsController extends Notifier<TopologySettingsState> {
           : savedCount.clamp(minStarPtuCount, maxStarPtuCount),
       directBindOnConfirm: prefs.getBool(_bindKey) ?? state.directBindOnConfirm,
       loaded: true,
+      // A value saved by an older version (1 = constant-on packet, or above
+      // 10) is not valid now: fall back to the default, never send or clamp.
       identifySeconds:
-          savedSeconds is int &&
-              savedSeconds >= 0 &&
-              savedSeconds <= maxIdentifySeconds
+          savedSeconds is int && isValidIdentifySeconds(savedSeconds)
           ? savedSeconds
           : defaultIdentifySeconds,
     );
   }
 
   Future<void> setIdentifySeconds(int seconds) async {
-    if (seconds < 0 || seconds > maxIdentifySeconds) {
-      throw RangeError.range(seconds, 0, maxIdentifySeconds, 'seconds');
+    if (!isValidIdentifySeconds(seconds)) {
+      throw RangeError.value(
+        seconds,
+        'seconds',
+        'Must be 0 or $minTimedIdentifySeconds..$maxIdentifySeconds',
+      );
     }
     await ready;
     final prefs = await SharedPreferences.getInstance();

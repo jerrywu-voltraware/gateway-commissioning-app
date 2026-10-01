@@ -323,7 +323,21 @@ class BleGatewayLink
     try {
       await _connectPeer(peer, epoch, onStage);
     } catch (error) {
-      if (epoch == _epoch) await disconnect();
+      if (epoch == _epoch) {
+        await disconnect();
+      } else if (_device != peer.id) {
+        // 1.0.0+22 (select_then_identify: a tap on another card replaces a
+        // connect still running): superseded, but Android may still have
+        // brought this GATT link up after the newer connect's disconnect —
+        // closed here, so no gateway is left connected with nobody keeping
+        // it. Not when the newer connect is to the same gateway.
+        try {
+          await UniversalBle.disconnect(
+            peer.id,
+            timeout: const Duration(seconds: 5),
+          );
+        } catch (_) {}
+      }
       throw normalizeBleError(error);
     }
   }

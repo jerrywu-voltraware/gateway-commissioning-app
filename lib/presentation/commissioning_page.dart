@@ -3404,6 +3404,18 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             // and stays on this list. 1.0.0+14: the card's tap selects the
             // gateway, the fixed bottom button connects to it.
             onIdentify: c.identifyPeer,
+            // Only the gateway blinked when it has no PTU connected: the
+            // row and the SnackBar say so.
+            identifyGatewayOnly: () => c.identifyPeerGatewayOnly,
+            // 1.0.0+22: and why (switched to one-to-one just now, no PTU
+            // heard, all too weak, still picking).
+            identifyGatewayOnlyReason: () => c.identifyPeerGatewayOnlyReason,
+            // 1.0.0+22 (select_then_identify): a card's tap connects and
+            // keeps the link — its bulb blinks at once, 〔連線到 …〕 goes on
+            // over it (docs/select_then_identify.md).
+            onHold: c.holdPeer,
+            onRelease: c.releaseHeld,
+            holdLost: c.heldLinkLost,
             onConnect: (peer) => _connectPeer(c, peer),
             choice: _gatewayChoice,
           ),

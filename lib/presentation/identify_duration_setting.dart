@@ -77,7 +77,7 @@ class _IdentifyDurationState extends ConsumerState<IdentifyDurationSetting> {
             enabled: enabled,
             keyboardType: TextInputType.number,
             decoration: const InputDecoration(
-              labelText: '秒數（0–255）',
+              labelText: '秒數（0 或 2–10）',
               suffixText: '秒',
             ),
             validator: (value) => parseIdentifySeconds(value ?? '') == null
@@ -85,7 +85,10 @@ class _IdentifyDurationState extends ConsumerState<IdentifyDurationSetting> {
                 : null,
           ),
           const SizedBox(height: 8),
-          const Text('預設 6 秒。閘道器與 PTU 使用相同秒數。0＝關燈；閘道器會停止辨識並恢復正常狀態燈。'),
+          const Text(
+            '預設 4 秒。閘道器與 PTU 使用相同秒數。可填 2–10 秒；0＝關燈，閘道器會停止辨識並恢復正常狀態燈。'
+            '不提供 1 秒（PTU 的 1 秒封包會讓燈恆亮）。',
+          ),
           TextButton(
             key: const Key('identify-seconds-save'),
             onPressed: enabled ? _save : null,

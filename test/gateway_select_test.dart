@@ -6,17 +6,20 @@
 // worst field errors, so now: select, then connect.
 //
 // - a card's tap selects its gateway (a primary outline, a tint, 「✓ 已選取」,
-//   a haptic click, Semantics selected) and connects nothing; another card
-//   moves the selection, the same card again keeps it;
+//   a haptic click, Semantics selected); another card moves the selection,
+//   the same card again keeps it. 1.0.0+22 (select_then_identify): the tap
+//   also connects to it and keeps the link (「連線中…」 → 「已連線」, the
+//   scan stops) — the flow is not entered; 〔連線到 …〕 goes on over that
+//   link (select_then_identify_test.dart);
 // - the fixed bottom button 〔連線到 站 S · 閘道器 N〕 (the card's title
 //   source; disabled 「請先點選要連線的閘道器」 while none is) connects to the
 //   selected gateway, that one only;
 // - while it connects: the button a spinner and 「連線中…」 (disabled), the
 //   card 「連線中…」, the other cards faded and not tappable; a failed
 //   connect leaves the selection;
-// - the order is frozen while a gateway is selected (RSSI and 「最近」 still
-//   change; gateways heard since come after); the selected one stays
-//   listed when not heard (「訊號中斷」) and whatever the filter;
+// - the order is frozen while a gateway is selected (1.0.0+22: the scan
+//   stops with the kept link, the rows keep their last RSSI); the selected
+//   one stays listed when not heard (「訊號中斷」) and whatever the filter;
 // - 「最近」 is its green chip only — no outline;
 // - a gateway not configured: 「未配置閘道器」 on one line, 「…70F0」 on line
 //   3 like every card's tail;
@@ -59,11 +62,11 @@ var _realFonts = false;
 ThemeData _theme(Brightness b) => withRealFonts(gatewayTheme(b));
 
 /// A live scan (one stream per start); the back office lists 81/1 and 82/1;
-/// a connect can be held ([hold]) or fail once ([failConnect]).
+/// a connect can be held ([hold]) or fail ([failConnects] times).
 class _LiveLink extends DemoSystem implements GatewayScanner {
   final scans = <StreamController<List<GatewayPeer>>>[];
   Completer<void>? hold;
-  bool failConnect = false;
+  int failConnects = 0;
 
   /// Every gateway the link was asked to connect to (〔辨識〕 too).
   final connected = <String>[];
@@ -91,8 +94,8 @@ class _LiveLink extends DemoSystem implements GatewayScanner {
   }) async {
     connected.add(peer.id);
     await hold?.future;
-    if (failConnect) {
-      failConnect = false;
+    if (failConnects > 0) {
+      failConnects--;
       throw const GatewayFailure('permission');
     }
     return super.connect(peer, onStage: onStage);
@@ -246,6 +249,17 @@ Map<String, Rect> _rects(WidgetTester tester, List<GatewayPeer> peers) => {
     peer.id: tester.getRect(find.byKey(ValueKey('gateway-card-${peer.id}'))),
 };
 
+/// 1.0.0+22: [_rects] from the list's own title — the page's scroll may
+/// still be settling between two readings (ensureVisible can leave it past
+/// its end for a while), the list's layout is what must not change.
+Map<String, Rect> _listRects(WidgetTester tester, List<GatewayPeer> peers) {
+  final origin = tester.getTopLeft(find.text('選擇附近的閘道器'));
+  return {
+    for (final MapEntry(:key, :value) in _rects(tester, peers).entries)
+      key: value.shift(-origin),
+  };
+}
+
 Future<void> _tapCard(WidgetTester tester, GatewayPeer peer) async {
   await tester.ensureVisible(_card(peer));
   await tester.pump();
@@ -328,10 +342,12 @@ void main() {
     );
   });
 
-  testWidgets('a card\'s tap selects (outline, tint, 「✓ 已選取」, a haptic '
-      'click, Semantics) and connects nothing; the bottom button names it; '
-      'another card moves the selection, the same one again keeps it; the '
-      'button connects to the selected gateway only', (tester) async {
+  testWidgets('a card\'s tap selects (outline, tint, a haptic click, '
+      'Semantics) and — 1.0.0+22 — connects to it and keeps the link '
+      '(「連線中…」 → 「已連線」, the scan stops, nothing busy); the bottom '
+      'button names it; another card moves the selection (and the link), the '
+      'same one again keeps it; the button goes on with the selected gateway '
+      'only, over its link', (tester) async {
     final platform = <MethodCall>[];
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
       SystemChannels.platform,
@@ -364,23 +380,42 @@ void main() {
     }
     await tester.ensureVisible(_card(_new));
     await tester.pump();
+    // 1.0.0+22: settled first (ensureVisible can leave the page past its
+    // end for a moment; the comparison below is after the connect).
+    await _settle(tester, times: 3);
     final before = _rects(tester, [_gw81, _gw82, _new]);
+    final inList = _listRects(tester, [_gw81, _gw82, _new]);
 
     await tester.tap(_card(_gw82));
     await tester.pump();
-    // Selected, not connected: the scan goes on, nothing busy.
-    expect(link.connected, isEmpty);
-    expect(read().step, 1);
-    expect(read().busy, isFalse);
-    expect(link.scans.last.isClosed, isFalse);
+    expect(
+      _rects(tester, [_gw81, _gw82, _new]),
+      before,
+      reason: 'selecting moves nothing',
+    );
+    // 1.0.0+22: selected and connecting (the link is kept for its bulb and
+    // the button); the flow is not entered, nothing busy.
     expect(_mark(_gw82), findsOneWidget);
     expect(_marks, findsOneWidget);
     expect(
-      find.descendant(of: _mark(_gw82), matching: find.text('已選取')),
+      find.descendant(of: _mark(_gw82), matching: find.text('連線中…')),
+      findsOneWidget,
+    );
+    await _settle(tester);
+    expect(link.connected, [_gw82.id]);
+    expect(read().step, 1);
+    expect(read().peer, isNull);
+    expect(read().busy, isFalse);
+    expect(link.scans.last.isClosed, isTrue, reason: 'the scan stopped');
+    expect(
+      find.descendant(of: _mark(_gw82), matching: find.text('已連線')),
       findsOneWidget,
     );
     expect(
-      find.descendant(of: _mark(_gw82), matching: find.byIcon(Icons.check)),
+      find.descendant(
+        of: _mark(_gw82),
+        matching: find.byIcon(Icons.bluetooth_connected),
+      ),
       findsOneWidget,
     );
     final colors = Theme.of(tester.element(_card(_gw82))).colorScheme;
@@ -408,9 +443,9 @@ void main() {
       ),
     );
     expect(
-      _rects(tester, [_gw81, _gw82, _new]),
-      before,
-      reason: 'selecting moves nothing',
+      _listRects(tester, [_gw81, _gw82, _new]),
+      inList,
+      reason: 'nor connecting',
     );
     // The bottom button: the card's title.
     expect(_buttonText(tester), '連線到 站 82 · 閘道器 1');
@@ -428,21 +463,30 @@ void main() {
       colors.primary,
     );
     expect(_buttonText(tester), '連線到 站 81 · 閘道器 1');
-    // The same card again: still selected, still nothing connected.
+    // 1.0.0+22: and the link — 81/1 connected now.
+    await _settle(tester);
+    expect(link.connected, [_gw82.id, _gw81.id]);
+    expect(
+      find.descendant(of: _mark(_gw81), matching: find.text('已連線')),
+      findsOneWidget,
+    );
+    // The same card again: still selected, no second connect.
     final clicks = platform.length;
     await tester.tap(_card(_gw81));
     await tester.pump();
+    await _settle(tester);
     expect(_mark(_gw81), findsOneWidget);
     expect(_marks, findsOneWidget);
     expect(platform.length, greaterThan(clicks));
-    expect(link.connected, isEmpty);
+    expect(link.connected, [_gw82.id, _gw81.id]);
     expect(read().step, 1);
     expect(_buttonText(tester), '連線到 站 81 · 閘道器 1');
 
-    // The button connects to the selected gateway — that one only.
+    // The button goes on with the selected gateway — that one only, over
+    // its link (no connect again).
     await tester.tap(_button);
     await _settle(tester, times: 10);
-    expect(link.connected, [_gw81.id]);
+    expect(link.connected, [_gw82.id, _gw81.id]);
     expect(read().peer?.id, _gw81.id);
     expect(read().step, 2);
     expect(_button, findsNothing, reason: 'the list\'s bar only');
@@ -455,10 +499,12 @@ void main() {
       'a failed connect keeps the selection', (tester) async {
     final (container, link) = await _pumpList(tester);
     CommissionState read() => container.read(commissionProvider);
-    await _tapCard(tester, _gw82);
+    // 1.0.0+22: the card's own connect (its kept link) is still running
+    // when the button is pressed — the button waits for it; both fail.
     link
       ..hold = Completer<void>()
-      ..failConnect = true;
+      ..failConnects = 2;
+    await _tapCard(tester, _gw82);
     await tester.tap(_button);
     await _settle(tester);
     expect(read().busy, isTrue);
@@ -512,76 +558,76 @@ void main() {
     expect(tester.widget<InkWell>(_card(_gw81)).onTap, isNotNull);
     expect(_buttonText(tester), '連線到 站 82 · 閘道器 1');
     expect(_buttonEnabled(tester), isTrue);
-    expect(link.connected, [_gw82.id]);
+    // The card's connect, then the button's own.
+    expect(link.connected, [_gw82.id, _gw82.id]);
+    // 〔連線到 …〕 says why it failed; the card's own failure is not a
+    // second SnackBar.
+    expect(find.byKey(const Key('gateway-hold-snack')), findsNothing);
 
     // Pressed again: connected to 82/1.
     await tester.tap(_button);
     await _settle(tester, times: 10);
     expect(read().peer?.id, _gw82.id);
     expect(read().step, 2);
-    expect(link.connected, [_gw82.id, _gw82.id]);
+    expect(link.connected, [_gw82.id, _gw82.id, _gw82.id]);
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('the order is frozen while a gateway is selected (RSSI and '
-      '「最近」 still change, a gateway heard since comes after); '
-      '〔重新搜尋〕 clears the selection and the signal orders again', (
+  testWidgets('the order is frozen while a gateway is selected — 1.0.0+22: '
+      'its link is kept, so the scan stops and the rows keep their last RSSI '
+      '(nothing moves); 〔重新搜尋〕 lets the link go, clears the selection, '
+      'and the signal orders again (a gateway heard since included)', (
     tester,
   ) async {
     final (_, link) = await _pumpList(tester);
     const gw83 = GatewayPeer('AA:BB:CC:DD:3D:02', 'GIOS-S83-GW01', -35);
     final all = [_gw81, _gw82, _new, gw83];
     expect(_order(tester, all), [_gw81.id, _gw82.id, _new.id]);
-    await _tapCard(tester, _new);
-    await tester.ensureVisible(_card(_gw81));
+    await tester.ensureVisible(_card(_new));
     await tester.pump();
-    final before = _rects(tester, [_gw81, _gw82, _new]);
-
-    // The selected (weakest) gateway now much the strongest.
-    link.hear([
-      GatewayPeer(_gw81.id, _gw81.name, -75),
-      _gw82,
-      GatewayPeer(_new.id, _new.name, -30),
-    ]);
-    await tester.pump();
-    expect(_signalText(tester, _new), '-30 dBm');
-    expect(_signalText(tester, _gw81), '-75 dBm');
-    expect(
-      find.byKey(ValueKey('gateway-nearest-${_new.id}')),
-      findsOneWidget,
-      reason: '「最近」 follows the signal',
-    );
-    expect(find.byKey(ValueKey('gateway-nearest-${_gw81.id}')), findsNothing);
+    await _settle(tester, times: 3);
+    final before = _listRects(tester, [_gw81, _gw82, _new]);
+    final scans = link.scans.length;
+    await tester.tap(_card(_new));
+    await _settle(tester, times: 3);
+    expect(link.connected, [_new.id]);
+    expect(link.scans.last.isClosed, isTrue, reason: 'the scan stopped');
+    expect(_signalText(tester, _new), '-70 dBm', reason: 'its last RSSI');
+    expect(_signalText(tester, _gw81), '-41 dBm');
+    expect(find.byKey(ValueKey('gateway-nearest-${_gw81.id}')), findsOneWidget);
     expect(_order(tester, all), [_gw81.id, _gw82.id, _new.id]);
-    expect(_rects(tester, [_gw81, _gw82, _new]), before);
-
-    // A gateway heard since: after the others.
-    link.hear([
-      GatewayPeer(_gw81.id, _gw81.name, -75),
-      _gw82,
-      GatewayPeer(_new.id, _new.name, -30),
-      gw83,
-    ]);
-    await tester.pump();
-    expect(_order(tester, all), [_gw81.id, _gw82.id, _new.id, gw83.id]);
+    expect(_listRects(tester, [_gw81, _gw82, _new]), before);
     expect(_mark(_new), findsOneWidget);
     expect(_buttonText(tester), '連線到 未配置閘道器 …70F0');
+    // The search's panel stays, paused (the cards do not move).
+    expect(find.text(gatewaySearchPausedText), findsOneWidget);
+    // No scan while the link is kept.
+    expect(link.scans.length, scans);
 
-    // 〔停止搜尋〕 keeps it.
-    await tester.ensureVisible(find.text('停止搜尋'));
+    // 〔重新搜尋〕: the link goes; a new list — nothing selected, ordered by
+    // the signal.
+    final disconnects = link.linkDisconnects;
+    await tester.ensureVisible(find.text('重新搜尋'));
     await tester.pump();
-    await tester.tap(find.text('停止搜尋'));
-    await _settle(tester, times: 2);
-    expect(_mark(_new), findsOneWidget);
-    expect(_order(tester, all), [_gw81.id, _gw82.id, _new.id, gw83.id]);
-    // 〔重新搜尋〕: a new list — nothing selected, ordered by the signal.
     await tester.tap(find.text('重新搜尋'));
     await _settle(tester, times: 2);
+    expect(link.linkDisconnects, greaterThan(disconnects));
+    expect(link.scans.length, scans + 1);
     expect(_marks, findsNothing);
     expect(_buttonText(tester), gatewayPickFirstLabel);
     expect(_buttonEnabled(tester), isFalse);
+    for (var i = 0; i < 3; i++) {
+      link.hear([
+        GatewayPeer(_gw81.id, _gw81.name, -75),
+        _gw82,
+        GatewayPeer(_new.id, _new.name, -30),
+        gw83,
+      ]);
+      await tester.pump(const Duration(milliseconds: 200));
+    }
     final order = _order(tester, all);
     expect(order.indexOf(_new.id), lessThan(order.indexOf(_gw81.id)));
+    expect(order, contains(gw83.id));
     await tester.pumpWidget(const SizedBox());
   });
 
@@ -643,7 +689,13 @@ void main() {
   ) async {
     final (container, link) = await _pumpList(tester);
     CommissionState read() => container.read(commissionProvider);
+    // A PTU is connected to the gateway: the identify reaches it too, so the
+    // SnackBar is the plain one (not the gateway-only warning).
+    link.devices.first['connected'] = true;
     await _tapCard(tester, _gw81);
+    // 1.0.0+22: its link is kept.
+    await _settle(tester);
+    expect(link.connected, [_gw81.id]);
     // 〔辨識〕 on another gateway, held: nothing to press meanwhile.
     link.hold = Completer<void>();
     final identify = find.byKey(ValueKey('identify-${_new.id}'));
@@ -664,7 +716,9 @@ void main() {
     expect(_marks, findsOneWidget);
     expect(_buttonText(tester), '連線到 站 81 · 閘道器 1');
     expect(_buttonEnabled(tester), isTrue);
-    expect(link.connected, [_new.id], reason: 'the blink only');
+    // 1.0.0+22: the blink's own connect (the selected gateway's kept link
+    // goes meanwhile — one link at a time), then 81/1 connected again.
+    expect(link.connected, [_gw81.id, _new.id, _gw81.id]);
     final snack = find.byKey(const Key('gateway-identified-snack'));
     expect(snack, findsOneWidget);
     expect(

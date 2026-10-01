@@ -656,7 +656,9 @@ void main() {
     testWidgets('〔辨識〕 blinks the gateway and stays on the list; the row '
         'tap then chooses it', (tester) async {
       _phone(tester);
-      final fake = DemoSystem();
+      // A PTU is connected to the gateway: the identify reaches it too, so
+      // the row says the plain 「已送出」 (not the gateway-only warning).
+      final fake = DemoSystem()..devices.first['connected'] = true;
       final container = await _pumpApp(tester, fake: fake);
       await _tap(tester, find.text('檢查並開始'));
       CommissionState read() => container.read(commissionProvider);
@@ -666,7 +668,7 @@ void main() {
       // 〔辨識〕: connect → identify (target both) → disconnect, step 1 kept.
       await _tap(tester, find.byKey(const ValueKey('identify-demo-gateway')));
       expect(fake.identifyRequests, [
-        {'target': 'both', 'duration_ms': 6000},
+        {'target': 'both', 'duration_ms': 4000},
       ]);
       expect(read().step, 1);
       expect(read().peer, isNull);

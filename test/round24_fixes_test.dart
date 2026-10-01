@@ -271,7 +271,7 @@ void main() {
       }
       expect(
         identifyPtuFailedText('ambiguous_target'),
-        '閘道器正在閃燈（6 秒）；PTU 指令未送出（閘道器連著多台 PTU，沒有指定哪一台）。',
+        '閘道器正在閃燈（4 秒）；PTU 指令未送出（閘道器連著多台 PTU，沒有指定哪一台）。',
       );
     });
 

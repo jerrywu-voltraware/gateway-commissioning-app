@@ -235,6 +235,12 @@ class DemoSystem implements GatewayLink, GatewayApi, ForeignAcks {
             'rssi_last': d['rssi'],
             'count': 3,
             'device_number': d['device_number'],
+            // Firmware 1.7.40: the window median the unbound pick compares
+            // with min_rssi, and the verdict.
+            'rssi_med': d['rssi'],
+            'reason': (d['rssi'] as num) >= min
+                ? 'ok'
+                : 'below_threshold_median',
           },
       ],
     };
@@ -303,13 +309,24 @@ class DemoSystem implements GatewayLink, GatewayApi, ForeignAcks {
   /// answers nothing until the APP reconnects.
   bool rebooting = false;
   int connects = 0;
+
+  /// 1.0.0+22 (select_then_identify): the gateway the simulated link is
+  /// connected to (null after a disconnect) and how many disconnects there
+  /// were — the list keeps the selected gateway's link, and its bulb and
+  /// 〔連線到 …〕 must not connect again.
+  String? linkedPeer;
+  int linkDisconnects = 0;
   final targetRequests = <Map<String, dynamic>>[];
   @override
   bool get demo => true;
   @override
   Future<void> prepare() async {}
   @override
-  Future<void> disconnect() async {}
+  Future<void> disconnect() async {
+    linkDisconnects++;
+    linkedPeer = null;
+  }
+
   @override
   Future<List<GatewayPeer>> scan() async => [
     const GatewayPeer('demo-gateway', 'GIOS-S1-GW01', -42),
@@ -321,6 +338,7 @@ class DemoSystem implements GatewayLink, GatewayApi, ForeignAcks {
   }) async {
     onStage?.call('正在連線閘道器');
     connects++;
+    linkedPeer = peer.id;
     if (rebooting) {
       // Booted again: the Wi-Fi is joined from scratch.
       uptimeSec = 5;
@@ -407,6 +425,9 @@ class DemoSystem implements GatewayLink, GatewayApi, ForeignAcks {
         return _setMqttTarget(params);
       case 'identify':
         identifyRequests.add(Map.of(params));
+        // Pre-PTU firmware: bare identify, fixed IDENTIFY_DEFAULT_MS (6 s),
+        // and the same fallback when duration_ms is omitted. Not the APP's
+        // own default (defaultIdentifySeconds).
         if (config['identify_ptu_supported'] != true) {
           return {'duration_ms': 6000};
         }

@@ -257,7 +257,7 @@ void main() {
       hold.complete();
       expect(await done, isTrue);
       expect(fake.identifyRequests, [
-        {'target': 'both', 'duration_ms': 6000},
+        {'target': 'both', 'duration_ms': 4000},
       ]);
       final s = read();
       expect(s.error, isNull);
@@ -274,6 +274,9 @@ void main() {
       fake.config.remove('identify_ptu_supported');
       final (container, c) = await _list(fake);
       addTearDown(container.dispose);
+      // Pre-PTU firmware takes only its fixed six seconds (the APP default
+      // 4 is refused; see identify_seconds_test), so pick 6 here.
+      await container.read(topologyProvider.notifier).setIdentifySeconds(6);
       expect(await c.identifyPeer(_peerA), isTrue);
       expect(fake.sent('identify'), [<String, dynamic>{}, <String, dynamic>{}]);
       expect(container.read(commissionProvider).error, isNull);

@@ -5,6 +5,8 @@
 /// helper here then returns null / false so the APP keeps its old behaviour.
 library;
 
+import 'dart:math' show max;
+
 import 'identify.dart';
 
 /// PTU number used for every direct-mode PTU (the firmware ignores the
@@ -717,7 +719,7 @@ const directWaitingLabel = '等待閘道器連上 PTU';
 
 /// identify on firmware 1.7.20+ when target=ptu itself fails outright
 /// (no PTU connected): the APP falls back to blinking the gateway only.
-const identifyNoPtuText = '閘道器雙閃 6 秒；閘道器尚未連上 PTU，PTU 不會閃燈。';
+const identifyNoPtuText = '閘道器雙閃 4 秒；閘道器尚未連上 PTU，PTU 不會閃燈。';
 
 /// identify ack → text for the installer, when the PTU write itself
 /// succeeded (`ptu_write` absent — bare/gateway-only ack — or `"ok"`).
@@ -739,6 +741,90 @@ String identifyAckText(Map<String, dynamic> ack) {
 /// dropped phone↔gateway link.
 ///
 /// Round 24: [reason] in words ([ptuWriteReasonText]), never the raw code.
-String identifyPtuFailedText(String reason, {int seconds = 6}) => seconds == 0
+String identifyPtuFailedText(String reason, {int seconds = defaultIdentifySeconds}) => seconds == 0
     ? '閘道器已停止辨識；PTU 關燈未送出（${ptuWriteReasonText(reason)}）。'
     : '閘道器正在閃燈（$seconds 秒）；PTU 指令未送出（${ptuWriteReasonText(reason)}）。';
+
+/// 1.0.0+22: why the list's 〔辨識〕 blinked the gateway only (its
+/// `ptu_write` was `not_connected`), read from one get_status right after
+/// ([identifyGatewayOnlyReasonOf]). Null: get_status could not be read or
+/// carries no `direct` (older firmware) — the plain gateway-only note.
+enum IdentifyGatewayOnlyKind {
+  /// The APP just sent `max_connections` 1 (the gateway was in star mode):
+  /// its BLE restarted and it is picking its PTU anew.
+  switchedToDirect,
+
+  /// The gateway heard no PTU at all (`candidates` empty).
+  noCandidate,
+
+  /// Every candidate's window median is below the threshold.
+  weakSignal,
+
+  /// Candidates heard, none connected yet (scanning / connecting), or one
+  /// connected since the identify was sent.
+  picking,
+}
+
+class IdentifyGatewayOnlyReason {
+  const IdentifyGatewayOnlyReason(this.kind, {this.bestRssi, this.minRssi});
+  final IdentifyGatewayOnlyKind kind;
+
+  /// [IdentifyGatewayOnlyKind.weakSignal]: the strongest median heard and
+  /// the threshold it fell short of (dBm).
+  final int? bestRssi;
+  final int? minRssi;
+
+  @override
+  bool operator ==(Object other) =>
+      other is IdentifyGatewayOnlyReason &&
+      other.kind == kind &&
+      other.bestRssi == bestRssi &&
+      other.minRssi == minRssi;
+
+  @override
+  int get hashCode => Object.hash(kind, bestRssi, minRssi);
+
+  @override
+  String toString() =>
+      'IdentifyGatewayOnlyReason(${kind.name}, best=$bestRssi, min=$minRssi)';
+}
+
+/// Classifies a gateway-only identify from the get_status `direct` object
+/// ([direct]; null when absent or `state:"off"`) read right after it.
+/// [switched]: the APP sent `max_connections` 1 on this very link (the
+/// gateway's BLE restarted, nothing it reports yet is settled). [minRssi]:
+/// get_config's `auto_connect_min_rssi` ([directMinRssiOf]). A candidate
+/// without `rssi_med` (firmware before 1.7.40) counts by its `rssi_peak`.
+IdentifyGatewayOnlyReason? identifyGatewayOnlyReasonOf(
+  DirectStatus? direct, {
+  required bool switched,
+  required int minRssi,
+}) {
+  if (switched) {
+    return const IdentifyGatewayOnlyReason(
+      IdentifyGatewayOnlyKind.switchedToDirect,
+    );
+  }
+  if (direct == null) return null;
+  if (direct.pickedMac != null) {
+    return const IdentifyGatewayOnlyReason(IdentifyGatewayOnlyKind.picking);
+  }
+  final levels = [
+    for (final c in direct.candidates)
+      if ((c.rssiMed ?? c.rssiPeak) != null) (c.rssiMed ?? c.rssiPeak)!,
+  ];
+  if (direct.candidates.isEmpty) {
+    return const IdentifyGatewayOnlyReason(
+      IdentifyGatewayOnlyKind.noCandidate,
+    );
+  }
+  if (levels.length == direct.candidates.length &&
+      levels.every((rssi) => rssi < minRssi)) {
+    return IdentifyGatewayOnlyReason(
+      IdentifyGatewayOnlyKind.weakSignal,
+      bestRssi: levels.reduce(max),
+      minRssi: minRssi,
+    );
+  }
+  return const IdentifyGatewayOnlyReason(IdentifyGatewayOnlyKind.picking);
+}

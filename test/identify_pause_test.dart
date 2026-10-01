@@ -181,7 +181,10 @@ void main() {
         'backend_environment': 'production',
         'demo_recent_gateways': '[$_recent80]',
       });
-      final link = _LiveLink();
+      // A PTU is connected to the gateway: the identify reaches it too, so
+      // the row and the SnackBar say the plain 「已送出」 (not the
+      // gateway-only warning).
+      final link = _LiveLink()..devices.first['connected'] = true;
       await tester.pumpWidget(
         ProviderScope(
           overrides: [

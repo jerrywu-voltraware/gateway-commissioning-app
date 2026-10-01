@@ -54,6 +54,14 @@ const identifyPeerLabel = '辨識閘道器（閃燈）';
 /// seconds, at least 1).
 Duration identifyPeerTimeout = reconnectBudget;
 
+/// 1.0.0+22 (select_then_identify): for this long after the link kept to
+/// the selected gateway ([CommissioningController.holdPeer]) switched it to
+/// one-to-one (max_connections 1: its BLE scan restarts and it picks its
+/// PTU anew), a gateway-only 〔辨識〕 says so
+/// ([IdentifyGatewayOnlyKind.switchedToDirect]); after it the gateway's
+/// own get_status says why.
+const heldSwitchSettle = Duration(seconds: 15);
+
 final linkProvider = Provider<GatewayLink>(
   (ref) => ref.watch(demoProvider)
       ? ref.watch(demoSystemProvider)
@@ -2543,6 +2551,7 @@ class CommissioningController extends Notifier<CommissionState> {
       _grace?.cancel();
       _rssiTimer?.cancel();
       _settleTimer?.cancel();
+      _forgetHeld();
       unawaited(_link.disconnect());
     });
     return const CommissionState();
@@ -3772,11 +3781,37 @@ class CommissioningController extends Notifier<CommissionState> {
   ///     comes back afterwards ([_sideTask]);
   ///   * 〔取消操作〕 during it only stops the blink ([cancel]).
   /// Returns whether the identify was sent and acked (the list's
-  /// 「已送出」).
+  /// 「已送出」); [identifyPeerGatewayOnly] tells when only the gateway
+  /// blinked (no PTU connected) — the list then says so instead.
+  ///
+  /// 1.0.0+22 (select_then_identify): the gateway selected on the list has
+  /// its own kept link ([holdPeer]) — the identify goes over it at once
+  /// ([_identifyHeld]: no connect, no disconnect, no busy run); while that
+  /// link is still connecting the identify waits for it (false when it did
+  /// not come up: the list says why). Any other gateway keeps the connect →
+  /// identify → disconnect above, and a link kept to another gateway ends
+  /// here (this connect replaces it).
   Future<bool> identifyPeer(GatewayPeer peer) async {
+    _identifyPeerGatewayOnly = false;
+    _identifyPeerGatewayOnlyReason = null;
     if (state.busy) return false;
+    final holding = _holding;
+    if (holding != null && _holdingPeer?.id == peer.id && !await holding) {
+      return false;
+    }
+    if (!ref.mounted || state.busy) return false;
+    if (_heldPeer?.id == peer.id) {
+      if (_heldAlive()) return _identifyHeld(peer);
+      await _dropHeld();
+      return false;
+    }
+    _forgetHeld();
     _noteGatewayMac(peer.id);
     var blinked = false;
+    // Only the gateway's LED was asked: the PTU side was not connected.
+    var gatewayOnly = false;
+    // 1.0.0+22: why ([identifyPeerGatewayOnlyReason]).
+    IdentifyGatewayOnlyReason? reason;
     _identifyingPeer = peer;
     try {
       await _sideTask(identifyPeerLabel, identifyPeerTimeout.inSeconds, (
@@ -3798,21 +3833,19 @@ class CommissioningController extends Notifier<CommissionState> {
               await ref.read(topologyProvider.notifier).ready;
             }
             _check(generation);
-            final seconds = ref.read(topologyProvider).identifySeconds;
-            final params = identifyCommandParams(config, seconds);
-            if (!identifyPtuSupported(config)) {
-              await send('identify', params);
-            } else {
-              try {
-                await send('identify', params);
-              } on GatewayFailure catch (e) {
-                if (!e.fromGateway || e.code != 'not_connected') rethrow;
-                await send(
-                  'identify',
-                  identifyCommandParams(config, seconds, target: 'gateway'),
-                );
-              }
-            }
+            // 1.0.0+22: one-to-one preferred — a gateway still in star
+            // mode (shipped NVS: 5) is switched now, so its LED-bearing
+            // PTU gets connected before the installer configures it.
+            final switched = await _ensureDirectLimit(config, send);
+            _check(generation);
+            final sent = await _peerIdentify(
+              config,
+              send,
+              switched: switched,
+              check: () => _check(generation),
+            );
+            gatewayOnly = sent.gatewayOnly;
+            reason = sent.reason;
             _check(generation);
             blinked = true;
           } finally {
@@ -3840,7 +3873,90 @@ class CommissioningController extends Notifier<CommissionState> {
         await _link.disconnect();
       } catch (_) {}
     }
+    _identifyPeerGatewayOnly = blinked && gatewayOnly;
+    _identifyPeerGatewayOnlyReason = _identifyPeerGatewayOnly ? reason : null;
     return blinked && ref.mounted;
+  }
+
+  /// The last [identifyPeer] blinked the gateway only: its PTU side was not
+  /// connected (`not_connected`), so no PTU got the identify. Read right
+  /// after [identifyPeer] returns true ([GatewayDiscovery.identifyGatewayOnly]);
+  /// each call resets it, and the list runs one 〔辨識〕 at a time.
+  bool get identifyPeerGatewayOnly => _identifyPeerGatewayOnly;
+  bool _identifyPeerGatewayOnly = false;
+
+  /// 1.0.0+22: why the last [identifyPeer] blinked the gateway only
+  /// ([identifyPeerGatewayOnly]), from one get_status read while still
+  /// connected; null when that read failed or the firmware reports no
+  /// `direct` (the list then keeps its plain note).
+  IdentifyGatewayOnlyReason? get identifyPeerGatewayOnlyReason =>
+      _identifyPeerGatewayOnlyReason;
+  IdentifyGatewayOnlyReason? _identifyPeerGatewayOnlyReason;
+
+  /// 1.0.0+22 (field: with one-to-one preferred the gateway only left star
+  /// mode at step 7, so 〔辨識〕 before that never reached the PTU —
+  /// shipped units keep `max_connections` 5 in NVS): right after a connect
+  /// read [config] (get_config), a gateway not yet one-to-one gets
+  /// `set_config max_connections=1` and, as step 7 does, BLE scanning on.
+  /// The firmware restarts its BLE scan on that change (the phone's link
+  /// stays, as at step 7, which polls get_status right after). Nothing is
+  /// sent under star preference, in test mode, when already 1, on firmware
+  /// without the direct pick (it keeps the list flow, step 7 sets the
+  /// limit), or to a gateway in service (`fleet_joined`: a star station at
+  /// work is r33's topology ask — the installer decides). [config] is
+  /// updated in place; true when `max_connections` was sent.
+  Future<bool> _ensureDirectLimit(
+    Map<String, dynamic> config,
+    Future<Map<String, dynamic>> Function(
+      String op, [
+      Map<String, dynamic> params,
+    ])
+    send,
+  ) async {
+    if (!ref.read(topologyProvider).loaded) {
+      await ref.read(topologyProvider.notifier).ready;
+    }
+    if (!ref.read(topologyProvider).topology.isDirect) return false;
+    if (!directAutoConnectSupported(config) || isTestMode(config)) {
+      return false;
+    }
+    if (config['fleet_joined'] == true) return false;
+    var switched = false;
+    if (config['max_connections'] != 1) {
+      await send('set_config', {'max_connections': 1});
+      config['max_connections'] = 1;
+      switched = true;
+    }
+    if (config['ble_enabled'] == false) {
+      await send('set_ble_enabled', {'enabled': true});
+      config['ble_enabled'] = true;
+    }
+    return switched;
+  }
+
+  /// 1.0.0+22: one get_status while the list's 〔辨識〕 is still connected,
+  /// classified by [identifyGatewayOnlyReasonOf]; null when the read fails
+  /// and nothing was switched (the plain note is kept).
+  Future<IdentifyGatewayOnlyReason?> _gatewayOnlyReason(
+    Map<String, dynamic> config,
+    Future<Map<String, dynamic>> Function(
+      String op, [
+      Map<String, dynamic> params,
+    ])
+    send,
+    bool switched,
+  ) async {
+    DirectStatus? direct;
+    try {
+      direct = DirectStatus.from((await send('get_status'))['direct']);
+    } catch (_) {
+      if (!switched) return null;
+    }
+    return identifyGatewayOnlyReasonOf(
+      direct,
+      switched: switched,
+      minRssi: directMinRssiOf(config),
+    );
   }
 
   /// 1.0.0+10: the list 〔辨識〕 of [peer] ([identifyPeer]) running now.
@@ -3853,6 +3969,339 @@ class CommissioningController extends Notifier<CommissionState> {
       ref.mounted &&
       generation == _generation &&
       (state.peer == null || state.peer!.id == peer.id);
+
+  /// The list's identify on a connected gateway whose get_config is
+  /// [config] (`identify_supported` already checked): target=both — the
+  /// gateway alone when the PTU side is not connected (same fallback as
+  /// [_identify]) — and, when only the gateway blinked, why
+  /// ([_gatewayOnlyReason]; [switched]: max_connections 1 was just sent).
+  /// Shared by [identifyPeer]'s own connect and the kept link
+  /// ([_identifyHeld]); [check] throws when that run is no longer current.
+  Future<({bool gatewayOnly, IdentifyGatewayOnlyReason? reason})> _peerIdentify(
+    Map<String, dynamic> config,
+    Future<Map<String, dynamic>> Function(
+      String op, [
+      Map<String, dynamic> params,
+    ])
+    send, {
+    required bool switched,
+    required void Function() check,
+  }) async {
+    final seconds = ref.read(topologyProvider).identifySeconds;
+    final params = identifyCommandParams(config, seconds);
+    if (!identifyPtuSupported(config)) {
+      await send('identify', params);
+      return (gatewayOnly: false, reason: null);
+    }
+    var gatewayOnly = false;
+    try {
+      final ack = await send('identify', params);
+      // Firmware 1.7.45 acks target=both ok when only the gateway LED ran
+      // and says so in `ptu_write` (cmd_contract.md).
+      gatewayOnly = ack['ptu_write'] == 'not_connected';
+    } on GatewayFailure catch (e) {
+      if (!e.fromGateway || e.code != 'not_connected') rethrow;
+      await send(
+        'identify',
+        identifyCommandParams(config, seconds, target: 'gateway'),
+      );
+      gatewayOnly = true;
+    }
+    if (!gatewayOnly) return (gatewayOnly: false, reason: null);
+    check();
+    return (
+      gatewayOnly: true,
+      reason: await _gatewayOnlyReason(config, send, switched),
+    );
+  }
+
+  // ---- 1.0.0+22 select_then_identify: the selected gateway's kept link ----
+
+  /// The gateway the list selected, connected and kept ([holdPeer]); null
+  /// while none is (never held, released, lost, or taken by [connect]).
+  GatewayPeer? _heldPeer;
+
+  /// Its get_config as the hold read it (after [_ensureDirectLimit]).
+  Map<String, dynamic> _heldConfig = const {};
+
+  /// When the hold sent max_connections 1 ([heldSwitchSettle]); null when
+  /// it did not.
+  DateTime? _heldSwitchedAt;
+
+  /// The hold whose connect still runs, and that run (answers whether it
+  /// held).
+  GatewayPeer? _holdingPeer;
+  Future<bool>? _holding;
+
+  /// Bumped by every new hold, release, loss and takeover: a hold run with
+  /// an older token keeps nothing and closes no link.
+  int _holdToken = 0;
+  StreamSubscription<bool>? _heldWatch;
+  final _heldLost = StreamController<String>.broadcast();
+
+  /// 1.0.0+22 (field: the list's bulb took 3–5 s to light the PTU —
+  /// Android's connect, service discovery and MTU 1.5–3 s, get_config
+  /// 0.3 s; the gateway's own identify takes < 10 ms): a card's tap on the
+  /// gateway list connects to [peer] and keeps the link, so its 〔辨識〕
+  /// ([identifyPeer]) goes out at once and 〔連線到 …〕 ([connect]) goes on
+  /// over the same link. Reads get_config and, as [identifyPeer] did,
+  /// switches a gateway not in service to one-to-one
+  /// ([_ensureDirectLimit]; a refusal by the gateway does not fail the
+  /// hold). No run: nothing on the page turns busy, the list stays usable
+  /// (another card, a bulb, the bottom button).
+  ///
+  /// Answers whether [peer] is held. The same gateway again: true at once
+  /// while held, the pending connect while connecting. Another gateway: the
+  /// previous hold ends (its link is replaced). A failed hold closes what it
+  /// opened. [releaseHeld] ends it; a drop is told on [heldLinkLost].
+  Future<bool> holdPeer(GatewayPeer peer) {
+    if (!ref.mounted || state.busy || state.step > 1) {
+      return Future.value(false);
+    }
+    if (_heldPeer?.id == peer.id && _heldAlive()) return Future.value(true);
+    final pending = _holding;
+    if (pending != null && _holdingPeer?.id == peer.id) return pending;
+    _forgetHeld();
+    final token = _holdToken;
+    _holdingPeer = peer;
+    final run = _hold(token, peer);
+    _holding = run;
+    return run;
+  }
+
+  Future<bool> _hold(int token, GatewayPeer peer) async {
+    _noteGatewayMac(peer.id);
+    var held = false;
+    try {
+      // The link's own retries included (≤ 53 s, ble_gateway_link.dart).
+      await _link.connect(peer).timeout(identifyPeerTimeout);
+      _holdCheck(token);
+      Future<Map<String, dynamic>> send(
+        String op, [
+        Map<String, dynamic> params = const {},
+      ]) => _holdCommand(token, op, params);
+      final config = Map<String, dynamic>.of(await send('get_config'));
+      var switched = false;
+      try {
+        switched = await _ensureDirectLimit(config, send);
+      } on GatewayFailure catch (error) {
+        // Refused by the gateway: left as it is — [_connect] and step 7
+        // ask again; the link is kept.
+        if (!error.fromGateway) rethrow;
+      }
+      _holdCheck(token);
+      _heldPeer = peer;
+      _heldConfig = config;
+      _heldSwitchedAt = switched ? DateTime.now() : null;
+      _watchHeld(token, peer);
+      held = true;
+    } catch (_) {
+      // Failed, timed out, or ended meanwhile (another hold, a release,
+      // the flow's own connect): nothing kept.
+    } finally {
+      if (token == _holdToken) {
+        _holding = null;
+        _holdingPeer = null;
+      }
+    }
+    if (!held &&
+        token == _holdToken &&
+        ref.mounted &&
+        !state.busy &&
+        state.peer == null) {
+      // A connect that timed out may still be pending in the link: closed
+      // now, no half-open link is left to the gateway.
+      try {
+        await _link.disconnect();
+      } catch (_) {}
+    }
+    return held && ref.mounted;
+  }
+
+  void _holdCheck(int token) {
+    if (token != _holdToken || !ref.mounted) {
+      throw const GatewayFailure('cancelled');
+    }
+  }
+
+  /// A command over the kept link: journaled ([_rawCommand]), 'busy'
+  /// retried as [_commandBusy] does, nothing absorbed into the flow's
+  /// config (the gateway is not chosen yet); cancelled once [token] is not
+  /// current.
+  Future<Map<String, dynamic>> _holdCommand(
+    int token,
+    String op, [
+    Map<String, dynamic> params = const {},
+  ]) async {
+    for (int attempt = 0; ; attempt++) {
+      _holdCheck(token);
+      try {
+        final result = await _rawCommand(op, params);
+        _holdCheck(token);
+        return result;
+      } on GatewayFailure catch (error) {
+        if (error.code != 'busy' || attempt >= busyRetryLimit) rethrow;
+      }
+      await Future<void>.delayed(
+        _link.demo ? const Duration(milliseconds: 1) : busyRetryDelay,
+      );
+    }
+  }
+
+  /// The kept link is up as far as the link can tell (one without
+  /// [GatewaySignalSource] counts as up until a command says otherwise).
+  bool _heldAlive() {
+    if (_heldPeer == null) return false;
+    final link = _link;
+    return link is! GatewaySignalSource ||
+        (link as GatewaySignalSource).signalConnected;
+  }
+
+  /// A link reporting its state ([GatewaySignalSource]) tells
+  /// [heldLinkLost] when the kept link drops; others are found out by the
+  /// next command ([_identifyHeld]).
+  void _watchHeld(int token, GatewayPeer peer) {
+    final link = _link;
+    if (link is! GatewaySignalSource) return;
+    _heldWatch = (link as GatewaySignalSource).signalConnections.listen((up) {
+      if (!up && token == _holdToken && _heldPeer?.id == peer.id) _loseHeld();
+    });
+  }
+
+  /// The kept link is gone (dropped, or closed by something else): the hold
+  /// ends and the list is told ([heldLinkLost]) — its card says so, its
+  /// next tap connects again.
+  void _loseHeld() {
+    final lost = _heldPeer?.id;
+    _forgetHeld();
+    if (lost != null && !_heldLost.isClosed) _heldLost.add(lost);
+  }
+
+  /// [_loseHeld] for a link found failing under a command (or no longer
+  /// up): it is also closed — a command that timed out may leave the GATT
+  /// link up with nobody keeping it (the gateway then does not advertise).
+  /// Not when a run or a chosen gateway has the link.
+  Future<void> _dropHeld() async {
+    _loseHeld();
+    if (!ref.mounted || state.busy || state.peer != null) return;
+    try {
+      await _link.disconnect();
+    } catch (_) {}
+  }
+
+  /// Ends the hold's bookkeeping (no disconnect, nothing told).
+  void _forgetHeld() {
+    _holdToken++;
+    unawaited(_heldWatch?.cancel());
+    _heldWatch = null;
+    _heldPeer = null;
+    _heldConfig = const {};
+    _heldSwitchedAt = null;
+    _holding = null;
+    _holdingPeer = null;
+  }
+
+  /// 1.0.0+22: the list let its selected gateway go (〔重新搜尋〕, the list
+  /// closed): the kept link — or the connect still running for it — is
+  /// closed. Nothing when none is kept, or when the flow has the link (a
+  /// run, a gateway chosen).
+  Future<void> releaseHeld() async {
+    final kept = _heldPeer != null || _holding != null;
+    _forgetHeld();
+    if (!kept || !ref.mounted || state.busy || state.peer != null) return;
+    try {
+      await _link.disconnect();
+    } catch (_) {}
+  }
+
+  /// 1.0.0+22: the id of a gateway whose kept link ([holdPeer]) dropped.
+  Stream<String> get heldLinkLost => _heldLost.stream;
+
+  /// 1.0.0+22: the gateway kept connected for the list now, if any.
+  String? get heldPeerId => _heldAlive() ? _heldPeer?.id : null;
+
+  /// 1.0.0+22: [connect] to the gateway the list keeps connected takes its
+  /// link instead of connecting again (its reads, build mode and
+  /// [_ensureDirectLimit] still run once, in [_connect]); a hold still
+  /// connecting is waited for. True when the link is up. Any other hold
+  /// ends here (its link is replaced; the list is told).
+  Future<bool> _adoptHeld(GatewayPeer peer) async {
+    final pending = _holding;
+    if (pending != null && _holdingPeer?.id == peer.id) await pending;
+    if (_heldPeer?.id == peer.id && _heldAlive()) {
+      _forgetHeld();
+      return true;
+    }
+    _loseHeld();
+    return false;
+  }
+
+  /// 1.0.0+22: [identifyPeer] over the kept link ([holdPeer]): no connect,
+  /// no get_config (the hold read it), no disconnect and no run — nothing
+  /// turns busy, the blink comes within a few hundred ms. A dropped link
+  /// (or a command timeout) ends the hold ([heldLinkLost]); anything else
+  /// is the page's error, as a run would show it.
+  Future<bool> _identifyHeld(GatewayPeer peer) async {
+    final token = _holdToken;
+    final config = _heldConfig;
+    final switchedAt = _heldSwitchedAt;
+    final switched =
+        switchedAt != null &&
+        DateTime.now().difference(switchedAt) < heldSwitchSettle;
+    Future<Map<String, dynamic>> send(
+      String op, [
+      Map<String, dynamic> params = const {},
+    ]) => _holdCommand(token, op, params);
+    // As a run would: an error left from before goes.
+    if (state.error != null) state = state.copy(error: null);
+    try {
+      if (config['identify_supported'] != true) {
+        throw const GatewayFailure('identify_unsupported');
+      }
+      if (!ref.read(topologyProvider).loaded) {
+        await ref.read(topologyProvider.notifier).ready;
+      }
+      _holdCheck(token);
+      final sent = await _peerIdentify(
+        config,
+        send,
+        switched: switched,
+        check: () => _holdCheck(token),
+      );
+      _holdCheck(token);
+      _identifyPeerGatewayOnly = sent.gatewayOnly;
+      _identifyPeerGatewayOnlyReason = sent.gatewayOnly ? sent.reason : null;
+      return true;
+    } catch (error) {
+      // Released, replaced or taken meanwhile: not this identify's failure.
+      if (!ref.mounted || token != _holdToken) return false;
+      if (_heldLinkFailure(error)) {
+        await _dropHeld();
+        return false;
+      }
+      final failure = error is GatewayFailure
+          ? error
+          : GatewayFailure.unexpected(error);
+      state = state.copy(
+        error: failure.message,
+        errorDetail: failure.toString(),
+      );
+      _field.onFailure(failure, ctlStep: state.step);
+      return false;
+    }
+  }
+
+  /// The kept link failed under a command: gone, or not answering.
+  static bool _heldLinkFailure(Object error) =>
+      error is TimeoutException ||
+      (error is GatewayFailure &&
+          !error.fromGateway &&
+          const {
+            'disconnected',
+            'not_connected',
+            'ble_error',
+            'timeout',
+          }.contains(error.code));
 
   Future<void> connect(GatewayPeer peer) async {
     if (state.busy) return;
@@ -4168,6 +4617,14 @@ class CommissioningController extends Notifier<CommissionState> {
         // 1.0.0+19: one reading a second while commissioning (both the
         // gateway in service and the new one; never blocks the connect).
         config = await _enterBuildMode(generation, config);
+        // 1.0.0+22: one-to-one preferred — leave star mode now, not only
+        // at step 7, so the PTU is connected for 〔辨識〕 at steps 1-6.
+        config = Map.of(config);
+        await _ensureDirectLimit(
+          config,
+          (op, [params = const {}]) => _command(generation, op, params),
+        );
+        _check(generation);
         // Restarted since the last read (link drop, timeout, APP closed)?
         _noteBoot(config, peerId: peer.id);
         try {
@@ -4203,7 +4660,9 @@ class CommissioningController extends Notifier<CommissionState> {
           (l) => l.done(connectItemStatus, note: fw.isEmpty ? '' : '韌體 $fw'),
           kind: ChecklistKind.connect,
         );
-      });
+        // 1.0.0+22: the link the list keeps to [peer] (a card's tap) is
+        // taken, not connected again.
+      }, adopt: true);
     } catch (_) {
       // Round 18: 「藍牙已連線，正在確認…」 (or 「連線中（第 n 次）」) must not
       // stay beside the error once the connect has given up.
@@ -9585,11 +10044,16 @@ class CommissioningController extends Notifier<CommissionState> {
   /// a retryable failure (133 / unknownError / disconnected / timeout) is
   /// retried — disconnect, [connectRetryGap], short rescan inside the link —
   /// until [connectPersistence] has passed, showing 「連線中（第 n 次）」.
+  ///
+  /// 1.0.0+22: [adopt] ([_connect]): the first attempt takes the link the
+  /// gateway list keeps to [peer] ([_adoptHeld]) when it is up — [after]
+  /// runs on it, no connect; a drop under [after] is retried as usual.
   Future<void> _persistentLink(
     int generation,
     GatewayPeer peer,
-    Future<void> Function() after,
-  ) async {
+    Future<void> Function() after, {
+    bool adopt = false,
+  }) async {
     final watch = Stopwatch()..start();
     final failures = <String>[];
     _connectLog = (generation, failures);
@@ -9598,6 +10062,14 @@ class CommissioningController extends Notifier<CommissionState> {
       final stage = _stageFor(generation);
       if (attempt > 1) stage(connectingAttemptText(attempt));
       try {
+        if (attempt == 1 && adopt) {
+          final adopted = await _adoptHeld(peer);
+          _check(generation);
+          if (adopted) {
+            await after();
+            return;
+          }
+        }
         final remaining = connectPersistence - watch.elapsed;
         await _link
             .connect(
@@ -10208,6 +10680,8 @@ class CommissioningController extends Notifier<CommissionState> {
     final tempBound = state.tempBoundMac;
     final restore = state.tempRestoreMac;
     final unbindFailure = await _releaseTempBind();
+    // 1.0.0+22: a link the list kept goes with it (the list is told).
+    _loseHeld();
     await _link.disconnect();
     if (_lease) {
       try {
@@ -10289,6 +10763,8 @@ class CommissioningController extends Notifier<CommissionState> {
     try {
       await _safeStop();
     } catch (_) {}
+    // 1.0.0+22: and the link it kept to its selected gateway.
+    _forgetHeld();
     try {
       await _link.disconnect();
     } catch (_) {}
