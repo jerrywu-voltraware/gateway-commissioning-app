@@ -741,7 +741,10 @@ String identifyAckText(Map<String, dynamic> ack) {
 /// dropped phone↔gateway link.
 ///
 /// Round 24: [reason] in words ([ptuWriteReasonText]), never the raw code.
-String identifyPtuFailedText(String reason, {int seconds = defaultIdentifySeconds}) => seconds == 0
+String identifyPtuFailedText(
+  String reason, {
+  int seconds = defaultIdentifySeconds,
+}) => seconds == 0
     ? '閘道器已停止辨識；PTU 關燈未送出（${ptuWriteReasonText(reason)}）。'
     : '閘道器正在閃燈（$seconds 秒）；PTU 指令未送出（${ptuWriteReasonText(reason)}）。';
 
@@ -753,6 +756,9 @@ enum IdentifyGatewayOnlyKind {
   /// The APP just sent `max_connections` 1 (the gateway was in star mode):
   /// its BLE restarted and it is picking its PTU anew.
   switchedToDirect,
+
+  /// The gateway cannot find the PTU it is bound to, even if others are heard.
+  boundMissing,
 
   /// The gateway heard no PTU at all (`candidates` empty).
   noCandidate,
@@ -809,14 +815,18 @@ IdentifyGatewayOnlyReason? identifyGatewayOnlyReasonOf(
   if (direct.pickedMac != null) {
     return const IdentifyGatewayOnlyReason(IdentifyGatewayOnlyKind.picking);
   }
+  if (direct.state == DirectState.boundMissing ||
+      direct.selectReason == 'bound_missing') {
+    return const IdentifyGatewayOnlyReason(
+      IdentifyGatewayOnlyKind.boundMissing,
+    );
+  }
   final levels = [
     for (final c in direct.candidates)
       if ((c.rssiMed ?? c.rssiPeak) != null) (c.rssiMed ?? c.rssiPeak)!,
   ];
   if (direct.candidates.isEmpty) {
-    return const IdentifyGatewayOnlyReason(
-      IdentifyGatewayOnlyKind.noCandidate,
-    );
+    return const IdentifyGatewayOnlyReason(IdentifyGatewayOnlyKind.noCandidate);
   }
   if (levels.length == direct.candidates.length &&
       levels.every((rssi) => rssi < minRssi)) {

@@ -334,6 +334,44 @@ void main() {
       );
     });
 
+    test(
+      'bound PTU missing: a strong other PTU does not mean still picking',
+      () async {
+        final fake = _Gateway()
+          ..config['max_connections'] = 1
+          ..direct = {
+            'state': 'bound_missing',
+            'select_reason': 'bound_missing',
+            'bound_mac': 'AA:BB:CC:DD:40:AC',
+            'min_rssi': -55,
+            'candidates': [
+              {
+                'mac': 'AA:BB:CC:DD:96:00',
+                'reason': 'not_bound',
+                'rssi_med': -36,
+                'rssi_peak': -34,
+              },
+            ],
+          };
+        fake.devices.clear();
+        final (_, c, peer) = await _held(fake);
+        expect(await c.identifyPeer(peer), isTrue);
+        expect(c.identifyPeerGatewayOnly, isTrue);
+        expect(
+          c.identifyPeerGatewayOnlyReason?.kind,
+          IdentifyGatewayOnlyKind.boundMissing,
+        );
+        final note = identifiedGatewayOnlyNoteFor(
+          c.identifyPeerGatewayOnlyReason,
+        );
+        expect(note, '閘道器已閃燈；找不到已綁定的 PTU，請確認原 PTU 已開機並在附近');
+        expect(note, isNot(contains('3 秒後')));
+        expect(note, isNot(contains('AA:BB')));
+        expect(fake.sent('get_status'), hasLength(1));
+        _expectNoConfigurationWrites(fake);
+      },
+    );
+
     test('every PTU heard is below the threshold: the strongest median and '
         'the threshold (get_config auto_connect_min_rssi)', () async {
       final fake = _Gateway()..config['max_connections'] = 1;
@@ -508,6 +546,48 @@ void main() {
         isNull,
       );
     });
+
+    test(
+      'bound_missing state or reason precedes candidate/RSSI heuristics',
+      () {
+        for (final (state, reason) in [
+          ('bound_missing', ''),
+          ('scanning', 'bound_missing'),
+        ]) {
+          for (final int? rssi in [null, -70, -36]) {
+            final direct = parse({
+              'state': state,
+              'select_reason': reason,
+              'bound_mac': 'AA:BB:CC:00:00:01',
+              'candidates': [
+                if (rssi != null)
+                  {
+                    'mac': 'AA:BB:CC:00:00:02',
+                    'rssi_med': rssi,
+                    'reason': 'not_bound',
+                  },
+              ],
+            });
+            expect(
+              identifyGatewayOnlyReasonOf(
+                direct,
+                switched: false,
+                minRssi: -55,
+              )?.kind,
+              IdentifyGatewayOnlyKind.boundMissing,
+            );
+            expect(
+              identifyGatewayOnlyReasonOf(
+                direct,
+                switched: true,
+                minRssi: -55,
+              )?.kind,
+              IdentifyGatewayOnlyKind.switchedToDirect,
+            );
+          }
+        }
+      },
+    );
 
     test('rssi_peak stands in for a missing rssi_med (firmware before '
         '1.7.40); one candidate at or above the threshold means picking', () {

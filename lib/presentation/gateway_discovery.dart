@@ -95,6 +95,10 @@ const identifiedGatewayOnlyNote = '閘道器已閃燈；它目前沒連到 PTU�
 /// gateway to one-to-one on this link ([IdentifyGatewayOnlyKind.switchedToDirect]).
 const identifiedGatewayOnlySwitchedNote = '閘道器已閃燈；已切換為一對一，閘道器正在重新尋找 PTU，請稍後再按';
 
+/// The bound PTU is absent; hearing another PTU does not mean it can be selected.
+const identifiedGatewayOnlyBoundMissingNote =
+    '閘道器已閃燈；找不到已綁定的 PTU，請確認原 PTU 已開機並在附近';
+
 /// 1.0.0+22: … when the gateway heard no PTU ([IdentifyGatewayOnlyKind.noCandidate]).
 const identifiedGatewayOnlyNoPtuNote = '閘道器已閃燈；閘道器附近沒聽到 PTU，請確認 PTU 已上電';
 
@@ -109,18 +113,19 @@ const identifiedGatewayOnlyPickingNote = '閘道器已閃燈；閘道器正在�
 
 /// 1.0.0+22: the SnackBar's sentence for [reason]; the plain
 /// [identifiedGatewayOnlyNote] when there is none.
-String identifiedGatewayOnlyNoteFor(IdentifyGatewayOnlyReason? reason) =>
-    switch (reason?.kind) {
-      null => identifiedGatewayOnlyNote,
-      IdentifyGatewayOnlyKind.switchedToDirect =>
-        identifiedGatewayOnlySwitchedNote,
-      IdentifyGatewayOnlyKind.noCandidate => identifiedGatewayOnlyNoPtuNote,
-      IdentifyGatewayOnlyKind.weakSignal => identifiedGatewayOnlyWeakNote(
-        reason!.bestRssi ?? 0,
-        reason.minRssi ?? defaultDirectRssi,
-      ),
-      IdentifyGatewayOnlyKind.picking => identifiedGatewayOnlyPickingNote,
-    };
+String identifiedGatewayOnlyNoteFor(
+  IdentifyGatewayOnlyReason? reason,
+) => switch (reason?.kind) {
+  null => identifiedGatewayOnlyNote,
+  IdentifyGatewayOnlyKind.switchedToDirect => identifiedGatewayOnlySwitchedNote,
+  IdentifyGatewayOnlyKind.boundMissing => identifiedGatewayOnlyBoundMissingNote,
+  IdentifyGatewayOnlyKind.noCandidate => identifiedGatewayOnlyNoPtuNote,
+  IdentifyGatewayOnlyKind.weakSignal => identifiedGatewayOnlyWeakNote(
+    reason!.bestRssi ?? 0,
+    reason.minRssi ?? defaultDirectRssi,
+  ),
+  IdentifyGatewayOnlyKind.picking => identifiedGatewayOnlyPickingNote,
+};
 
 /// How long the gateway-only hint and SnackBar stay: longer than
 /// [identifiedHintFor], it is a warning to read.
