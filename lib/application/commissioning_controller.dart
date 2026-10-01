@@ -970,7 +970,10 @@ const bindLaterLabel = '辨識並綁定';
 String ptuMissingTitle(String mac) =>
     '本樁 PTU 不在場（綁定 MAC 後 4 碼 ${macTail4(mac)}）';
 
-const ptuMissingHint = '請確認 PTU 已上電；若已更換 PTU，按〔$replacePtuLabel〕解除綁定後重新配對。';
+const ptuMissingHint =
+    '請確認原 PTU 已上電。一般情況可透過手機藍牙更換，原 PTU 不需在場。'
+    '後台同步與資料驗證仍需閘道器上網，且手機可連到後台。'
+    '若只是更換網路，可先重設 Wi-Fi，不需 PTU 在場。';
 
 /// r34: the same card once the re-check found the PTU connected
 /// ([CommissionState.ptuMissingBack]).
@@ -985,10 +988,17 @@ const replacePtuConfirmTitle = '更換 PTU：解除綁定並重新配對？';
 /// r34: the confirm body of 〔更換 PTU〕.
 String replacePtuConfirmText(String mac) =>
     '會解除閘道器對 PTU ${formatMac(mac)} 的綁定（站點與 Wi-Fi 不變），'
-    '然後沿用目前站點到「選擇 PTU」，由閘道器重新搜尋本樁的新 PTU；'
-    '按「是這台」之前取消或結束，會還原原本的綁定。';
+    '通過裝置安全檢查後，透過手機藍牙在本機搜尋新的 PTU，原 PTU 不需在場。'
+    '新綁定確認前取消或失敗會還原原綁定；藍牙中斷時請重新連線完成還原。'
+    '後台同步與資料驗證仍需網路，尚未驗證前不算開通完成。';
 
 /// r34: the busy texts.
+class _ReplacePtuFailure extends GatewayFailure {
+  const _ReplacePtuFailure(this.message) : super('replace_ptu');
+  @override
+  final String message;
+}
+
 const replacingPtuText = '正在解除 PTU 綁定';
 const recheckingPtuText = '正在重新檢查 PTU';
 
@@ -2293,6 +2303,14 @@ class CommissioningController extends Notifier<CommissionState> {
   /// the PTU even with 「確認後綁定 PTU」 turned off.
   bool _bindLaterRun = false;
 
+  // Durable before the first temporary write; independent of ordinary progress.
+  Map<String, dynamic>? _pendingPtuReplace;
+  Future<void>? _replaceWrite;
+  Future<void>? _replacePersist;
+  Future<String?>? _replaceRestore;
+  String get _replacePrefsKey =>
+      _link.demo ? 'demo_pending_ptu_replace' : 'pending_ptu_replace';
+
   /// 1.0.0+19: the connect run ([_generation]) whose build mode attempt
   /// ([_enterBuildMode]) has ended — at most one set_config per connect,
   /// also when the link drops and [_connect] reads get_config again.
@@ -2908,6 +2926,11 @@ class CommissioningController extends Notifier<CommissionState> {
     if (_stopping != null) return _stopping!;
     final future = () async {
       try {
+        final pending = _pendingPtuReplace;
+        if (pending != null) {
+          final config = await _rawCommand('get_config');
+          _checkReplaceIdentity(config, pending);
+        }
         // Never leave the gateway with BLE or upload switched off: an
         // interrupted step 8 turns monitoring back on.
         await _rawCommand('set_ble_enabled', {'enabled': true});
@@ -3152,8 +3175,14 @@ class CommissioningController extends Notifier<CommissionState> {
               error.code == 'phone_link_lost')) {
         _stopWatch(UploadWatch.linkLost);
       }
+      String? replaceFailure;
+      if (_pendingPtuReplace != null || _replacePersist != null) {
+        replaceFailure = await _releaseTempBind();
+      }
+      if (!ref.mounted || (!timedOut && generation != _generation)) return;
       _classifyingFailure = true;
       final safe = await _safeStop();
+      if (replaceFailure != null) error = _ReplacePtuFailure(replaceFailure);
       var failure = error is GatewayFailure
           ? error
           : GatewayFailure.unexpected(error);
@@ -3237,7 +3266,7 @@ class CommissioningController extends Notifier<CommissionState> {
     } finally {
       _classifyingFailure = false;
       _clock?.cancel();
-      if (ref.mounted) {
+      if (ref.mounted && !_cancelling) {
         // Round 13: the automatic reconnect follows at once — relinking is
         // set with busy:false in one update, so the button never flashes
         // 「重新連線並繼續」 during the hand-over.
@@ -3348,6 +3377,25 @@ class CommissioningController extends Notifier<CommissionState> {
 
   Future<void> restore() async {
     final prefs = await SharedPreferences.getInstance();
+    final pending = prefs.getString(_replacePrefsKey);
+    if (pending != null) {
+      try {
+        _pendingPtuReplace = Map<String, dynamic>.from(
+          jsonDecode(pending) as Map,
+        );
+        _saved = {..._pendingPtuReplace!, 'step': 4};
+        if (ref.mounted) {
+          state = state.copy(
+            savedResume: true,
+            savedProgress: true,
+            message: '上次更換 PTU 尚未完成，請重新連線核對並還原原綁定。',
+          );
+        }
+      } catch (_) {
+        if (ref.mounted) state = state.copy(error: '更換 PTU 的恢復紀錄無法讀取，請聯絡維護人員。');
+      }
+      return;
+    }
     final value = prefs.getString(_link.demo ? 'demo_progress' : 'progress');
     if (value != null && ref.mounted) {
       Map data;
@@ -3426,6 +3474,10 @@ class CommissioningController extends Notifier<CommissionState> {
 
   /// 「重新開始」 on an unfinished run's saved progress: forget it.
   Future<void> clearCompleted() async {
+    if (_pendingPtuReplace != null) {
+      state = state.copy(error: '請先重新連線還原上次更換 PTU 的綁定，不能略過恢復紀錄。');
+      return;
+    }
     _field.end('abandoned');
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_link.demo ? 'demo_progress' : 'progress');
@@ -3444,6 +3496,7 @@ class CommissioningController extends Notifier<CommissionState> {
   /// Saved resume skips the login of steps 5/6: ask for it first when star
   /// auto-reset or later steps (step 9 verify) need the backend.
   bool get savedResumeNeedsLogin {
+    if (_pendingPtuReplace != null) return false;
     final data = _saved;
     if (data == null || _loggedIn) return false;
     final step = data['step'] as int? ?? 0;
@@ -3460,6 +3513,10 @@ class CommissioningController extends Notifier<CommissionState> {
       (data['peer_name'] as String?) ?? '閘道器',
       0,
     );
+    if (_pendingPtuReplace != null) {
+      await _resumeReplace(peer);
+      return;
+    }
     final step = data['step'] as int? ?? 0;
     // Round 28: the saved numbers are this gateway's own.
     _progressPeer = peer.id;
@@ -4517,6 +4574,9 @@ class CommissioningController extends Notifier<CommissionState> {
   Future<void> _connect(
     GatewayPeer peer,
   ) => _run('正在連線 ${peer.name}，請保持靠近', 120, (generation) async {
+    if (_pendingPtuReplace != null) {
+      throw const _ReplacePtuFailure('上次更換 PTU 尚未還原，請使用「重新連線並繼續」先核對原綁定。');
+    }
     // Stage text (清除舊連線／正在連線／第 n 次重試) on the first connect too,
     // not only on a relink (round 7b saw none here).
     // Round 10: 133 / disconnected is retried until [connectPersistence].
@@ -5967,11 +6027,15 @@ class CommissioningController extends Notifier<CommissionState> {
     }
   }
 
-  Future<void> _discoverFlow(Set<String>? keep) async {
+  void _startPtuRefresh() {
     _rssiTimer ??= Timer.periodic(ref.read(ptuSignalIntervalProvider), (_) {
       unawaited(refreshPtuRssi());
       unawaited(keepAlive());
     });
+  }
+
+  Future<void> _discoverFlow(Set<String>? keep) async {
+    _startPtuRefresh();
     _autoResetRescan = false;
     final before = Set<String>.of(state.selected);
     if (state.rescanNeeded) {
@@ -7362,12 +7426,16 @@ class CommissioningController extends Notifier<CommissionState> {
         // Round 15b: confirmed — a temporary 「不是這台？」 binding (or a
         // leftover one the installer did not answer) becomes permanent.
         final gatewayBound = directBoundMacOf(state.config);
-        if (gatewayBound != null && sameMac(gatewayBound, mac)) {
+        if (_pendingPtuReplace == null &&
+            gatewayBound != null &&
+            sameMac(gatewayBound, mac)) {
           await _rememberBind(gatewayBound);
         }
         state = state.copy(
-          tempBoundMac: null,
-          tempRestoreMac: null,
+          tempBoundMac: _pendingPtuReplace == null ? null : state.tempBoundMac,
+          tempRestoreMac: _pendingPtuReplace == null
+              ? null
+              : state.tempRestoreMac,
           strayBindMac: null,
           directNotice: '',
         );
@@ -7401,9 +7469,25 @@ class CommissioningController extends Notifier<CommissionState> {
         if (failed.isEmpty &&
             (ref.read(topologyProvider).directBindOnConfirm || _bindLaterRun) &&
             (bound == null || !sameMac(bound, mac))) {
-          await _command(generation, 'set_config', {'direct_bind_mac': mac});
+          await _writeReplaceBind(generation, mac);
           state = state.copy(config: {...state.config, 'direct_bind_mac': mac});
+          if (_pendingPtuReplace == null) await _rememberBind(mac);
+        }
+        if (_pendingPtuReplace != null) {
+          if (failed.isNotEmpty) {
+            final failure = await _releaseTempBind();
+            throw _ReplacePtuFailure(failure ?? 'PTU 配置未完成，已還原原綁定；請重新開始更換。');
+          }
+          final back = await _command(generation, 'get_config');
+          _checkReplaceIdentity(back, _pendingPtuReplace!);
+          if (!sameMac(directBoundMacOf(back), mac)) {
+            throw const _ReplacePtuFailure('新 PTU 綁定尚未讀回確認，已停止更換。');
+          }
           await _rememberBind(mac);
+          _check(generation);
+          await _clearReplace();
+          _check(generation);
+          state = state.copy(tempBoundMac: null, tempRestoreMac: null);
         }
         // Round 28: this pile's PTU is confirmed — no longer 「先完成配置」.
         if (failed.isEmpty) {
@@ -7461,7 +7545,7 @@ class CommissioningController extends Notifier<CommissionState> {
           tempBoundMac: mac,
           strayBindMac: null,
         );
-        await _command(generation, 'set_config', {'direct_bind_mac': mac});
+        await _writeReplaceBind(generation, mac);
         state = state.copy(config: {...state.config, 'direct_bind_mac': mac});
         final ok = await _pollDirectPick(generation, want: mac, until: until);
         _syncDirectPick();
@@ -7692,37 +7776,240 @@ class CommissioningController extends Notifier<CommissionState> {
     });
   }
 
-  /// r34: 〔更換 PTU〕 (confirmed on the page): the bind-later path —
-  /// one-to-one, the network check, 「沿用目前站點」 and step 7, where the
-  /// gateway picks the new PTU and 「是這台」 binds it.
-  ///
-  /// 1.0.0+10 (review P1-2: the binding was cleared first, and a blocked
-  /// station choice then left the gateway unbound on site — free to take
-  /// a neighbouring pile's PTU by its signal): the binding is cleared
-  /// (`set_config direct_bind_mac: ""`, cmd_contract.md Level 3) only once
-  /// nothing stands between it and step 7, as a temporary change — the
-  /// old MAC is what 取消 / 結束 / 〔先完成配置〕 put back
-  /// ([_releaseTempBind]); only 「是這台」 makes the new PTU count.
-  Future<void> replaceBoundPtu() async {
-    final old = state.ptuMissingMac;
-    if (state.busy || state.step != 2 || old == null) return;
-    await _goBindLater(replacing: old);
+  /// Explicit local maintenance; network verification is a separate step.
+  Future<void> replaceBoundPtu({
+    String? expectedPeerId,
+    String? expectedMac,
+  }) async {
+    final before = state;
+    final old = before.ptuMissingMac;
+    final peer = before.peer;
+    if (before.busy || before.step != 2 || old == null || peer == null) return;
+    if ((expectedPeerId != null && expectedPeerId != peer.id) ||
+        (expectedMac != null && !sameMac(expectedMac, old))) {
+      state = state.copy(error: '閘道器或綁定已改變，請重新確認要更換的 PTU。');
+      return;
+    }
+    await _run(replacingPtuText, 60, (generation) async {
+      if (_pendingPtuReplace != null) {
+        throw const _ReplacePtuFailure('上次更換尚未還原，請先取消並還原原綁定。');
+      }
+      final fresh = await _command(generation, 'get_config');
+      _checkReplaceIdentity(fresh, {
+        'peer': peer.id,
+        'uid': before.config['gateway_uid'],
+        'site': before.config['site_id'],
+        'gateway': before.config['gateway_id'],
+      });
+      if (!sameMac(directBoundMacOf(fresh), old)) {
+        throw const _ReplacePtuFailure('閘道器的 PTU 綁定已改變，請重新連線核對；尚未變更綁定。');
+      }
+      if (isTestMode(fresh)) throw const GatewayFailure('test_mode');
+      if (uploadPausedProblem(fresh)) {
+        throw const GatewayFailure('upload_paused');
+      }
+      if (fresh['otp_enabled'] == true) {
+        throw const GatewayFailure('otp_enabled');
+      }
+      if (fresh['ble_enabled'] != true) {
+        throw const _ReplacePtuFailure('閘道器的 PTU 藍牙尚未啟用，請先確認裝置狀態；尚未變更綁定。');
+      }
+      final journal = <String, dynamic>{
+        'peer': peer.id,
+        'peer_name': peer.name,
+        'uid': fresh['gateway_uid'],
+        'site': fresh['site_id'],
+        'gateway': fresh['gateway_id'],
+        'old': old,
+        'temporary': '',
+        'check_passed': before.checkPassed,
+        'choose_station': before.config['choose_station'],
+        'wifi_only': before.config['wifi_only'],
+      };
+      await _persistReplace(journal);
+      _check(generation);
+      state = state.copy(tempBoundMac: replacedBindMarker, tempRestoreMac: old);
+      try {
+        await _writeReplaceBind(generation, '');
+        final back = await _command(generation, 'get_config');
+        _checkReplaceIdentity(back, journal);
+        if (directBoundMacOf(back) != null) {
+          throw const _ReplacePtuFailure('閘道器尚未確認解除綁定，已停止更換。');
+        }
+        if (!ref.read(topologyProvider).topology.isDirect) {
+          await ref
+              .read(topologyProvider.notifier)
+              .setTopology(GatewayTopology.direct);
+          _check(generation);
+        }
+        state = state.copy(
+          step: 4,
+          config: {...before.config, ...back, 'choose_station': false},
+          checkPassed: before.checkPassed,
+          verified: false,
+          report: '',
+          ptus: [],
+          selected: {},
+          results: {},
+          assignStatus: {},
+          identifiedMac: null,
+          directRaw: {},
+          ptuMissingMac: null,
+          ptuMissingBack: false,
+          ptuMissingSearching: false,
+          ptuMissingOther: null,
+          strayBindMac: null,
+          message: '正在本機搜尋新 PTU；後台同步與資料驗證仍需網路。',
+        );
+        _bindLaterRun = true;
+        _startPtuRefresh();
+        await _pollDirectPick(generation);
+        _syncDirectPick();
+        state = state.copy(message: directPickMessage(state.direct));
+      } catch (_) {
+        if (ref.mounted && generation == _generation) {
+          final failure = await _releaseTempBind();
+          _check(generation);
+          _bindLaterRun = false;
+          state = before.copy(
+            busy: true,
+            verified: false,
+            tempBoundMac: failure == null ? null : replacedBindMarker,
+            tempRestoreMac: failure == null ? null : old,
+          );
+          if (failure != null) {
+            throw _ReplacePtuFailure(replaceRestoreFailedText(old));
+          }
+        }
+        rethrow;
+      }
+    });
+  }
+
+  void _checkReplaceIdentity(Map<String, dynamic> config, Map journal) {
+    final site = config['site_id'];
+    final gateway = config['gateway_id'];
+    final uid = config['gateway_uid']?.toString() ?? '';
+    if (state.peer?.id != journal['peer'] ||
+        !RegExp(r'^[0-9A-F]{12}$').hasMatch(_mac(uid)) ||
+        !RegExp(r'^[0-9A-F]{12}$').hasMatch(_mac(journal['uid'])) ||
+        _mac(uid) != _mac(journal['uid']) ||
+        site is! num ||
+        site != site.toInt() ||
+        site < 1 ||
+        site > 65535 ||
+        gateway is! num ||
+        gateway != gateway.toInt() ||
+        gateway < 1 ||
+        gateway > kMaxGatewayId ||
+        site != journal['site'] ||
+        gateway != journal['gateway'] ||
+        config['fleet_joined'] != true ||
+        config['max_connections'] != 1 ||
+        !directAutoConnectSupported(config)) {
+      throw const _ReplacePtuFailure('閘道器身分、站點或一對一設定無法核對，請重新連線確認；未變更綁定。');
+    }
+  }
+
+  Future<void> _persistReplace(Map<String, dynamic> value) async {
+    final storing = () async {
+      final prefs = await SharedPreferences.getInstance();
+      if (!await prefs.setString(_replacePrefsKey, jsonEncode(value))) {
+        throw const _ReplacePtuFailure('無法保存 PTU 更換恢復紀錄，未變更綁定。');
+      }
+      _pendingPtuReplace = value;
+    }();
+    _replacePersist = storing;
+    try {
+      await storing;
+    } finally {
+      if (identical(_replacePersist, storing)) _replacePersist = null;
+    }
+  }
+
+  Future<void> _clearReplace() async {
+    final clearing = () async {
+      final prefs = await SharedPreferences.getInstance();
+      if (!await prefs.remove(_replacePrefsKey)) {
+        throw const _ReplacePtuFailure('PTU 綁定已讀回，恢復紀錄尚未清除，請重新連線核對。');
+      }
+      _pendingPtuReplace = null;
+      _bindLaterRun = false;
+      if (ref.mounted) {
+        state = state.copy(
+          tempBoundMac: null,
+          tempRestoreMac: null,
+          error: state.error,
+        );
+      }
+    }();
+    _replacePersist = clearing;
+    try {
+      await clearing;
+    } finally {
+      if (identical(_replacePersist, clearing)) _replacePersist = null;
+    }
+  }
+
+  Future<void> _writeReplaceBind(int generation, String mac) async {
+    _check(generation);
+    final journal = _pendingPtuReplace;
+    if (journal != null) {
+      await _persistReplace({...journal, 'temporary': mac});
+      _check(generation);
+    }
+    final write = _command(generation, 'set_config', {
+      'direct_bind_mac': mac,
+    }).then<void>((_) {});
+    _replaceWrite = write;
+    try {
+      await write;
+    } finally {
+      if (identical(_replaceWrite, write)) _replaceWrite = null;
+    }
+  }
+
+  Future<void> _resumeReplace(GatewayPeer peer) async {
+    await _run('正在核對並還原原 PTU 綁定', 90, (generation) async {
+      await _link.prepare();
+      _check(generation);
+      state = state.copy(peer: peer, verified: false);
+      await _persistentLink(generation, peer, () async {
+        final config = await _command(generation, 'get_config');
+        _checkReplaceIdentity(config, _pendingPtuReplace!);
+        state = state.copy(config: {...config, 'choose_station': true});
+      });
+      final failure = await _releaseTempBind();
+      _check(generation);
+      if (failure != null) throw _ReplacePtuFailure(failure);
+      _saved = null;
+      _netReadAt = null;
+      state = state.copy(
+        step: 2,
+        checkPassed: false,
+        verified: false,
+        net: const {},
+        wifiGraceOver: false,
+        savedResume: false,
+        savedProgress: false,
+        message: '已核對並還原原 PTU 綁定。網路尚需重新檢查。',
+      );
+      await _checkBindLater();
+    });
   }
 
   /// Round 28 / r34: from step 2 to step 7 on the current station, binding
   /// on 「是這台」 whatever 「確認後綁定 PTU」 says.
   ///
-  /// 1.0.0+10: every stop on the way says why ([bindLaterBlockedText]
-  /// when nothing else did); [replacing] (〔更換 PTU〕: the bound MAC)
-  /// clears the binding right before step 7 ([_unbindForReplace]).
-  Future<void> _goBindLater({String? replacing}) async {
+  /// Every stop on the way says why; the separate replacement entry does
+  /// not use this ordinary network/station gate.
+  Future<void> _goBindLater() async {
     if (!ref.read(topologyProvider).topology.isDirect) {
       await ref
           .read(topologyProvider.notifier)
           .setTopology(GatewayTopology.direct);
       if (!ref.mounted) return;
     }
-    _bindLaterRun = true;
     if (!state.checkPassed) {
       await passNetworkCheck();
       if (!ref.mounted) return;
@@ -7736,18 +8023,10 @@ class CommissioningController extends Notifier<CommissionState> {
       _bindLaterBlocked(blocked);
       return;
     }
-    if (replacing != null && !await _unbindForReplace(replacing)) return;
     await chooseStation(newStation: false);
-    if (!ref.mounted || replacing == null || state.step == 4) return;
-    // Refused after all (the state changed meanwhile): the old binding
-    // goes back at once — never left unbound at step 2.
-    final reason = state.error;
-    final failure = await _releaseTempBind();
-    if (!ref.mounted) return;
-    if (failure == null) state = state.copy(ptuMissingMac: replacing);
-    _bindLaterBlocked(
-      failure == null ? reason : replaceRestoreFailedText(replacing),
-    );
+    if (ref.mounted && state.step == 4 && state.error == null) {
+      _bindLaterRun = true;
+    }
   }
 
   /// 1.0.0+10: why 「沿用目前站點」 ([chooseStation] newStation false)
@@ -7769,39 +8048,6 @@ class CommissioningController extends Notifier<CommissionState> {
   /// [bindLaterBlockedText]) in the red box; the step is kept.
   void _bindLaterBlocked(String? reason) {
     state = state.copy(error: reason ?? bindLaterBlockedText);
-  }
-
-  /// 1.0.0+10: 〔更換 PTU〕 clears the binding [old] — recorded first as a
-  /// temporary change ([CommissionState.tempBoundMac] [replacedBindMarker]
-  /// = unbound, [CommissionState.tempRestoreMac] [old]) so a lost ack is
-  /// still put back by a cancel. False when it failed (the red box says
-  /// why).
-  Future<bool> _unbindForReplace(String old) async {
-    await _sideTask(replacingPtuText, 30, (generation) async {
-      state = state.copy(
-        tempBoundMac: replacedBindMarker,
-        tempRestoreMac: old,
-        strayBindMac: null,
-      );
-      try {
-        await _command(generation, 'set_config', {'direct_bind_mac': ''});
-      } on GatewayFailure catch (error) {
-        // Refused by the gateway, or never sent: the binding is unchanged,
-        // nothing to put back.
-        if (error.fromGateway || error.code == 'otp_enabled') {
-          state = state.copy(tempBoundMac: null, tempRestoreMac: null);
-        }
-        rethrow;
-      }
-      state = state.copy(
-        config: {...state.config, 'direct_bind_mac': ''},
-        ptuMissingMac: null,
-        ptuMissingBack: false,
-        ptuMissingSearching: false,
-        ptuMissingOther: null,
-      );
-    });
-    return ref.mounted && state.error == null && state.ptuMissingMac == null;
   }
 
   /// Round 28: after a connect — a gateway in service, one-to-one
@@ -7954,8 +8200,10 @@ class CommissioningController extends Notifier<CommissionState> {
             : bound != null && sameMac(temp, bound));
     state = state.copy(
       strayBindMac: stray,
-      tempBoundMac: keep ? temp : null,
-      tempRestoreMac: keep ? state.tempRestoreMac : null,
+      tempBoundMac: keep || _pendingPtuReplace != null ? temp : null,
+      tempRestoreMac: keep || _pendingPtuReplace != null
+          ? state.tempRestoreMac
+          : null,
     );
   }
 
@@ -8004,6 +8252,21 @@ class CommissioningController extends Notifier<CommissionState> {
   /// binding confirmed earlier was lost). Also with 「確認後綁定 PTU」 on:
   /// only 「是這台」 makes the new MAC count.
   Future<String?> _releaseTempBind() async {
+    try {
+      await _replacePersist;
+    } catch (_) {
+      /* No device write without a durable journal. */
+    }
+    if (_pendingPtuReplace != null) {
+      if (_replaceRestore != null) return _replaceRestore!;
+      final restoring = _restoreReplace();
+      _replaceRestore = restoring;
+      try {
+        return await restoring;
+      } finally {
+        _replaceRestore = null;
+      }
+    }
     final mac = state.tempBoundMac;
     if (mac == null || !ref.mounted) return null;
     final restore = state.tempRestoreMac;
@@ -8034,6 +8297,75 @@ class CommissioningController extends Notifier<CommissionState> {
       );
     }
     return null;
+  }
+
+  Future<String?> _restoreReplace() async {
+    final journal = _pendingPtuReplace!;
+    try {
+      try {
+        await _replaceWrite;
+      } catch (_) {
+        /* Lost ACK needs read-back. */
+      }
+      var back = await _rawCommand(
+        'get_config',
+      ).timeout(const Duration(seconds: 8));
+      _checkReplaceIdentity(back, journal);
+      final old = journal['old'] as String;
+      final bound = directBoundMacOf(back);
+      final temporary = journal['temporary'] as String;
+      if (!sameMac(bound, old)) {
+        if (bound != null && !sameMac(bound, temporary)) {
+          throw const _ReplacePtuFailure('閘道器已有另一筆 PTU 綁定，未覆寫；請重新連線核對。');
+        }
+        if (back['otp_enabled'] == true) {
+          throw const GatewayFailure('otp_enabled');
+        }
+        try {
+          await _rawCommand('set_config', {
+            'direct_bind_mac': old,
+          }).timeout(const Duration(seconds: 8));
+        } catch (_) {
+          /* ACK can be lost after NVS changed; read back below. */
+        }
+        back = await _rawCommand(
+          'get_config',
+        ).timeout(const Duration(seconds: 8));
+        _checkReplaceIdentity(back, journal);
+        if (!sameMac(directBoundMacOf(back), old)) {
+          throw _ReplacePtuFailure(replaceRestoreFailedText(old));
+        }
+      }
+      await _rememberBind(old);
+      await _clearReplace();
+      _bindLaterRun = false;
+      if (ref.mounted) {
+        state = state.copy(
+          step: 2,
+          checkPassed: journal['check_passed'] == true,
+          verified: false,
+          config: {
+            ...state.config,
+            'direct_bind_mac': old,
+            'choose_station': journal['choose_station'] == true,
+            'wifi_only': journal['wifi_only'] == true,
+          },
+          tempBoundMac: null,
+          tempRestoreMac: null,
+          identifiedMac: null,
+          directRaw: {},
+          selected: {},
+          assignRunning: false,
+          resumePending: false,
+          scanResumePending: false,
+          ptuMissingMac: old,
+          error: state.error,
+        );
+      }
+      return null;
+    } catch (error) {
+      return error is GatewayFailure ? error.message : error.toString();
+    }
   }
 
   /// Round 28: the connected gateway as the resume prompt names it
@@ -10633,6 +10965,15 @@ class CommissioningController extends Notifier<CommissionState> {
       final tempBound = state.tempBoundMac;
       final restore = state.tempRestoreMac;
       final unbindFailure = await _releaseTempBind();
+      if (_pendingPtuReplace != null && unbindFailure != null) {
+        if (ref.mounted) {
+          state = state.copy(
+            busy: false,
+            error: '$unbindFailure 請保持靠近並再次取消以重試還原，或重開 APP 後重新連線。',
+          );
+        }
+        return;
+      }
       // 1.0.0+22: a link the list kept goes with it (the list is told).
       _loseHeld();
       try {

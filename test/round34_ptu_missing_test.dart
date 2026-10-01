@@ -92,34 +92,36 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('r34 PTU-missing card', () {
-    test('bound and the PTU not connected: the card shows and is reported',
-        () async {
-      final fake = _BoundGateway(present: false);
-      final (container, c) = await _connected(fake);
-      addTearDown(container.dispose);
-      final s = container.read(commissionProvider);
-      expect(s.step, 2);
-      expect(s.ptuMissingMac, _ownPtu);
-      expect(s.ptuMissingBack, isFalse);
-      expect(s.bindLaterMac, isNull);
-      expect(ptuMissingTitle(_ownPtu), contains('0001'));
-      await _settle();
-      final report = fake.reports.firstWhere(
-        (r) => r['error_message'] == ptuMissingReportText(_ownPtu),
-        orElse: () => const {},
-      );
-      expect(report['event'], 'status');
-      // Re-check without the PTU: the card stays red.
-      await c.recheckBoundPtu();
-      expect(container.read(commissionProvider).ptuMissingBack, isFalse);
-      // The PTU powered: the re-check turns the card green.
-      fake.powerOwnPtu();
-      await c.recheckBoundPtu();
-      final after = container.read(commissionProvider);
-      expect(after.ptuMissingMac, _ownPtu);
-      expect(after.ptuMissingBack, isTrue);
-      expect(after.error, isNull);
-    });
+    test(
+      'bound and the PTU not connected: the card shows and is reported',
+      () async {
+        final fake = _BoundGateway(present: false);
+        final (container, c) = await _connected(fake);
+        addTearDown(container.dispose);
+        final s = container.read(commissionProvider);
+        expect(s.step, 2);
+        expect(s.ptuMissingMac, _ownPtu);
+        expect(s.ptuMissingBack, isFalse);
+        expect(s.bindLaterMac, isNull);
+        expect(ptuMissingTitle(_ownPtu), contains('0001'));
+        await _settle();
+        final report = fake.reports.firstWhere(
+          (r) => r['error_message'] == ptuMissingReportText(_ownPtu),
+          orElse: () => const {},
+        );
+        expect(report['event'], 'status');
+        // Re-check without the PTU: the card stays red.
+        await c.recheckBoundPtu();
+        expect(container.read(commissionProvider).ptuMissingBack, isFalse);
+        // The PTU powered: the re-check turns the card green.
+        fake.powerOwnPtu();
+        await c.recheckBoundPtu();
+        final after = container.read(commissionProvider);
+        expect(after.ptuMissingMac, _ownPtu);
+        expect(after.ptuMissingBack, isTrue);
+        expect(after.error, isNull);
+      },
+    );
 
     test('bound and the PTU connected: no card', () async {
       final fake = _BoundGateway();
@@ -137,41 +139,46 @@ void main() {
       );
     });
 
-    test('unbound: the bind-later path as before, no PTU-missing card',
-        () async {
-      final fake = _BoundGateway(bound: null);
-      final (container, _) = await _connected(fake);
-      addTearDown(container.dispose);
-      final s = container.read(commissionProvider);
-      expect(s.step, 2);
-      expect(s.ptuMissingMac, isNull);
-      // The gateway's own pick (the strongest PTU in the demo).
-      expect(s.bindLaterMac, isNotNull);
-    });
+    test(
+      'unbound: the bind-later path as before, no PTU-missing card',
+      () async {
+        final fake = _BoundGateway(bound: null);
+        final (container, _) = await _connected(fake);
+        addTearDown(container.dispose);
+        final s = container.read(commissionProvider);
+        expect(s.step, 2);
+        expect(s.ptuMissingMac, isNull);
+        // The gateway's own pick (the strongest PTU in the demo).
+        expect(s.bindLaterMac, isNotNull);
+      },
+    );
 
-    test('〔更換 PTU〕 clears the binding and goes to step 7 on the station',
-        () async {
-      final fake = _BoundGateway(present: false);
-      final (container, c) = await _connected(fake);
-      addTearDown(container.dispose);
-      await c.passNetworkCheck(skip: true);
-      await c.replaceBoundPtu();
-      final s = container.read(commissionProvider);
-      expect(s.error, isNull);
-      expect(fake.config['direct_bind_mac'], '');
-      expect(fake.sent('set_config').last, {'direct_bind_mac': ''});
-      expect(fake.sent('set_site_identity'), isEmpty);
-      expect(s.ptuMissingMac, isNull);
-      expect(s.step, 4);
-      expect(s.config['choose_station'], false);
-      expect(s.config['new_station'], false);
-    });
+    test(
+      '〔更換 PTU〕 clears the binding and goes to step 7 on the station',
+      () async {
+        final fake = _BoundGateway(present: false);
+        final (container, c) = await _connected(fake);
+        addTearDown(container.dispose);
+        await c.replaceBoundPtu();
+        final s = container.read(commissionProvider);
+        expect(s.error, isNull);
+        expect(fake.config['direct_bind_mac'], '');
+        expect(fake.sent('set_config').last, {'direct_bind_mac': ''});
+        expect(fake.sent('set_site_identity'), isEmpty);
+        expect(s.ptuMissingMac, isNull);
+        expect(s.step, 4);
+        expect(s.config['choose_station'], false);
+        expect(s.config['new_station'], isNot(true));
+      },
+    );
   });
 
   test('the card texts name the bound MAC', () {
     expect(macTail4('90:5F:E8:9A:96:00'), '9600');
     expect(ptuBackTitle(_ownPtu), contains(_ownPtu));
     expect(replacePtuConfirmText(_ownPtu), contains(_ownPtu));
-    expect(ptuMissingHint, contains(replacePtuLabel));
+    expect(ptuMissingHint, contains('手機藍牙'));
+    expect(ptuMissingHint, contains('原 PTU 不需在場'));
+    expect(ptuMissingHint, contains('且手機可連到後台'));
   });
 }

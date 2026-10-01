@@ -4519,9 +4519,12 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   /// r34: 〔更換 PTU〕 asks first (it clears the gateway's binding).
   Future<void> _replacePtu(CommissioningController c, String mac) async {
     if (!mounted) return;
+    final peerId = ref.read(commissionProvider).peer?.id;
+    if (peerId == null) return;
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
+        scrollable: true,
         title: const Text(replacePtuConfirmTitle),
         content: Text(replacePtuConfirmText(mac)),
         actions: [
@@ -4537,7 +4540,8 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       ),
     );
     if (ok != true) return;
-    await c.replaceBoundPtu();
+    if (!mounted) return;
+    await c.replaceBoundPtu(expectedPeerId: peerId, expectedMac: mac);
   }
 
   /// Step 7 without a login: the build must carry a backend credential

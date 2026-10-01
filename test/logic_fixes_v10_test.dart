@@ -412,7 +412,7 @@ void main() {
 
   group('P1-2 〔更換 PTU〕', () {
     test(
-      'network not ready: no unbind is sent and the red box says why',
+      'network not ready: local replacement keeps the station and restores on cancel',
       () async {
         final fake = _bound()..mqttConnected = false;
         final (container, c) = await _connected(fake);
@@ -425,13 +425,21 @@ void main() {
           fake
               .sent('set_config')
               .where((p) => p.containsKey('direct_bind_mac')),
-          isEmpty,
+          [
+            {'direct_bind_mac': ''},
+          ],
         );
+        expect(fake.config['direct_bind_mac'], '');
+        expect(s.step, 4);
+        expect(s.error, isNull);
+        expect(s.networkReady, isFalse);
+        expect(s.verified, isFalse);
+        expect(s.tempBoundMac, replacedBindMarker);
+        expect(s.tempRestoreMac, _ownPtu);
+        expect(fake.sent('set_wifi'), isEmpty);
+        expect(fake.sent('set_site_identity'), isEmpty);
+        await c.cancel();
         expect(fake.config['direct_bind_mac'], _ownPtu);
-        expect(s.step, 2);
-        expect(s.error, reuseBlockedText);
-        expect(s.ptuMissingMac, _ownPtu, reason: 'the card stays');
-        expect(s.tempBoundMac, isNull);
       },
     );
 
