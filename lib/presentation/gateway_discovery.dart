@@ -213,7 +213,10 @@ class GatewayChoice extends ChangeNotifier {
   bool _connecting = false, _busy = false, _disposed = false;
   bool _ready = false;
   bool get ready => _ready;
-  VoidCallback? _connect;
+  bool _scanAllowed = false, _scanStoppable = false;
+  bool get scanAllowed => _scanAllowed;
+  bool get scanStoppable => _scanStoppable;
+  VoidCallback? _connect, _scan;
   Object? _owner;
 
   /// The gateway selected; null while none is.
@@ -232,19 +235,28 @@ class GatewayChoice extends ChangeNotifier {
   /// scan stops first).
   void connect() => _connect?.call();
 
+  /// The owning list handles its current scan state; detached bars are inert.
+  void scan() {
+    if (!_disposed && _owner != null && _scanAllowed) _scan?.call();
+  }
+
   void _set({
     required GatewayPeer? peer,
     required String? title,
     required bool connecting,
     required bool busy,
     required bool ready,
+    required bool scanAllowed,
+    required bool scanStoppable,
   }) {
     if (_disposed) return;
     if (peer?.id == _peer?.id &&
         title == _title &&
         connecting == _connecting &&
         busy == _busy &&
-        ready == _ready) {
+        ready == _ready &&
+        scanAllowed == _scanAllowed &&
+        scanStoppable == _scanStoppable) {
       _peer = peer;
       return;
     }
@@ -253,6 +265,8 @@ class GatewayChoice extends ChangeNotifier {
     _connecting = connecting;
     _busy = busy;
     _ready = ready;
+    _scanAllowed = scanAllowed;
+    _scanStoppable = scanStoppable;
     notifyListeners();
   }
 
@@ -264,6 +278,8 @@ class GatewayChoice extends ChangeNotifier {
     _connecting = false;
     _busy = false;
     _ready = false;
+    _scanAllowed = false;
+    _scanStoppable = false;
   }
 
   void _changed() {
@@ -273,8 +289,44 @@ class GatewayChoice extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _connect = null;
+    _scan = null;
+    _owner = null;
     super.dispose();
   }
+}
+
+/// Discovery's fixed scan control. Scaffold reserves its height below the
+/// scrolling cards, and SafeArea keeps the action above system navigation.
+class GatewayScanBar extends StatelessWidget {
+  const GatewayScanBar({super.key, required this.choice, this.enabled = true});
+  final GatewayChoice choice;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: choice,
+    builder: (context, _) => SafeArea(
+      top: false,
+      child: Material(
+        key: const Key('gateway-scan-bar'),
+        elevation: 8,
+        color: Theme.of(context).colorScheme.surface,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+          child: FilledButton.icon(
+            key: const Key('gateway-scan-toggle'),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(48),
+            ),
+            onPressed: enabled && choice.scanAllowed ? choice.scan : null,
+            icon: Icon(choice.scanStoppable ? Icons.stop : Icons.search),
+            label: Text(choice.scanStoppable ? '停止搜尋' : '重新搜尋'),
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 /// 1.0.0+14: the gateway list's fixed bottom bar (the page's
@@ -614,6 +666,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
   /// its search is not run again by itself.
   bool _scanFailed = false;
   bool _scanning = false, _selecting = false;
+  bool _scanActionBusy = false;
 
   /// 1.0.0+9: the gateway 〔辨識〕 just blinked (「已閃燈」 on its row).
   String? _identified;
@@ -747,6 +800,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     _choice
       .._reset()
       .._connect = _connectSelected
+      .._scan = _toggleScan
       .._owner = this;
   }
 
@@ -758,6 +812,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     choice
       .._reset()
       .._connect = null
+      .._scan = null
       .._owner = null;
     if (!identical(choice, _ownChoice)) {
       WidgetsBinding.instance.addPostFrameCallback((_) => choice._changed());
@@ -780,6 +835,13 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
           _holdPhase == _Hold.disconnecting,
       ready:
           widget.onHold == null || (_holdPhase == _Hold.held && _holdId == id),
+      scanAllowed:
+          widget.enabled &&
+          _canSelect &&
+          !_scanActionBusy &&
+          !_background &&
+          _routeCurrent != false,
+      scanStoppable: _scanning || _search == _Search.retrying,
     );
   }
 
@@ -1001,6 +1063,29 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
 
   /// 〔停止搜尋〕: the installer stopped it — not resumed by itself.
   /// 1.0.0+17: nor searched again (no automatic second search).
+  Future<void> _toggleScan() async {
+    if (!mounted ||
+        !widget.enabled ||
+        !_canSelect ||
+        _scanActionBusy ||
+        _background ||
+        _routeCurrent == false) {
+      return;
+    }
+    _scanActionBusy = true;
+    _syncChoice();
+    try {
+      if (_scanning || _search == _Search.retrying) {
+        await _stopByUser();
+      } else {
+        await _restartByUser();
+      }
+    } finally {
+      _scanActionBusy = false;
+      if (mounted) _syncChoice();
+    }
+  }
+
   Future<void> _stopByUser() {
     _liveWanted = false;
     _resumePending = false;
@@ -1333,17 +1418,33 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     );
   }
 
-  /// 1.0.0+14: from the bottom button only ([_connectSelected]); 「連線中…」
-  /// on the selected card and the button, the other cards faded and not
-  /// tappable. A failed connect leaves the selection as it was.
-  Future<void> _connect(GatewayPeer peer) async {
-    if (_selecting ||
+  /// Commissioning is explicit and belongs to the same ready link the card
+  /// displayed. Its epoch also rejects callbacks retained across a reconnect.
+  bool _canStartPeer(GatewayPeer peer, int holdEpoch) =>
+      mounted &&
+      widget.enabled &&
+      !_selecting &&
+      _identifyingId == null &&
+      !ref.read(commissionProvider).busy &&
+      _selectedId == peer.id &&
+      _holdId == peer.id &&
+      _holdPhase == _Hold.held &&
+      _holdEpoch == holdEpoch;
+
+  Future<void> _connect(GatewayPeer peer, {int? expectedHoldEpoch}) async {
+    if (!mounted ||
+        _selecting ||
         !widget.enabled ||
+        ref.read(commissionProvider).busy ||
         _identifyingId != null ||
+        _selectedId != peer.id ||
+        (expectedHoldEpoch != null &&
+            !_canStartPeer(peer, expectedHoldEpoch)) ||
         (widget.onHold != null &&
             (_holdPhase != _Hold.held || _holdId != peer.id))) {
       return;
     }
+    final holdEpoch = _holdEpoch;
     _retryTimer?.cancel();
     setState(() {
       _selecting = true;
@@ -1355,7 +1456,16 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     _syncChoice();
     try {
       await _stop();
-      if (mounted) await widget.onConnect(peer);
+      if (mounted &&
+          widget.enabled &&
+          !ref.read(commissionProvider).busy &&
+          _selectedId == peer.id &&
+          (widget.onHold == null ||
+              (_holdId == peer.id &&
+                  _holdPhase == _Hold.held &&
+                  _holdEpoch == holdEpoch))) {
+        await widget.onConnect(peer);
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -1849,77 +1959,135 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
         !_selecting &&
         _identifyingId == null &&
         hold != _Hold.disconnecting;
-    const padding = EdgeInsets.symmetric(horizontal: 12);
+    final holdEpoch = _holdEpoch;
+    final actionStyle = Theme.of(context).textTheme.labelLarge;
+    const padding = EdgeInsets.symmetric(horizontal: 10);
+    final bluetooth = release
+        ? OutlinedButton.icon(
+            key: const Key('gateway-disconnect'),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size(0, 48),
+              padding: padding,
+              textStyle: actionStyle,
+            ),
+            onPressed: canRelease
+                ? () async {
+                    if (_selectedId != peer.id || _holdId != peer.id) return;
+                    await _disconnectSelected();
+                  }
+                : null,
+            icon: const Icon(Icons.bluetooth_disabled, size: 20),
+            label: Text(
+              hold == _Hold.disconnecting
+                  ? '斷開中…'
+                  : hold == _Hold.connecting
+                  ? '取消連線'
+                  : hold == _Hold.cleanupFailed
+                  ? '重試斷開'
+                  : '斷開',
+            ),
+          )
+        : FilledButton.icon(
+            key: selected
+                ? const Key('gateway-link-identify')
+                : ValueKey('gateway-link-${peer.id}'),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(0, 48),
+              padding: padding,
+              textStyle: actionStyle,
+            ),
+            onPressed: widget.enabled && _canSelect
+                ? () => _holdFromCard(peer)
+                : null,
+            icon: const Icon(Icons.bluetooth, size: 20),
+            label: const Text('藍牙連線'),
+          );
+    final identify = widget.onIdentify == null
+        ? null
+        : _identifyControl(
+            peer,
+            hold: hold,
+            identifying: identifying,
+            identified: identified,
+            onIdentify:
+                widget.enabled &&
+                    !_selecting &&
+                    _identifyingId == null &&
+                    ownsLink &&
+                    hold == _Hold.held
+                ? () => _identify(peer)
+                : null,
+          );
+    final start = FilledButton(
+      key: ValueKey('gateway-start-${peer.id}'),
+      style: FilledButton.styleFrom(
+        minimumSize: const Size(0, 48),
+        padding: padding,
+        textStyle: actionStyle,
+      ),
+      onPressed: _canStartPeer(peer, holdEpoch)
+          ? () => _connect(peer, expectedHoldEpoch: holdEpoch)
+          : null,
+      child: const Text('開始開通'),
+    );
+    double widthOf(String label) {
+      final painter = TextPainter(
+        text: TextSpan(text: label, style: actionStyle),
+        textDirection: Directionality.of(context),
+        textScaler: MediaQuery.textScalerOf(context),
+        maxLines: 1,
+      )..layout();
+      final width = painter.width;
+      painter.dispose();
+      return width;
+    }
+
+    final bluetoothWidth =
+        [
+          '藍牙連線',
+          '取消連線',
+          '重試斷開',
+          '斷開中…',
+        ].map(widthOf).fold<double>(0, (a, b) => a > b ? a : b) +
+        20 +
+        8 +
+        20;
+    final requiredWidth =
+        bluetoothWidth +
+        widthOf('開始開通') +
+        20 +
+        (identify == null ? 8 : gatewayBulbBox + 16);
     return Padding(
       key: ValueKey('gateway-actions-${peer.id}'),
       padding: const EdgeInsets.fromLTRB(12, 0, 8, 8),
-      child: Row(
-        children: [
-          Expanded(
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: release
-                  ? OutlinedButton.icon(
-                      key: const Key('gateway-disconnect'),
-                      style: OutlinedButton.styleFrom(
-                        minimumSize: const Size(0, 48),
-                        padding: padding,
-                      ),
-                      onPressed: canRelease
-                          ? () async {
-                              // A retained callback from A must never close B.
-                              if (_selectedId != peer.id ||
-                                  _holdId != peer.id) {
-                                return;
-                              }
-                              await _disconnectSelected();
-                            }
-                          : null,
-                      icon: const Icon(Icons.bluetooth_disabled, size: 20),
-                      label: Text(
-                        hold == _Hold.disconnecting
-                            ? '斷開中…'
-                            : hold == _Hold.connecting
-                            ? '取消連線'
-                            : hold == _Hold.cleanupFailed
-                            ? '重試斷開'
-                            : '斷開',
-                      ),
-                    )
-                  : FilledButton.icon(
-                      key: selected
-                          ? const Key('gateway-link-identify')
-                          : ValueKey('gateway-link-${peer.id}'),
-                      style: FilledButton.styleFrom(
-                        minimumSize: const Size(0, 48),
-                        padding: padding,
-                      ),
-                      onPressed: widget.enabled && _canSelect
-                          ? () => _holdFromCard(peer)
-                          : null,
-                      icon: const Icon(Icons.bluetooth, size: 20),
-                      label: const Text('藍牙連線'),
-                    ),
-            ),
-          ),
-          if (widget.onIdentify != null) ...[
-            const SizedBox(width: 8),
-            _identifyControl(
-              peer,
-              hold: hold,
-              identifying: identifying,
-              identified: identified,
-              onIdentify:
-                  widget.enabled &&
-                      !_selecting &&
-                      _identifyingId == null &&
-                      ownsLink &&
-                      hold == _Hold.held
-                  ? () => _identify(peer)
-                  : null,
-            ),
-          ],
-        ],
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth >= requiredWidth) {
+            return Row(
+              children: [
+                bluetooth,
+                if (identify != null) ...[const SizedBox(width: 8), identify],
+                const Spacer(),
+                const SizedBox(width: 8),
+                start,
+              ],
+            );
+          }
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Flexible(child: bluetooth),
+                  const Spacer(),
+                  if (identify != null) ...[const SizedBox(width: 8), identify],
+                ],
+              ),
+              const SizedBox(height: 4),
+              Align(alignment: Alignment.centerRight, child: start),
+            ],
+          );
+        },
       ),
     );
   }
@@ -2032,14 +2200,18 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
           ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
         ),
       ),
-      const SizedBox(height: 10),
-      FilledButton.icon(
-        key: const Key('gateway-rescan-primary'),
-        style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
-        onPressed: widget.enabled && _canSelect ? _restartByUser : null,
-        icon: const Icon(Icons.search),
-        label: const Text('重新搜尋'),
-      ),
+      if (widget.choice == null) ...[
+        const SizedBox(height: 10),
+        FilledButton.icon(
+          key: const Key('gateway-rescan-primary'),
+          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+          onPressed: widget.enabled && _canSelect && !_scanActionBusy
+              ? _toggleScan
+              : null,
+          icon: const Icon(Icons.search),
+          label: const Text('重新搜尋'),
+        ),
+      ],
     ],
   );
 
@@ -2053,6 +2225,8 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
         _backendAt = null;
       });
     });
+    // Scan changes also reach the external bar without notifying during build.
+    _scheduleChoiceSync();
     final selectedId = _selectedId;
     final now = _heardClock();
     // History provides identity metadata, never evidence of proximity.
@@ -2143,11 +2317,11 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
             ),
             // 1.0.0+17: after the second search found nothing it is the
             // big 〔重新搜尋〕 under the message instead.
-            if (_search != _Search.notFound)
+            if (widget.choice == null && _search != _Search.notFound)
               FilledButton.icon(
                 key: const Key('gateway-scan-toggle'),
-                onPressed: widget.enabled && _canSelect
-                    ? (stoppable ? _stopByUser : _restartByUser)
+                onPressed: widget.enabled && _canSelect && !_scanActionBusy
+                    ? _toggleScan
                     : null,
                 icon: Icon(stoppable ? Icons.stop : Icons.search),
                 label: Text(stoppable ? '停止搜尋' : '重新搜尋'),

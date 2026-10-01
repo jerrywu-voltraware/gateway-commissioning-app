@@ -317,7 +317,7 @@ void main() {
       GatewayPeer? connected, identified;
       final heldIds = <String>[];
       var releases = 0;
-      // The fixed bottom button starts commissioning over the ready link.
+      // Each card starts commissioning only over its ready link.
       final choice = GatewayChoice();
       addTearDown(choice.dispose);
       await tester.pumpWidget(
@@ -343,7 +343,7 @@ void main() {
                   },
                 ),
               ),
-              bottomNavigationBar: GatewayConnectBar(choice: choice),
+              bottomNavigationBar: GatewayScanBar(choice: choice),
             ),
           ),
         ),
@@ -511,7 +511,13 @@ void main() {
         find.byKey(const ValueKey('identify-AA:BB:CC:DD:3A:02')),
         findsOneWidget,
       );
-      await tester.tap(find.byKey(const Key('gateway-connect')));
+      final start = find.byKey(
+        const ValueKey('gateway-start-AA:BB:CC:DD:3A:02'),
+      );
+      expect(tester.widget<FilledButton>(start).onPressed, isNotNull);
+      await tester.ensureVisible(start);
+      await tester.pump();
+      await tester.tap(start);
       await settle();
       expect(connected?.id, 'AA:BB:CC:DD:3A:02');
       expect(tester.takeException(), isNull);
@@ -748,7 +754,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.textContaining(identifiedHint), findsNothing);
       // Commissioning adopts the already identified link without reconnecting.
-      await _tap(tester, gatewayConnectButton);
+      await _tap(tester, gatewayStartButtonFor('demo-gateway'));
       expect(read().peer?.id, 'demo-gateway');
       expect(read().step, greaterThanOrEqualTo(2));
       expect(fake.identifyRequests.length, 1);

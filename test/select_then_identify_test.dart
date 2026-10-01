@@ -497,7 +497,9 @@ void main() {
       expect(find.byKey(const Key('gateway-link-identify')), findsNothing);
       expect(
         tester
-            .widget<FilledButton>(find.byKey(const Key('gateway-connect')))
+            .widget<FilledButton>(
+              find.byKey(const ValueKey('gateway-start-demo-gateway')),
+            )
             .onPressed,
         isNull,
       );
@@ -620,7 +622,10 @@ void main() {
       await _settle(tester);
       fake.failConfigRead = true;
       fake.failDisconnect = true;
-      await _tap(tester, find.byKey(const Key('gateway-connect')));
+      await _tap(
+        tester,
+        find.byKey(const ValueKey('gateway-start-demo-gateway')),
+      );
       await _settle(tester);
       expect(container.read(commissionProvider).step, 1);
       expect(
@@ -630,7 +635,9 @@ void main() {
       expect(find.text('重試斷開'), findsOneWidget);
       expect(
         tester
-            .widget<FilledButton>(find.byKey(const Key('gateway-connect')))
+            .widget<FilledButton>(
+              find.byKey(const ValueKey('gateway-start-demo-gateway')),
+            )
             .onPressed,
         isNull,
       );
@@ -657,7 +664,9 @@ void main() {
         expect(tester.takeException(), isNull);
         expect(
           tester
-              .widget<FilledButton>(find.byKey(const Key('gateway-connect')))
+              .widget<FilledButton>(
+                find.byKey(ValueKey('gateway-start-${_a.id}')),
+              )
               .onPressed,
           isNull,
         );
@@ -672,7 +681,9 @@ void main() {
         expect(tester.takeException(), isNull);
         expect(
           tester
-              .widget<FilledButton>(find.byKey(const Key('gateway-connect')))
+              .widget<FilledButton>(
+                find.byKey(ValueKey('gateway-start-${_a.id}')),
+              )
               .onPressed,
           isNotNull,
         );
@@ -684,7 +695,9 @@ void main() {
         expect(find.text('重試斷開'), findsOneWidget);
         expect(
           tester
-              .widget<FilledButton>(find.byKey(const Key('gateway-connect')))
+              .widget<FilledButton>(
+                find.byKey(ValueKey('gateway-start-${_a.id}')),
+              )
               .onPressed,
           isNull,
         );
@@ -859,7 +872,10 @@ void main() {
       await _settle(tester);
       expect(fake.identifyRequests, hasLength(1));
       expect(fake.sent('set_config'), isEmpty);
-      await _tap(tester, find.byKey(const Key('gateway-connect')));
+      await _tap(
+        tester,
+        find.byKey(const ValueKey('gateway-start-demo-gateway')),
+      );
       await _settle(tester);
       expect(container.read(commissionProvider).step, 2);
       expect(fake.connected, ['demo-gateway']);
@@ -921,7 +937,7 @@ Future<_List> _pumpList(WidgetTester tester, {double textScale = 1}) async {
           child: child!,
         ),
         home: Scaffold(
-          bottomNavigationBar: GatewayConnectBar(choice: list.choice),
+          bottomNavigationBar: GatewayScanBar(choice: list.choice),
           body: SingleChildScrollView(
             child: GatewayDiscovery(
               enabled: true,

@@ -11,7 +11,7 @@
 // - the AppBar title whole, in the one AppBar size (titleMedium, 16).
 //
 // 1.0.0+14: the gateway list with a gateway selected (the fixed bottom
-// button 〔連線到 …〕), one not configured selected, and while connecting.
+// scan button), one not configured selected, and while connecting.
 //
 // 1.0.0+15: the Wi-Fi-first page of a gateway not configured and the
 // station page after it (「網路已正常，接著設定站號。」).
@@ -676,20 +676,28 @@ Future<void> _select(WidgetTester tester, String id) async {
   await tester.pumpAndSettle();
 }
 
-String _connectText(WidgetTester tester) =>
-    tester.widget<Text>(find.byKey(const Key('gateway-connect-text'))).data!;
+Finder _startButton(String id) => find.byKey(ValueKey('gateway-start-$id'));
 
-/// 1.0.0+14: the list's bottom button — on screen, ≥ 48 dp, its text on
-/// at most two lines and whole; 〔結束配置〕 stays above the bar.
-void _checkConnectBar(WidgetTester tester, String where) {
-  final button = find.byKey(const Key('gateway-connect'));
-  expect(button, findsOneWidget, reason: '$where: bottom button');
+String _startText(WidgetTester tester, String id) => tester
+    .widget<Text>(
+      find.descendant(of: _startButton(id), matching: find.byType(Text)),
+    )
+    .data!;
+
+/// Fixed scanning remains on screen, >=48 dp, and above the safe bottom edge.
+/// The end action at the end of the scroll remains above this bar.
+void _checkScanBar(WidgetTester tester, String where) {
+  final button = find.byKey(const Key('gateway-scan-toggle'));
+  expect(button, findsOneWidget, reason: '$where: unique scan button');
+  expect(find.byKey(const Key('gateway-connect-bar')), findsNothing);
   final rect = tester.getRect(button);
   final screen = tester.view.physicalSize / tester.view.devicePixelRatio;
   expect(rect.height, greaterThanOrEqualTo(48), reason: '$where: 48 dp');
+  expect(rect.top, greaterThanOrEqualTo(0));
   expect(rect.bottom, lessThanOrEqualTo(screen.height + 0.5));
+  expect(rect.left, greaterThanOrEqualTo(0));
   expect(rect.right, lessThanOrEqualTo(screen.width + 0.5));
-  final bar = tester.getRect(find.byKey(const Key('gateway-connect-bar')));
+  final bar = tester.getRect(find.byKey(const Key('gateway-scan-bar')));
   final leave = find.byKey(const Key('page-cancel'));
   final scroll = _pageScroll(tester);
   if (scroll != null &&
@@ -698,22 +706,43 @@ void _checkConnectBar(WidgetTester tester, String where) {
     expect(
       tester.getRect(leave).bottom,
       lessThanOrEqualTo(bar.top + 0.5),
-      reason: '$where: 〔結束配置〕 under the bar',
+      reason: '$where: end action under the scan bar',
     );
   }
   if (!_realFonts) return;
   final text = tester.renderObject<RenderParagraph>(
     find.descendant(
-      of: find.byKey(const Key('gateway-connect-text')),
+      of: find.descendant(of: button, matching: find.byType(Text)),
       matching: find.byType(RichText),
     ),
   );
-  final plain = text.text.toPlainText();
-  expect(text.didExceedMaxLines, isFalse, reason: '$where: 「$plain」 cut');
+  expect(text.didExceedMaxLines, isFalse, reason: '$where: scan label cut');
   expect(
-    text.maxLines,
-    2,
-    reason: '$where: the full gateway identity may wrap to two lines',
+    text.getMaxIntrinsicWidth(double.infinity),
+    lessThanOrEqualTo(text.size.width + 0.5),
+    reason: '$where: scan label wider than its box',
+  );
+}
+
+/// Commissioning stays inside the card whose identity it operates on.
+void _checkCardStart(WidgetTester tester, String id) {
+  final start = _startButton(id);
+  expect(start, findsOneWidget);
+  expect(_startText(tester, id), '開始開通');
+  final action = tester.getRect(start);
+  final card = tester.getRect(find.byKey(ValueKey('gateway-card-$id')));
+  expect(action.height, greaterThanOrEqualTo(48));
+  expect(action.left, greaterThanOrEqualTo(card.left));
+  expect(action.right, lessThanOrEqualTo(card.right));
+  expect(action.top, greaterThanOrEqualTo(card.top));
+  expect(action.bottom, lessThanOrEqualTo(card.bottom));
+  final text = tester.renderObject<RenderParagraph>(
+    find.descendant(of: start, matching: find.byType(RichText)),
+  );
+  expect(text.didExceedMaxLines, isFalse);
+  expect(
+    text.getMaxIntrinsicWidth(double.infinity),
+    lessThanOrEqualTo(text.size.width + 0.5),
   );
 }
 
@@ -757,26 +786,40 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  // 1.0.0+14: a card's tap selects, the fixed bottom button connects.
-  testWidgets('gateway list, a gateway selected: 〔連線到 站 81 · 閘道器 1〕 '
-      'fixed at the bottom, 〔結束配置〕 above it', (tester) async {
+  // Selection alone never enables card commissioning; scanning stays fixed.
+  testWidgets('gateway list: selected card owns commissioning; scanning '
+      'fixed at the bottom, end action above it', (tester) async {
     await _toList(tester, fake: _SelectGateways());
     await _select(tester, 'demo-gateway');
     expect(
       find.byKey(const ValueKey('gateway-selected-demo-gateway')),
       findsOneWidget,
     );
-    expect(_connectText(tester), '開始開通：站 81 · 閘道器 1');
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(const ValueKey('gateway-title-demo-gateway')),
+          )
+          .data,
+      '站 81 · 閘道器 1',
+    );
+    _checkCardStart(tester, 'demo-gateway');
+    expect(
+      tester.widget<FilledButton>(_startButton('demo-gateway')).onPressed,
+      isNull,
+    );
     await _checkPage(
       tester,
       'gateway list, selected',
-      also: (where) => _checkConnectBar(tester, where),
+      also: (where) => _checkScanBar(tester, where),
     );
     await tester.pumpWidget(const SizedBox());
   });
 
   testWidgets('gateway list, a gateway not configured selected: 「未配置閘道器」 '
-      'on one line, 〔連線到 未配置閘道器 …70F0〕 whole', (tester) async {
+      'on one line, full identity and card commissioning action whole', (
+    tester,
+  ) async {
     await _toList(tester, fake: _SelectGateways());
     const id = 'A0:DD:6C:A3:70:F2';
     await _select(tester, id);
@@ -791,11 +834,12 @@ void main() {
           .data,
       '…70F0',
     );
-    expect(_connectText(tester), '開始開通：未配置閘道器 …70F0');
+    _checkCardStart(tester, id);
+    expect(tester.widget<FilledButton>(_startButton(id)).onPressed, isNull);
     await _checkPage(
       tester,
       'gateway list, not configured selected',
-      also: (where) => _checkConnectBar(tester, where),
+      also: (where) => _checkScanBar(tester, where),
     );
     await tester.pumpWidget(const SizedBox());
   });
@@ -812,13 +856,9 @@ void main() {
     await tester.tap(connect);
     await _frames(tester);
     expect(container.read(commissionProvider).discoveryLinkActive, isTrue);
-    expect(
-      tester
-          .widget<FilledButton>(find.byKey(const Key('gateway-connect')))
-          .onPressed,
-      isNull,
-    );
-    expect(_connectText(tester), '開始開通：未配置閘道器 …70F0');
+    expect(tester.widget<FilledButton>(_startButton(id)).onPressed, isNull);
+    _checkCardStart(tester, id);
+    expect(tester.widget<FilledButton>(_startButton(id)).onPressed, isNull);
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('gateway-selected-$id')),
@@ -829,12 +869,15 @@ void main() {
     await _checkPage(
       tester,
       'gateway list, connecting',
-      also: (where) => _checkConnectBar(tester, where),
+      also: (where) => _checkScanBar(tester, where),
     );
     fake.hold!.complete();
     await tester.pumpAndSettle();
     expect(container.read(commissionProvider).step, 1);
-    await tester.tap(find.byKey(const Key('gateway-connect')));
+    expect(tester.widget<FilledButton>(_startButton(id)).onPressed, isNotNull);
+    await tester.ensureVisible(_startButton(id));
+    await tester.pump();
+    await tester.tap(_startButton(id));
     await tester.pumpAndSettle();
     expect(container.read(commissionProvider).step, 2);
     await tester.pumpWidget(const SizedBox());
@@ -880,13 +923,20 @@ void main() {
     await _toSearchingList(tester, fake, time: const Duration(seconds: 3));
     expect(fake.sessions, hasLength(2));
     expect(find.text(gatewayNotFoundText), findsOneWidget);
-    final button = find.byKey(const Key('gateway-rescan-primary'));
+    final button = find.byKey(const Key('gateway-scan-toggle'));
     expect(button, findsOneWidget);
+    expect(find.byKey(const Key('gateway-scan-bar')), findsOneWidget);
+    expect(find.byKey(const Key('gateway-rescan-primary')), findsNothing);
+    expect(tester.widget<FilledButton>(button).onPressed, isNotNull);
+    expect(
+      find.descendant(of: button, matching: find.text('重新搜尋')),
+      findsOneWidget,
+    );
     await _checkPage(
       tester,
       'gateway list, not found',
       also: (where) {
-        if (button.hitTestable().evaluate().isEmpty) return;
+        expect(button.hitTestable(), findsOneWidget, reason: where);
         final rect = tester.getRect(button);
         final width =
             tester.view.physicalSize.width / tester.view.devicePixelRatio;

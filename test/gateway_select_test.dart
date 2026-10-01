@@ -3,7 +3,7 @@
 // Explicit connection locks all cards until disconnect finishes; identify
 // uses only that ready connection, and commissioning adopts the same peer.
 // Action panels may move the card group, while card sizes/relative spacing,
-// full gateway identity and the fixed bottom action remain readable.
+// full gateway identity and the fixed bottom scan action remain readable.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -193,13 +193,24 @@ Finder get _marks => find.byWidgetPredicate(
       (w.key! as ValueKey<String>).value.startsWith('gateway-selected-'),
 );
 
-Finder get _button => find.byKey(const Key('gateway-connect'));
+Finder _start(GatewayPeer peer) =>
+    find.byKey(ValueKey('gateway-start-${peer.id}'));
+Finder get _scanButton => find.byKey(const Key('gateway-scan-toggle'));
 
-String _buttonText(WidgetTester tester) =>
-    tester.widget<Text>(find.byKey(const Key('gateway-connect-text'))).data!;
+String _startText(WidgetTester tester, GatewayPeer peer) => tester
+    .widget<Text>(
+      find.descendant(of: _start(peer), matching: find.byType(Text)),
+    )
+    .data!;
 
-bool _buttonEnabled(WidgetTester tester) =>
-    tester.widget<FilledButton>(_button).onPressed != null;
+bool _startEnabled(WidgetTester tester, GatewayPeer peer) =>
+    tester.widget<FilledButton>(_start(peer)).onPressed != null;
+
+Future<void> _tapStart(WidgetTester tester, GatewayPeer peer) async {
+  await tester.ensureVisible(_start(peer));
+  await tester.pump();
+  await tester.tap(_start(peer));
+}
 
 double _opacity(WidgetTester tester, GatewayPeer peer) => tester
     .widget<Opacity>(find.byKey(ValueKey('gateway-fade-${peer.id}')))
@@ -292,20 +303,27 @@ void _noCut(WidgetTester tester, String where) {
   }
 }
 
-/// The full gateway identity fits the bottom button's supported two lines.
-void _buttonWhole(WidgetTester tester, String where) {
+/// The commissioning label stays whole inside the card owning its gateway.
+void _startWhole(WidgetTester tester, GatewayPeer peer, String where) {
+  final start = _start(peer);
   final paragraph = tester.renderObject<RenderParagraph>(
-    find.descendant(
-      of: find.byKey(const Key('gateway-connect-text')),
-      matching: find.byType(RichText),
-    ),
+    find.descendant(of: start, matching: find.byType(RichText)),
   );
-  expect(paragraph.didExceedMaxLines, isFalse, reason: '$where: button cut');
-  expect(paragraph.maxLines, 2);
   expect(
-    paragraph.size.width,
-    lessThanOrEqualTo(tester.getSize(_button).width),
+    paragraph.didExceedMaxLines,
+    isFalse,
+    reason: '$where: start text cut',
   );
+  expect(
+    paragraph.getMaxIntrinsicWidth(double.infinity),
+    lessThanOrEqualTo(paragraph.size.width + 0.5),
+  );
+  final card = tester.getRect(find.byKey(ValueKey('gateway-card-${peer.id}')));
+  final action = tester.getRect(start);
+  expect(action.left, greaterThanOrEqualTo(card.left));
+  expect(action.right, lessThanOrEqualTo(card.right));
+  expect(action.top, greaterThanOrEqualTo(card.top));
+  expect(action.bottom, lessThanOrEqualTo(card.bottom));
 }
 
 Future<void> _connectForIdentify(WidgetTester tester) async {
@@ -359,11 +377,18 @@ void main() {
       final (container, link) = await _pumpList(tester);
       CommissionState read() => container.read(commissionProvider);
 
-      // Nothing selected: the bar is there, disabled, saying what to do.
-      expect(_buttonText(tester), gatewayPickFirstLabel);
-      expect(_buttonEnabled(tester), isFalse);
-      expect(tester.getSize(_button).height, greaterThanOrEqualTo(48));
-      expect(tester.getSize(_button).width, greaterThanOrEqualTo(360 - 32));
+      // Scanning remains fixed at the bottom; every card's start is disabled
+      // until that same peer has an explicitly ready Bluetooth connection.
+      expect(find.byKey(const Key('gateway-connect-bar')), findsNothing);
+      expect(find.byKey(const Key('gateway-scan-bar')), findsOneWidget);
+      expect(_scanButton, findsOneWidget);
+      expect(tester.getSize(_scanButton).height, greaterThanOrEqualTo(48));
+      expect(tester.getSize(_scanButton).width, greaterThanOrEqualTo(360 - 32));
+      for (final peer in [_gw81, _gw82, _new]) {
+        expect(_startText(tester, peer), '開始開通');
+        expect(_startEnabled(tester, peer), isFalse);
+        expect(tester.getSize(_start(peer)).height, greaterThanOrEqualTo(48));
+      }
       expect(_marks, findsNothing);
       // 81/1 is 「最近」: its green chip, no outline (1.0.0+10 had one).
       expect(
@@ -411,7 +436,7 @@ void main() {
         findsOneWidget,
       );
       expect(link.connected, isEmpty, reason: 'selection is local');
-      expect(_buttonEnabled(tester), isFalse);
+      expect(_startEnabled(tester, _gw82), isFalse);
       await _connectForIdentify(tester);
       expect(link.connected, [_gw82.id]);
       expect(read().step, 1);
@@ -458,9 +483,17 @@ void main() {
         inList,
         reason: 'nor connecting',
       );
-      // The bottom button: the card's title.
-      expect(_buttonText(tester), '開始開通：站 82 · 閘道器 1');
-      expect(_buttonEnabled(tester), isTrue);
+      // The ready card owns its commissioning action.
+      expect(_startText(tester, _gw82), '開始開通');
+      expect(
+        tester
+            .widget<Text>(find.byKey(ValueKey('gateway-title-${_gw82.id}')))
+            .data,
+        '站 82 · 閘道器 1',
+      );
+      expect(_startEnabled(tester, _gw82), isTrue);
+      expect(_startEnabled(tester, _gw81), isFalse);
+      expect(_startEnabled(tester, _new), isFalse);
 
       // A held connection locks selection until its explicit disconnect.
       expect(tester.widget<InkWell>(_card(_gw81)).onTap, isNull);
@@ -477,7 +510,13 @@ void main() {
         (_cardOf(tester, _gw81).shape! as RoundedRectangleBorder).side.color,
         colors.primary,
       );
-      expect(_buttonText(tester), '開始開通：站 81 · 閘道器 1');
+      expect(_startText(tester, _gw81), '開始開通');
+      expect(
+        tester
+            .widget<Text>(find.byKey(ValueKey('gateway-title-${_gw81.id}')))
+            .data,
+        '站 81 · 閘道器 1',
+      );
       expect(link.connected, [
         _gw82.id,
       ], reason: 'selecting B does not connect');
@@ -500,16 +539,21 @@ void main() {
       expect(platform.length, clicks, reason: 'held cards are disabled');
       expect(link.connected, [_gw82.id, _gw81.id]);
       expect(read().step, 1);
-      expect(_buttonText(tester), '開始開通：站 81 · 閘道器 1');
+      expect(_startText(tester, _gw81), '開始開通');
 
       // The button goes on with the selected gateway — that one only, over
       // its link (no connect again).
-      await tester.tap(_button);
+      await _tapStart(tester, _gw81);
       await _settle(tester, times: 10);
       expect(link.connected, [_gw82.id, _gw81.id]);
       expect(read().peer?.id, _gw81.id);
       expect(read().step, 2);
-      expect(_button, findsNothing, reason: 'the list\'s bar only');
+      expect(
+        _start(_gw81),
+        findsNothing,
+        reason: 'discovery card actions only',
+      );
+      expect(find.byKey(const Key('gateway-scan-bar')), findsNothing);
       semantics.dispose();
       await tester.pumpWidget(const SizedBox());
     },
@@ -528,8 +572,8 @@ void main() {
       await _connectForIdentify(tester);
       expect(read().busy, isFalse);
       expect(read().discoveryLinkActive, isTrue);
-      expect(_buttonEnabled(tester), isFalse);
-      expect(_buttonText(tester), gatewayConnectLabel('站 82 · 閘道器 1'));
+      expect(_startEnabled(tester, _gw82), isFalse);
+      expect(_startText(tester, _gw82), '開始開通');
       expect(
         find.descendant(
           of: _mark(_gw82),
@@ -568,12 +612,12 @@ void main() {
         findsOneWidget,
       );
       expect(tester.widget<InkWell>(_card(_gw81)).onTap, isNotNull);
-      expect(_buttonEnabled(tester), isFalse);
+      expect(_startEnabled(tester, _gw82), isFalse);
       expect(find.byKey(const Key('gateway-hold-snack')), findsOneWidget);
       await _connectForIdentify(tester);
-      expect(_buttonEnabled(tester), isTrue);
+      expect(_startEnabled(tester, _gw82), isTrue);
       expect(link.connected, [_gw82.id, _gw82.id]);
-      await tester.tap(_button);
+      await _tapStart(tester, _gw82);
       await _settle(tester, times: 10);
       expect(read().peer?.id, _gw82.id);
       expect(read().step, 2);
@@ -611,7 +655,7 @@ void main() {
     expect(_order(tester, all), [_gw81.id, _gw82.id, _new.id]);
     expect(_listRects(tester, [_gw81, _gw82, _new]), before);
     expect(_mark(_new), findsOneWidget);
-    expect(_buttonText(tester), '開始開通：未配置閘道器 …70F0');
+    expect(_startText(tester, _new), '開始開通');
     // The search's panel stays, paused (the cards do not move).
     expect(find.text(gatewaySearchPausedText), findsOneWidget);
     // No scan while the link is kept.
@@ -634,8 +678,10 @@ void main() {
     expect(link.linkDisconnects, greaterThan(disconnects));
     expect(link.scans.length, scans + 1);
     expect(_marks, findsNothing);
-    expect(_buttonText(tester), gatewayPickFirstLabel);
-    expect(_buttonEnabled(tester), isFalse);
+    for (final peer in [_gw81, _gw82, _new]) {
+      expect(_startEnabled(tester, peer), isFalse);
+    }
+    expect(_scanButton, findsOneWidget);
     for (var i = 0; i < 3; i++) {
       link.hear([
         GatewayPeer(_gw81.id, _gw81.name, -75),
@@ -652,60 +698,65 @@ void main() {
   });
 
   for (final scale in [1.1, 1.3]) {
-    testWidgets('@$scale a gateway not configured: 「未配置閘道器」 on one line, '
-        '「…70F0」 on line 3 as every card\'s tail; the button 〔連線到 '
-        '未配置閘道器 …70F0〕 whole', (tester) async {
-      final (_, _) = await _pumpList(tester, scale: scale);
-      final title = find.byKey(ValueKey('gateway-title-${_new.id}'));
-      expect(tester.widget<Text>(title).data, unconfiguredGatewayText);
-      expect(tester.widget<Text>(title).maxLines, 1);
-      final paragraph = tester.renderObject<RenderParagraph>(
-        find.descendant(of: title, matching: find.byType(RichText)),
-      );
-      expect(paragraph.didExceedMaxLines, isFalse);
-      expect(
-        paragraph.getMaxIntrinsicWidth(double.infinity),
-        lessThanOrEqualTo(paragraph.size.width + 0.5),
-      );
-      expect(find.textContaining('未配置閘道器 …'), findsNothing);
-      expect(_detail(tester, _new), '…70F0');
-      expect(_detail(tester, _gw81), '…3A00');
-      // Line 3 as a configured card's: right under the marks, same style
-      // (the title line's height differs by the fonts' metrics only).
-      double line3(GatewayPeer peer) =>
+    testWidgets(
+      '@$scale a gateway not configured: 「未配置閘道器」 on one line, '
+      '「…70F0」 on line 3 as every card\'s tail; its commissioning label whole',
+      (tester) async {
+        final (_, _) = await _pumpList(tester, scale: scale);
+        final title = find.byKey(ValueKey('gateway-title-${_new.id}'));
+        expect(tester.widget<Text>(title).data, unconfiguredGatewayText);
+        expect(tester.widget<Text>(title).maxLines, 1);
+        final paragraph = tester.renderObject<RenderParagraph>(
+          find.descendant(of: title, matching: find.byType(RichText)),
+        );
+        expect(paragraph.didExceedMaxLines, isFalse);
+        expect(
+          paragraph.getMaxIntrinsicWidth(double.infinity),
+          lessThanOrEqualTo(paragraph.size.width + 0.5),
+        );
+        expect(find.textContaining('未配置閘道器 …'), findsNothing);
+        expect(_detail(tester, _new), '…70F0');
+        expect(_detail(tester, _gw81), '…3A00');
+        // Line 3 as a configured card's: right under the marks, same style
+        // (the title line's height differs by the fonts' metrics only).
+        double line3(GatewayPeer peer) =>
+            tester
+                .getRect(find.byKey(ValueKey('gateway-detail-${peer.id}')))
+                .top -
+            tester
+                .getRect(find.byKey(ValueKey('gateway-marks-${peer.id}')))
+                .bottom;
+        expect(line3(_new), closeTo(line3(_gw81), 0.5));
+        TextStyle? style(GatewayPeer peer) => tester
+            .widget<Text>(find.byKey(ValueKey('gateway-detail-${peer.id}')))
+            .style;
+        expect(style(_new), style(_gw81));
+        expect(
           tester
-              .getRect(find.byKey(ValueKey('gateway-detail-${peer.id}')))
-              .top -
-          tester
-              .getRect(find.byKey(ValueKey('gateway-marks-${peer.id}')))
-              .bottom;
-      expect(line3(_new), closeTo(line3(_gw81), 0.5));
-      TextStyle? style(GatewayPeer peer) => tester
-          .widget<Text>(find.byKey(ValueKey('gateway-detail-${peer.id}')))
-          .style;
-      expect(style(_new), style(_gw81));
-      expect(
-        tester.getRect(find.byKey(ValueKey('gateway-detail-${_new.id}'))).left -
-            tester.getRect(_card(_new)).left,
-        closeTo(
-          tester
-                  .getRect(find.byKey(ValueKey('gateway-detail-${_gw81.id}')))
+                  .getRect(find.byKey(ValueKey('gateway-detail-${_new.id}')))
                   .left -
-              tester.getRect(_card(_gw81)).left,
-          0.5,
-        ),
-      );
-      await _tapCard(tester, _new);
-      expect(_buttonText(tester), '開始開通：未配置閘道器 …70F0');
-      _buttonWhole(tester, '@$scale');
-      _noCut(tester, '@$scale selected');
-      await tester.pumpWidget(const SizedBox());
-    });
+              tester.getRect(_card(_new)).left,
+          closeTo(
+            tester
+                    .getRect(find.byKey(ValueKey('gateway-detail-${_gw81.id}')))
+                    .left -
+                tester.getRect(_card(_gw81)).left,
+            0.5,
+          ),
+        );
+        await _tapCard(tester, _new);
+        expect(_startText(tester, _new), '開始開通');
+        _startWhole(tester, _new, '@$scale');
+        expect(_startEnabled(tester, _new), isFalse);
+        _noCut(tester, '@$scale selected');
+        await tester.pumpWidget(const SizedBox());
+      },
+    );
   }
 
   testWidgets('〔辨識〕: the selected, connected card\'s bulb alone (no bulb on '
       'the other cards), over the kept link, the selection unchanged; its '
-      'SnackBar sits above the button; 〔結束配置〕 at the end of the page is '
+      'SnackBar sits above the fixed scan bar; 〔結束配置〕 at the end of the page is '
       'above the bar', (tester) async {
     final (container, link) = await _pumpList(tester);
     CommissionState read() => container.read(commissionProvider);
@@ -734,8 +785,8 @@ void main() {
     expect(_mark(_gw81), findsOneWidget);
     expect(_mark(_new), findsNothing);
     expect(_marks, findsOneWidget);
-    expect(_buttonText(tester), '開始開通：站 81 · 閘道器 1');
-    expect(_buttonEnabled(tester), isTrue);
+    expect(_startText(tester, _gw81), '開始開通');
+    expect(_startEnabled(tester, _gw81), isTrue);
     expect(link.connected, [_gw81.id], reason: 'the bulb: no connect');
     expect(link.identifyRequests, hasLength(1));
     final snack = find.byKey(const Key('gateway-identified-snack'));
@@ -744,14 +795,14 @@ void main() {
       find.descendant(of: snack, matching: find.text('站 81 · 閘道器 1 已送出')),
       findsOneWidget,
     );
-    final bar = find.byKey(const Key('gateway-connect-bar'));
+    final bar = find.byKey(const Key('gateway-scan-bar'));
     expect(
       tester.getRect(snack).bottom,
       lessThanOrEqualTo(tester.getRect(bar).top + 0.5),
     );
     expect(
       tester.getRect(snack).bottom,
-      lessThanOrEqualTo(tester.getRect(_button).top),
+      lessThanOrEqualTo(tester.getRect(_scanButton).top),
     );
     // 〔結束配置〕: at the end of the page, above the bar.
     final leave = find.byKey(const Key('page-cancel'));
@@ -774,8 +825,10 @@ void main() {
     Future<void> nothingSelected() async {
       expect(read().step, 1);
       expect(_marks, findsNothing);
-      expect(_buttonText(tester), gatewayPickFirstLabel);
-      expect(_buttonEnabled(tester), isFalse);
+      expect(_scanButton, findsOneWidget);
+      for (final peer in [_gw81, _gw82, _new]) {
+        expect(_startEnabled(tester, peer), isFalse);
+      }
       for (final peer in [_gw81, _gw82, _new]) {
         expect(_cardOf(tester, peer).shape, isNull);
       }
@@ -783,7 +836,7 @@ void main() {
 
     // 〔結束配置〕 → 結束: the start page, no bar.
     await _tapCard(tester, _gw82);
-    expect(_buttonText(tester), '開始開通：站 82 · 閘道器 1');
+    expect(_startText(tester, _gw82), '開始開通');
     final leave = find.byKey(const Key('page-cancel'));
     await tester.scrollUntilVisible(leave, 200, scrollable: _page);
     await tester.tap(leave);
@@ -791,13 +844,13 @@ void main() {
     await tester.tap(find.byKey(const Key('leave-confirm-end')));
     await _settle(tester);
     expect(read().step, 0);
-    expect(_button, findsNothing);
+    expect(find.byKey(const Key('gateway-scan-bar')), findsNothing);
     await _toList(tester, container, link);
     await nothingSelected();
 
     // 返回 (the system back) on the list: the start page.
     await _tapCard(tester, _gw81);
-    expect(_buttonEnabled(tester), isFalse);
+    expect(_startEnabled(tester, _gw81), isFalse);
     await tester.runAsync(() => tester.binding.handlePopRoute());
     await _settle(tester);
     expect(read().step, 0);
@@ -807,7 +860,7 @@ void main() {
     // Connected, then 「結束並重新選擇閘道器」 back to the list: nothing kept.
     await _tapCard(tester, _gw81);
     await _connectForIdentify(tester);
-    await tester.tap(_button);
+    await _tapStart(tester, _gw81);
     await _settle(tester, times: 10);
     expect(read().step, 2);
     await tester.runAsync(
@@ -844,10 +897,11 @@ void main() {
                   choice: choice,
                   onConnect: (peer) async => connected = peer,
                   onIdentify: (_) async => true,
+                  onHold: (_) async => true,
                 ),
               ],
             ),
-            bottomNavigationBar: GatewayConnectBar(choice: choice),
+            bottomNavigationBar: GatewayScanBar(choice: choice),
           ),
         ),
       ),
@@ -867,7 +921,7 @@ void main() {
     expect(find.byKey(ValueKey('gateway-card-${_gw82.id}')), findsOneWidget);
     expect(_signalText(tester, _gw82), gatewaySignalLostLabel);
     expect(_mark(_gw82), findsOneWidget);
-    expect(_buttonText(tester), '開始開通：站 82 · 閘道器 1');
+    expect(_startText(tester, _gw82), '開始開通');
 
     // Heard again with 81/1 and a new one: all listed (1.0.0+17: no filter
     // box), 82/1 still selected.
@@ -881,10 +935,13 @@ void main() {
       );
     }
     expect(_mark(_gw82), findsOneWidget);
-    expect(_buttonText(tester), '開始開通：站 82 · 閘道器 1');
+    expect(_startText(tester, _gw82), '開始開通');
 
-    // The button connects to 82/1.
-    await tester.tap(_button);
+    // The card can commission 82/1 only after its explicit connection.
+    expect(_startEnabled(tester, _gw82), isFalse);
+    await _connectForIdentify(tester);
+    expect(_startEnabled(tester, _gw82), isTrue);
+    await _tapStart(tester, _gw82);
     await _settle(tester);
     expect(connected?.id, _gw82.id);
     await tester.pumpWidget(const SizedBox());

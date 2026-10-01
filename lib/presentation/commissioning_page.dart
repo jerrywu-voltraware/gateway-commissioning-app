@@ -1929,10 +1929,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               )
             : done
             ? _doneBar(state, controller)
-            // 1.0.0+14: the gateway list — a card's tap selects, this
-            // button connects (〔結束配置〕 stays at the end of the page).
+            // Scanning stays at the bottom; commissioning is on its ready card.
             : state.step == 1
-            ? GatewayConnectBar(choice: _gatewayChoice, enabled: !state.busy)
+            ? GatewayScanBar(choice: _gatewayChoice, enabled: !state.busy)
             : null,
         body: SafeArea(
           child: Center(
@@ -3414,10 +3413,8 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           GatewayDiscovery(
             key: _discoveryKey,
             enabled: enabled,
-            // 1.0.0+9: 「辨識」 only blinks and stays on this list. 1.0.0+14:
-            // the card's tap selects the gateway, the fixed bottom button
-            // connects to it. 1.0.0+22: the bulb is on the selected card
-            // once its link is up, and goes over that link ([holdPeer]).
+            // Card taps only select. Its Bluetooth button keeps the link;
+            // identification and explicit commissioning reuse that ready peer.
             onIdentify: c.identifyPeer,
             // Only the gateway blinked when it has no PTU connected: the
             // row and the SnackBar say so.
@@ -3425,9 +3422,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             // 1.0.0+22: and why (switched to one-to-one just now, no PTU
             // heard, all too weak, still picking).
             identifyGatewayOnlyReason: () => c.identifyPeerGatewayOnlyReason,
-            // 1.0.0+22 (select_then_identify): a card's tap connects and
-            // keeps the link — its bulb blinks at once, 〔連線到 …〕 goes on
-            // over it (docs/select_then_identify.md).
+            // Only the card's Bluetooth action connects for identification.
             onHold: c.holdPeer,
             onRelease: c.releaseHeld,
             holdLost: c.heldLinkLost,
