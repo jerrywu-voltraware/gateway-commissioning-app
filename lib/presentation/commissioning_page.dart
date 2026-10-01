@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../application/backend_environment.dart';
 import '../application/android_app_update.dart';
+import '../application/ios_app_version.dart';
 import '../application/commissioning_controller.dart';
 import '../application/auto_checklist.dart';
 import '../application/connection_status.dart';
@@ -1553,6 +1554,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         colors = Theme.of(context).colorScheme;
     final env = ref.watch(backendEnvProvider);
     final updateSupported = ref.watch(androidUpdateSupportedProvider);
+    final iosVersionSupported = ref.watch(iosAppVersionSupportedProvider);
     _scheduleAutoFlow(state);
     final topologySettings = ref.watch(topologyProvider);
     final topology = topologySettings.topology;
@@ -1736,6 +1738,39 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                                     ],
                                   ),
                             enabled: updateEnabled,
+                          );
+                        },
+                      ),
+                    ),
+                  if (iosVersionSupported && !demo)
+                    PopupMenuItem<String>(
+                      key: const Key('app-version-menu'),
+                      enabled: false,
+                      child: Consumer(
+                        builder: (context, ref, _) {
+                          final version = ref.watch(
+                            installedIosAppVersionProvider,
+                          );
+                          final installed = version.asData?.value;
+                          return _moreMenuRow(
+                            icon: Icons.info_outline,
+                            title: 'App 版本',
+                            subtitleWidget: Text(
+                              installed != null
+                                  ? '版本 ${installed.versionName} · Build ${installed.buildNumber}'
+                                  : version.isLoading
+                                  ? '讀取中…'
+                                  : '暫時無法讀取版本',
+                              key: installed == null
+                                  ? null
+                                  : const Key('app-installed-version'),
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
+                                  ),
+                            ),
                           );
                         },
                       ),

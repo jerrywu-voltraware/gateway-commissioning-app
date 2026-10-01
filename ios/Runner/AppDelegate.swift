@@ -4,6 +4,7 @@ import UIKit
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
   private var reportChannel: FlutterMethodChannel?
+  private var appInfoChannel: FlutterMethodChannel?
 
   override func application(
     _ application: UIApplication,
@@ -15,6 +16,36 @@ import UIKit
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
     configureReportChannel(binaryMessenger: engineBridge.applicationRegistrar.messenger())
+    configureAppInfoChannel(binaryMessenger: engineBridge.applicationRegistrar.messenger())
+  }
+
+  private func configureAppInfoChannel(binaryMessenger: FlutterBinaryMessenger) {
+    appInfoChannel = FlutterMethodChannel(
+      name: "voltraware/app_info",
+      binaryMessenger: binaryMessenger
+    )
+    appInfoChannel?.setMethodCallHandler { call, result in
+      guard call.method == "installed" else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      guard
+        let versionName = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
+        let buildNumber = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String,
+        !versionName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+        !buildNumber.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      else {
+        result(
+          FlutterError(
+            code: "metadata",
+            message: "Installed app version is unavailable",
+            details: nil
+          )
+        )
+        return
+      }
+      result(["versionName": versionName, "buildNumber": buildNumber])
+    }
   }
 
   private func configureReportChannel(binaryMessenger: FlutterBinaryMessenger) {

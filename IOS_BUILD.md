@@ -32,6 +32,11 @@ team. `--build` also compiles an unsigned debug app and does not install it.
 Both commands use existing dependencies (`--no-pub`). Neither modifies the
 Apple signing team or system certificate trust.
 
+iOS and Android use the shared release version in `pubspec.yaml` by default.
+After changing that version or pulling a revision that changes it, regenerate
+the iOS configuration before Xcode Run so the installed version stays in sync.
+Android-only `-BuildName` / `-BuildNumber` overrides do not update iOS.
+
 Before an agent runs either modifying mode in this handoff, obtain the requested
 one-time confirmation to include the existing production backend credential in
 local iOS build configuration/artifacts for production backend access. The

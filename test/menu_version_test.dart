@@ -2,9 +2,11 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gateway_commissioning/application/android_app_update.dart';
+import 'package:gateway_commissioning/application/ios_app_version.dart';
 import 'package:gateway_commissioning/application/commissioning_controller.dart';
 import 'package:gateway_commissioning/data/android_app_update.dart';
 import 'package:gateway_commissioning/data/contracts.dart';
@@ -67,6 +69,7 @@ Future<(ProviderContainer, _MenuGateway)> _pump(
   Brightness brightness = Brightness.light,
   double scale = 1,
   bool android = true,
+  bool ios = false,
 }) async {
   tester.view.physicalSize = const Size(360, 640);
   tester.view.devicePixelRatio = 1;
@@ -87,6 +90,7 @@ Future<(ProviderContainer, _MenuGateway)> _pump(
         apiProvider.overrideWithValue(gateway),
         linkProvider.overrideWithValue(gateway),
         androidUpdateSupportedProvider.overrideWithValue(android),
+        iosAppVersionSupportedProvider.overrideWithValue(ios),
         androidUpdatePlatformProvider.overrideWithValue(platform),
       ],
       child: const GatewayApp(),
@@ -108,6 +112,115 @@ PopupMenuItem<String> _updateItem(WidgetTester tester) =>
     tester.widget(find.byKey(const Key('app-update-menu')));
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  const iosChannel = MethodChannel('voltraware/app_info');
+  final messenger =
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+  tearDown(() => messenger.setMockMethodCallHandler(iosChannel, null));
+
+  for (final brightness in Brightness.values) {
+    testWidgets('iOS ${brightness.name}: installed version fits the menu '
+        'during commissioning without using Android updates', (tester) async {
+      var reads = 0;
+      messenger.setMockMethodCallHandler(iosChannel, (call) async {
+        expect(call.method, 'installed');
+        reads++;
+        return {'versionName': '1.0.11', 'buildNumber': '21.3'};
+      });
+      final androidPlatform = _VersionPlatform();
+      final (container, gateway) = await _pump(
+        tester,
+        androidPlatform,
+        android: false,
+        ios: true,
+        brightness: brightness,
+        scale: 1.3,
+      );
+      expect(reads, 0, reason: 'metadata is only read when the menu opens');
+      await container
+          .read(commissionProvider.notifier)
+          .prepare('https://example.invalid', '', offline: true);
+      await tester.pumpAndSettle();
+      await _open(tester);
+      expect(find.text('App 版本'), findsOneWidget);
+      expect(find.text('版本 1.0.11 · Build 21.3'), findsOneWidget);
+      expect(find.byType(PopupMenuItem<String>), findsNWidgets(4));
+      expect(find.byKey(const Key('app-update-menu')), findsNothing);
+      expect(find.text('返回首頁且結束配置後可用'), findsNothing);
+      final item = tester.widget<PopupMenuItem<String>>(
+        find.byKey(const Key('app-version-menu')),
+      );
+      expect(item.enabled, isFalse, reason: 'version is informational');
+      for (final key in ['app-version-menu', 'app-installed-version']) {
+        final rect = tester.getRect(find.byKey(Key(key)));
+        expect(rect.left, greaterThanOrEqualTo(0));
+        expect(rect.right, lessThanOrEqualTo(360));
+        expect(rect.top, greaterThanOrEqualTo(0));
+        expect(rect.bottom, lessThanOrEqualTo(640));
+      }
+      expect(tester.takeException(), isNull);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      await _open(tester);
+      expect(reads, 1);
+      expect(androidPlatform.reads, 0);
+      expect(gateway.updateChecks, 0);
+    });
+  }
+
+  testWidgets('iOS open menu receives native metadata without a guessed '
+      'version or network check', (tester) async {
+    final pending = Completer<Map<String, String>>();
+    messenger.setMockMethodCallHandler(iosChannel, (_) => pending.future);
+    final platform = _VersionPlatform();
+    final (_, gateway) = await _pump(
+      tester,
+      platform,
+      android: false,
+      ios: true,
+    );
+    await _open(tester);
+    expect(find.text('讀取中…'), findsOneWidget);
+    expect(find.byKey(const Key('app-installed-version')), findsNothing);
+    pending.complete({'versionName': '1.0.0', 'buildNumber': '22'});
+    await tester.pumpAndSettle();
+    expect(find.text('版本 1.0.0 · Build 22'), findsOneWidget);
+    expect(find.text('讀取中…'), findsNothing);
+    expect(platform.reads, 0);
+    expect(gateway.updateChecks, 0);
+  });
+
+  testWidgets('iOS missing or malformed bundle metadata has an honest '
+      'fallback and no Android update action', (tester) async {
+    for (final metadata in <Map<String, Object?>?>[
+      null,
+      {'versionName': '', 'buildNumber': '22'},
+      {'versionName': '1.0.0', 'buildNumber': ' '},
+      {'versionName': '1.0.0', 'buildNumber': 22},
+    ]) {
+      messenger.setMockMethodCallHandler(iosChannel, (_) async {
+        if (metadata == null) throw PlatformException(code: 'metadata');
+        return metadata;
+      });
+      final platform = _VersionPlatform();
+      final (_, gateway) = await _pump(
+        tester,
+        platform,
+        android: false,
+        ios: true,
+      );
+      await _open(tester);
+      expect(find.text('暫時無法讀取版本'), findsOneWidget);
+      expect(find.byKey(const Key('app-installed-version')), findsNothing);
+      expect(find.byKey(const Key('app-update-menu')), findsNothing);
+      expect(platform.reads, 0);
+      expect(gateway.updateChecks, 0);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+    }
+  });
+
   for (final brightness in Brightness.values) {
     for (final scale in [1.0, 1.3]) {
       testWidgets('360x640 ${brightness.name} $scale: disabled update retains '
