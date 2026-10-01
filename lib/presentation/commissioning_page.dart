@@ -1942,7 +1942,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                 controller: _pageScroll,
                 // 1.0.0+10: 16 (was 20) — more width for the gateway list's
                 // rows at 360 dp.
-                padding: EdgeInsets.all(selectingPtus ? 12 : 16),
+                padding: EdgeInsets.all(
+                  state.step == 1 ? 12 : (selectingPtus ? 12 : 16),
+                ),
                 children: [
                   if (demo)
                     Container(
@@ -1966,10 +1968,11 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                         ),
                       ),
                     ),
-                    const SizedBox(height: 10),
-                    LinearProgressIndicator(
-                      value: shown / (stepLabels.length - 1),
-                    ),
+                    SizedBox(height: state.step == 1 ? 2 : 10),
+                    if (state.step != 1)
+                      LinearProgressIndicator(
+                        value: shown / (stepLabels.length - 1),
+                      ),
                     const SizedBox(height: 4),
                     Text(
                       '${shown + 1} / ${stepLabels.length}   ${stepLabels[shown]}',
@@ -1979,7 +1982,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                       ),
                     ),
                   ],
-                  SizedBox(height: selectingPtus ? 4 : 12),
+                  SizedBox(
+                    height: state.step == 1 ? 6 : (selectingPtus ? 4 : 12),
+                  ),
                   // The phone's signal row is in 「設備與連線資訊」; a lost
                   // Bluetooth link is said here, never behind the fold.
                   if (state.peer != null &&
@@ -2259,8 +2264,18 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                       key: state.step == 1
                           ? const Key('gateway-discovery-card')
                           : null,
+                      // The devices are cards themselves. Avoid a second inset
+                      // that hides the first device below the fold on a phone.
+                      margin: state.step == 1 ? EdgeInsets.zero : null,
+                      elevation: state.step == 1 ? 0 : null,
+                      color: state.step == 1 ? Colors.transparent : null,
+                      shape: state.step == 1
+                          ? const RoundedRectangleBorder()
+                          : null,
                       child: Padding(
-                        padding: EdgeInsets.all(selectingPtus ? 8 : 16),
+                        padding: EdgeInsets.all(
+                          state.step == 1 ? 0 : (selectingPtus ? 8 : 16),
+                        ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: content(state, controller, demo),
@@ -3396,7 +3411,6 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         ];
       case 1:
         return [
-          ..._savedResume(s, c, enabled),
           GatewayDiscovery(
             key: _discoveryKey,
             enabled: enabled,
@@ -3420,6 +3434,10 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             onConnect: (peer) => _connectPeer(c, peer),
             choice: _gatewayChoice,
           ),
+          // Keep saved work available without placing it before nearby devices.
+          if (s.savedResume || s.savedProgress || s.lastDone.isNotEmpty)
+            const SizedBox(height: 16),
+          ..._savedResume(s, c, enabled),
         ];
       case 2:
         final check = networkCheck(state: s, env: env);
@@ -4845,7 +4863,7 @@ class AssignProgressHeader extends StatelessWidget {
 // ---- One-thing screens (09-28): each page's one sentence and its buttons.
 
 const startTaskTitle = '登入後台，開始配置';
-const pickGatewayTaskTitle = '請點選眼前的閘道器，連線後可按燈泡辨識';
+const pickGatewayTaskTitle = '選擇閘道器';
 const checkingTaskTitle = '正在連線並檢查網路，請稍候';
 const checkPassedTaskTitle = '網路檢查通過，看完請按下方繼續';
 const testModeTaskTitle = '閘道器在測試模式，請先切回正常模式';

@@ -164,10 +164,10 @@ const gatewayHoldLostLabel = '已斷線';
 const gatewayCleanupFailedText = '藍牙清理未完成，請重試斷開。';
 
 /// 1.0.0+22: the SnackBar when the selected gateway's connect failed.
-String gatewayHoldFailedText(String title) => '無法連線 $title，請按「連線以辨識」重試';
+String gatewayHoldFailedText(String title) => '無法連線 $title，請按「藍牙連線」重試';
 
 /// 1.0.0+22: the SnackBar when the selected gateway's kept link dropped.
-String gatewayHoldLostText(String title) => '$title 的藍牙連線已中斷，請按「連線以辨識」重新連線';
+String gatewayHoldLostText(String title) => '$title 的藍牙連線已中斷，請按「藍牙連線」重新連線';
 
 /// 1.0.0+22 (the phone trial): the bulb is on the selected card only once
 /// its link is up ([_Hold.held]); every other card — and the selected one
@@ -364,28 +364,46 @@ class _SelectedMark extends StatelessWidget {
     super.key,
     required this.connecting,
     this.phase = _Hold.none,
+    this.selected = true,
   });
   final bool connecting;
   final _Hold phase;
+  final bool selected;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final spinning = connecting || phase == _Hold.connecting;
-    final failed = !spinning && (phase == _Hold.failed || phase == _Hold.lost);
-    final fill = failed ? colors.error : colors.primary;
-    final ink = failed ? colors.onError : colors.onPrimary;
+    final spinning =
+        connecting || phase == _Hold.connecting || phase == _Hold.disconnecting;
+    final failed =
+        !spinning &&
+        (phase == _Hold.failed ||
+            phase == _Hold.lost ||
+            phase == _Hold.cleanupFailed);
+    final fill = !selected
+        ? colors.surfaceContainerHighest
+        : failed
+        ? colors.error
+        : colors.primary;
+    final ink = !selected
+        ? colors.onSurfaceVariant
+        : failed
+        ? colors.onError
+        : colors.onPrimary;
     final style = Theme.of(context).textTheme.labelMedium?.copyWith(
       color: ink,
       fontWeight: FontWeight.w700,
       height: 1.2,
     );
-    final (icon, text) = spinning
-        ? (null, gatewayConnectingLabel)
+    final (icon, text) = !selected
+        ? (Icons.bluetooth_disabled, '未連線')
+        : spinning
+        ? (null, phase == _Hold.disconnecting ? '斷開中…' : gatewayConnectingLabel)
         : switch (phase) {
             _Hold.held => (Icons.bluetooth_connected, gatewayHeldLabel),
             _Hold.failed => (Icons.error_outline, gatewayHoldFailedLabel),
             _Hold.lost => (Icons.bluetooth_disabled, gatewayHoldLostLabel),
+            _Hold.cleanupFailed => (Icons.error_outline, '清理未完成'),
             _ => (Icons.check, gatewaySelectedLabel),
           };
     return Container(
@@ -801,6 +819,17 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
   /// 1.0.0+22: a gateway selected keeps its link ([GatewayDiscovery.onHold]):
   /// no scan meanwhile (it would drop the link) — 〔重新搜尋〕 lets it go.
   bool get _holds => widget.onHold != null && _holdId != null;
+
+  /// A card's explicit connection selects that same peer before taking the
+  /// existing serial gate. No await can let another card slip between them.
+  Future<bool> _holdFromCard(GatewayPeer peer) {
+    if (!widget.enabled || !_canSelect || widget.onHold == null) {
+      return Future.value(false);
+    }
+    _select(peer);
+    if (_selectedId != peer.id) return Future.value(false);
+    return _holdSelected();
+  }
 
   /// 1.0.0+22: connects to the selected gateway and keeps the link
   /// ([GatewayDiscovery.onHold]); its card says 「連線中…」, then 「已連線」
@@ -1567,36 +1596,49 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
           key: ValueKey('gateway-select-${peer.id}'),
           container: true,
           selected: selected,
-          child: InkWell(
-            key: ValueKey(peer.id),
-            borderRadius: BorderRadius.circular(4),
-            // 1.0.0+14: selects, never connects (the bottom button does).
-            onTap: widget.enabled && _canSelect
-                ? () => _select(heard?.peer ?? peer)
-                : null,
-            child: _tileBody(
-              peer,
-              cardTitle: cardTitle,
-              signal: signal,
-              signalWidth: signalWidth,
-              live: live,
-              nearest: nearest,
-              badgeKey: badgeKey,
-              badgeText: badgeText,
-              configured: configured,
-              identified: identified,
-              identifying: identifying,
-              presence: presence,
-              detail: detail,
-              small: small,
-              selected: selected,
-              connecting: connecting,
-              hold: hold,
-              onIdentify:
-                  widget.enabled && !_selecting && _identifyingId == null
-                  ? () => _identify(heard?.peer ?? peer)
-                  : null,
-            ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              InkWell(
+                key: ValueKey(peer.id),
+                borderRadius: BorderRadius.circular(4),
+                // Card taps select; its explicit Bluetooth button connects.
+                onTap: widget.enabled && _canSelect
+                    ? () => _select(heard?.peer ?? peer)
+                    : null,
+                child: _tileBody(
+                  peer,
+                  cardTitle: cardTitle,
+                  signal: signal,
+                  signalWidth: signalWidth,
+                  live: live,
+                  nearest: nearest,
+                  badgeKey: badgeKey,
+                  badgeText: badgeText,
+                  configured: configured,
+                  identified: identified,
+                  identifying: identifying,
+                  presence: presence,
+                  detail: detail,
+                  small: small,
+                  selected: selected,
+                  connecting: connecting,
+                  hold: hold,
+                  onIdentify:
+                      widget.enabled && !_selecting && _identifyingId == null
+                      ? () => _identify(heard?.peer ?? peer)
+                      : null,
+                ),
+              ),
+              if (widget.onHold != null)
+                _cardActions(
+                  heard?.peer ?? peer,
+                  selected: selected,
+                  hold: hold,
+                  identifying: identifying,
+                  identified: identified,
+                ),
+            ],
           ),
         ),
       ),
@@ -1719,19 +1761,22 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
                       ),
                     ),
                     const SizedBox(width: 6),
-                    // 1.0.0+14: its room kept on every card (unseen
-                    // unless selected): a selection moves nothing.
+                    // Keep one state slot per card so selection never moves
+                    // metadata; explicit-link cards also show their idle state.
                     Visibility(
-                      visible: selected,
+                      visible: selected || widget.onHold != null,
                       maintainSize: true,
                       maintainAnimation: true,
                       maintainState: true,
                       child: _SelectedMark(
                         key: selected
                             ? ValueKey('gateway-selected-${peer.id}')
+                            : widget.onHold != null
+                            ? ValueKey('gateway-state-${peer.id}')
                             : null,
                         connecting: connecting,
                         phase: hold,
+                        selected: selected || widget.onHold == null,
                       ),
                     ),
                   ],
@@ -1739,42 +1784,141 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
               ],
             ),
           ),
-          // 1.0.0+22 (the phone trial): the bulb only on the selected card
-          // once its link is up; otherwise its room ([gatewayBulbBox]) is
-          // kept empty — the text column and the row height never move.
-          if (widget.onIdentify != null)
-            hold == _Hold.held
-                ? IconButton(
-                    key: ValueKey('identify-${peer.id}'),
-                    tooltip: identifyGatewayLabel,
-                    // While this row's identify runs: a small spinner in
-                    // the icon's own 24 dp box, so the row does not change
-                    // size.
-                    icon: identifying
-                        ? SizedBox(
-                            key: ValueKey('identify-progress-${peer.id}'),
-                            width: 24,
-                            height: 24,
-                            child: const Padding(
-                              padding: EdgeInsets.all(3),
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.5,
-                              ),
-                            ),
-                          )
-                        : Icon(
-                            identified
-                                ? Icons.lightbulb
-                                : Icons.lightbulb_outline,
-                          ),
-                    visualDensity: VisualDensity.compact,
-                    onPressed: onIdentify,
-                  )
-                : SizedBox(
-                    key: ValueKey('identify-room-${peer.id}'),
-                    width: gatewayBulbBox,
-                    height: gatewayBulbBox,
+          if (widget.onHold == null && widget.onIdentify != null)
+            _identifyControl(
+              peer,
+              hold: hold,
+              identifying: identifying,
+              identified: identified,
+              onIdentify: onIdentify,
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _identifyControl(
+    GatewayPeer peer, {
+    required _Hold hold,
+    required bool identifying,
+    required bool identified,
+    required VoidCallback? onIdentify,
+  }) => hold == _Hold.held
+      ? IconButton(
+          key: ValueKey('identify-${peer.id}'),
+          tooltip: identifyGatewayLabel,
+          // While this row's identify runs: a small spinner in
+          // the icon's own 24 dp box, so the row does not change
+          // size.
+          icon: identifying
+              ? SizedBox(
+                  key: ValueKey('identify-progress-${peer.id}'),
+                  width: 24,
+                  height: 24,
+                  child: const Padding(
+                    padding: EdgeInsets.all(3),
+                    child: CircularProgressIndicator(strokeWidth: 2.5),
                   ),
+                )
+              : Icon(identified ? Icons.lightbulb : Icons.lightbulb_outline),
+          visualDensity: VisualDensity.compact,
+          onPressed: onIdentify,
+        )
+      : SizedBox(
+          key: ValueKey('identify-room-${peer.id}'),
+          width: gatewayBulbBox,
+          height: gatewayBulbBox,
+        );
+
+  Widget _cardActions(
+    GatewayPeer peer, {
+    required bool selected,
+    required _Hold hold,
+    required bool identifying,
+    required bool identified,
+  }) {
+    final ownsLink = selected && _holdId == peer.id;
+    final release =
+        ownsLink &&
+        (hold == _Hold.held ||
+            hold == _Hold.connecting ||
+            hold == _Hold.disconnecting ||
+            hold == _Hold.cleanupFailed);
+    final canRelease =
+        widget.enabled &&
+        !_selecting &&
+        _identifyingId == null &&
+        hold != _Hold.disconnecting;
+    const padding = EdgeInsets.symmetric(horizontal: 12);
+    return Padding(
+      key: ValueKey('gateway-actions-${peer.id}'),
+      padding: const EdgeInsets.fromLTRB(12, 0, 8, 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: release
+                  ? OutlinedButton.icon(
+                      key: const Key('gateway-disconnect'),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size(0, 48),
+                        padding: padding,
+                      ),
+                      onPressed: canRelease
+                          ? () async {
+                              // A retained callback from A must never close B.
+                              if (_selectedId != peer.id ||
+                                  _holdId != peer.id) {
+                                return;
+                              }
+                              await _disconnectSelected();
+                            }
+                          : null,
+                      icon: const Icon(Icons.bluetooth_disabled, size: 20),
+                      label: Text(
+                        hold == _Hold.disconnecting
+                            ? '斷開中…'
+                            : hold == _Hold.connecting
+                            ? '取消連線'
+                            : hold == _Hold.cleanupFailed
+                            ? '重試斷開'
+                            : '斷開',
+                      ),
+                    )
+                  : FilledButton.icon(
+                      key: selected
+                          ? const Key('gateway-link-identify')
+                          : ValueKey('gateway-link-${peer.id}'),
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size(0, 48),
+                        padding: padding,
+                      ),
+                      onPressed: widget.enabled && _canSelect
+                          ? () => _holdFromCard(peer)
+                          : null,
+                      icon: const Icon(Icons.bluetooth, size: 20),
+                      label: const Text('藍牙連線'),
+                    ),
+            ),
+          ),
+          if (widget.onIdentify != null) ...[
+            const SizedBox(width: 8),
+            _identifyControl(
+              peer,
+              hold: hold,
+              identifying: identifying,
+              identified: identified,
+              onIdentify:
+                  widget.enabled &&
+                      !_selecting &&
+                      _identifyingId == null &&
+                      ownsLink &&
+                      hold == _Hold.held
+                  ? () => _identify(peer)
+                  : null,
+            ),
+          ],
         ],
       ),
     );
@@ -1818,7 +1962,6 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
   /// 「已找到 N 台」 ([count]: the gateways listed as heard).
   Widget _searchProgress(int count) {
     final theme = Theme.of(context);
-    final colors = theme.colorScheme;
     final waiting = _search == _Search.retrying;
     final head = _selecting
         ? gatewayBusyText
@@ -1834,53 +1977,37 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
       key: const Key('gateway-search-progress'),
       container: true,
       liveRegion: true,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-        decoration: BoxDecoration(
-          color: colors.primaryContainer.withValues(alpha: 0.5),
-          borderRadius: BorderRadius.circular(8),
-        ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
+            Wrap(
+              spacing: 12,
+              runSpacing: 2,
               children: [
-                Icon(Icons.search, size: 20, color: colors.primary),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    head,
-                    key: const Key('gateway-search-head'),
-                    style: headStyle,
-                    // 1.0.0+22: one line height whatever the head says (an
-                    // ellipsis comes from another font): selecting a card
-                    // (「搜尋已暫停」) moves nothing.
-                    strutStyle: headStyle == null
-                        ? null
-                        : StrutStyle.fromTextStyle(
-                            headStyle,
-                            forceStrutHeight: true,
-                          ),
+                Text(
+                  head,
+                  key: const Key('gateway-search-head'),
+                  style: headStyle,
+                ),
+                Text(
+                  gatewayFoundCountText(count),
+                  key: const Key('gateway-found-count'),
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 4),
             AnimatedBuilder(
               animation: _progress,
               builder: (context, _) => LinearProgressIndicator(
                 key: const Key('gateway-search-bar'),
                 value: waiting ? null : _progress.value,
-                minHeight: 6,
+                minHeight: 3,
                 borderRadius: BorderRadius.circular(3),
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              gatewayFoundCountText(count),
-              key: const Key('gateway-found-count'),
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
               ),
             ),
           ],
@@ -2003,88 +2130,17 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // 1.0.0+10: a section title (titleSmall w600) and room between
-        // the note and the button (phone: they touched).
-        Text(
-          '選擇附近的閘道器',
-          style: Theme.of(
-            context,
-          ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
-        ),
-        const SizedBox(height: 2),
-        const Text('RSSI 為手機收到的藍牙訊號，與後端在線狀態不同。'),
-        if (_selectedId != null && widget.onHold != null) ...[
-          const SizedBox(height: 8),
-          Text('已選擇：${_choice.title ?? _selectedPeer?.name ?? ""}'),
-          Wrap(
-            spacing: 8,
-            runSpacing: 4,
-            children: [
-              if (_holdPhase == _Hold.held ||
-                  _holdPhase == _Hold.connecting ||
-                  _holdPhase == _Hold.disconnecting ||
-                  _holdPhase == _Hold.cleanupFailed)
-                OutlinedButton.icon(
-                  key: const Key('gateway-disconnect'),
-                  onPressed:
-                      widget.enabled &&
-                          !_selecting &&
-                          _identifyingId == null &&
-                          _holdPhase != _Hold.disconnecting
-                      ? _disconnectSelected
-                      : null,
-                  icon: const Icon(Icons.bluetooth_disabled),
-                  label: Text(
-                    _holdPhase == _Hold.disconnecting
-                        ? '斷開中…'
-                        : _holdPhase == _Hold.connecting
-                        ? '取消連線'
-                        : _holdPhase == _Hold.cleanupFailed
-                        ? '重試斷開'
-                        : '斷開',
-                  ),
-                )
-              else
-                FilledButton.icon(
-                  key: const Key('gateway-link-identify'),
-                  onPressed: widget.enabled && _canSelect
-                      ? _holdSelected
-                      : null,
-                  icon: const Icon(Icons.bluetooth),
-                  label: const Text('連線以辨識'),
-                ),
-              if (_holdPhase == _Hold.held)
-                OutlinedButton.icon(
-                  key: const Key('gateway-identify-selected'),
-                  onPressed:
-                      widget.enabled && !_selecting && _identifyingId == null
-                      ? () => _identify(_selectedPeer!)
-                      : null,
-                  icon: const Icon(Icons.lightbulb_outline),
-                  label: const Text(identifyGatewayLabel),
-                ),
-            ],
-          ),
-          if (_holdPhase == _Hold.connecting ||
-              _holdPhase == _Hold.disconnecting)
-            const LinearProgressIndicator(),
-          Text(
-            _holdPhase == _Hold.held
-                ? '已連線，可閃燈辨識；換台前請先斷開。'
-                : _holdPhase == _Hold.connecting
-                ? gatewayConnectingLabel
-                : _holdPhase == _Hold.disconnecting
-                ? '等待藍牙清理完成…'
-                : _holdPhase == _Hold.cleanupFailed
-                ? '藍牙清理未完成，請重試斷開。'
-                : '選卡不會連線或修改設定；連線辨識後再開始開通。',
-          ),
-        ],
-        const SizedBox(height: 8),
         Wrap(
           spacing: 8,
           runSpacing: 4,
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
+            Text(
+              '選擇附近的閘道器',
+              style: Theme.of(
+                context,
+              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+            ),
             // 1.0.0+17: after the second search found nothing it is the
             // big 〔重新搜尋〕 under the message instead.
             if (_search != _Search.notFound)
@@ -2133,6 +2189,28 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
             _error!,
             style: TextStyle(color: Theme.of(context).colorScheme.error),
           ),
+        if (nearest?.close == true)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Text(
+              '⚠ $gatewayCloseHint',
+              key: const Key('gateway-close-hint'),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.error,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        if (recent.isNotEmpty) ...[
+          _groupTitle('最近使用'),
+          ...recent.map((r) => tile(r.$2.peer, recent: r.$2)),
+        ],
+        if (nearby.isNotEmpty) ...[
+          _groupTitle('附近裝置（${nearby.length}）'),
+          ...nearby.map(tile),
+        ],
+        const SizedBox(height: 8),
+        const Text('RSSI 為手機收到的藍牙訊號，與後端在線狀態不同。'),
         if (nearest != null)
           Container(
             key: const Key('gateway-nearest-hint'),
@@ -2148,29 +2226,9 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
                     color: Theme.of(context).colorScheme.onSecondaryContainer,
                   ),
                 ),
-                if (nearest.close)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      '⚠ $gatewayCloseHint',
-                      key: const Key('gateway-close-hint'),
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.error,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
               ],
             ),
           ),
-        if (recent.isNotEmpty) ...[
-          _groupTitle('最近使用'),
-          ...recent.map((r) => tile(r.$2.peer, recent: r.$2)),
-        ],
-        if (nearby.isNotEmpty) ...[
-          _groupTitle('附近裝置（${nearby.length}）'),
-          ...nearby.map(tile),
-        ],
         if (_backendAt != null) const Text('後端狀態每 15 秒更新，僅代表目前選擇的後端環境。'),
         if (_backendCurrent)
           const Text(
