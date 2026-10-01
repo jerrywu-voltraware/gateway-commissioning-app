@@ -1,14 +1,14 @@
 // 1.0.0+11 (phone, 360x740 dp at text scale 1.1): 〔辨識〕 on the gateway
 // list paused the scan for 2–4 s, and meanwhile every row read 「未收到廣播」
 // (cutting the title to 「站 80・閘道…」), the hint above the list went away
-// and came back (the list jumped), and the row's 「已閃燈」 was often off
+// and came back (the list jumped), and the row's 「已送出」 was often off
 // screen. The busy row above the step card had also rebuilt the list from
 // scratch, losing all of it.
 //
 // Now, with real fonts (support/real_fonts.dart) at 1.1 and 1.3:
 // - during 〔辨識〕 the rows keep their last RSSI (grey), the hint stays and
 //   nothing in the list moves; afterwards a SnackBar 「站 80 · 閘道器 2
-//   已閃燈」 (the row's mark stays too);
+//   已送出」 (the row's mark stays too);
 // - a remembered gateway never heard has no row; an unselected gateway
 //   leaves after 30 s without a signal, while the selected one stays with
 //   「訊號中斷」; a stopped scan keeps its rows; no title cut.
@@ -169,8 +169,8 @@ void main() {
   });
 
   test('the SnackBar names the gateway blinked', () {
-    expect(identifiedSnackText('GIOS-S80-GW02'), '站 80 · 閘道器 2 已閃燈');
-    expect(identifiedSnackText('GIOS-X'), 'GIOS-X 已閃燈');
+    expect(identifiedSnackText('GIOS-S80-GW02'), '站 80 · 閘道器 2 已送出');
+    expect(identifiedSnackText('GIOS-X'), 'GIOS-X 已送出');
   });
 
   for (final scale in _scales) {
@@ -255,7 +255,7 @@ void main() {
       // fleet-status has only its own row): the row and the SnackBar say
       // 「未配置閘道器 …70F0」, never the old 80/2 it advertises.
       expect(
-        find.descendant(of: snack, matching: find.text('未配置閘道器 …70F0 已閃燈')),
+        find.descendant(of: snack, matching: find.text('未配置閘道器 …70F0 已送出')),
         findsOneWidget,
       );
       final rect = tester.getRect(snack);

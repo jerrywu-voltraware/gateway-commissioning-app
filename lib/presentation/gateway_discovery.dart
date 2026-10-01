@@ -73,7 +73,7 @@ const gatewayPendingLabel = '待核對';
 const identifyGatewayLabel = '辨識閘道器';
 
 /// 1.0.0+9: on the row for 3 s after 〔辨識〕 blinked it.
-const identifiedHint = '已閃燈';
+const identifiedHint = '已送出';
 
 /// 1.0.0+9: how long [identifiedHint] stays.
 const identifiedHintFor = Duration(seconds: 3);

@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/gateway_topology.dart';
+import '../core/identify.dart';
 
 /// 開發期開關：閘道器拓撲（直連／星狀）與星狀模式的每台 PTU 數。
 /// Release 前會再加密碼鎖；本次只做開關本身。
@@ -10,9 +11,11 @@ class TopologySettingsState {
     this.starCount = defaultStarPtuCount,
     this.directBindOnConfirm = true,
     this.loaded = false,
+    this.identifySeconds = defaultIdentifySeconds,
   });
   final GatewayTopology topology;
   final int starCount;
+  final int identifySeconds;
 
   /// Direct mode (firmware 1.7.20+): 「是這台，開始監控」 also binds the
   /// gateway to that PTU's MAC (`direct_bind_mac`), so it never connects a
@@ -35,11 +38,13 @@ class TopologySettingsState {
     int? starCount,
     bool? directBindOnConfirm,
     bool? loaded,
+    int? identifySeconds,
   }) => TopologySettingsState(
     topology: topology ?? this.topology,
     starCount: starCount ?? this.starCount,
     directBindOnConfirm: directBindOnConfirm ?? this.directBindOnConfirm,
     loaded: loaded ?? this.loaded,
+    identifySeconds: identifySeconds ?? this.identifySeconds,
   );
 }
 
@@ -70,6 +75,7 @@ class TopologySettingsController extends Notifier<TopologySettingsState> {
         .where((t) => t.name == saved)
         .firstOrNull;
     final savedCount = prefs.getInt(_starCountKey);
+    final savedSeconds = prefs.get(identifySecondsPreference);
     state = state.copy(
       topology: topology ?? state.topology,
       starCount: savedCount == null
@@ -77,7 +83,25 @@ class TopologySettingsController extends Notifier<TopologySettingsState> {
           : savedCount.clamp(minStarPtuCount, maxStarPtuCount),
       directBindOnConfirm: prefs.getBool(_bindKey) ?? state.directBindOnConfirm,
       loaded: true,
+      identifySeconds:
+          savedSeconds is int &&
+              savedSeconds >= 0 &&
+              savedSeconds <= maxIdentifySeconds
+          ? savedSeconds
+          : defaultIdentifySeconds,
     );
+  }
+
+  Future<void> setIdentifySeconds(int seconds) async {
+    if (seconds < 0 || seconds > maxIdentifySeconds) {
+      throw RangeError.range(seconds, 0, maxIdentifySeconds, 'seconds');
+    }
+    await ready;
+    final prefs = await SharedPreferences.getInstance();
+    if (!await prefs.setInt(identifySecondsPreference, seconds)) {
+      throw StateError('Could not save identify duration');
+    }
+    if (ref.mounted) state = state.copy(identifySeconds: seconds);
   }
 
   Future<void> setTopology(GatewayTopology value) async {

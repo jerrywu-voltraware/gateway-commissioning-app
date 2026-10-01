@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import '../core/mqtt_target.dart';
+import '../core/identify.dart';
 import '../core/protocol.dart';
 import 'contracts.dart';
 
@@ -26,6 +27,7 @@ class DemoSystem implements GatewayLink, GatewayApi, ForeignAcks {
     // Firmware 1.7.20 direct mode + PTU identify (remove to simulate older).
     'direct_autoconnect_supported': true,
     'identify_ptu_supported': true,
+    'identify_ptu_protocol': 'a2_seconds',
     'auto_connect_min_rssi': -55,
     'direct_bind_mac': '',
   };
@@ -48,13 +50,19 @@ class DemoSystem implements GatewayLink, GatewayApi, ForeignAcks {
   /// MAC / RSSI when there is one.
   void remoteIdentify({
     String reqId = '20260926-00007',
-    String? confirm = 'timeout',
+    String? confirm,
+    int seconds = defaultIdentifySeconds,
   }) {
     final ptu = devices.where((d) => d['connected'] == true).firstOrNull;
     relayForeignAck({
       'gateway_led': 'ok',
+      'duration_ms': seconds * 1000,
+      if (confirm == null) ...{
+        'identify_ptu_protocol': 'a2_seconds',
+        'ptu_reply_expected': false,
+      },
       'ptu_write': ptu == null ? 'not_connected' : 'ok',
-      'ptu_confirmed': ptu != null && confirm == 'ok',
+      if (confirm != null) 'ptu_confirmed': ptu != null && confirm == 'ok',
       if (ptu != null && confirm != null) ...{
         'ptu_confirm': confirm,
         'ptu_confirm_ms': confirm == 'ok' ? 180 : 1505,
@@ -68,7 +76,7 @@ class DemoSystem implements GatewayLink, GatewayApi, ForeignAcks {
   }
 
   /// Round 18: firmware 1.7.25's `ptu_confirm` for a PTU identify (`ok`,
-  /// `unsupported_pattern`, `timeout`); null simulates older firmware.
+  /// `unsupported_pattern`, `timeout`); null uses the configured protocol.
   String? identifyPtuConfirm;
 
   /// Firmware 1.7.20 direct mode: `max_connections` 1 on a firmware that
@@ -403,7 +411,19 @@ class DemoSystem implements GatewayLink, GatewayApi, ForeignAcks {
           return {'duration_ms': 6000};
         }
         final target = params['target'] ?? 'both';
-        if (target == 'gateway') return {'duration_ms': 6000};
+        final durationMs = params['duration_ms'] ?? 6000;
+        if (durationMs is! int || durationMs < 0 || durationMs > 255000) {
+          throw const GatewayFailure.gateway('invalid duration_ms');
+        }
+        final seconds = (durationMs / 1000).ceil();
+        if (target == 'gateway') {
+          return {
+            'target': target,
+            'gateway_led': 'ok',
+            'duration_ms': seconds * 1000,
+            'identify_ptu_protocol': 'a2_seconds',
+          };
+        }
         // Firmware 1.7.20: target=ptu fails outright when the PTU side
         // can't be written (not_connected/ambiguous_target/write_failed).
         // target=both (the default, and the only target the APP's own UI
@@ -430,9 +450,17 @@ class DemoSystem implements GatewayLink, GatewayApi, ForeignAcks {
           throw GatewayFailure.gateway(ptuWrite);
         }
         return {
-          'duration_ms': 6000,
+          'target': target,
+          'duration_ms': seconds * 1000,
+          if (target != 'ptu') 'gateway_led': 'ok',
           'ptu_write': ptuWrite,
-          'ptu_confirmed': ptu != null && identifyPtuConfirm == 'ok',
+          if (identifyPtuConfirm == null &&
+              config['identify_ptu_protocol'] == 'a2_seconds') ...{
+            'identify_ptu_protocol': 'a2_seconds',
+            'ptu_reply_expected': false,
+          },
+          if (identifyPtuConfirm != null)
+            'ptu_confirmed': ptu != null && identifyPtuConfirm == 'ok',
           if (ptu != null && identifyPtuConfirm != null) ...{
             'ptu_confirm': identifyPtuConfirm,
             'ptu_confirm_ms': identifyPtuConfirm == 'ok' ? 180 : 1500,

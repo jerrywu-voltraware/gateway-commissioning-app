@@ -668,7 +668,7 @@ void main() {
     final snack = find.byKey(const Key('gateway-identified-snack'));
     expect(snack, findsOneWidget);
     expect(
-      find.descendant(of: snack, matching: find.text('未配置閘道器 …70F0 已閃燈')),
+      find.descendant(of: snack, matching: find.text('未配置閘道器 …70F0 已送出')),
       findsOneWidget,
     );
     final bar = find.byKey(const Key('gateway-connect-bar'));

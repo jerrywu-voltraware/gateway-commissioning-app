@@ -394,7 +394,7 @@ void main() {
       expect(identifyConfirmOf(a), IdentifyConfirm.confirmed);
       expect(identifyNoteText(a), startsWith('PTU 已確認亮燈（PTU $_own'));
       expect(identifyLineText(a), startsWith('PTU 已確認亮燈 · $_own'));
-      expect(identifyAckText(a), startsWith('PTU 已確認亮燈；閘道器雙閃 6 秒'));
+      expect(identifyAckText(a), allOf(startsWith('PTU 已確認亮燈'), contains('閘道器雙閃 6 秒')));
     });
 
     test('ptu_confirm timeout: sent, the PTU did not confirm', () {
@@ -402,12 +402,12 @@ void main() {
       expect(identifyConfirmOf(a), IdentifyConfirm.timeout);
       expect(
         identifyNoteText(a),
-        startsWith('閘道器已送出；PTU 未回應確認（PTU 韌體尚未支援），請看樁上燈號'),
+        startsWith('閘道器已送出；舊版閘道器未取得 PTU 確認，請看樁上燈號'),
       );
       expect(identifyLineText(a), startsWith('已送出 · PTU 未回應確認 · 請看樁上燈號'));
       expect(
         identifyAckText(a),
-        startsWith('閘道器已送出；PTU 未回應確認（PTU 韌體尚未支援），請看樁上燈號'),
+        startsWith('閘道器已送出；舊版閘道器未取得 PTU 確認，請看樁上燈號'),
       );
     });
 
@@ -416,7 +416,7 @@ void main() {
       expect(identifyConfirmOf(a), IdentifyConfirm.legacy);
       expect(identifyNoteText(a), '已送出，請看樁上燈號（PTU $_own · -44 dBm）');
       expect(identifyLineText(a), '已送出 · 請看樁上燈號 · $_own · -44 dBm');
-      expect(identifyAckText(a), contains('PTU 燈效需新版 PTU 韌體'));
+      expect(identifyAckText(a), contains('已送出'));
       expect(identifyAckText(a), isNot(contains('已確認亮燈')));
     });
 
@@ -447,7 +447,7 @@ void main() {
         expect(state.identifyNote, startsWith(text));
         expect(
           state.message,
-          startsWith(confirm == null ? 'PTU 與閘道器正在閃燈' : text),
+          startsWith(text),
         );
         // Confirmed or not, the PTU that blinked is the identified one.
         expect(state.identifiedMac, _own);

@@ -451,6 +451,7 @@ const gatewayConfigKeys = [
   'otp_enabled',
   'identify_supported',
   'identify_ptu_supported',
+  'identify_ptu_protocol',
   'direct_autoconnect_supported',
   'mqtt_target',
   'mqtt_host',

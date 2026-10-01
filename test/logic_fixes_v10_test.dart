@@ -257,7 +257,7 @@ void main() {
       hold.complete();
       expect(await done, isTrue);
       expect(fake.identifyRequests, [
-        {'target': 'both'},
+        {'target': 'both', 'duration_ms': 6000},
       ]);
       final s = read();
       expect(s.error, isNull);

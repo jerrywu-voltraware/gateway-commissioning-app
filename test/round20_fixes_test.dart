@@ -588,7 +588,7 @@ void main() {
         final bar = tester.getRect(find.byType(DirectPickActions));
 
         await tester.runAsync(() async {
-          fake.remoteIdentify();
+          fake.remoteIdentify(confirm: 'timeout');
           await Future<void>.delayed(Duration.zero);
         });
         await tester.pump();
@@ -603,7 +603,7 @@ void main() {
         );
         expect(find.byKey(const Key('remote-identify-icon')), findsOneWidget);
         // Round 21: the short first sentence (full text behind the tap).
-        expect(find.textContaining('後台已讓此樁閃燈'), findsOneWidget);
+        expect(find.textContaining('後台已送出'), findsOneWidget);
         final screen = Offset.zero & size;
         final noticeRect = tester.getRect(notice);
         expect(screen.contains(noticeRect.topLeft), isTrue);
@@ -645,7 +645,7 @@ void main() {
         expect(
           find.descendant(
             of: detail,
-            matching: find.textContaining('PTU 未回應確認（PTU 韌體尚未支援）'),
+            matching: find.textContaining('舊版閘道器未取得 PTU 確認'),
             matchRoot: true,
           ),
           findsOneWidget,
@@ -696,7 +696,7 @@ void main() {
       expect(container.read(commissionProvider).step, 4);
       expect(find.byType(DirectPickActions), findsNothing);
       await tester.runAsync(() async {
-        fake.remoteIdentify();
+        fake.remoteIdentify(confirm: 'timeout');
         await Future<void>.delayed(Duration.zero);
       });
       await tester.pump();

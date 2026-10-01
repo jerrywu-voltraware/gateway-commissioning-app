@@ -10,7 +10,7 @@
 //    is back, then 「重新讀取 PTU 列表…」 while the list is read again —
 //    field: back after 2.6 s, the list 20 s later, 「重新連線中」 all along.
 // 3. The back office's identify notice in the direct bar: the short first
-//    sentence 「後台已讓此樁閃燈 · PTU 未回應確認」 never cut (two lines at
+//    sentence 「後台已送出 · 舊版未取得確認」 never cut (two lines at
 //    360 dp and text scale 1.3), MAC · dBm on a second line or behind the
 //    tap; the bar and its buttons do not move when it comes.
 import 'dart:async';
@@ -559,7 +559,7 @@ void main() {
     };
 
     test('texts', () {
-      expect(remoteIdentifyHeadText(ack), '後台已讓此樁閃燈 · PTU 未回應確認');
+      expect(remoteIdentifyHeadText(ack), '後台已送出 · 舊版未取得確認');
       expect(
         remoteIdentifyHeadText({
           ...ack,
@@ -581,7 +581,7 @@ void main() {
       // The full text (details, snack bar) names the PTU (round 24).
       expect(
         remoteIdentifyText(ack),
-        startsWith('後台讓 PTU AA:BB:CC:00:00:01 閃燈（請看樁上燈號）'),
+        startsWith('後台已送出 PTU AA:BB:CC:00:00:01 辨識指令（請看樁上燈號）'),
       );
     });
 
@@ -647,7 +647,7 @@ void main() {
           for (final key in buttons) key: tester.getRect(find.byKey(Key(key))),
         };
         await tester.runAsync(() async {
-          fake.remoteIdentify();
+          fake.remoteIdentify(confirm: 'timeout');
           await Future<void>.delayed(Duration.zero);
         });
         await tester.pump();
@@ -657,8 +657,8 @@ void main() {
         final head = find.byKey(const Key('remote-identify'));
         expect(head, findsOneWidget);
         final text = _plain(tester.widget<Text>(head));
-        expect(text, contains('後台已讓此樁閃燈'));
-        expect(text, contains('PTU 未回應確認'));
+        expect(text, contains('後台已送出'));
+        expect(text, contains('舊版未取得確認'));
         expect(text, isNot(contains('…')));
         // Drawn in full: no line cut off, no ellipsis.
         final paragraph = tester.renderObject<RenderParagraph>(
@@ -682,10 +682,9 @@ void main() {
         }
 
         if (scale > 1.2) {
-          // Two lines: the sentence broken after 「閃燈」; MAC · dBm behind
-          // the tap.
-          expect(text, '後台已讓此樁閃燈\nPTU 未回應確認');
-          expect(find.byKey(const Key('remote-identify-ptu')), findsNothing);
+          // The accurate, shorter legacy status now fits on one line.
+          expect(text, '後台已送出 · 舊版未取得確認');
+          expect(find.byKey(const Key('remote-identify-ptu')), findsOneWidget);
         }
         // MAC and dBm are always one tap away.
         await tester.tap(find.byKey(const Key('direct-identify-toggle')));
@@ -742,7 +741,7 @@ void main() {
             body: SizedBox(
               width: 400,
               child: RemoteIdentifyLines(
-                head: '後台已讓此樁閃燈 · PTU 未回應確認',
+                head: '後台已送出 · 舊版未取得確認',
                 ptu: 'PTU AA:BB:CC:00:00:01 · -46 dBm',
                 others: ['AA:BB:CC:00:00:02'],
                 twoLines: true,
@@ -754,7 +753,7 @@ void main() {
       );
       expect(
         _plain(tester.widget<Text>(find.byKey(const Key('remote-identify')))),
-        '後台已讓此樁閃燈 · PTU 未回應確認',
+        '後台已送出 · 舊版未取得確認',
       );
       final ptu = _plain(
         tester.widget<Text>(find.byKey(const Key('remote-identify-ptu'))),

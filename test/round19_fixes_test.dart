@@ -15,7 +15,7 @@
 //    the card changing height no longer moves it (field: a tap missed by
 //    7 px when the card's RSSI went 「RSSI —」 → 「-49 dBm」).
 // 4. The back office's identify, relayed by the gateway, shows a passing
-//    notice 「後台剛讓這台樁閃燈（請看樁上燈號）」 with the PTU's answer; the
+//    notice 「後台剛讓這台樁辨識指令（請看樁上燈號）」 with the PTU's answer; the
 //    flow is untouched.
 // 5. 「辨識此樁」 reads 「已送出，等待 PTU 回應…」 at once (with a spinner)
 //    until the ack (firmware 1.7.25+ waits up to 1.5 s for the PTU).
@@ -808,7 +808,7 @@ void main() {
       // Round 24: the PTU that blinked is named (no list: its MAC).
       expect(
         remoteIdentifyText(ack),
-        '後台讓 PTU $_own 閃燈（請看樁上燈號） · PTU 未回應確認（PTU 韌體尚未支援）'
+        '後台已送出 PTU $_own 辨識指令（請看樁上燈號） · 舊版閘道器未取得 PTU 確認'
         ' · -46 dBm',
       );
       expect(
@@ -849,13 +849,13 @@ void main() {
       await Future<void>.delayed(Duration.zero);
       expect(container.read(commissionProvider).remoteIdentifyCount, 0);
 
-      fake.remoteIdentify();
+      fake.remoteIdentify(confirm: 'timeout');
       await Future<void>.delayed(Duration.zero);
       final after = container.read(commissionProvider);
       expect(after.remoteIdentifyCount, 1);
-      expect(after.remoteIdentifyNote, startsWith('後台讓 PTU '));
-      expect(after.remoteIdentifyNote, contains('閃燈（請看樁上燈號）'));
-      expect(after.remoteIdentifyNote, contains('PTU 未回應確認'));
+      expect(after.remoteIdentifyNote, startsWith('後台已送出 PTU '));
+      expect(after.remoteIdentifyNote, contains('辨識指令（請看樁上燈號）'));
+      expect(after.remoteIdentifyNote, contains('舊版閘道器未取得 PTU 確認'));
       expect(after.step, before.step);
       expect(after.busy, before.busy);
       expect(after.error, before.error);

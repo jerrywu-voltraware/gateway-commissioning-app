@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'identify_duration_setting.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -1437,6 +1438,8 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                       onTap: () => select('direct:settings'),
                     ),
                   ],
+                  const Divider(),
+                  const IdentifyDurationSetting(),
                 ],
               ),
             ),
@@ -2915,7 +2918,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           label: Text(
             identifyPtuSupported(state.config)
                 ? '辨識此樁（PTU 與閘道器閃燈）'
-                : '辨識這台・雙閃 6 秒',
+                : '辨識這台・${ref.watch(topologyProvider).identifySeconds} 秒',
             key: const Key('identify-label'),
           ),
         )

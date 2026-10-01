@@ -666,7 +666,7 @@ void main() {
       // 〔辨識〕: connect → identify (target both) → disconnect, step 1 kept.
       await _tap(tester, find.byKey(const ValueKey('identify-demo-gateway')));
       expect(fake.identifyRequests, [
-        {'target': 'both'},
+        {'target': 'both', 'duration_ms': 6000},
       ]);
       expect(read().step, 1);
       expect(read().peer, isNull);

@@ -1,3 +1,4 @@
+import '../core/identify.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
@@ -1004,9 +1005,7 @@ const gatewayStatusBusyText = '配置進行中不可用';
 
 /// 1.0.0+10: the menu item's text ([gatewayStatusMenuEnabled]).
 String gatewayStatusMenuText(CommissionState s) =>
-    gatewayStatusMenuEnabled(s)
-        ? '查看上傳資料…'
-        : '查看上傳資料（$gatewayStatusBusyText）';
+    gatewayStatusMenuEnabled(s) ? '查看上傳資料…' : '查看上傳資料（$gatewayStatusBusyText）';
 
 /// 1.0.0+10 (review P2-3): a bound PTU the gateway is still looking for
 /// (scanning / connecting) this soon after a boot is not called missing.
@@ -3612,14 +3611,19 @@ class CommissioningController extends Notifier<CommissionState> {
         throw const GatewayFailure('identify_unsupported');
       }
       final note = state.identifyNote, line = state.identifyLine;
-      // Round 19: at once, until the ack (firmware 1.7.25+ waits up to
-      // 1.5 s for the PTU's answer before it acks).
+      // Show progress until the gateway command ack; the new PTU protocol
+      // has no application response.
       final pending = identifyPtuSupported(state.config)
           ? identifyPendingText
           : identifyPendingGatewayText;
       state = state.copy(identifyNote: pending, identifyLine: pending);
       try {
-        await _identify(generation, target);
+        if (!ref.read(topologyProvider).loaded) {
+          await ref.read(topologyProvider.notifier).ready;
+        }
+        _check(generation);
+        final seconds = ref.read(topologyProvider).identifySeconds;
+        await _identify(generation, target, seconds);
       } catch (error) {
         if (ref.mounted) {
           state = isStep8LinkLoss(error, true)
@@ -3654,11 +3658,12 @@ class CommissioningController extends Notifier<CommissionState> {
     );
   }
 
-  Future<void> _identify(int generation, String target) async {
+  Future<void> _identify(int generation, String target, int seconds) async {
+    final params = identifyCommandParams(state.config, seconds, target: target);
     if (!identifyPtuSupported(state.config)) {
-      await _command(generation, 'identify');
+      final ack = await _command(generation, 'identify', params);
       state = state.copy(
-        message: '請找出雙閃藍燈的閘道器，6 秒後會恢復原本燈號。',
+        message: identifyAckText(ack),
         identifyNote: identifyNoteText(const {}),
         identifyLine: identifyLineText(const {}),
       );
@@ -3666,7 +3671,7 @@ class CommissioningController extends Notifier<CommissionState> {
     }
     Map<String, dynamic> ack;
     try {
-      ack = await _command(generation, 'identify', {'target': target});
+      ack = await _command(generation, 'identify', params);
       // Round 17: right after a (re)connect the PTU write can come back
       // not_connected (the gateway's GATT link is not ready yet): once
       // more after [identifyRetryDelay], then show whatever that says.
@@ -3675,7 +3680,7 @@ class CommissioningController extends Notifier<CommissionState> {
           ack['ptu_write'] == 'not_connected') {
         await Future<void>.delayed(identifyRetryDelay);
         _check(generation);
-        ack = await _command(generation, 'identify', {'target': target});
+        ack = await _command(generation, 'identify', params);
       }
     } on GatewayFailure catch (e) {
       // The gateway's own not_connected means "no PTU connected", not a
@@ -3685,11 +3690,21 @@ class CommissioningController extends Notifier<CommissionState> {
       // too.
       if (!e.fromGateway || e.code != 'not_connected') rethrow;
       if (target != 'both') throw const GatewayFailure('identify_no_ptu');
-      await _command(generation, 'identify', {'target': 'gateway'});
+      await _command(
+        generation,
+        'identify',
+        identifyCommandParams(state.config, seconds, target: 'gateway'),
+      );
       state = state.copy(
-        message: identifyNoPtuText,
-        identifyNote: identifyNoteText(const {'ptu_write': 'not_connected'}),
-        identifyLine: identifyLineText(const {'ptu_write': 'not_connected'}),
+        message: identifyPtuFailedText('not_connected', seconds: seconds),
+        identifyNote: identifyNoteText({
+          'ptu_write': 'not_connected',
+          'duration_ms': seconds * 1000,
+        }),
+        identifyLine: identifyLineText({
+          'ptu_write': 'not_connected',
+          'duration_ms': seconds * 1000,
+        }),
         identifiedMac: null,
       );
       return;
@@ -3698,11 +3713,16 @@ class CommissioningController extends Notifier<CommissionState> {
     state = state.copy(
       message: ptuWrite == null || ptuWrite == 'ok'
           ? identifyAckText(ack)
-          : identifyPtuFailedText(ptuWrite.toString()),
+          : identifyPtuFailedText(
+              ptuWrite.toString(),
+              seconds: identifySecondsOf(ack),
+            ),
       identifyNote: identifyNoteText(ack),
       identifyLine: identifyLineText(ack),
     );
-    // Direct flow: the ack names the PTU that actually blinks. If the
+    // Stopping a light does not count as a new physical identification.
+    if (seconds == 0) return;
+    // Direct flow: the ack names the PTU whose write was submitted. If the
     // gateway has switched since the pick was shown, show its new pick.
     final blinked = ack['mac'];
     final shown = state.selected.firstOrNull;
@@ -3752,7 +3772,7 @@ class CommissioningController extends Notifier<CommissionState> {
   ///     comes back afterwards ([_sideTask]);
   ///   * 〔取消操作〕 during it only stops the blink ([cancel]).
   /// Returns whether the identify was sent and acked (the list's
-  /// 「已閃燈」).
+  /// 「已送出」).
   Future<bool> identifyPeer(GatewayPeer peer) async {
     if (state.busy) return false;
     _noteGatewayMac(peer.id);
@@ -3774,14 +3794,23 @@ class CommissioningController extends Notifier<CommissionState> {
             if (config['identify_supported'] != true) {
               throw const GatewayFailure('identify_unsupported');
             }
+            if (!ref.read(topologyProvider).loaded) {
+              await ref.read(topologyProvider.notifier).ready;
+            }
+            _check(generation);
+            final seconds = ref.read(topologyProvider).identifySeconds;
+            final params = identifyCommandParams(config, seconds);
             if (!identifyPtuSupported(config)) {
-              await send('identify');
+              await send('identify', params);
             } else {
               try {
-                await send('identify', {'target': 'both'});
+                await send('identify', params);
               } on GatewayFailure catch (e) {
                 if (!e.fromGateway || e.code != 'not_connected') rethrow;
-                await send('identify', {'target': 'gateway'});
+                await send(
+                  'identify',
+                  identifyCommandParams(config, seconds, target: 'gateway'),
+                );
               }
             }
             _check(generation);
@@ -7851,9 +7880,7 @@ class CommissioningController extends Notifier<CommissionState> {
         relinkStage: RelinkStage.resumed,
         assignRunning: true,
         assignStatus: _assignStart(chosen, targets),
-        message: targets.isEmpty
-            ? '正在確認閘道器監控狀態'
-            : '繼續指派 ${targets.length} 台',
+        message: targets.isEmpty ? '正在確認閘道器監控狀態' : '繼續指派 ${targets.length} 台',
       );
       _startFinishChecklist(
         chosen,
@@ -9498,8 +9525,7 @@ class CommissioningController extends Notifier<CommissionState> {
       }
       _stopWatch(UploadWatch.idle);
       state = state.copy(
-        uploadNotice:
-            '不用切換：閘道器本來就送到${now.plainLabel}（沒有重新開機）。$_uploadText',
+        uploadNotice: '不用切換：閘道器本來就送到${now.plainLabel}（沒有重新開機）。$_uploadText',
       );
       return;
     }

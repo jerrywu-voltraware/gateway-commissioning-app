@@ -212,7 +212,7 @@ void main() {
 
       await c.identify();
       s = container.read(commissionProvider);
-      expect(fake.sent('identify').last, {'target': 'both'});
+      expect(fake.sent('identify').last, {'target': 'both', 'duration_ms': 6000});
       expect(s.identifyNote, startsWith(identifySentText));
       expect(s.identifyNote, contains(_pick));
       expect(s.identifyNote, contains('-38 dBm'));

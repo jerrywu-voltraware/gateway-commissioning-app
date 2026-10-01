@@ -3,7 +3,7 @@
 //    `ptu_write:"ambiguous_target"` (only the gateway blinked) and the
 //    notice read 「後台剛讓這台樁閃燈…PTU 未收到（ambiguous_target）」: it now
 //    says what blinked — 「後台讓閘道器閃燈（請看閘道器上的燈）」, or
-//    「後台讓 PTU #3 閃燈」 — and never shows the raw code.
+//    「後台已送出 PTU #3 閃燈」 — and never shows the raw code.
 // 2. A rescan refused as busy left 「已連線 0 台／周邊未連線 0 台 · 已選 0 /
 //    5 台」 (read as nothing found; the diagnostics' ptus was [] too): the
 //    list before it is kept and the count lines say 「閘道器忙碌，列表暫時
@@ -224,7 +224,7 @@ void main() {
         };
         expect(
           remoteIdentifyText(ack, ptus: listed),
-          '後台讓 PTU #3 閃燈（請看樁上燈號） · PTU 未回應確認（PTU 韌體尚未支援） · -46 dBm',
+          '後台已送出 PTU #3 辨識指令（請看樁上燈號） · 舊版閘道器未取得 PTU 確認 · -46 dBm',
         );
         // Confirmation as before.
         expect(
@@ -233,7 +233,7 @@ void main() {
             'ptu_confirmed': true,
             'ptu_confirm': 'ok',
           }, ptus: listed),
-          startsWith('後台讓 PTU #3 閃燈（請看樁上燈號） · $identifyConfirmedText'),
+          startsWith('後台已送出 PTU #3 辨識指令（請看樁上燈號） · $identifyConfirmedText'),
         );
         // The ack's own number wins (backend identify with `mac`).
         expect(
@@ -253,7 +253,7 @@ void main() {
         // Written but not named: still 「PTU」, never 「這台樁」.
         expect(
           remoteIdentifyText(const {'ptu_write': 'ok'}),
-          '後台讓 PTU 閃燈（請看樁上燈號） · PTU 已收到閃燈指令',
+          '後台已送出 PTU 辨識指令（請看樁上燈號） · PTU 辨識指令已送出',
         );
       },
     );
@@ -271,7 +271,7 @@ void main() {
       }
       expect(
         identifyPtuFailedText('ambiguous_target'),
-        '閘道器正在閃燈；PTU 沒有閃（閘道器連著多台 PTU，沒有指定哪一台）。',
+        '閘道器正在閃燈（6 秒）；PTU 指令未送出（閘道器連著多台 PTU，沒有指定哪一台）。',
       );
     });
 
@@ -308,8 +308,8 @@ void main() {
       await _settle();
       s = container.read(commissionProvider);
       expect(s.remoteIdentifyCount, 2);
-      expect(s.remoteIdentifyNote, startsWith('後台讓 PTU #3 閃燈（請看樁上燈號）'));
-      expect(s.remoteIdentifyNote, contains('PTU 未回應確認'));
+      expect(s.remoteIdentifyNote, startsWith('後台已送出 PTU #3 辨識指令（請看樁上燈號）'));
+      expect(s.remoteIdentifyNote, contains('舊版閘道器未取得 PTU 確認'));
       expect(s.step, s0.step);
       expect(s.error, s0.error);
       expect(s.selected, s0.selected);

@@ -5,6 +5,8 @@
 /// helper here then returns null / false so the APP keeps its old behaviour.
 library;
 
+import 'identify.dart';
+
 /// PTU number used for every direct-mode PTU (the firmware ignores the
 /// number in direct mode; identity is the distance / bound MAC).
 const directPtuId = 1;
@@ -440,21 +442,25 @@ const identifySentText = '已送出，請看樁上燈號';
 const identifySentLine = '已送出 · 請看樁上燈號';
 
 /// Round 19: beside 「辨識此樁」 (and in the bottom bar) from the tap until
-/// the ack — firmware 1.7.25+ acks only once the PTU answered or 1.5 s
-/// passed (field round 19: ~1.5 s without any change on screen).
-const identifyPendingText = '已送出，等待 PTU 回應…';
+/// the gateway command ack. PTU a2_seconds has no application reply.
+/// Older gateway confirmations remain parseable for compatibility.
+const identifyPendingText = '已送出，等待閘道器回應…';
 
 /// Round 19: [identifyPendingText] for firmware that blinks the gateway
 /// only (no PTU to wait for).
 const identifyPendingGatewayText = '已送出，等待閘道器回應…';
 
-/// Round 18: firmware 1.7.25+ says whether the PTU confirmed the blink
+/// Historical firmware 1.7.25..1.7.44 reported PTU confirmation.
 /// (`ptu_confirmed`, `ptu_confirm` ok | unsupported_pattern | timeout,
 /// `ptu_confirm_ms`); older firmware sends neither (`ptu_confirmed` there
 /// is always false): [IdentifyConfirm.legacy], the texts from before.
-enum IdentifyConfirm { confirmed, timeout, unsupportedPattern, legacy }
+enum IdentifyConfirm { confirmed, timeout, unsupportedPattern, legacy, sent }
 
 IdentifyConfirm identifyConfirmOf(Map<String, dynamic> ack) {
+  if (ack['ptu_reply_expected'] == false ||
+      ack['identify_ptu_protocol'] == 'a2_seconds') {
+    return IdentifyConfirm.sent;
+  }
   if (ack['ptu_confirmed'] == true || ack['ptu_confirm'] == 'ok') {
     return IdentifyConfirm.confirmed;
   }
@@ -468,8 +474,8 @@ IdentifyConfirm identifyConfirmOf(Map<String, dynamic> ack) {
 /// Round 18: `ptu_confirmed:true`.
 const identifyConfirmedText = 'PTU 已確認亮燈';
 
-/// Round 18: `ptu_confirm:"timeout"` — the PTU firmware does not answer yet.
-const identifyConfirmTimeoutText = '閘道器已送出；PTU 未回應確認（PTU 韌體尚未支援），請看樁上燈號';
+/// A legacy gateway timeout does not prove the PTU lacks support.
+const identifyConfirmTimeoutText = '閘道器已送出；舊版閘道器未取得 PTU 確認，請看樁上燈號';
 
 /// Round 18: `ptu_confirm:"unsupported_pattern"`.
 const identifyUnsupportedPatternText = '閘道器已送出；PTU 不支援此燈效，請看樁上燈號';
@@ -480,7 +486,7 @@ String _identifyLineHead(Map<String, dynamic> ack) =>
       IdentifyConfirm.confirmed => identifyConfirmedText,
       IdentifyConfirm.timeout => '已送出 · PTU 未回應確認 · 請看樁上燈號',
       IdentifyConfirm.unsupportedPattern => '已送出 · PTU 不支援此燈效 · 請看樁上燈號',
-      IdentifyConfirm.legacy => identifySentLine,
+      IdentifyConfirm.legacy || IdentifyConfirm.sent => identifySentLine,
     };
 
 /// Round 16: the identify ack in one line for the bottom bar — 「已送出 ·
@@ -489,11 +495,16 @@ String _identifyLineHead(Map<String, dynamic> ack) =>
 /// the bar shortens it with [shortenMacIn] only when the line does not fit.
 String identifyLineText(Map<String, dynamic> ack) {
   final ptuWrite = ack['ptu_write'];
+  if (identifySecondsOf(ack) == 0) {
+    return ptuWrite != null && ptuWrite != 'ok'
+        ? '閘道器已停止辨識 · PTU 關燈未送出'
+        : '已送出關燈指令';
+  }
   if (ptuWrite != null && ptuWrite != 'ok') {
     return '已送出 · 只有閘道器閃燈，PTU 未收到';
   }
   final mac = ack['mac'];
-  if (mac == null) return '$identifySentLine · 閘道器雙閃 6 秒';
+  if (mac == null) return '$identifySentLine · ${gatewayIdentifyText(ack)}';
   final rssi = ack['rssi'];
   return [
     _identifyLineHead(ack),
@@ -505,11 +516,16 @@ String identifyLineText(Map<String, dynamic> ack) {
 /// Beside 「辨識此樁」 once the gateway acked. [ack] is the identify ack.
 String identifyNoteText(Map<String, dynamic> ack) {
   final ptuWrite = ack['ptu_write'];
+  if (identifySecondsOf(ack) == 0) {
+    return ptuWrite != null && ptuWrite != 'ok'
+        ? '${gatewayIdentifyText(ack)}；PTU 關燈未送出（${ptuWriteReasonText(ptuWrite)}）'
+        : '已送出關燈指令；${gatewayIdentifyText(ack)}。PTU 不回覆，請查看燈號。';
+  }
   if (ptuWrite != null && ptuWrite != 'ok') {
     return '已送出：只有閘道器在閃燈，PTU 未收到（${ptuWriteReasonText(ptuWrite)}）';
   }
   final mac = ack['mac'];
-  if (mac == null) return '$identifySentText（閘道器雙閃 6 秒）';
+  if (mac == null) return '$identifySentText（${gatewayIdentifyText(ack)}）';
   final rssi = ack['rssi'];
   final ptu =
       'PTU ${formatMac(mac)}${rssi is num ? ' · ${rssiLabel(rssi)}' : ''}';
@@ -517,7 +533,7 @@ String identifyNoteText(Map<String, dynamic> ack) {
     IdentifyConfirm.confirmed => identifyConfirmedText,
     IdentifyConfirm.timeout => identifyConfirmTimeoutText,
     IdentifyConfirm.unsupportedPattern => identifyUnsupportedPatternText,
-    IdentifyConfirm.legacy => identifySentText,
+    IdentifyConfirm.legacy || IdentifyConfirm.sent => identifySentText,
   };
   return '$head（$ptu）';
 }
@@ -543,9 +559,12 @@ String? identifyResultText(Map<String, dynamic> ack) {
   }
   return switch (identifyConfirmOf(ack)) {
     IdentifyConfirm.confirmed => identifyConfirmedText,
-    IdentifyConfirm.timeout => 'PTU 未回應確認（PTU 韌體尚未支援）',
+    IdentifyConfirm.timeout => '舊版閘道器未取得 PTU 確認',
     IdentifyConfirm.unsupportedPattern => 'PTU 不支援此燈效',
-    IdentifyConfirm.legacy => ptuWrite == 'ok' ? 'PTU 已收到閃燈指令' : null,
+    IdentifyConfirm.legacy || IdentifyConfirm.sent =>
+      ptuWrite == 'ok'
+          ? (identifySecondsOf(ack) == 0 ? 'PTU 關燈指令已送出' : 'PTU 辨識指令已送出')
+          : null,
   };
 }
 
@@ -623,11 +642,16 @@ String remoteIdentifyText(
   Map<String, dynamic> ack, {
   List<Map<String, dynamic>> ptus = const [],
 }) {
+  if (identifySecondsOf(ack) == 0) {
+    return identifyWrotePtu(ack)
+        ? '後台已送出 PTU 關燈指令；${gatewayIdentifyText(ack)}'
+        : '後台：${gatewayIdentifyText(ack)}；PTU 關燈未送出';
+  }
   if (!identifyWrotePtu(ack)) return remoteIdentifyGatewayText;
   final label = identifyPtuLabel(ack, ptus: ptus);
   final rssi = ack['rssi'];
   return [
-    '後台讓 PTU${label == null ? '' : ' $label'} 閃燈（請看樁上燈號）',
+    '後台已送出 PTU${label == null ? '' : ' $label'} 辨識指令（請看樁上燈號）',
     ?identifyResultText(ack),
     if (rssi is num && rssi < 0) rssiLabel(rssi),
   ].join(' · ');
@@ -640,13 +664,16 @@ String remoteIdentifyText(
 /// characters, so it fits one line of a 360 dp bar at text scale 1 and two
 /// at 1.3. [remoteIdentifyText] stays the full text (details, snack bar).
 String remoteIdentifyHeadText(Map<String, dynamic> ack) {
+  if (identifySecondsOf(ack) == 0) {
+    return identifyWrotePtu(ack) ? '後台已送出關燈指令' : '後台已停止閘道器辨識';
+  }
   final ptuWrite = ack['ptu_write'];
   if (ptuWrite != null && ptuWrite != 'ok') return remoteIdentifyHeads[4];
   return switch (identifyConfirmOf(ack)) {
     IdentifyConfirm.confirmed => remoteIdentifyHeads[0],
     IdentifyConfirm.timeout => remoteIdentifyHeads[1],
     IdentifyConfirm.unsupportedPattern => remoteIdentifyHeads[2],
-    IdentifyConfirm.legacy =>
+    IdentifyConfirm.legacy || IdentifyConfirm.sent =>
       ptuWrite == 'ok' ? remoteIdentifyHeads[3] : remoteIdentifyHeads[5],
   };
 }
@@ -655,11 +682,13 @@ String remoteIdentifyHeadText(Map<String, dynamic> ack) {
 /// identify line for the longest).
 const remoteIdentifyHeads = [
   '後台已讓此樁閃燈 · PTU 已確認',
-  '後台已讓此樁閃燈 · PTU 未回應確認',
-  '後台已讓此樁閃燈 · PTU 不支援燈效',
-  '後台已讓此樁閃燈 · PTU 已收到',
+  '後台已送出 · 舊版未取得確認',
+  '後台已送出 · PTU 不支援燈效',
+  '後台已送出 PTU 辨識指令',
   '後台已讓閘道器閃燈 · PTU 未收到',
-  '後台已讓此樁閃燈 · 請看樁上燈號',
+  '後台已送出 · 請查看燈號',
+  '後台已送出關燈指令',
+  '後台已停止閘道器辨識',
 ];
 
 /// Round 21: longest [remoteIdentifyHeads] entry, in characters.
@@ -696,24 +725,10 @@ const identifyNoPtuText = '閘道器雙閃 6 秒；閘道器尚未連上 PTU，P
 /// not confirm it blinked. Round 18: firmware 1.7.25+ says so
 /// ([identifyConfirmOf]).
 String identifyAckText(Map<String, dynamic> ack) {
-  final mac = ack['mac'];
-  if (mac == null) return '請找出雙閃藍燈的閘道器，6 秒後會恢復原本燈號。';
-  final rssi = ack['rssi'];
+  final note = identifyNoteText(ack);
+  if (ack['mac'] == null || identifySecondsOf(ack) == 0) return note;
   final number = ack['device_number'];
-  final seconds = ((ack['duration_ms'] as num?) ?? 6000) / 1000;
-  final parts = [
-    'PTU $mac',
-    if (rssi is num) rssiLabel(rssi),
-    if (number is num && number > 0) '#$number',
-  ];
-  final tail = '閘道器雙閃 ${seconds.toStringAsFixed(0)} 秒（${parts.join(' · ')}）。';
-  return switch (identifyConfirmOf(ack)) {
-    IdentifyConfirm.confirmed => '$identifyConfirmedText；$tail',
-    IdentifyConfirm.timeout => '$identifyConfirmTimeoutText；$tail',
-    IdentifyConfirm.unsupportedPattern =>
-      '$identifyUnsupportedPatternText；$tail',
-    IdentifyConfirm.legacy => 'PTU 與閘道器正在閃燈（PTU 燈效需新版 PTU 韌體），$tail',
-  };
+  return '$note${number is num ? '（#$number）' : ''}；${gatewayIdentifyText(ack)}。';
 }
 
 /// identify ack (target both, firmware 1.7.20+) with the gateway LED lit
@@ -724,5 +739,6 @@ String identifyAckText(Map<String, dynamic> ack) {
 /// dropped phone↔gateway link.
 ///
 /// Round 24: [reason] in words ([ptuWriteReasonText]), never the raw code.
-String identifyPtuFailedText(String reason) =>
-    '閘道器正在閃燈；PTU 沒有閃（${ptuWriteReasonText(reason)}）。';
+String identifyPtuFailedText(String reason, {int seconds = 6}) => seconds == 0
+    ? '閘道器已停止辨識；PTU 關燈未送出（${ptuWriteReasonText(reason)}）。'
+    : '閘道器正在閃燈（$seconds 秒）；PTU 指令未送出（${ptuWriteReasonText(reason)}）。';

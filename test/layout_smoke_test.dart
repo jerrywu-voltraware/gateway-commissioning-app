@@ -916,6 +916,8 @@ void main() {
     await tester.tap(find.byKey(const Key('topology-settings-menu')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('topology-options')), findsOneWidget);
+    expect(find.byKey(const Key('identify-seconds-input')), findsOneWidget);
+    expect(find.byKey(const Key('identify-seconds-save')), findsOneWidget);
     await _checkPage(tester, 'connection mode choices');
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();

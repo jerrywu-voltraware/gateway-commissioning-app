@@ -265,13 +265,13 @@ void main() {
       addTearDown(container.dispose);
       await c.configurePtus();
       await c.identify();
-      expect(fake.sent('identify').last, {'target': 'both'});
+      expect(fake.sent('identify').last, {'target': 'both', 'duration_ms': 6000});
       final message = container.read(commissionProvider).message;
       expect(message, contains('AA:BB:CC:00:00:01'));
       expect(message, contains('-40 dBm'));
-      expect(message, contains('PTU 燈效需新版 PTU 韌體'));
+      expect(message, contains('已送出'));
       await c.identify(target: 'ptu');
-      expect(fake.sent('identify').last, {'target': 'ptu'});
+      expect(fake.sent('identify').last, {'target': 'ptu', 'duration_ms': 6000});
     });
 
     test(
@@ -284,7 +284,7 @@ void main() {
         await c.identify();
         // Single ack, no fallback resend: target=both never failed.
         expect(fake.sent('identify'), [
-          {'target': 'both'},
+          {'target': 'both', 'duration_ms': 6000},
         ]);
         final state = container.read(commissionProvider);
         expect(state.error, isNull);
@@ -302,7 +302,7 @@ void main() {
       // A single failed ack; target=ptu does not fall back to blinking the
       // gateway only (that fallback is target=both-specific).
       expect(fake.sent('identify'), [
-        {'target': 'ptu'},
+        {'target': 'ptu', 'duration_ms': 6000},
       ]);
       final state = container.read(commissionProvider);
       expect(state.error, contains('尚未連上 PTU'));
@@ -316,9 +316,9 @@ void main() {
       addTearDown(container.dispose);
       await c.configurePtus();
       await c.identify();
-      expect(fake.sent('identify').last, {'target': 'both'});
+      expect(fake.sent('identify').last, {'target': 'both', 'duration_ms': 6000});
       final message = container.read(commissionProvider).message;
-      expect(message, contains('PTU 與閘道器正在閃燈'));
+      expect(message, contains('已送出'));
       expect(message, contains('AA:BB:CC:00:00:01'));
       expect(message, contains('-40 dBm'));
     });
@@ -372,7 +372,7 @@ void main() {
           contains('AA:01'),
           contains('-33 dBm'),
           contains('#1'),
-          contains('需新版 PTU 韌體'),
+          contains('已送出'),
         ),
       );
     });

@@ -287,6 +287,9 @@ class GatewayFailure implements Exception {
     'fleet_unconfirmed' => fleetUnconfirmedText,
     'direct_switch_failed' =>
       '閘道器在等待時限內還沒改連這台 PTU（已暫時綁定它）。連上後畫面會自動更新；也可確認這台 PTU 已上電並靠近，或改選其他 PTU。',
+    'invalid_identify_seconds' => '辨識秒數必須是 0–255 的整數。',
+    'identify_duration_unsupported' =>
+      '這台舊版閘道器不支援所選辨識秒數。支援 PTU 辨識的舊版僅可用 1–30 秒，更早版本固定 6 秒；0 秒或更長時間請更新閘道器韌體。',
     'identify_unsupported' => '此韌體尚未支援辨識燈號，請先更新韌體。連線時的呼吸燈仍可協助辨識。',
     'location_off' => '此版本 Android 搜尋藍牙需要定位服務，請開啟手機定位後重新搜尋。',
     'disconnected' || 'not_connected' => '與閘道器的連線已中斷，請靠近後重新連線。',
@@ -295,8 +298,7 @@ class GatewayFailure implements Exception {
     'reconnect_failed' => reconnectFailedText,
     'timeout' => '等待超時，請確認裝置與網路後重試。',
     'cancelled' => '操作已取消，可從最近完成的步驟重試。',
-    'monitor_unconfirmed' =>
-      '30 秒內未確認閘道器已恢復監控，可按「重新連線並繼續」重試，或「略過」直接驗證資料。',
+    'monitor_unconfirmed' => '30 秒內未確認閘道器已恢復監控，可按「重新連線並繼續」重試，或「略過」直接驗證資料。',
     'conflict' => '此站點或編號已被使用，請選擇其他編號。',
     'replace_unsupported' => '後端版本不支援取代舊機，請改用下一個編號。裝置設定未變更。',
     'replace_pending' => '後台已登記為新機，但寫入裝置失敗。請重新執行配置，系統會沿用取代設定。',
@@ -304,8 +306,7 @@ class GatewayFailure implements Exception {
     // Firmware 1.7.32 tells why (wifi_last_disc_reason, see [wifiFailedDetail]).
     'wifi_failed' => wifiSetFailedText(wifiFailedReason(detail)),
     // Round 30: the Wi-Fi to keep was gone by 「儲存」 (no password given).
-    'wifi_password_needed' =>
-      '閘道器目前沒有連上這個 Wi-Fi，無法沿用。請輸入 Wi-Fi 密碼後再按「儲存並繼續」。',
+    'wifi_password_needed' => '閘道器目前沒有連上這個 Wi-Fi，無法沿用。請輸入 Wi-Fi 密碼後再按「儲存並繼續」。',
     'no_devices' => '未找到 PTU。請確認已上電並靠近閘道器後重掃。',
     // Round 26: an old gateway in test mode never scans PTUs.
     'test_mode' => testModeText,
