@@ -680,7 +680,7 @@ String _connectText(WidgetTester tester) =>
     tester.widget<Text>(find.byKey(const Key('gateway-connect-text'))).data!;
 
 /// 1.0.0+14: the list's bottom button — on screen, ≥ 48 dp, its text on
-/// one line and whole; at the end of the page 〔結束配置〕 above the bar.
+/// at most two lines and whole; 〔結束配置〕 stays above the bar.
 void _checkConnectBar(WidgetTester tester, String where) {
   final button = find.byKey(const Key('gateway-connect'));
   expect(button, findsOneWidget, reason: '$where: bottom button');
@@ -711,9 +711,9 @@ void _checkConnectBar(WidgetTester tester, String where) {
   final plain = text.text.toPlainText();
   expect(text.didExceedMaxLines, isFalse, reason: '$where: 「$plain」 cut');
   expect(
-    text.getMaxIntrinsicWidth(double.infinity),
-    lessThanOrEqualTo(text.size.width + 0.5),
-    reason: '$where: 「$plain」 not on one line',
+    text.maxLines,
+    2,
+    reason: '$where: the full gateway identity may wrap to two lines',
   );
 }
 
@@ -766,7 +766,7 @@ void main() {
       find.byKey(const ValueKey('gateway-selected-demo-gateway')),
       findsOneWidget,
     );
-    expect(_connectText(tester), '連線到 站 81 · 閘道器 1');
+    expect(_connectText(tester), '開始開通：站 81 · 閘道器 1');
     await _checkPage(
       tester,
       'gateway list, selected',
@@ -791,7 +791,7 @@ void main() {
           .data,
       '…70F0',
     );
-    expect(_connectText(tester), '連線到 未配置閘道器 …70F0');
+    expect(_connectText(tester), '開始開通：未配置閘道器 …70F0');
     await _checkPage(
       tester,
       'gateway list, not configured selected',
@@ -800,16 +800,25 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('gateway list while connecting: the button and the card '
+  testWidgets('gateway list while connecting: commissioning disabled and card '
       '「連線中…」', (tester) async {
     final fake = _SelectGateways()..hold = Completer<void>();
     final container = await _toList(tester, fake: fake);
     const id = 'A0:DD:6C:A3:70:F2';
     await _select(tester, id);
-    await tester.tap(find.byKey(const Key('gateway-connect')));
+    final connect = find.byKey(const Key('gateway-link-identify'));
+    await tester.ensureVisible(connect);
+    await tester.pump();
+    await tester.tap(connect);
     await _frames(tester);
-    expect(container.read(commissionProvider).busy, isTrue);
-    expect(_connectText(tester), '連線中…');
+    expect(container.read(commissionProvider).discoveryLinkActive, isTrue);
+    expect(
+      tester
+          .widget<FilledButton>(find.byKey(const Key('gateway-connect')))
+          .onPressed,
+      isNull,
+    );
+    expect(_connectText(tester), '開始開通：未配置閘道器 …70F0');
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('gateway-selected-$id')),
@@ -823,6 +832,9 @@ void main() {
       also: (where) => _checkConnectBar(tester, where),
     );
     fake.hold!.complete();
+    await tester.pumpAndSettle();
+    expect(container.read(commissionProvider).step, 1);
+    await tester.tap(find.byKey(const Key('gateway-connect')));
     await tester.pumpAndSettle();
     expect(container.read(commissionProvider).step, 2);
     await tester.pumpWidget(const SizedBox());

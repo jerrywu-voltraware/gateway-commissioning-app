@@ -13,7 +13,8 @@ library;
 
 import 'dart:async';
 
-import 'package:universal_ble/universal_ble.dart';
+import '../core/protocol.dart';
+import 'ble_gateway_link.dart';
 
 import 'contracts.dart';
 
@@ -39,25 +40,51 @@ class BleNearbyScanner implements NearbyGatewayScanner {
     Duration window = nearbyScanWindow,
     Future<void>? stop,
   }) async {
-    await _link.prepare();
-    if (_link is GatewayScanner) await (_link as GatewayScanner).stopScan();
-    final found = <String, GatewayPeer>{};
-    final sub = UniversalBle.scanStream.listen((result) {
-      final name = result.name ?? '';
-      if (!name.startsWith('GIOS-S')) return;
-      found[result.deviceId] = GatewayPeer(
-        result.deviceId,
-        name,
-        result.rssi ?? -127,
+    final link = _link;
+    if (link is! BleGatewayLink) {
+      throw const GatewayFailure(
+        'ble_error',
+        detail: 'Shared scan owner unavailable',
       );
-    });
+    }
+    final found = <String, GatewayPeer>{};
+    final completed = Completer<void>();
+    Object? failure;
+    StackTrace? failureStack;
+    // Reserve synchronously before preparation/cleanup awaits. Native scan
+    // calls belong to the transport, including the stop on page disposal.
+    final stopWhen = Future.any<void>([Future<void>.delayed(window), ?stop]);
+    final sub = link
+        .scanNearbyLive(
+          stopWhen: stopWhen,
+          onCleanupError: (error, stack) {
+            failure = error;
+            failureStack = stack;
+          },
+        )
+        .listen(
+          (peers) {
+            for (final peer in peers) {
+              found[peer.id] = peer;
+            }
+          },
+          onError: (Object error, StackTrace stack) {
+            failure = error;
+            failureStack = stack;
+            if (!completed.isCompleted) completed.completeError(error, stack);
+          },
+          onDone: () {
+            if (!completed.isCompleted) completed.complete();
+          },
+        );
     try {
-      await UniversalBle.startScan();
-      await Future.any([Future<void>.delayed(window), ?stop]);
+      await Future.any([completed.future, stopWhen]);
     } finally {
-      await UniversalBle.stopScan();
+      // Cancel only this subscription; its old finally cannot stop a new
+      // page's scan, which waits behind the same transport cleanup barrier.
       await sub.cancel();
     }
+    if (failure != null) Error.throwWithStackTrace(failure!, failureStack!);
     return sortNearby(found.values);
   }
 }

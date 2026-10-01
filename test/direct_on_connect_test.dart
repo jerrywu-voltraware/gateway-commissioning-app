@@ -1,6 +1,5 @@
 // 1.0.0+22: one-to-one preferred (topologyProvider direct) —
-// - every successful connect to a gateway (the flow's connect, and the
-//   list's 〔辨識〕 temporary link) switches a gateway still in star mode to
+// - explicitly continuing commissioning switches a gateway in star mode to
 //   one-to-one right after get_config: `set_config max_connections=1`
 //   (shipped units keep 5 in NVS; the firmware's BLE scan restarts, the
 //   phone's link stays), and BLE scanning on when it was off, as step 7
@@ -35,6 +34,20 @@ class _Gateway extends DemoSystem {
   Map<String, dynamic>? direct;
   bool statusFails = false;
   bool bothFailsNotConnected = false;
+  final connections = <String>[];
+  int disconnects = 0;
+
+  @override
+  Future<void> connect(GatewayPeer peer, {void Function(String)? onStage}) {
+    connections.add(peer.id);
+    return super.connect(peer, onStage: onStage);
+  }
+
+  @override
+  Future<void> disconnect() async {
+    disconnects++;
+    await super.disconnect();
+  }
 
   List<Map<String, dynamic>> sent(String op) => [
     for (final (o, p) in commands)
@@ -81,6 +94,31 @@ Future<(ProviderContainer, CommissioningController, GatewayPeer)> _ready(
   await c.scan();
   fake.commands.clear();
   return (container, c, container.read(commissionProvider).peers.single);
+}
+
+/// The user explicitly connects for identification; this must only read config.
+Future<(ProviderContainer, CommissioningController, GatewayPeer)> _held(
+  _Gateway fake, {
+  GatewayTopology topology = GatewayTopology.direct,
+}) async {
+  final ready = await _ready(fake, topology: topology);
+  final (_, c, peer) = ready;
+  final before = Map<String, dynamic>.of(fake.config);
+  expect(await c.holdPeer(peer), isTrue);
+  expect(c.heldPeerId, peer.id);
+  expect(fake.commands.map((entry) => entry.$1), ['get_config']);
+  expect(fake.config, before, reason: 'finding a gateway changes no settings');
+  addTearDown(() => _expectNoConfigurationWrites(fake));
+  return ready;
+}
+
+void _expectNoConfigurationWrites(_Gateway fake) {
+  expect(fake.sent('set_config'), isEmpty);
+  expect(fake.sent('set_ble_enabled'), isEmpty);
+  expect(
+    fake.commands.map((entry) => entry.$1),
+    everyElement(isIn(['get_config', 'identify', 'get_status'])),
+  );
 }
 
 /// The order of [ops] among the commands sent.
@@ -160,7 +198,8 @@ void main() {
       expect(fake.sent('set_config'), isEmpty);
       expect(fake.config['max_connections'], 5);
       fake.devices.first['connected'] = true;
-      expect(await c.identifyPeer(peer), isTrue);
+      await c.identify();
+      expect(fake.identifyRequests, hasLength(1));
       expect(fake.sent('set_config'), isEmpty);
     });
 
@@ -181,36 +220,66 @@ void main() {
       expect(fake.sent('set_config'), isEmpty);
     });
 
-    test('the list 〔辨識〕 (temporary link) switches too: set_config 1 '
-        'between get_config and identify; the gateway is then picking anew, '
-        'so the note says so', () async {
-      final fake = _Gateway()..config['max_connections'] = 5;
-      // No PTU within reach yet: the fresh pick connects nothing.
-      fake.devices.clear();
-      final (container, c, peer) = await _ready(fake);
-      expect(await c.identifyPeer(peer), isTrue);
-      expect(fake.sent('set_config'), [
-        {'max_connections': 1},
-      ]);
-      expect(_order(fake, {'get_config', 'set_config', 'identify'}), [
-        'get_config',
-        'set_config',
-        'identify',
-      ]);
-      expect(fake.config['max_connections'], 1);
-      expect(c.identifyPeerGatewayOnly, isTrue);
-      expect(
-        c.identifyPeerGatewayOnlyReason,
-        const IdentifyGatewayOnlyReason(
-          IdentifyGatewayOnlyKind.switchedToDirect,
-        ),
-      );
-      // The flow's own state is untouched (nothing absorbed).
-      final s = container.read(commissionProvider);
-      expect(s.peer, isNull);
-      expect(s.step, 1);
-      expect(s.busy, isFalse);
-    });
+    test(
+      'finding and identifying a star gateway leaves max 5 and BLE off',
+      () async {
+        final fake = _Gateway()
+          ..config['max_connections'] = 5
+          ..config['ble_enabled'] = false;
+        fake.devices.clear();
+        final before = Map<String, dynamic>.of(fake.config);
+        final (container, c, peer) = await _ready(fake);
+        expect(
+          await c.identifyPeer(peer),
+          isFalse,
+          reason: 'an unconnected card must not open a hidden connection',
+        );
+        expect(fake.connections, isEmpty);
+        expect(fake.commands, isEmpty);
+        expect(await c.holdPeer(peer), isTrue);
+        expect(fake.commands.map((entry) => entry.$1), ['get_config']);
+        final opened = fake.connections.length;
+        final closed = fake.disconnects;
+        expect(await c.identifyPeer(peer), isTrue);
+        _expectNoConfigurationWrites(fake);
+        expect(fake.config, before);
+        expect(fake.config['max_connections'], 5);
+        expect(fake.config['ble_enabled'], isFalse);
+        expect(
+          fake.connections.length,
+          opened,
+          reason: 'identify reuses the link',
+        );
+        expect(fake.disconnects, closed);
+        expect(c.heldPeerId, peer.id);
+        expect(c.identifyPeerGatewayOnly, isTrue);
+        expect(
+          c.identifyPeerGatewayOnlyReason?.kind,
+          isNot(IdentifyGatewayOnlyKind.switchedToDirect),
+        );
+        final state = container.read(commissionProvider);
+        expect(state.peer, isNull);
+        expect(state.step, 1);
+        expect(state.busy, isFalse);
+      },
+    );
+
+    test(
+      'identifying a different card never replaces the held gateway',
+      () async {
+        final fake = _Gateway();
+        final (_, c, peer) = await _held(fake);
+        const other = GatewayPeer('other-gateway', 'GIOS-S50-GW02', -40);
+        final commands = fake.commands.length;
+        final closed = fake.disconnects;
+        expect(await c.identifyPeer(other), isFalse);
+        expect(fake.connections, [peer.id]);
+        expect(fake.commands, hasLength(commands));
+        expect(fake.disconnects, closed);
+        expect(c.heldPeerId, peer.id);
+        _expectNoConfigurationWrites(fake);
+      },
+    );
 
     test('the list 〔辨識〕 under star preference, or on a gateway already '
         'one-to-one, sends no set_config', () async {
@@ -220,34 +289,38 @@ void main() {
       ]) {
         final fake = _Gateway()..config['max_connections'] = limit;
         fake.devices.first['connected'] = true;
-        final (_, c, peer) = await _ready(fake, topology: topology);
+        final (_, c, peer) = await _held(fake, topology: topology);
         expect(await c.identifyPeer(peer), isTrue);
-        expect(fake.sent('set_config'), isEmpty, reason: '$topology');
+        _expectNoConfigurationWrites(fake);
         expect(c.identifyPeerGatewayOnly, isFalse);
         expect(c.identifyPeerGatewayOnlyReason, isNull);
       }
     });
 
-    test('a switch that just happened is reported even when the get_status '
-        'after the identify cannot be read', () async {
-      final fake = _Gateway()
-        ..config['max_connections'] = 5
-        ..statusFails = true;
-      fake.devices.clear();
-      final (_, c, peer) = await _ready(fake);
-      expect(await c.identifyPeer(peer), isTrue);
-      expect(
-        c.identifyPeerGatewayOnlyReason?.kind,
-        IdentifyGatewayOnlyKind.switchedToDirect,
-      );
-    });
+    test(
+      'a missing status report does not claim identification changed topology',
+      () async {
+        final fake = _Gateway()
+          ..config['max_connections'] = 5
+          ..config['ble_enabled'] = false
+          ..statusFails = true;
+        fake.devices.clear();
+        final (_, c, peer) = await _held(fake);
+        expect(await c.identifyPeer(peer), isTrue);
+        expect(c.identifyPeerGatewayOnly, isTrue);
+        expect(c.identifyPeerGatewayOnlyReason, isNull);
+        _expectNoConfigurationWrites(fake);
+        expect(fake.config['max_connections'], 5);
+        expect(fake.config['ble_enabled'], isFalse);
+      },
+    );
   });
 
   group('B2: why only the gateway blinked (get_status.direct)', () {
     test('no PTU heard: candidates empty', () async {
       final fake = _Gateway()..config['max_connections'] = 1;
       fake.devices.clear();
-      final (_, c, peer) = await _ready(fake);
+      final (_, c, peer) = await _held(fake);
       expect(await c.identifyPeer(peer), isTrue);
       expect(c.identifyPeerGatewayOnly, isTrue);
       expect(fake.sent('get_status'), hasLength(1));
@@ -268,7 +341,7 @@ void main() {
         d['rssi'] = -70;
       }
       fake.devices.first['rssi'] = -62;
-      final (_, c, peer) = await _ready(fake);
+      final (_, c, peer) = await _held(fake);
       expect(await c.identifyPeer(peer), isTrue);
       expect(c.identifyPeerGatewayOnly, isTrue);
       expect(
@@ -281,6 +354,8 @@ void main() {
       );
       // The gateway's own threshold, when it has one.
       fake.config['auto_connect_min_rssi'] = -60;
+      await c.releaseHeld();
+      expect(await c.holdPeer(peer), isTrue);
       expect(await c.identifyPeer(peer), isTrue);
       expect(
         c.identifyPeerGatewayOnlyReason,
@@ -307,7 +382,7 @@ void main() {
           ],
         };
       fake.devices.clear();
-      final (_, c, peer) = await _ready(fake);
+      final (_, c, peer) = await _held(fake);
       expect(await c.identifyPeer(peer), isTrue);
       expect(
         c.identifyPeerGatewayOnlyReason,
@@ -330,7 +405,7 @@ void main() {
           'candidates': const [],
         };
       fake.devices.clear();
-      final (_, c, peer) = await _ready(fake);
+      final (_, c, peer) = await _held(fake);
       expect(await c.identifyPeer(peer), isTrue);
       expect(
         c.identifyPeerGatewayOnlyReason?.kind,
@@ -338,24 +413,27 @@ void main() {
       );
     });
 
-    test('get_status refused: gateway only, no reason (the plain note)', () async {
-      final fake = _Gateway()
-        ..config['max_connections'] = 1
-        ..statusFails = true;
-      fake.devices.clear();
-      final (container, c, peer) = await _ready(fake);
-      expect(await c.identifyPeer(peer), isTrue);
-      expect(c.identifyPeerGatewayOnly, isTrue);
-      expect(c.identifyPeerGatewayOnlyReason, isNull);
-      expect(container.read(commissionProvider).error, isNull);
-      expect(container.read(commissionProvider).busy, isFalse);
-    });
+    test(
+      'get_status refused: gateway only, no reason (the plain note)',
+      () async {
+        final fake = _Gateway()
+          ..config['max_connections'] = 1
+          ..statusFails = true;
+        fake.devices.clear();
+        final (container, c, peer) = await _held(fake);
+        expect(await c.identifyPeer(peer), isTrue);
+        expect(c.identifyPeerGatewayOnly, isTrue);
+        expect(c.identifyPeerGatewayOnlyReason, isNull);
+        expect(container.read(commissionProvider).error, isNull);
+        expect(container.read(commissionProvider).busy, isFalse);
+      },
+    );
 
     test('firmware without the direct report: no reason', () async {
       final fake = _Gateway()..config['max_connections'] = 1;
       fake.config.remove('direct_autoconnect_supported');
       fake.devices.clear();
-      final (_, c, peer) = await _ready(fake);
+      final (_, c, peer) = await _held(fake);
       expect(await c.identifyPeer(peer), isTrue);
       expect(c.identifyPeerGatewayOnly, isTrue);
       expect(c.identifyPeerGatewayOnlyReason, isNull);
@@ -367,7 +445,7 @@ void main() {
         ..config['max_connections'] = 1
         ..bothFailsNotConnected = true;
       fake.devices.clear();
-      final (_, c, peer) = await _ready(fake);
+      final (_, c, peer) = await _held(fake);
       expect(await c.identifyPeer(peer), isTrue);
       expect(c.identifyPeerGatewayOnly, isTrue);
       expect(_order(fake, {'identify', 'get_status'}), [
@@ -384,7 +462,7 @@ void main() {
     test('a PTU connected: no get_status read, no reason', () async {
       final fake = _Gateway()..config['max_connections'] = 1;
       fake.devices.first['connected'] = true;
-      final (_, c, peer) = await _ready(fake);
+      final (_, c, peer) = await _held(fake);
       expect(await c.identifyPeer(peer), isTrue);
       expect(c.identifyPeerGatewayOnly, isFalse);
       expect(c.identifyPeerGatewayOnlyReason, isNull);
@@ -394,10 +472,12 @@ void main() {
     test('each call resets the reason', () async {
       final fake = _Gateway()..config['max_connections'] = 1;
       fake.devices.clear();
-      final (_, c, peer) = await _ready(fake);
+      final (_, c, peer) = await _held(fake);
       expect(await c.identifyPeer(peer), isTrue);
       expect(c.identifyPeerGatewayOnlyReason, isNotNull);
       fake.config['identify_supported'] = false;
+      await c.releaseHeld();
+      expect(await c.holdPeer(peer), isTrue);
       expect(await c.identifyPeer(peer), isFalse);
       expect(c.identifyPeerGatewayOnly, isFalse);
       expect(c.identifyPeerGatewayOnlyReason, isNull);
@@ -571,6 +651,9 @@ void main() {
       final snack = find.byKey(const Key('gateway-identified-snack'));
       // 1.0.0+22: the bulb is on the selected card once its link is up.
       await tester.tap(find.byKey(ValueKey(peer.id)));
+      await run();
+      expect(bulb, findsNothing);
+      await tester.tap(find.byKey(const Key('gateway-link-identify')));
       await run();
       await tester.tap(bulb);
       await run();

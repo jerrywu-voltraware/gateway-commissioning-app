@@ -1,6 +1,6 @@
 // 1.0.0+10 (logic fixes after the review of 1.0.0+9):
-// P1-1 the list 〔辨識〕 (budget, generation, busy retry, old firmware,
-//      guidance text, 「已閃燈」, 〔取消操作〕);
+// P1-1 explicit identification connection (budget, generation, busy retry,
+//      old firmware, guidance text, cancellation and late-result isolation);
 // P1-2 〔更換 PTU〕 unbinds only right before step 7 and puts the old
 //      binding back on 取消;
 // P2-3 the bound PTU counts only with its own MAC; still looking right
@@ -44,6 +44,8 @@ class _Link extends PickGateway implements SessionInfo {
   bool abortOnDisconnect = true;
   int disconnects = 0;
   int busyAnswers = 0;
+  final connections = <String>[];
+  Completer<void>? holdIdentify;
 
   /// get_status answered with this instead of the demo's (P2-3).
   Map<String, dynamic>? status;
@@ -60,6 +62,7 @@ class _Link extends PickGateway implements SessionInfo {
     GatewayPeer peer, {
     void Function(String stage)? onStage,
   }) async {
+    connections.add(peer.id);
     final hold = holds.remove(peer.id);
     if (hold != null) {
       _pending.add(hold);
@@ -75,12 +78,17 @@ class _Link extends PickGateway implements SessionInfo {
   @override
   Future<void> disconnect() async {
     disconnects++;
-    if (!abortOnDisconnect) return;
-    for (final hold in [..._pending]) {
-      if (!hold.isCompleted) {
-        hold.completeError(const GatewayFailure('cancelled'));
+    if (abortOnDisconnect) {
+      for (final hold in [..._pending]) {
+        if (!hold.isCompleted) {
+          hold.completeError(const GatewayFailure('cancelled'));
+        }
       }
+    } else {
+      // A non-cancellable platform connect must settle before cleanup ends.
+      await Future.wait([..._pending].map((hold) => hold.future));
     }
+    await super.disconnect();
   }
 
   @override
@@ -88,6 +96,7 @@ class _Link extends PickGateway implements SessionInfo {
     String op, [
     Map<String, dynamic> params = const {},
   ]) async {
+    if (op == 'identify') await holdIdentify?.future;
     if (op == 'identify' && busyAnswers > 0) {
       busyAnswers--;
       ops.add((op, Map.of(params)));
@@ -210,7 +219,7 @@ Future<_ScanLink> _pumpList(
               onConnect: (_) async {},
               onIdentify: onIdentify ?? (_) async => true,
               // 1.0.0+22: the bulb is on the selected card once its link
-              // is up (the card's tap stops the scan and keeps the link).
+              // is up after the explicit connection button is pressed.
               onHold: (_) async => true,
             ),
           ),
@@ -241,97 +250,164 @@ void main() {
   group('P1-1 list 〔辨識〕', () {
     tearDown(() => identifyPeerTimeout = reconnectBudget);
 
-    test('the limit is at least 70 s: a slow connect still blinks, the '
-        'list text comes back', () async {
-      expect(identifyPeerTimeout.inSeconds, greaterThanOrEqualTo(70));
-      final fake = _Link();
-      final (container, c) = await _list(fake);
-      addTearDown(container.dispose);
-      CommissionState read() => container.read(commissionProvider);
-      final listText = read().message;
-      expect(read().step, 1);
-      final config = read().config;
-      final hold = fake.holds[_peerA.id] = Completer<void>();
-      final done = c.identifyPeer(_peerA);
-      await _settle();
-      expect(read().busy, isTrue);
-      expect(read().message, identifyPeerLabel);
-      expect(read().seconds, greaterThanOrEqualTo(70));
-      hold.complete();
-      expect(await done, isTrue);
-      expect(fake.identifyRequests, [
-        {'target': 'both', 'duration_ms': 4000},
-      ]);
-      final s = read();
-      expect(s.error, isNull);
-      expect(s.busy, isFalse);
-      expect(s.step, 1);
-      expect(s.peer, isNull);
-      expect(s.message, listText, reason: 'the list guidance is back');
-      expect(s.config, config, reason: 'nothing absorbed');
-    });
+    test(
+      'slow explicit connection refuses identify until ready and preserves list state',
+      () async {
+        expect(identifyPeerTimeout.inSeconds, greaterThanOrEqualTo(70));
+        final fake = _Link();
+        final (container, c) = await _list(fake);
+        addTearDown(container.dispose);
+        CommissionState read() => container.read(commissionProvider);
+        final listText = read().message;
+        final config = read().config;
+        final hold = fake.holds[_peerA.id] = Completer<void>();
+        final done = c.holdPeer(_peerA);
+        await _settle();
+        expect(await c.identifyPeer(_peerA), isFalse);
+        expect(fake.identifyRequests, isEmpty);
+        expect(fake.connections, [_peerA.id]);
+        expect(read().busy, isFalse);
+        expect(read().message, listText);
+        hold.complete();
+        expect(await done, isTrue);
+        expect(await c.identifyPeer(_peerA), isTrue);
+        expect(fake.identifyRequests, [
+          {'target': 'both', 'duration_ms': 4000},
+        ]);
+        expect(
+          fake.ops.map((entry) => entry.$1),
+          everyElement(isIn(['get_config', 'identify', 'get_status'])),
+        );
+        final state = read();
+        expect(state.error, isNull);
+        expect(state.busy, isFalse);
+        expect(state.step, 1);
+        expect(state.peer, isNull);
+        expect(state.message, listText);
+        expect(state.config, config);
+      },
+    );
 
-    test('a gateway answering busy is asked again; old firmware gets the '
-        'bare op', () async {
-      final fake = _Link()..busyAnswers = 1;
-      fake.config.remove('identify_ptu_supported');
-      final (container, c) = await _list(fake);
-      addTearDown(container.dispose);
-      // Pre-PTU firmware takes only its fixed six seconds (the APP default
-      // 4 is refused; see identify_seconds_test), so pick 6 here.
-      await container.read(topologyProvider.notifier).setIdentifySeconds(6);
-      expect(await c.identifyPeer(_peerA), isTrue);
-      expect(fake.sent('identify'), [<String, dynamic>{}, <String, dynamic>{}]);
-      expect(container.read(commissionProvider).error, isNull);
-    });
+    test(
+      'a gateway answering busy is asked again; old firmware gets the bare op',
+      () async {
+        final fake = _Link()..busyAnswers = 1;
+        fake.config.remove('identify_ptu_supported');
+        final (container, c) = await _list(fake);
+        addTearDown(container.dispose);
+        await container.read(topologyProvider.notifier).setIdentifySeconds(6);
+        expect(await c.holdPeer(_peerA), isTrue);
+        expect(await c.identifyPeer(_peerA), isTrue);
+        expect(fake.sent('identify'), [
+          <String, dynamic>{},
+          <String, dynamic>{},
+        ]);
+        expect(fake.connections, [
+          _peerA.id,
+        ], reason: 'busy retry does not reconnect');
+        expect(container.read(commissionProvider).error, isNull);
+      },
+    );
 
-    test('timed out, then another gateway chosen: the late identify never '
-        'disconnects it', () async {
-      identifyPeerTimeout = const Duration(seconds: 1);
-      final fake = _Link()..abortOnDisconnect = false;
-      final (container, c) = await _list(fake);
-      addTearDown(container.dispose);
-      CommissionState read() => container.read(commissionProvider);
-      final hold = fake.holds[_peerA.id] = Completer<void>();
-      expect(await c.identifyPeer(_peerA), isFalse);
-      expect(read().busy, isFalse);
-      // The row B (the demo gateway) is chosen now.
-      await c.connect(read().peers.single);
-      expect(read().step, 2);
-      expect(read().peer?.id, 'demo-gateway');
-      final before = fake.disconnects;
-      // A's connect finally returns in the background.
-      hold.complete();
-      await _settle();
-      expect(fake.disconnects, before, reason: 'B stays connected');
-      expect(read().peer?.id, 'demo-gateway');
-      expect(read().step, 2);
-    });
+    test(
+      'a timed-out hold is cleaned before another gateway is held',
+      () async {
+        identifyPeerTimeout = const Duration(milliseconds: 100);
+        final fake = _Link();
+        final (container, c) = await _list(fake);
+        addTearDown(container.dispose);
+        fake.holds[_peerA.id] = Completer<void>();
+        expect(await c.holdPeer(_peerA), isFalse);
+        expect(c.heldPeerId, isNull);
+        expect(c.heldCleanupRequired, isFalse);
+        expect(fake.disconnects, greaterThanOrEqualTo(1));
+        expect(await c.identifyPeer(_peerA), isFalse);
+        expect(fake.identifyRequests, isEmpty);
+        final other = container.read(commissionProvider).peers.single;
+        expect(await c.holdPeer(other), isTrue);
+        final before = fake.disconnects;
+        await _settle();
+        expect(fake.disconnects, before);
+        expect(c.heldPeerId, other.id);
+        expect(await c.identifyPeer(other), isTrue);
+        expect(fake.connections, [_peerA.id, other.id]);
+      },
+    );
 
-    test('〔取消操作〕 stops only the blink: the list stays, no 已取消, no '
-        'session end', () async {
-      final fake = _Link();
-      final (container, c) = await _list(fake);
-      addTearDown(container.dispose);
-      CommissionState read() => container.read(commissionProvider);
-      final listText = read().message;
-      fake.holds[_peerA.id] = Completer<void>();
-      final done = c.identifyPeer(_peerA);
-      await _settle();
-      expect(read().busy, isTrue);
-      await c.cancel();
-      expect(await done, isFalse, reason: 'no 「已閃燈」');
-      final s = read();
-      expect(s.busy, isFalse);
-      expect(s.step, 1);
-      expect(s.error, isNull);
-      expect(s.message, listText);
-      expect(s.message, isNot(contains('已取消')));
-      expect(s.peers, isNotEmpty);
-      expect(fake.identifyRequests, isEmpty);
-      await _settle();
-      expect(fake.reports.where((r) => r['event'] == 'end'), isEmpty);
-    });
+    test(
+      'cancel pending connection awaits cleanup, preserves list and never blinks',
+      () async {
+        final fake = _Link()..abortOnDisconnect = false;
+        final (container, c) = await _list(fake);
+        addTearDown(container.dispose);
+        CommissionState read() => container.read(commissionProvider);
+        final listText = read().message;
+        final gate = fake.holds[_peerA.id] = Completer<void>();
+        final pending = c.holdPeer(_peerA);
+        await _settle();
+        var cleaned = false;
+        final cleanup = c.releaseHeld().then((_) => cleaned = true);
+        await _settle();
+        final other = read().peers.single;
+        expect(cleaned, isFalse, reason: 'old connect has not settled');
+        expect(await c.holdPeer(other), isFalse);
+        expect(await c.identifyPeer(_peerA), isFalse);
+        expect(fake.connections, [_peerA.id]);
+        gate.complete();
+        expect(await pending, isFalse);
+        await cleanup;
+        expect(cleaned, isTrue);
+        expect(
+          fake.linkedPeer,
+          isNull,
+          reason: 'physical link cleanup finished',
+        );
+        expect(c.heldPeerId, isNull);
+        expect(read().step, 1);
+        expect(read().busy, isFalse);
+        expect(read().error, isNull);
+        expect(read().message, listText);
+        expect(read().message, isNot(contains('已取消')));
+        expect(read().peers, isNotEmpty);
+        expect(fake.identifyRequests, isEmpty);
+        expect(fake.reports.where((r) => r['event'] == 'end'), isEmpty);
+        expect(await c.holdPeer(other), isTrue);
+        expect(c.heldPeerId, other.id);
+      },
+    );
+
+    test(
+      'released identify cannot publish success or disconnect the next gateway',
+      () async {
+        final fake = _Link();
+        final (container, c) = await _list(fake);
+        addTearDown(container.dispose);
+        expect(await c.holdPeer(_peerA), isTrue);
+        final gate = fake.holdIdentify = Completer<void>();
+        final identify = c.identifyPeer(_peerA);
+        await _settle();
+        await c.releaseHeld();
+        final other = container.read(commissionProvider).peers.single;
+        expect(
+          await c.holdPeer(other),
+          isFalse,
+          reason: 'wait for the in-flight identify to settle',
+        );
+        gate.complete();
+        expect(
+          await identify,
+          isFalse,
+          reason: 'late ACK is not current success',
+        );
+        fake.holdIdentify = null;
+        expect(await c.holdPeer(other), isTrue);
+        final before = fake.disconnects;
+        await _settle();
+        expect(fake.disconnects, before);
+        expect(c.heldPeerId, other.id);
+        expect(await c.identifyPeer(other), isTrue);
+      },
+    );
   });
 
   group('P1-2 〔更換 PTU〕', () {
@@ -493,42 +569,54 @@ void main() {
 
   group('P2-5 list scan paused while the link is kept / 「已閃燈」 only when '
       'sent', () {
-    testWidgets('after the card\'s tap the scan stays stopped (the link is '
-        'kept); its bulb: 「已閃燈」 shown', (tester) async {
-      final link = await _pumpList(tester);
-      expect(link.scans, hasLength(1));
-      await tester.tap(find.byKey(const ValueKey('AA:BB:CC:DD:3A:02')));
-      await _run(tester);
-      expect(link.scans, hasLength(1), reason: 'no scan while held');
-      expect(link.scans.last.isClosed, isTrue);
-      await tester.tap(
-        find.byKey(const ValueKey('identify-AA:BB:CC:DD:3A:02')),
-      );
-      await _run(tester);
-      expect(link.scans, hasLength(1), reason: 'still held: no scan');
-      // 1.0.0+11: on its row and in a SnackBar.
-      expect(
-        find.byKey(const ValueKey('gateway-presence-AA:BB:CC:DD:3A:02')),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(
-          of: find.byKey(const ValueKey('gateway-presence-AA:BB:CC:DD:3A:02')),
-          matching: find.text(identifiedHint),
-        ),
-        findsOneWidget,
-      );
-      expect(find.byKey(const Key('gateway-identified-snack')), findsOneWidget);
-      // The rows heard before stay.
-      expect(find.byKey(const ValueKey('AA:BB:CC:DD:3A:02')), findsOneWidget);
-      await tester.pumpWidget(const SizedBox());
-    });
+    testWidgets(
+      'after the explicit connection the scan stays stopped (the link is '
+      'kept); its bulb: 「已閃燈」 shown',
+      (tester) async {
+        final link = await _pumpList(tester);
+        expect(link.scans, hasLength(1));
+        await tester.tap(find.byKey(const ValueKey('AA:BB:CC:DD:3A:02')));
+        await _run(tester);
+        await tester.tap(find.byKey(const Key('gateway-link-identify')));
+        await _run(tester);
+        expect(link.scans, hasLength(1), reason: 'no scan while held');
+        expect(link.scans.last.isClosed, isTrue);
+        await tester.tap(
+          find.byKey(const ValueKey('identify-AA:BB:CC:DD:3A:02')),
+        );
+        await _run(tester);
+        expect(link.scans, hasLength(1), reason: 'still held: no scan');
+        // 1.0.0+11: on its row and in a SnackBar.
+        expect(
+          find.byKey(const ValueKey('gateway-presence-AA:BB:CC:DD:3A:02')),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: find.byKey(
+              const ValueKey('gateway-presence-AA:BB:CC:DD:3A:02'),
+            ),
+            matching: find.text(identifiedHint),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('gateway-identified-snack')),
+          findsOneWidget,
+        );
+        // The rows heard before stay.
+        expect(find.byKey(const ValueKey('AA:BB:CC:DD:3A:02')), findsOneWidget);
+        await tester.pumpWidget(const SizedBox());
+      },
+    );
 
     testWidgets('an identify not sent (cancelled / failed): no 「已閃燈」', (
       tester,
     ) async {
       final link = await _pumpList(tester, onIdentify: (_) async => false);
       await tester.tap(find.byKey(const ValueKey('AA:BB:CC:DD:3A:02')));
+      await _run(tester);
+      await tester.tap(find.byKey(const Key('gateway-link-identify')));
       await _run(tester);
       await tester.tap(
         find.byKey(const ValueKey('identify-AA:BB:CC:DD:3A:02')),

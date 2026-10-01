@@ -18,23 +18,25 @@ void main() {
   const peer = GatewayPeer('AA:BB:CC:DD:EE:FF', 'GIOS-S1', -28);
 
   group('reconnect budgets', () {
-    test('worst-case connect time (all retries fail) fits inside the outer '
-        'budgets with headroom', () {
-      final worstCase =
-          BleGatewayLink.connectTimeout * (BleGatewayLink.connectRetries + 1) +
-          BleGatewayLink.quickRetryTimeout +
-          (BleGatewayLink.retryGap + BleGatewayLink.rescanWindow) *
-              BleGatewayLink.connectRetries;
-      expect(worstCase, lessThanOrEqualTo(const Duration(seconds: 51)));
-      expect(worstCase, lessThan(reconnectBudget));
-    });
+    test(
+      'connect retry waits including five stale cleanup guards fit the outer '
+      'budgets with headroom',
+      () {
+        final worstCase = BleGatewayLink.failedConnectWaitBudget;
+        expect(worstCase, const Duration(milliseconds: 60500));
+        expect(worstCase, lessThan(reconnectBudget));
+      },
+    );
 
     test('reconnectBudget stays above the link retry budget', () {
       // reconnectBudget wraps _relink, which itself wraps _link.connect;
       // both outer numbers must have headroom over the link's own worst
       // case (documented in ble_gateway_link.dart).
       expect(reconnectBudget, const Duration(seconds: 80));
-      expect(reconnectBudget, greaterThan(const Duration(seconds: 51)));
+      expect(
+        reconnectBudget,
+        greaterThan(BleGatewayLink.failedConnectWaitBudget),
+      );
     });
 
     test('connect() reports stages in order: clear stale, connecting, rescan, '

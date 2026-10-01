@@ -6,7 +6,7 @@
 // scratch, losing all of it.
 //
 // Now, with real fonts (support/real_fonts.dart) at 1.1 and 1.3:
-// - 1.0.0+22: the card's tap connects and keeps the link (the scan stops),
+// - Explicit connect after selecting a card keeps the link (the scan stops),
 //   the bulb is on that card once it is up; meanwhile the rows keep their
 //   last RSSI (grey), the hint stays and nothing in the list moves; after
 //   the bulb a SnackBar 「站 80 · 閘道器 2 已送出」 (the row's mark stays too);
@@ -149,9 +149,12 @@ bool _grey(WidgetTester tester, GatewayPeer peer) {
   return color == Theme.of(tester.element(_signal(peer))).colorScheme.outline;
 }
 
-/// Where the hint and each row sit inside the list (a jump changes them).
+/// Card positions relative to the hint; the explicit action panel may move
+/// the group, but its internal spacing and order must stay stable.
 List<double> _places(WidgetTester tester) {
-  final top = tester.getTopLeft(find.byType(GatewayDiscovery)).dy;
+  final top = tester
+      .getTopLeft(find.byKey(const Key('gateway-nearest-hint')))
+      .dy;
   return [
     for (final finder in [
       find.byKey(const Key('gateway-nearest-hint')),
@@ -175,7 +178,7 @@ void main() {
   });
 
   for (final scale in _scales) {
-    testWidgets('@$scale a card\'s tap connects, then its bulb: the rows keep '
+    testWidgets('@$scale explicit connection then its bulb: the rows keep '
         'their RSSI (grey), the hint stays, nothing moves; then a SnackBar', (
       tester,
     ) async {
@@ -241,9 +244,20 @@ void main() {
       // stays, nothing moves, still no bulb.
       link.hold = Completer<void>();
       await tester.tap(find.byKey(ValueKey(_gw80.id)));
+      await tester.pump();
+      final connect = find.byKey(const Key('gateway-link-identify'));
+      await tester.ensureVisible(connect);
+      await tester.pump();
+      await tester.tap(connect);
       await _settle(tester);
       expect(read().busy, isFalse);
-      expect(find.text(gatewayConnectingLabel), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(ValueKey('gateway-selected-${_gw80.id}')),
+          matching: find.text(gatewayConnectingLabel),
+        ),
+        findsOneWidget,
+      );
       expect(bulb80, findsNothing);
       expect(_signalText(tester, _gw80), '-62 dBm');
       expect(_signalText(tester, _gw81), '-41 dBm');
@@ -269,6 +283,8 @@ void main() {
 
       // The bulb: over the kept link; the row's mark and a SnackBar at the
       // bottom; the scan stays paused.
+      await tester.ensureVisible(bulb80);
+      await tester.pump();
       await tester.tap(bulb80);
       await _settle(tester);
       expect(read().busy, isFalse);
@@ -292,7 +308,11 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(link.scans, hasLength(1), reason: 'no scan while the link is kept');
+      expect(
+        link.scans,
+        hasLength(1),
+        reason: 'no scan while the link is kept',
+      );
       expect(_signalText(tester, _gw80), '-62 dBm');
       expect(_grey(tester, _gw80), isTrue);
       expect(find.byKey(const Key('gateway-nearest-hint')), findsOneWidget);

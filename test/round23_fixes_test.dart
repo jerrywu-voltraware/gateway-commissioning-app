@@ -626,7 +626,9 @@ void main() {
       final scrolled = tester.widget<Scrollable>(_page).controller!.offset;
       await tester.tap(gateway);
       await tester.pumpAndSettle();
-      // 1.0.0+14: the card's tap selects; the fixed bottom button connects.
+      // Connect for identification first; the bottom button then starts
+      // commissioning over the ready link from this scrolled discovery page.
+      await tap(tester, find.byKey(const Key('gateway-link-identify')));
       await tester.tap(gatewayConnectButton);
       await tester.pumpAndSettle();
 

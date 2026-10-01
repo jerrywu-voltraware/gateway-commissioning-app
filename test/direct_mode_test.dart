@@ -393,14 +393,15 @@ void main() {
     });
   });
 
-  testWidgets('gateway list row 「辨識」: the selected card\'s tap stops the '
-      'scan and holds the link; its bulb then calls onIdentify', (
+  testWidgets('gateway list row 「辨識」: selection keeps scanning; explicit '
+      'connect holds the link before its bulb calls onIdentify', (
     tester,
   ) async {
     final link = _LiveLink();
     addTearDown(link.events.close);
     GatewayPeer? identified;
     var connected = false;
+    var holdCalls = 0;
     await tester.pumpWidget(
       ProviderScope(
         overrides: [linkProvider.overrideWithValue(link)],
@@ -414,7 +415,10 @@ void main() {
                   identified = peer;
                   return true;
                 },
-                onHold: (_) async => true,
+                onHold: (_) async {
+                  holdCalls++;
+                  return true;
+                },
               ),
             ),
           ),
@@ -437,7 +441,15 @@ void main() {
     expect(find.byKey(const ValueKey('identify-AA:BB')), findsNothing);
     await tester.tap(find.byKey(const ValueKey('AA:BB')));
     await settle();
+    expect(link.stopped, isFalse);
+    expect(holdCalls, 0);
+    expect(identified, isNull);
+    expect(connected, isFalse);
+    expect(find.byKey(const ValueKey('identify-AA:BB')), findsNothing);
+    await tester.tap(find.byKey(const Key('gateway-link-identify')));
+    await settle();
     expect(link.stopped, isTrue);
+    expect(holdCalls, 1);
     expect(identified, isNull);
     await tester.tap(find.byKey(const ValueKey('identify-AA:BB')));
     await settle();

@@ -315,7 +315,9 @@ void main() {
       final link = _LiveLink();
       addTearDown(link.events.close);
       GatewayPeer? connected, identified;
-      // 1.0.0+14: the page's fixed bottom button connects the selection.
+      final heldIds = <String>[];
+      var releases = 0;
+      // The fixed bottom button starts commissioning over the ready link.
       final choice = GatewayChoice();
       addTearDown(choice.dispose);
       await tester.pumpWidget(
@@ -332,7 +334,13 @@ void main() {
                     identified = peer;
                     return true;
                   },
-                  onHold: (_) async => true,
+                  onHold: (peer) async {
+                    heldIds.add(peer.id);
+                    return true;
+                  },
+                  onRelease: () async {
+                    releases++;
+                  },
                 ),
               ),
               bottomNavigationBar: GatewayConnectBar(choice: choice),
@@ -459,6 +467,14 @@ void main() {
       expect(find.byTooltip(identifyGatewayLabel), findsNothing);
       await tester.tap(find.byKey(const ValueKey('AA:BB:CC:DD:3B:02')));
       await settle();
+      expect(heldIds, isEmpty);
+      expect(find.byTooltip(identifyGatewayLabel), findsNothing);
+      final connectForIdentify = find.byKey(const Key('gateway-link-identify'));
+      await tester.ensureVisible(connectForIdentify);
+      await tester.pump();
+      await tester.tap(connectForIdentify);
+      await settle();
+      expect(heldIds, ['AA:BB:CC:DD:3B:02']);
       expect(find.byTooltip(identifyGatewayLabel), findsOneWidget);
       await tester.tap(
         find.byKey(const ValueKey('identify-AA:BB:CC:DD:3B:02')),
@@ -466,10 +482,26 @@ void main() {
       await settle();
       expect(identified?.id, 'AA:BB:CC:DD:3B:02');
       expect(connected, isNull);
-      // Tapping another row selects it (1.0.0+14: and only that; 1.0.0+22:
-      // the bulb moves with the kept link); the bottom button connects.
-      await tester.tap(find.byKey(const ValueKey('AA:BB:CC:DD:3A:02')));
+      // A ready connection locks the other cards until explicit disconnect.
+      final otherRow = find.byKey(const ValueKey('AA:BB:CC:DD:3A:02'));
+      expect(tester.widget<InkWell>(otherRow).onTap, isNull);
+      final disconnect = find.byKey(const Key('gateway-disconnect'));
+      await tester.ensureVisible(disconnect);
+      await tester.pump();
+      await tester.tap(disconnect);
       await settle();
+      expect(releases, 1);
+      await tester.ensureVisible(otherRow);
+      await tester.pump();
+      await tester.tap(otherRow);
+      await settle();
+      expect(heldIds, ['AA:BB:CC:DD:3B:02']);
+      expect(find.byTooltip(identifyGatewayLabel), findsNothing);
+      await tester.ensureVisible(connectForIdentify);
+      await tester.pump();
+      await tester.tap(connectForIdentify);
+      await settle();
+      expect(heldIds, ['AA:BB:CC:DD:3B:02', 'AA:BB:CC:DD:3A:02']);
       expect(connected, isNull);
       expect(
         find.byKey(const ValueKey('identify-AA:BB:CC:DD:3B:02')),
@@ -666,8 +698,8 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
 
-    testWidgets('〔辨識〕 blinks the gateway and stays on the list; the row '
-        'tap then chooses it', (tester) async {
+    testWidgets('explicitly connected 〔辨識〕 stays on the list; commissioning '
+        'then adopts that gateway', (tester) async {
       _phone(tester);
       // A PTU is connected to the gateway: the identify reaches it too, so
       // the row says the plain 「已送出」 (not the gateway-only warning).
@@ -683,6 +715,9 @@ void main() {
       final bulb = find.byKey(const ValueKey('identify-demo-gateway'));
       expect(bulb, findsNothing);
       await _tap(tester, row);
+      expect(bulb, findsNothing);
+      expect(fake.identifyRequests, isEmpty);
+      await _tap(tester, find.byKey(const Key('gateway-link-identify')));
       for (var i = 0; i < 5; i++) {
         await tester.runAsync(
           () => Future<void>.delayed(const Duration(milliseconds: 20)),
@@ -712,11 +747,8 @@ void main() {
       await tester.pump(identifiedHintFor + const Duration(milliseconds: 100));
       await tester.pumpAndSettle();
       expect(find.textContaining(identifiedHint), findsNothing);
-      // The row's tap chooses the gateway and goes on.
-      await pickGateway(
-        (f) => _tap(tester, f),
-        find.byKey(const ValueKey('demo-gateway')),
-      );
+      // Commissioning adopts the already identified link without reconnecting.
+      await _tap(tester, gatewayConnectButton);
       expect(read().peer?.id, 'demo-gateway');
       expect(read().step, greaterThanOrEqualTo(2));
       expect(fake.identifyRequests.length, 1);

@@ -44,23 +44,12 @@ class DemoMode extends Notifier<bool> {
 final demoProvider = NotifierProvider<DemoMode, bool>(DemoMode.new);
 final demoSystemProvider = Provider((ref) => DemoSystem());
 
-/// 1.0.0+9: the busy message of [CommissioningController.identifyPeer].
+/// Label retained for identification diagnostics.
 const identifyPeerLabel = '辨識閘道器（閃燈）';
 
-/// 1.0.0+10 (review: 20 s ended a weak-signal list 〔辨識〕 in 「等待超時」
-/// and a field report, while the link's own connect may take 53 s,
-/// ble_gateway_link.dart): the list 〔辨識〕's overall limit is the
-/// reconnect budget ([reconnectBudget], 80 s). Tests shorten it (whole
-/// seconds, at least 1).
+/// Overall budget for an explicit identification connection, including the
+/// link's own retries. Tests can shorten it without changing transport limits.
 Duration identifyPeerTimeout = reconnectBudget;
-
-/// 1.0.0+22 (select_then_identify): for this long after the link kept to
-/// the selected gateway ([CommissioningController.holdPeer]) switched it to
-/// one-to-one (max_connections 1: its BLE scan restarts and it picks its
-/// PTU anew), a gateway-only 〔辨識〕 says so
-/// ([IdentifyGatewayOnlyKind.switchedToDirect]); after it the gateway's
-/// own get_status says why.
-const heldSwitchSettle = Duration(seconds: 15);
 
 final linkProvider = Provider<GatewayLink>(
   (ref) => ref.watch(demoProvider)
@@ -1006,7 +995,8 @@ const recheckingPtuText = '正在重新檢查 PTU';
 /// 1.0.0+10 (review P2-8): ⋮「閘道器狀態…」 — its own BLE scan and back
 /// office reads — only while nothing runs and no gateway is connected
 /// (the start page and the gateway list).
-bool gatewayStatusMenuEnabled(CommissionState s) => !s.busy && s.step < 2;
+bool gatewayStatusMenuEnabled(CommissionState s) =>
+    !s.busy && !s.discoveryLinkActive && s.step < 2;
 
 /// 1.0.0+10: why ⋮「閘道器狀態…」 is greyed.
 const gatewayStatusBusyText = '配置進行中不可用';
@@ -1571,6 +1561,7 @@ class CommissionState {
   const CommissionState({
     this.step = 0,
     this.busy = false,
+    this.discoveryLinkActive = false,
     this.message = '',
     this.error,
     this.seconds = 0,
@@ -1889,6 +1880,10 @@ class CommissionState {
   final Set<int> verifySkipped;
   final int step, seconds;
   final bool busy, verified, online;
+
+  /// The discovery page owns BLE, including pending cleanup. Other pages
+  /// with their own scanner must stay disabled until this becomes false.
+  final bool discoveryLinkActive;
   final String message, report;
 
   /// Round 29: 「上一台已完成：站 X 閘道器 Y」 ([lastDoneText]) on the start
@@ -2036,6 +2031,7 @@ class CommissionState {
   CommissionState copy({
     int? step,
     bool? busy,
+    bool? discoveryLinkActive,
     String? message,
     String? error,
     int? seconds,
@@ -2233,6 +2229,7 @@ class CommissionState {
     starNotice: starNotice ?? this.starNotice,
     step: step ?? this.step,
     busy: busy ?? this.busy,
+    discoveryLinkActive: discoveryLinkActive ?? this.discoveryLinkActive,
     message: message ?? this.message,
     error: error,
     seconds: seconds ?? this.seconds,
@@ -2552,7 +2549,9 @@ class CommissioningController extends Notifier<CommissionState> {
       _rssiTimer?.cancel();
       _settleTimer?.cancel();
       _forgetHeld();
-      unawaited(_link.disconnect());
+      // The disposed provider cannot display a cleanup failure. The transport
+      // retains its cleanup-required state; do not leak an unhandled Future.
+      unawaited(link.disconnect().catchError((Object _) {}));
     });
     return const CommissionState();
   }
@@ -3760,125 +3759,31 @@ class CommissioningController extends Notifier<CommissionState> {
     }
   }
 
-  /// 1.0.0+9 (phone: 〔辨識〕 on the gateway list connected, blinked and
-  /// went on to the next step — the installer only wanted the light):
-  /// blink [peer] and stay on the list. Connects, reads `get_config` for
-  /// `identify_supported`, sends identify target=both (the gateway alone
-  /// when the PTU side is not connected — same fallback as [_identify]),
-  /// then disconnects. The step, the chosen peer and the config are
-  /// untouched; a tap on the row afterwards connects as usual.
-  ///
-  /// 1.0.0+10 (review):
-  ///   * the limit is [identifyPeerTimeout] (the link's own connect alone
-  ///     may take 53 s);
-  ///   * the commands go through the busy-retry wrapper ([_commandBusy],
-  ///     nothing absorbed into the flow's config) and firmware without
-  ///     `identify_ptu_supported` gets the bare op, as in [_identify];
-  ///   * only the identify still current closes its link — one timed out,
-  ///     cancelled or superseded by a connect (another row) never
-  ///     disconnects the gateway chosen since;
-  ///   * the list's guidance text (e.g. 〔配置下一台〕's 「預設沿用站 X」)
-  ///     comes back afterwards ([_sideTask]);
-  ///   * 〔取消操作〕 during it only stops the blink ([cancel]).
-  /// Returns whether the identify was sent and acked (the list's
-  /// 「已送出」); [identifyPeerGatewayOnly] tells when only the gateway
-  /// blinked (no PTU connected) — the list then says so instead.
-  ///
-  /// 1.0.0+22 (select_then_identify): the gateway selected on the list has
-  /// its own kept link ([holdPeer]) — the identify goes over it at once
-  /// ([_identifyHeld]: no connect, no disconnect, no busy run); while that
-  /// link is still connecting the identify waits for it (false when it did
-  /// not come up: the list says why). Any other gateway keeps the connect →
-  /// identify → disconnect above, and a link kept to another gateway ends
-  /// here (this connect replaces it) — since the phone trial the list shows
-  /// a bulb on the selected, connected card alone, so that branch is no
-  /// longer reached from the list (kept as the controller's own API: the
-  /// reason detection's tests and any other entry still use it).
+  /// Identify only the explicitly connected, ready gateway. Never connects,
+  /// switches gateways or writes configuration. A pending connection,
+  /// cleanup or identify rejects another action without queuing it.
+  /// Returns true only after the identify acknowledgement on this hold.
   Future<bool> identifyPeer(GatewayPeer peer) async {
-    _identifyPeerGatewayOnly = false;
-    _identifyPeerGatewayOnlyReason = null;
-    if (state.busy) return false;
-    final holding = _holding;
-    if (holding != null && _holdingPeer?.id == peer.id && !await holding) {
+    if (state.busy ||
+        _holding != null ||
+        _releasingHeld != null ||
+        _identifyingPeer != null ||
+        _cleanupRequired ||
+        _heldPeer?.id != peer.id) {
       return false;
     }
-    if (!ref.mounted || state.busy) return false;
-    if (_heldPeer?.id == peer.id) {
-      if (_heldAlive()) return _identifyHeld(peer);
+    _identifyPeerGatewayOnly = false;
+    _identifyPeerGatewayOnlyReason = null;
+    if (!_heldAlive()) {
       await _dropHeld();
       return false;
     }
-    _forgetHeld();
-    _noteGatewayMac(peer.id);
-    var blinked = false;
-    // Only the gateway's LED was asked: the PTU side was not connected.
-    var gatewayOnly = false;
-    // 1.0.0+22: why ([identifyPeerGatewayOnlyReason]).
-    IdentifyGatewayOnlyReason? reason;
     _identifyingPeer = peer;
     try {
-      await _sideTask(identifyPeerLabel, identifyPeerTimeout.inSeconds, (
-        generation,
-      ) async {
-        try {
-          await _link.connect(peer);
-          try {
-            _check(generation);
-            Future<Map<String, dynamic>> send(
-              String op, [
-              Map<String, dynamic> params = const {},
-            ]) => _commandBusy(generation, op, params, absorb: false);
-            final config = await send('get_config');
-            if (config['identify_supported'] != true) {
-              throw const GatewayFailure('identify_unsupported');
-            }
-            if (!ref.read(topologyProvider).loaded) {
-              await ref.read(topologyProvider.notifier).ready;
-            }
-            _check(generation);
-            // 1.0.0+22: one-to-one preferred — a gateway still in star
-            // mode (shipped NVS: 5) is switched now, so its LED-bearing
-            // PTU gets connected before the installer configures it.
-            final switched = await _ensureDirectLimit(config, send);
-            _check(generation);
-            final sent = await _peerIdentify(
-              config,
-              send,
-              switched: switched,
-              check: () => _check(generation),
-            );
-            gatewayOnly = sent.gatewayOnly;
-            reason = sent.reason;
-            _check(generation);
-            blinked = true;
-          } finally {
-            if (_identifyStillOwns(generation, peer)) {
-              await _link.disconnect();
-            }
-          }
-        } catch (error) {
-          // Cancelled, timed out or superseded meanwhile: whatever the
-          // link says now is that, not a failure of this identify.
-          if (!ref.mounted || generation != _generation) {
-            throw const GatewayFailure('cancelled');
-          }
-          rethrow;
-        }
-      });
+      return await _identifyHeld(peer);
     } finally {
       if (identical(_identifyingPeer, peer)) _identifyingPeer = null;
     }
-    // Timed out (the connect may still be pending in the link): nothing of
-    // the flow uses the link here, so close it now — the late connect
-    // ends too instead of leaving the gateway connected.
-    if (!blinked && ref.mounted && !state.busy && state.peer == null) {
-      try {
-        await _link.disconnect();
-      } catch (_) {}
-    }
-    _identifyPeerGatewayOnly = blinked && gatewayOnly;
-    _identifyPeerGatewayOnlyReason = _identifyPeerGatewayOnly ? reason : null;
-    return blinked && ref.mounted;
   }
 
   /// The last [identifyPeer] blinked the gateway only: its PTU side was not
@@ -3896,18 +3801,9 @@ class CommissioningController extends Notifier<CommissionState> {
       _identifyPeerGatewayOnlyReason;
   IdentifyGatewayOnlyReason? _identifyPeerGatewayOnlyReason;
 
-  /// 1.0.0+22 (field: with one-to-one preferred the gateway only left star
-  /// mode at step 7, so 〔辨識〕 before that never reached the PTU —
-  /// shipped units keep `max_connections` 5 in NVS): right after a connect
-  /// read [config] (get_config), a gateway not yet one-to-one gets
-  /// `set_config max_connections=1` and, as step 7 does, BLE scanning on.
-  /// The firmware restarts its BLE scan on that change (the phone's link
-  /// stays, as at step 7, which polls get_status right after). Nothing is
-  /// sent under star preference, in test mode, when already 1, on firmware
-  /// without the direct pick (it keeps the list flow, step 7 sets the
-  /// limit), or to a gateway in service (`fleet_joined`: a star station at
-  /// work is r33's topology ask — the installer decides). [config] is
-  /// updated in place; true when `max_connections` was sent.
+  /// Apply the preferred direct topology only after commissioning starts.
+  /// Discovery and identification must never call this configuration writer.
+  /// Existing commissioned and test gateways retain their current settings.
   Future<bool> _ensureDirectLimit(
     Map<String, dynamic> config,
     Future<Map<String, dynamic>> Function(
@@ -3965,21 +3861,13 @@ class CommissioningController extends Notifier<CommissionState> {
   /// 1.0.0+10: the list 〔辨識〕 of [peer] ([identifyPeer]) running now.
   GatewayPeer? _identifyingPeer;
 
-  /// 1.0.0+10: [identifyPeer]'s run [generation] may still close the link
-  /// it opened — still current, and no gateway of the flow chosen since
-  /// (other than [peer]).
-  bool _identifyStillOwns(int generation, GatewayPeer peer) =>
-      ref.mounted &&
-      generation == _generation &&
-      (state.peer == null || state.peer!.id == peer.id);
-
   /// The list's identify on a connected gateway whose get_config is
   /// [config] (`identify_supported` already checked): target=both — the
   /// gateway alone when the PTU side is not connected (same fallback as
   /// [_identify]) — and, when only the gateway blinked, why
   /// ([_gatewayOnlyReason]; [switched]: max_connections 1 was just sent).
-  /// Shared by [identifyPeer]'s own connect and the kept link
-  /// ([_identifyHeld]); [check] throws when that run is no longer current.
+  /// Used only over the ready held link ([_identifyHeld]); [check] throws
+  /// when that connection generation is no longer current.
   Future<({bool gatewayOnly, IdentifyGatewayOnlyReason? reason})> _peerIdentify(
     Map<String, dynamic> config,
     Future<Map<String, dynamic>> Function(
@@ -4024,17 +3912,15 @@ class CommissioningController extends Notifier<CommissionState> {
   /// while none is (never held, released, lost, or taken by [connect]).
   GatewayPeer? _heldPeer;
 
-  /// Its get_config as the hold read it (after [_ensureDirectLimit]).
+  /// Read-only get_config snapshot from the identification connection.
   Map<String, dynamic> _heldConfig = const {};
-
-  /// When the hold sent max_connections 1 ([heldSwitchSettle]); null when
-  /// it did not.
-  DateTime? _heldSwitchedAt;
 
   /// The hold whose connect still runs, and that run (answers whether it
   /// held).
   GatewayPeer? _holdingPeer;
   Future<bool>? _holding;
+  Future<void>? _releasingHeld;
+  bool _cleanupRequired = false;
 
   /// Bumped by every new hold, release, loss and takeover: a hold run with
   /// an older token keeps nothing and closes no link.
@@ -4042,29 +3928,25 @@ class CommissioningController extends Notifier<CommissionState> {
   StreamSubscription<bool>? _heldWatch;
   final _heldLost = StreamController<String>.broadcast();
 
-  /// 1.0.0+22 (field: the list's bulb took 3–5 s to light the PTU —
-  /// Android's connect, service discovery and MTU 1.5–3 s, get_config
-  /// 0.3 s; the gateway's own identify takes < 10 ms): a card's tap on the
-  /// gateway list connects to [peer] and keeps the link, so its 〔辨識〕
-  /// ([identifyPeer]) goes out at once and 〔連線到 …〕 ([connect]) goes on
-  /// over the same link. Reads get_config and, as [identifyPeer] did,
-  /// switches a gateway not in service to one-to-one
-  /// ([_ensureDirectLimit]; a refusal by the gateway does not fail the
-  /// hold). No run: nothing on the page turns busy, the list stays usable
-  /// (another card, a bulb, the bottom button).
-  ///
-  /// Answers whether [peer] is held. The same gateway again: true at once
-  /// while held, the pending connect while connecting. Another gateway: the
-  /// previous hold ends (its link is replaced). A failed hold closes what it
-  /// opened. [releaseHeld] ends it; a drop is told on [heldLinkLost].
+  /// Explicit identification connection. Connect must finish service discovery,
+  /// notifications and the writable characteristic before get_config is read.
+  /// No device configuration is written. A different gateway requires an
+  /// explicit release whose cleanup completed; requests are never queued.
   Future<bool> holdPeer(GatewayPeer peer) {
-    if (!ref.mounted || state.busy || state.step > 1) {
+    if (!ref.mounted ||
+        state.busy ||
+        state.step > 1 ||
+        _holding != null ||
+        _releasingHeld != null ||
+        _cleanupRequired ||
+        _identifyingPeer != null) {
       return Future.value(false);
     }
-    if (_heldPeer?.id == peer.id && _heldAlive()) return Future.value(true);
-    final pending = _holding;
-    if (pending != null && _holdingPeer?.id == peer.id) return pending;
+    if (_heldPeer != null) {
+      return Future.value(_heldPeer?.id == peer.id && _heldAlive());
+    }
     _forgetHeld();
+    state = state.copy(discoveryLinkActive: true, error: null);
     final token = _holdToken;
     _holdingPeer = peer;
     final run = _hold(token, peer);
@@ -4084,39 +3966,42 @@ class CommissioningController extends Notifier<CommissionState> {
         Map<String, dynamic> params = const {},
       ]) => _holdCommand(token, op, params);
       final config = Map<String, dynamic>.of(await send('get_config'));
-      var switched = false;
-      try {
-        switched = await _ensureDirectLimit(config, send);
-      } on GatewayFailure catch (error) {
-        // Refused by the gateway: left as it is — [_connect] and step 7
-        // ask again; the link is kept.
-        if (!error.fromGateway) rethrow;
-      }
       _holdCheck(token);
       _heldPeer = peer;
       _heldConfig = config;
-      _heldSwitchedAt = switched ? DateTime.now() : null;
       _watchHeld(token, peer);
       held = true;
-    } catch (_) {
-      // Failed, timed out, or ended meanwhile (another hold, a release,
-      // the flow's own connect): nothing kept.
-    } finally {
-      if (token == _holdToken) {
-        _holding = null;
-        _holdingPeer = null;
+    } catch (error) {
+      if (ref.mounted && token == _holdToken) {
+        state = state.copy(
+          error: '藍牙連線未完成，請重試。',
+          errorDetail: error.toString(),
+        );
       }
     }
-    if (!held &&
-        token == _holdToken &&
-        ref.mounted &&
-        !state.busy &&
-        state.peer == null) {
-      // A connect that timed out may still be pending in the link: closed
-      // now, no half-open link is left to the gateway.
+    if (!held && token == _holdToken && ref.mounted) {
+      _cleanupRequired = true;
       try {
         await _link.disconnect();
-      } catch (_) {}
+        _cleanupRequired = false;
+      } catch (error) {
+        if (ref.mounted) {
+          state = state.copy(
+            error: '藍牙清理未完成，請重試斷開。',
+            errorDetail: error.toString(),
+          );
+        }
+      }
+    }
+    if (token == _holdToken) {
+      _holding = null;
+      _holdingPeer = null;
+      if (ref.mounted) {
+        state = state.copy(
+          discoveryLinkActive: held || _cleanupRequired,
+          error: state.error,
+        );
+      }
     }
     return held && ref.mounted;
   }
@@ -4167,13 +4052,15 @@ class CommissioningController extends Notifier<CommissionState> {
     final link = _link;
     if (link is! GatewaySignalSource) return;
     _heldWatch = (link as GatewaySignalSource).signalConnections.listen((up) {
-      if (!up && token == _holdToken && _heldPeer?.id == peer.id) _loseHeld();
+      if (!up && token == _holdToken && _heldPeer?.id == peer.id) {
+        unawaited(_dropHeld());
+      }
     });
   }
 
   /// The kept link is gone (dropped, or closed by something else): the hold
   /// ends and the list is told ([heldLinkLost]) — its card says so, its
-  /// next tap connects again.
+  /// explicit connect can run again after cleanup.
   void _loseHeld() {
     final lost = _heldPeer?.id;
     _forgetHeld();
@@ -4185,11 +4072,15 @@ class CommissioningController extends Notifier<CommissionState> {
   /// link up with nobody keeping it (the gateway then does not advertise).
   /// Not when a run or a chosen gateway has the link.
   Future<void> _dropHeld() async {
-    _loseHeld();
-    if (!ref.mounted || state.busy || state.peer != null) return;
+    final lost = _heldPeer?.id;
     try {
-      await _link.disconnect();
-    } catch (_) {}
+      await releaseHeld();
+    } catch (_) {
+      // releaseHeld recorded cleanup_required and its error. Identification
+      // returns false; the loss event exposes the retry-disconnect action.
+    } finally {
+      if (lost != null && !_heldLost.isClosed) _heldLost.add(lost);
+    }
   }
 
   /// Ends the hold's bookkeeping (no disconnect, nothing told).
@@ -4199,7 +4090,6 @@ class CommissioningController extends Notifier<CommissionState> {
     _heldWatch = null;
     _heldPeer = null;
     _heldConfig = const {};
-    _heldSwitchedAt = null;
     _holding = null;
     _holdingPeer = null;
   }
@@ -4208,14 +4098,48 @@ class CommissioningController extends Notifier<CommissionState> {
   /// closed): the kept link — or the connect still running for it — is
   /// closed. Nothing when none is kept, or when the flow has the link (a
   /// run, a gateway chosen).
-  Future<void> releaseHeld() async {
-    final kept = _heldPeer != null || _holding != null;
+  /// [force] also closes a link adopted by an unsuccessful commissioning
+  /// attempt, when hold bookkeeping no longer owns the physical connection.
+  Future<void> releaseHeld({bool force = false}) {
+    final releasing = _releasingHeld;
+    if (releasing != null) return releasing;
+    final pending = _holding;
+    final kept = _heldPeer != null || pending != null || _cleanupRequired;
+    if ((!kept && !force) || (state.peer != null && !force)) {
+      return Future.value();
+    }
+    _cleanupRequired = true;
+    // A widget may release its already-active hold during dispose. Do not
+    // notify page listeners synchronously from that deactivated subtree.
+    if (ref.mounted && !state.discoveryLinkActive) {
+      state = state.copy(discoveryLinkActive: true, error: state.error);
+    }
     _forgetHeld();
-    if (!kept || !ref.mounted || state.busy || state.peer != null) return;
-    try {
-      await _link.disconnect();
-    } catch (_) {}
+    final run = () async {
+      try {
+        await _link.disconnect();
+        await pending;
+        _cleanupRequired = false;
+        if (ref.mounted) {
+          state = state.copy(discoveryLinkActive: false, error: state.error);
+        }
+      } catch (error) {
+        if (ref.mounted) {
+          state = state.copy(
+            error: '藍牙清理未完成，請重試斷開。',
+            errorDetail: error.toString(),
+          );
+        }
+        rethrow;
+      } finally {
+        _releasingHeld = null;
+      }
+    }();
+    _releasingHeld = run;
+    return run;
   }
+
+  bool get heldCleanupRequired => _cleanupRequired;
 
   /// 1.0.0+22: the id of a gateway whose kept link ([holdPeer]) dropped.
   Stream<String> get heldLinkLost => _heldLost.stream;
@@ -4247,10 +4171,6 @@ class CommissioningController extends Notifier<CommissionState> {
   Future<bool> _identifyHeld(GatewayPeer peer) async {
     final token = _holdToken;
     final config = _heldConfig;
-    final switchedAt = _heldSwitchedAt;
-    final switched =
-        switchedAt != null &&
-        DateTime.now().difference(switchedAt) < heldSwitchSettle;
     Future<Map<String, dynamic>> send(
       String op, [
       Map<String, dynamic> params = const {},
@@ -4268,7 +4188,7 @@ class CommissioningController extends Notifier<CommissionState> {
       final sent = await _peerIdentify(
         config,
         send,
-        switched: switched,
+        switched: false,
         check: () => _holdCheck(token),
       );
       _holdCheck(token);
@@ -4307,7 +4227,14 @@ class CommissioningController extends Notifier<CommissionState> {
           }.contains(error.code));
 
   Future<void> connect(GatewayPeer peer) async {
-    if (state.busy) return;
+    if (state.busy ||
+        _holding != null ||
+        _releasingHeld != null ||
+        _cleanupRequired ||
+        _identifyingPeer != null ||
+        (_heldPeer != null && _heldPeer?.id != peer.id)) {
+      return;
+    }
     // 1.0.0+10: a list 〔辨識〕 still finishing in the background (timed
     // out) is superseded — it no longer closes the link opened here.
     _generation++;
@@ -4372,6 +4299,13 @@ class CommissioningController extends Notifier<CommissionState> {
       checklist: connectChecklist().start(connectItemBle),
     );
     await _connect(peer);
+    if (ref.mounted && state.step <= 1 && state.error != null) {
+      try {
+        await releaseHeld(force: true);
+      } catch (_) {
+        // Keep cleanup_required and the retry-disconnect error on the list.
+      }
+    }
     if (ref.mounted &&
         state.step == 2 &&
         state.error == null &&
@@ -4621,7 +4555,7 @@ class CommissioningController extends Notifier<CommissionState> {
         // gateway in service and the new one; never blocks the connect).
         config = await _enterBuildMode(generation, config);
         // 1.0.0+22: one-to-one preferred — leave star mode now, not only
-        // at step 7, so the PTU is connected for 〔辨識〕 at steps 1-6.
+        // at step 7. This configuration write follows explicit commissioning.
         config = Map.of(config);
         await _ensureDirectLimit(
           config,
@@ -4663,7 +4597,7 @@ class CommissioningController extends Notifier<CommissionState> {
           (l) => l.done(connectItemStatus, note: fw.isEmpty ? '' : '韌體 $fw'),
           kind: ChecklistKind.connect,
         );
-        // 1.0.0+22: the link the list keeps to [peer] (a card's tap) is
+        // The explicit identification connection to [peer] is
         // taken, not connected again.
       }, adopt: true);
     } catch (_) {
@@ -8292,7 +8226,14 @@ class CommissioningController extends Notifier<CommissionState> {
     } catch (e) {
       if (e is GatewayFailure && e.code == 'cancelled') rethrow;
       _check(generation);
-      unawaited(_link.disconnect());
+      try {
+        await releaseHeld(force: true);
+      } catch (cleanup) {
+        throw GatewayFailure(
+          'reconnect_failed',
+          detail: '${e.toString()}; cleanup: $cleanup',
+        );
+      }
       throw GatewayFailure(
         'reconnect_failed',
         detail: withFirstFailure(e.toString(), _link),
@@ -10660,91 +10601,99 @@ class CommissioningController extends Notifier<CommissionState> {
     state = state.copy(reconnectFailed: false);
   });
 
-  Future<void> cancel() async {
-    // 1.0.0+10 (review #6): 〔取消操作〕 while the list's 〔辨識〕 runs only
-    // stops the blink — the list stays, no 「已取消…監控會話…」, the field
-    // session is not ended.
-    if (state.step <= 1 && state.busy && _identifyingPeer != null) {
-      return _cancelIdentifyPeer();
-    }
-    // 09-29: at the gateway list with nothing running (a stray tap, the
-    // direct panel) there is no run to report as cancelled — no 「已取消」
-    // note; 〔結束配置〕 there is [leaveList].
-    final fromList = state.step <= 1 && !state.busy;
-    _generation++;
-    _health?.cancel();
-    _verifyCarry = null;
-    _grace?.cancel();
-    _stopWatch(UploadWatch.idle);
-    final safe = await _safeStop();
-    // Round 15b: before the link goes, undo a temporary 「不是這台？」
-    // binding (round 16b: back to the binding from before); a failure only
-    // notes it (asked again at the next step 7).
-    final tempBound = state.tempBoundMac;
-    final restore = state.tempRestoreMac;
-    final unbindFailure = await _releaseTempBind();
-    // 1.0.0+22: a link the list kept goes with it (the list is told).
-    _loseHeld();
-    await _link.disconnect();
-    if (_lease) {
-      try {
-        await _api.request('PATCH', '$_path/bot-monitor', {'enabled': true});
-        _lease = false;
-      } catch (_) {}
-    }
-    if (ref.mounted) {
-      _bindLaterRun = false;
-      state = state.copy(
-        step: 1,
-        // 09-29: the link is gone; a peer kept here made [GatewayLinkAlert]
-        // show 「手機與閘道器的藍牙已斷線」 for a disconnect the APP did itself.
-        clearPeer: true,
-        stationChange: null,
-        net: const {},
-        checkPassed: false,
-        wifiGraceOver: false,
-        ptuDeferred: false,
-        bindLaterMac: null,
-        bindLaterDeferred: false,
-        ptuMissingMac: null,
-        ptuMissingBack: false,
-        ptuMissingSearching: false,
-        ptuMissingOther: null,
-        identifiedMac: null,
-        tempBoundMac: null,
-        tempRestoreMac: null,
-        strayBindMac: null,
-        directNotice: '',
-        error: !safe
-            ? '尚未確認閘道器已恢復監控，請重新連線核對。'
-            : unbindFailure != null
-            ? directUnbindFailedText(tempBound, restore)
-            : null,
-        errorDetail: unbindFailure == null
-            ? null
-            : restore == null
-            ? '暫時綁定 $tempBound 未能解除：$unbindFailure'
-            : '暫時綁定 $tempBound 未能還原成 $restore：$unbindFailure',
-        message: fromList ? '' : '已取消。請重新連線核對進度；未成功恢復的監控會話最晚於到期時恢復。',
-      );
-      if (!safe) {
-        _field.noteErrorCode(RescueCode.monitorUnconfirmed);
-      } else if (unbindFailure != null) {
-        _field.noteErrorCode(RescueCode.directPick);
-      }
-      // Field rescue: 「結束並重新選擇閘道器」 ends this session.
-      _field.end('abandoned');
-    }
-  }
+  bool _cancelling = false;
 
-  /// 1.0.0+10: stops [identifyPeer] — its run is superseded (it ends
-  /// quietly as cancelled, its guidance text restored by [_sideTask]) and
-  /// the link it opened is closed. Nothing else changes.
-  Future<void> _cancelIdentifyPeer() async {
-    _generation++;
+  Future<void> cancel() async {
+    if (_cancelling) return;
+    _cancelling = true;
     try {
-      await _link.disconnect();
-    } catch (_) {}
+      if (state.step <= 1 &&
+          (_heldPeer != null ||
+              _holding != null ||
+              _identifyingPeer != null ||
+              _releasingHeld != null ||
+              _cleanupRequired)) {
+        await _dropHeld();
+        return;
+      }
+      // 09-29: at the gateway list with nothing running (a stray tap, the
+      // direct panel) there is no run to report as cancelled — no 「已取消」
+      // note; 〔結束配置〕 there is [leaveList].
+      final fromList = state.step <= 1 && !state.busy;
+      state = state.copy(busy: true, error: state.error);
+      _generation++;
+      _health?.cancel();
+      _verifyCarry = null;
+      _grace?.cancel();
+      _stopWatch(UploadWatch.idle);
+      final safe = await _safeStop();
+      // Round 15b: before the link goes, undo a temporary 「不是這台？」
+      // binding (round 16b: back to the binding from before); a failure only
+      // notes it (asked again at the next step 7).
+      final tempBound = state.tempBoundMac;
+      final restore = state.tempRestoreMac;
+      final unbindFailure = await _releaseTempBind();
+      // 1.0.0+22: a link the list kept goes with it (the list is told).
+      _loseHeld();
+      try {
+        await releaseHeld(force: true);
+      } catch (_) {
+        if (ref.mounted) state = state.copy(busy: false, error: state.error);
+        return;
+      }
+      if (_lease) {
+        try {
+          await _api.request('PATCH', '$_path/bot-monitor', {'enabled': true});
+          _lease = false;
+        } catch (_) {}
+      }
+      if (ref.mounted) {
+        _bindLaterRun = false;
+        state = state.copy(
+          step: 1,
+          busy: false,
+          // 09-29: the link is gone; a peer kept here made [GatewayLinkAlert]
+          // show 「手機與閘道器的藍牙已斷線」 for a disconnect the APP did itself.
+          clearPeer: true,
+          stationChange: null,
+          net: const {},
+          checkPassed: false,
+          wifiGraceOver: false,
+          ptuDeferred: false,
+          bindLaterMac: null,
+          bindLaterDeferred: false,
+          ptuMissingMac: null,
+          ptuMissingBack: false,
+          ptuMissingSearching: false,
+          ptuMissingOther: null,
+          identifiedMac: null,
+          tempBoundMac: null,
+          tempRestoreMac: null,
+          strayBindMac: null,
+          directNotice: '',
+          error: !safe
+              ? '尚未確認閘道器已恢復監控，請重新連線核對。'
+              : unbindFailure != null
+              ? directUnbindFailedText(tempBound, restore)
+              : null,
+          errorDetail: unbindFailure == null
+              ? null
+              : restore == null
+              ? '暫時綁定 $tempBound 未能解除：$unbindFailure'
+              : '暫時綁定 $tempBound 未能還原成 $restore：$unbindFailure',
+          message: fromList ? '' : '已取消。請重新連線核對進度；未成功恢復的監控會話最晚於到期時恢復。',
+        );
+        if (!safe) {
+          _field.noteErrorCode(RescueCode.monitorUnconfirmed);
+        } else if (unbindFailure != null) {
+          _field.noteErrorCode(RescueCode.directPick);
+        }
+        // Field rescue: 「結束並重新選擇閘道器」 ends this session.
+        _field.end('abandoned');
+      }
+    } finally {
+      _cancelling = false;
+    }
   }
 
   /// 09-29 (field: the gateway list had no way back — the system 返回 left
@@ -10758,6 +10707,7 @@ class CommissioningController extends Notifier<CommissionState> {
   /// offers to resume).
   Future<void> leaveList() async {
     if (state.step != 1 || state.busy) return;
+    state = state.copy(busy: true, message: '正在斷開藍牙…');
     _generation++;
     _health?.cancel();
     _verifyCarry = null;
@@ -10766,11 +10716,15 @@ class CommissioningController extends Notifier<CommissionState> {
     try {
       await _safeStop();
     } catch (_) {}
-    // 1.0.0+22: and the link it kept to its selected gateway.
-    _forgetHeld();
+    // Do not leave or accept another connect until cleanup completes.
+    final lost = _heldPeer?.id;
     try {
-      await _link.disconnect();
-    } catch (_) {}
+      await releaseHeld(force: true);
+    } catch (_) {
+      if (ref.mounted) state = state.copy(busy: false, error: state.error);
+      if (lost != null && !_heldLost.isClosed) _heldLost.add(lost);
+      return;
+    }
     if (_lease) {
       try {
         await _api.request('PATCH', '$_path/bot-monitor', {'enabled': true});
@@ -10780,7 +10734,13 @@ class CommissioningController extends Notifier<CommissionState> {
     if (!ref.mounted) return;
     // No-op without a session ([FieldReporter.end] returns at once).
     _field.end('abandoned');
-    state = state.copy(step: 0, clearPeer: true, message: '', error: null);
+    state = state.copy(
+      step: 0,
+      busy: false,
+      clearPeer: true,
+      message: '',
+      error: null,
+    );
   }
 
   /// Round 29 (field drill: the done page had no way to end it — its
@@ -10796,6 +10756,7 @@ class CommissioningController extends Notifier<CommissionState> {
   Future<void> finishDone({bool next = false}) async {
     if (_finishing || state.busy || state.step != 7) return;
     _finishing = true;
+    state = state.copy(busy: true, message: '正在斷開藍牙…', error: state.error);
     try {
       final doneSite = site;
       final done = lastDoneText(
@@ -10813,8 +10774,17 @@ class CommissioningController extends Notifier<CommissionState> {
       _stopWatch(UploadWatch.idle);
       await _safeStop();
       try {
-        await _link.disconnect();
-      } catch (_) {}
+        await releaseHeld(force: true);
+      } catch (_) {
+        if (ref.mounted) {
+          state = state.copy(
+            error: '藍牙清理未完成，請按「完成」或「配置下一台」重試斷開。',
+            errorDetail: state.errorDetail,
+            message: '',
+          );
+        }
+        return;
+      }
       if (_lease) {
         try {
           await _api.request('PATCH', '$_path/bot-monitor', {'enabled': true});
@@ -10847,6 +10817,9 @@ class CommissioningController extends Notifier<CommissionState> {
       );
     } finally {
       _finishing = false;
+      if (ref.mounted && state.busy) {
+        state = state.copy(busy: false, error: state.error);
+      }
     }
   }
 

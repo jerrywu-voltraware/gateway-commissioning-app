@@ -11,6 +11,19 @@ import 'package:gateway_commissioning/core/protocol.dart';
 import 'package:gateway_commissioning/data/demo_system.dart';
 import 'package:gateway_commissioning/presentation/identify_duration_setting.dart';
 
+class _RecordingGateway extends DemoSystem {
+  final commands = <String>[];
+
+  @override
+  Future<Map<String, dynamic>> command(
+    String op, [
+    Map<String, dynamic> params = const {},
+  ]) {
+    commands.add(op);
+    return super.command(op, params);
+  }
+}
+
 ProviderContainer _container(DemoSystem fake) => ProviderContainer(
   overrides: [
     linkProvider.overrideWithValue(fake),
@@ -229,7 +242,7 @@ void main() {
         SharedPreferences.setMockInitialValues({
           identifySecondsPreference: seconds,
         });
-        final fake = DemoSystem();
+        final fake = _RecordingGateway();
         final container = _container(fake);
         addTearDown(container.dispose);
         final c = container.read(commissionProvider.notifier);
@@ -237,10 +250,16 @@ void main() {
         await c.scan();
         final before = container.read(commissionProvider);
         final peer = before.peers.single;
+        expect(await c.holdPeer(peer), isTrue);
+        expect(fake.commands, ['get_config']);
         expect(await c.identifyPeer(peer), isTrue);
         expect(container.read(commissionProvider).peer, isNull);
         expect(container.read(commissionProvider).step, before.step);
         expect(container.read(commissionProvider).selected, before.selected);
+        expect(
+          fake.commands,
+          everyElement(isIn(['get_config', 'identify', 'get_status'])),
+        );
         await c.connect(peer);
         await c.identify();
         expect(container.read(commissionProvider).error, isNull);
@@ -260,14 +279,20 @@ void main() {
         SharedPreferences.setMockInitialValues({
           identifySecondsPreference: stale,
         });
-        final fake = DemoSystem();
+        final fake = _RecordingGateway();
         final container = _container(fake);
         addTearDown(container.dispose);
         final c = container.read(commissionProvider.notifier);
         await c.prepare('https://example.invalid', '', offline: true);
         await c.scan();
         final peer = container.read(commissionProvider).peers.single;
+        expect(await c.holdPeer(peer), isTrue);
+        expect(fake.commands, ['get_config']);
         expect(await c.identifyPeer(peer), isTrue);
+        expect(
+          fake.commands,
+          everyElement(isIn(['get_config', 'identify', 'get_status'])),
+        );
         await c.connect(peer);
         await c.identify();
         expect(container.read(commissionProvider).error, isNull);
@@ -283,15 +308,21 @@ void main() {
     'legacy unsupported seconds fail before either entrypoint sends identify',
     () async {
       SharedPreferences.setMockInitialValues({identifySecondsPreference: 0});
-      final fake = DemoSystem()..config.remove('identify_ptu_protocol');
+      final fake = _RecordingGateway()..config.remove('identify_ptu_protocol');
       final container = _container(fake);
       addTearDown(container.dispose);
       final c = container.read(commissionProvider.notifier);
       await c.prepare('https://example.invalid', '', offline: true);
       await c.scan();
       final peer = container.read(commissionProvider).peers.single;
+      expect(await c.holdPeer(peer), isTrue);
+      expect(fake.commands, ['get_config']);
       expect(await c.identifyPeer(peer), isFalse);
       expect(fake.identifyRequests, isEmpty);
+      expect(
+        fake.commands,
+        everyElement(isIn(['get_config', 'identify', 'get_status'])),
+      );
       await c.connect(peer);
       await c.identify();
       expect(fake.identifyRequests, isEmpty);
@@ -306,7 +337,7 @@ void main() {
       // six seconds, so such a gateway blinked silently; with 4 it must be
       // refused with identify_duration_unsupported instead of being sent.
       SharedPreferences.setMockInitialValues({});
-      final fake = DemoSystem()
+      final fake = _RecordingGateway()
         ..config.remove('identify_ptu_protocol')
         ..config.remove('identify_ptu_supported');
       final container = _container(fake);
@@ -317,8 +348,14 @@ void main() {
       await c.prepare('https://example.invalid', '', offline: true);
       await c.scan();
       final peer = container.read(commissionProvider).peers.single;
+      expect(await c.holdPeer(peer), isTrue);
+      expect(fake.commands, ['get_config']);
       expect(await c.identifyPeer(peer), isFalse);
       expect(fake.identifyRequests, isEmpty);
+      expect(
+        fake.commands,
+        everyElement(isIn(['get_config', 'identify', 'get_status'])),
+      );
       await c.connect(peer);
       await c.identify();
       expect(fake.identifyRequests, isEmpty);

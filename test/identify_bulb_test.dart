@@ -36,12 +36,15 @@ class _Link extends DemoSystem {
   bool bothFailsNotConnected = false;
   String? bothFailsWith;
   Completer<void>? holdConnect;
+  final connections = <String>[];
+  final commands = <String>[];
 
   @override
   Future<void> connect(
     GatewayPeer peer, {
     void Function(String stage)? onStage,
   }) async {
+    connections.add(peer.id);
     await holdConnect?.future;
     return super.connect(peer, onStage: onStage);
   }
@@ -51,6 +54,7 @@ class _Link extends DemoSystem {
     String op, [
     Map<String, dynamic> params = const {},
   ]) async {
+    commands.add(op);
     final code =
         bothFailsWith ?? (bothFailsNotConnected ? 'not_connected' : null);
     if (op == 'identify' && code != null && params['target'] == 'both') {
@@ -131,10 +135,13 @@ Future<void> _run(WidgetTester tester) async {
   await tester.pump(const Duration(milliseconds: 100));
 }
 
-/// 1.0.0+22: selects [peer]'s card and lets its hold come up — the bulb
+/// Selects [peer], explicitly connects, and lets its hold come up — the bulb
 /// is there afterwards.
 Future<void> _select(WidgetTester tester, GatewayPeer peer) async {
   await tester.tap(find.byKey(ValueKey(peer.id)));
+  await _run(tester);
+  expect(_bulb(peer), findsNothing);
+  await tester.tap(find.byKey(const Key('gateway-link-identify')));
   await _run(tester);
   expect(_bulb(peer), findsOneWidget);
 }
@@ -174,7 +181,10 @@ Future<(ProviderContainer, CommissioningController, GatewayPeer)> _controller(
   final c = container.read(commissionProvider.notifier);
   await c.prepare('https://example.invalid', '', offline: true);
   await c.scan();
-  return (container, c, container.read(commissionProvider).peers.single);
+  final peer = container.read(commissionProvider).peers.single;
+  expect(await c.holdPeer(peer), isTrue);
+  expect(c.heldPeerId, peer.id);
+  return (container, c, peer);
 }
 
 /// The whole app on the demo gateway, the list (step 1) showing.
@@ -216,11 +226,13 @@ Future<void> _settle(WidgetTester tester) async {
   }
 }
 
-/// 1.0.0+22: selects the demo gateway's card and lets its link come up —
+/// Selects the demo gateway and explicitly connects for identification —
 /// the bulb is there afterwards.
 Future<void> _selectDemo(WidgetTester tester) async {
   expect(_bulb(_demo), findsNothing);
   await _tap(tester, find.byKey(const ValueKey('demo-gateway')));
+  expect(_bulb(_demo), findsNothing);
+  await _tap(tester, find.byKey(const Key('gateway-link-identify')));
   await _settle(tester);
   expect(_bulb(_demo), findsOneWidget);
 }
@@ -231,7 +243,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('the bulb of the row being identified', () {
-    testWidgets('no bulb until the card\'s link is up (its tap stops the '
+    testWidgets('no bulb until the explicit connection is ready (it stops the '
         'scan first); then a spinner at once, in the icon\'s own box; a bulb '
         'again afterwards', (tester) async {
       final identify = Completer<bool>();
@@ -248,25 +260,27 @@ void main() {
       final cardB = find.byKey(ValueKey('gateway-card-${_b.id}'));
       final cardSizeA = tester.getSize(cardA);
       final cardSizeB = tester.getSize(cardB);
-      final topB = tester.getTopLeft(cardB);
       // 1.0.0+22: nothing selected — no bulb anywhere.
       expect(_bulb(_a), findsNothing);
       expect(_bulb(_b), findsNothing);
       expect(find.byTooltip(identifyGatewayLabel), findsNothing);
 
-      // The card's tap: the scan takes its time to stop, the hold has not
-      // even begun — 「連線中…」, still no bulb, nothing moves.
-      link.holdStop = Completer<void>();
+      // Selection alone cannot begin a connection. The explicit button
+      // then waits for the scan to stop before holding the selected peer.
       await tester.tap(find.byKey(ValueKey(_a.id)));
+      await tester.pump();
+      expect(link.holds, isEmpty);
+      expect(_bulb(_a), findsNothing);
+      link.holdStop = Completer<void>();
+      await tester.tap(find.byKey(const Key('gateway-link-identify')));
       await tester.pump();
       expect(link.holds, isEmpty, reason: 'still stopping the scan');
       expect(_bulb(_a), findsNothing);
       expect(tester.getSize(cardA), cardSizeA);
       expect(tester.getSize(cardB), cardSizeB);
-      expect(tester.getTopLeft(cardB), topB);
 
-      // Stopped, held: the bulb is there — on this card alone — and
-      // nothing moved or changed size.
+      // Stopped, held: the bulb is there on this card alone; its icon
+      // replaces the reserved room without resizing either card.
       link.holdStop!.complete();
       await _run(tester);
       expect(link.holds, [_a.id]);
@@ -274,7 +288,7 @@ void main() {
       expect(_bulb(_b), findsNothing);
       expect(tester.getSize(cardA), cardSizeA);
       expect(tester.getSize(cardB), cardSizeB);
-      expect(tester.getTopLeft(cardB), topB);
+      final topB = tester.getTopLeft(cardB);
       final bulbSize = tester.getSize(_bulb(_a));
       expect(bulbSize, const Size(gatewayBulbBox, gatewayBulbBox));
       expect(_spinner(_a), findsNothing);
@@ -466,6 +480,11 @@ void main() {
       expect(fake.identifyRequests, [
         {'target': 'both', 'duration_ms': 4000},
       ]);
+      expect(fake.connections, [peer.id]);
+      expect(
+        fake.commands,
+        everyElement(isIn(['get_config', 'identify', 'get_status'])),
+      );
     });
 
     test('both failing with not_connected falls back to the gateway alone: '
@@ -507,6 +526,8 @@ void main() {
       expect(await c.identifyPeer(peer), isTrue);
       expect(c.identifyPeerGatewayOnly, isTrue);
       fake.config['identify_supported'] = false;
+      await c.releaseHeld();
+      expect(await c.holdPeer(peer), isTrue);
       expect(await c.identifyPeer(peer), isFalse);
       expect(c.identifyPeerGatewayOnly, isFalse);
       expect(container.read(commissionProvider).busy, isFalse);
@@ -549,8 +570,18 @@ void main() {
       fake.holdConnect = Completer<void>();
       await tester.tap(find.byKey(const ValueKey('demo-gateway')));
       await tester.pump();
+      expect(fake.connections, isEmpty);
       expect(_bulb(_demo), findsNothing);
-      expect(find.text(gatewayConnectingLabel), findsOneWidget);
+      await tester.tap(find.byKey(const Key('gateway-link-identify')));
+      await tester.pump();
+      expect(_bulb(_demo), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('gateway-card-demo-gateway')),
+          matching: find.text(gatewayConnectingLabel),
+        ),
+        findsOneWidget,
+      );
       for (var i = 0; i < 5; i++) {
         await tester.pump(const Duration(milliseconds: 100));
       }

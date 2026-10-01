@@ -9,6 +9,21 @@ import 'package:gateway_commissioning/data/contracts.dart';
 
 class FakePlatform extends UniversalBlePlatform {
   bool connected = false, subscribed = false, failMtu = false, drop = false;
+  bool scanning = false;
+
+  @override
+  Future<void> startScan({
+    ScanFilter? scanFilter,
+    PlatformConfig? platformConfig,
+  }) async {
+    scanning = true;
+  }
+
+  @override
+  Future<void> stopScan() async {
+    scanning = false;
+  }
+
   final chunks = <int>[];
   final frames = JsonFrames();
   final requests = <Map<String, dynamic>>[];

@@ -9,7 +9,6 @@ import 'package:gateway_commissioning/application/local_backend_finder.dart';
 import 'package:gateway_commissioning/core/backend_key.dart';
 import 'package:gateway_commissioning/core/mqtt_target.dart';
 import 'package:gateway_commissioning/core/protocol.dart';
-import 'package:gateway_commissioning/data/contracts.dart';
 import 'package:gateway_commissioning/data/demo_system.dart';
 import 'package:gateway_commissioning/data/local_backend_probe.dart';
 import 'package:gateway_commissioning/gateway_app.dart';
@@ -49,7 +48,7 @@ class _Prober implements LocalBackendProber {
 
 class SimGateway extends DemoSystem {
   final commands = <String>[];
-  Completer<void>? connectGate, prepareGate;
+  Completer<void>? configGate, prepareGate;
   final logins = <(String, String)>[];
 
   /// An existing station with three numbered PTUs, ready for step 6.
@@ -89,20 +88,12 @@ class SimGateway extends DemoSystem {
   }
 
   @override
-  Future<void> connect(
-    GatewayPeer peer, {
-    void Function(String stage)? onStage,
-  }) async {
-    await connectGate?.future;
-    await super.connect(peer, onStage: onStage);
-  }
-
-  @override
   Future<Map<String, dynamic>> command(
     String op, [
     Map<String, dynamic> params = const {},
-  ]) {
+  ]) async {
     commands.add(op);
+    if (op == 'get_config') await configGate?.future;
     return super.command(op, params);
   }
 }
@@ -312,11 +303,7 @@ void main() {
       isTrue,
       reason: 'logged in again to the local test host (build credential)',
     );
-    expect(
-      find.text('同時切換閘道器？'),
-      findsNothing,
-      reason: 'debug: no dialog',
-    );
+    expect(find.text('同時切換閘道器？'), findsNothing, reason: 'debug: no dialog');
 
     // And back: 正式站 logs in when it is needed, so the old login is dropped.
     await _chooseInSheet(tester, BackendEnv.production);
@@ -386,11 +373,17 @@ void main() {
     final fake = SimGateway();
     final container = await _pumpApp(tester, fake);
     await _tap(tester, find.text('檢查並開始'));
-    fake.connectGate = Completer<void>();
-    await tester.ensureVisible(find.byKey(const ValueKey('demo-gateway')));
-    await tester.tap(find.byKey(const ValueKey('demo-gateway')));
-    await tester.pump();
-    // 1.0.0+14: the card's tap selects; the fixed bottom button connects.
+    await _tap(tester, find.byKey(const ValueKey('demo-gateway')));
+    await _tap(tester, find.byKey(const Key('gateway-link-identify')));
+    expect(fake.linkedPeer, 'demo-gateway');
+    expect(container.read(commissionProvider).busy, isFalse);
+    expect(
+      tester.widget<FilledButton>(gatewayConnectButton).onPressed,
+      isNotNull,
+    );
+    // Commissioning adopts the ready link. Gate its config read, after the
+    // read-only identification connection has completed, to exercise step busy.
+    fake.configGate = Completer<void>();
     await tester.tap(gatewayConnectButton);
     await tester.pump();
     expect(container.read(commissionProvider).busy, isTrue);
@@ -411,7 +404,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.byKey(const Key('env-sheet-busy')), findsOneWidget);
     expect(
-      find.text('正在進行「正在連線 GIOS-S1-GW01，請保持靠近」，完成或按「取消操作」後才能切換。'),
+      find.text('正在進行「藍牙已連線，正在確認閘道器回應與設定…」，完成或按「取消操作」後才能切換。'),
       findsOneWidget,
     );
     expect(find.text('取消操作'), findsOneWidget, reason: 'the page has it');
@@ -425,7 +418,7 @@ void main() {
     Navigator.of(tester.element(find.byKey(const Key('env-sheet-busy')))).pop();
     await tester.pump(const Duration(milliseconds: 500));
 
-    fake.connectGate!.complete();
+    fake.configGate!.complete();
     await tester.pumpAndSettle();
     final state = container.read(commissionProvider);
     expect(state.step, 2);

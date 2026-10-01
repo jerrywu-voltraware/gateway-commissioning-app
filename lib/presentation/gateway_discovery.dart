@@ -75,7 +75,7 @@ const gatewayUnconfiguredLabel = '未配置';
 const gatewayPendingLabel = '待核對';
 
 /// The identify button's tooltip (an icon since 1.0.0+8).
-const identifyGatewayLabel = '辨識閘道器';
+const identifyGatewayLabel = '閃燈辨識';
 
 /// 1.0.0+9: on the row for 3 s after 〔辨識〕 blinked it.
 const identifiedHint = '已送出';
@@ -142,25 +142,27 @@ const gatewaySelectedLabel = '已選取';
 const gatewayConnectingLabel = '連線中…';
 
 /// 1.0.0+14: the bottom button while nothing is selected (disabled).
-const gatewayPickFirstLabel = '請先點選要連線的閘道器';
+const gatewayPickFirstLabel = '請先選擇閘道器';
 
 /// 1.0.0+22 (select_then_identify, docs/select_then_identify.md): on the
-/// selected card once its tap's connect is up ([GatewayDiscovery.onHold]) —
+/// selected card once its explicit connection is ready ([GatewayDiscovery.onHold]) —
 /// the bulb then blinks at once.
 const gatewayHeldLabel = '已連線';
 
-/// 1.0.0+22: on the selected card when its connect failed (tap it again).
+/// 1.0.0+22: on the selected card when its connect failed (use the explicit retry button).
 const gatewayHoldFailedLabel = '連線失敗';
 
 /// 1.0.0+22: on the selected card when its kept link dropped (tap it to
 /// connect again).
 const gatewayHoldLostLabel = '已斷線';
 
+const gatewayCleanupFailedText = '藍牙清理未完成，請重試斷開。';
+
 /// 1.0.0+22: the SnackBar when the selected gateway's connect failed.
-String gatewayHoldFailedText(String title) => '無法連線 $title，請靠近後再點一次卡片';
+String gatewayHoldFailedText(String title) => '無法連線 $title，請按「連線以辨識」重試';
 
 /// 1.0.0+22: the SnackBar when the selected gateway's kept link dropped.
-String gatewayHoldLostText(String title) => '$title 的藍牙連線已中斷，請再點一次卡片重新連線';
+String gatewayHoldLostText(String title) => '$title 的藍牙連線已中斷，請按「連線以辨識」重新連線';
 
 /// 1.0.0+22 (the phone trial): the bulb is on the selected card only once
 /// its link is up ([_Hold.held]); every other card — and the selected one
@@ -186,12 +188,14 @@ enum _Hold {
 
   /// It dropped (「已斷線」).
   lost,
+  disconnecting,
+  cleanupFailed,
 }
 
 /// 1.0.0+14: the bottom button for the gateway selected — [title] from the
 /// same source as the card's title (「站 80 · 閘道器 2」, 「未配置閘道器
 /// …70F0」).
-String gatewayConnectLabel(String title) => '連線到 $title';
+String gatewayConnectLabel(String title) => '開始開通：$title';
 
 /// 1.0.0+14: the gateway selected on [GatewayDiscovery] (not connected
 /// yet), shared with the page's fixed [GatewayConnectBar]: the list writes
@@ -202,6 +206,8 @@ class GatewayChoice extends ChangeNotifier {
   GatewayPeer? _peer;
   String? _title;
   bool _connecting = false, _busy = false, _disposed = false;
+  bool _ready = false;
+  bool get ready => _ready;
   VoidCallback? _connect;
   Object? _owner;
 
@@ -226,12 +232,14 @@ class GatewayChoice extends ChangeNotifier {
     required String? title,
     required bool connecting,
     required bool busy,
+    required bool ready,
   }) {
     if (_disposed) return;
     if (peer?.id == _peer?.id &&
         title == _title &&
         connecting == _connecting &&
-        busy == _busy) {
+        busy == _busy &&
+        ready == _ready) {
       _peer = peer;
       return;
     }
@@ -239,6 +247,7 @@ class GatewayChoice extends ChangeNotifier {
     _title = title;
     _connecting = connecting;
     _busy = busy;
+    _ready = ready;
     notifyListeners();
   }
 
@@ -249,6 +258,7 @@ class GatewayChoice extends ChangeNotifier {
     _title = null;
     _connecting = false;
     _busy = false;
+    _ready = false;
   }
 
   void _changed() {
@@ -300,7 +310,8 @@ class GatewayConnectBar extends StatelessWidget {
               style: FilledButton.styleFrom(
                 minimumSize: const Size.fromHeight(48),
               ),
-              onPressed: enabled && title != null && !choice.busy
+              onPressed:
+                  enabled && title != null && !choice.busy && choice.ready
                   ? choice.connect
                   : null,
               child: connecting
@@ -392,7 +403,7 @@ class _SelectedMark extends StatelessWidget {
           const SizedBox(width: 3),
           // 1.0.0+22: one line height whatever the glyphs (「連線中…」's
           // ellipsis comes from another font): the card does not grow
-          // while its tap connects.
+          // while its explicit connection is pending.
           Text(
             text,
             maxLines: 1,
@@ -483,11 +494,9 @@ class GatewayDiscovery extends ConsumerStatefulWidget {
   });
   final bool enabled;
 
-  /// 1.0.0+22 (select_then_identify): a card's tap also connects to its
-  /// gateway and keeps the link — answers whether it is up. Its bulb
-  /// ([onIdentify]) then blinks at once and [onConnect] goes on over that
-  /// link; the scan stays stopped while a gateway is selected. Null: a tap
-  /// only selects (1.0.0+14).
+  /// Explicit Bluetooth connection for identification. Selection alone is
+  /// local. True means services, notifications and writes are ready; no
+  /// configuration is changed until [onConnect] starts commissioning.
   final Future<bool> Function(GatewayPeer)? onHold;
 
   /// 1.0.0+22: the kept link goes (〔重新搜尋〕, the list closed).
@@ -741,7 +750,13 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
       peer: peer,
       title: peer == null ? null : _titleOf(peer.name, peer.id).title,
       connecting: _connectingId != null,
-      busy: _selecting,
+      busy:
+          _selecting ||
+          _identifyingId != null ||
+          _holdPhase == _Hold.connecting ||
+          _holdPhase == _Hold.disconnecting,
+      ready:
+          widget.onHold == null || (_holdPhase == _Hold.held && _holdId == id),
     );
   }
 
@@ -755,54 +770,45 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     });
   }
 
-  /// 1.0.0+14: a card's tap selects its gateway — never connects. Another
-  /// card moves the selection; the selected one tapped again keeps it.
-  ///
-  /// 1.0.0+22 (select_then_identify, [GatewayDiscovery.onHold]): the tap
-  /// also connects to the gateway and keeps the link — its bulb then
-  /// blinks at once, 〔連線到 …〕 goes on over it. A gateway chosen ends the
-  /// search and stops the scan (a live scan would drop the link; the rows
-  /// heard stay, as during 〔辨識〕) until 〔重新搜尋〕. Another card: the
-  /// previous gateway's link goes, the new one's is made. The selected
-  /// card tapped again while its link failed or dropped connects again.
+  /// Select locally. While a connection exists or cleanup is running,
+  /// disconnect must finish before another card can be selected.
   void _select(GatewayPeer peer) {
-    if (_selecting || !widget.enabled) return;
+    if (!_canSelect || !widget.enabled) return;
     unawaited(HapticFeedback.selectionClick());
-    final again = _selectedId == peer.id;
     setState(() {
       _frozen ??= List.of(_shown);
       _selectedId = peer.id;
       _selectedPeer = peer;
-      // 1.0.0+22: the search's panel stays (its bar stopped, 「搜尋已暫停」)
-      // — the cards must not move under the finger; a second search
-      // still waiting is not run.
-      if (widget.onHold != null && _search == _Search.retrying) {
-        _search = _Search.idle;
-      }
+      _holdId = null;
+      _holdPhase = _Hold.none;
     });
     _syncChoice();
-    if (widget.onHold == null) return;
-    _retryTimer?.cancel();
-    if (again && (_holdPhase == _Hold.connecting || _holdPhase == _Hold.held)) {
-      return;
-    }
-    unawaited(_holdSelected());
   }
+
+  bool get _canSelect =>
+      !_selecting &&
+      _identifyingId == null &&
+      _holdPhase != _Hold.connecting &&
+      _holdPhase != _Hold.disconnecting &&
+      _holdPhase != _Hold.held &&
+      _holdPhase != _Hold.cleanupFailed;
 
   /// 1.0.0+22: a gateway selected keeps its link ([GatewayDiscovery.onHold]):
   /// no scan meanwhile (it would drop the link) — 〔重新搜尋〕 lets it go.
-  bool get _holds => widget.onHold != null && _selectedId != null;
+  bool get _holds => widget.onHold != null && _holdId != null;
 
   /// 1.0.0+22: connects to the selected gateway and keeps the link
   /// ([GatewayDiscovery.onHold]); its card says 「連線中…」, then 「已連線」
-  /// or 「連線失敗」 (and a SnackBar: tap it again). A connect still running
+  /// or 「連線失敗」 (and a SnackBar: use the connect button). A pending connect
   /// for that gateway is not started twice. Answers whether it is held
   /// (false too when superseded: another card, a release, the list gone).
   Future<bool> _holdSelected() {
     final hold = widget.onHold;
     final id = _selectedId;
     final peer = id == null ? null : _heard[id]?.peer ?? _selectedPeer;
-    if (hold == null || peer == null) return Future.value(false);
+    if (!widget.enabled || !_canSelect || hold == null || peer == null) {
+      return Future.value(false);
+    }
     final pending = _holdFuture;
     if (pending != null && _holdId == peer.id) return pending;
     final epoch = ++_holdEpoch;
@@ -810,6 +816,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
       _holdId = peer.id;
       _holdPhase = _Hold.connecting;
     });
+    _syncChoice();
     final run = () async {
       // BleGatewayLink.scanLive disconnects first: the scan stays stopped
       // while the link is kept.
@@ -822,7 +829,14 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
       }
       if (!mounted || epoch != _holdEpoch) return false;
       _holdFuture = null;
-      setState(() => _holdPhase = held ? _Hold.held : _Hold.failed);
+      setState(
+        () => _holdPhase = held
+            ? _Hold.held
+            : ref.read(commissionProvider.notifier).heldCleanupRequired
+            ? _Hold.cleanupFailed
+            : _Hold.failed,
+      );
+      _syncChoice();
       // Not while 〔連線到 …〕 runs: it connects for itself and says why
       // when it fails.
       if (!held && _connectingId == null) {
@@ -841,9 +855,30 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     final kept = _holdId != null;
     _holdEpoch++;
     _holdFuture = null;
-    _holdId = null;
-    _holdPhase = _Hold.none;
-    if (kept) await widget.onRelease?.call();
+    if (!kept) return;
+    _holdPhase = _Hold.disconnecting;
+    try {
+      await widget.onRelease?.call();
+      _holdId = null;
+      _holdPhase = _Hold.none;
+    } catch (_) {
+      _holdPhase = _Hold.cleanupFailed;
+    }
+  }
+
+  Future<void> _disconnectSelected() async {
+    if (_selecting ||
+        _identifyingId != null ||
+        _holdPhase == _Hold.disconnecting) {
+      return;
+    }
+    final release = _releaseHold();
+    setState(() {});
+    _syncChoice();
+    await release;
+    if (!mounted) return;
+    setState(() {});
+    _syncChoice();
   }
 
   void _listenHoldLost() {
@@ -852,7 +887,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
   }
 
   /// 1.0.0+22: the selected gateway's kept link dropped: 「已斷線」 on its
-  /// card and a SnackBar; its next tap (or bulb) connects again. Not while
+  /// card and a SnackBar; reconnect requires the explicit button. Not while
   /// 〔連線到 …〕 runs (the flow has the link then); while another run has
   /// it (〔繼續上次配置〕 to another gateway, 〔取消操作〕) — the APP closed
   /// it itself — the card quietly goes back to 「已選取」.
@@ -869,10 +904,20 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
       setState(() => _holdPhase = _Hold.none);
       return;
     }
-    setState(() => _holdPhase = _Hold.lost);
+    final cleanupRequired = ref
+        .read(commissionProvider.notifier)
+        .heldCleanupRequired;
+    setState(
+      () => _holdPhase = cleanupRequired ? _Hold.cleanupFailed : _Hold.lost,
+    );
+    _syncChoice();
     final peer = _heard[id]?.peer ?? _selectedPeer;
     if (peer != null) {
-      _holdSnack(gatewayHoldLostText(_titleOf(peer.name, peer.id).title));
+      _holdSnack(
+        cleanupRequired
+            ? gatewayCleanupFailedText
+            : gatewayHoldLostText(_titleOf(peer.name, peer.id).title),
+      );
     }
   }
 
@@ -1258,7 +1303,13 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
   /// on the selected card and the button, the other cards faded and not
   /// tappable. A failed connect leaves the selection as it was.
   Future<void> _connect(GatewayPeer peer) async {
-    if (_selecting || !widget.enabled) return;
+    if (_selecting ||
+        !widget.enabled ||
+        _identifyingId != null ||
+        (widget.onHold != null &&
+            (_holdPhase != _Hold.held || _holdId != peer.id))) {
+      return;
+    }
     _retryTimer?.cancel();
     setState(() {
       _selecting = true;
@@ -1277,12 +1328,15 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
           _selecting = false;
           _connectingId = null;
           // 1.0.0+22: the flow took the kept link (or replaced it): none is
-          // the list's now — the next tap or bulb connects again.
+          // the list's now. Another connection needs its explicit button.
           if (widget.onHold != null) {
             _holdEpoch++;
             _holdFuture = null;
-            _holdId = null;
-            _holdPhase = _Hold.none;
+            final cleanupRequired = ref
+                .read(commissionProvider.notifier)
+                .heldCleanupRequired;
+            _holdId = cleanupRequired ? peer.id : null;
+            _holdPhase = cleanupRequired ? _Hold.cleanupFailed : _Hold.none;
           }
         });
         _syncChoice();
@@ -1295,11 +1349,12 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
   ///
   /// 1.0.0+22: the selected gateway's kept link goes first.
   Future<void> _restartByUser() async {
+    if (!_canSelect || !widget.enabled) return;
     final release = _releaseHold();
     setState(_clearSelection);
     _syncChoice();
     await release;
-    if (mounted) await _start(fresh: true);
+    if (mounted && _holdPhase != _Hold.cleanupFailed) await _start(fresh: true);
   }
 
   /// 1.0.0+9: 〔辨識〕 blinks [peer] ([GatewayDiscovery.onIdentify]) and the
@@ -1308,30 +1363,48 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
   /// 1.0.0+10: the hint only when the identify was really sent (not after
   /// 〔取消操作〕 or a failure).
   ///
-  /// 1.0.0+22 (select_then_identify, then the phone trial): the bulb is on
-  /// the selected card alone, and only once its link is up ([_Hold.held]) —
-  /// the identify goes over that link at once: no scan stop, no connect,
-  /// the list stays usable; the bulb is a spinner meanwhile. (The old
-  /// connect → identify → disconnect of any other row is gone with its
-  /// bulb: pressing a bulb and then connecting to another gateway was the
-  /// wrong order on site.) Should the link have gone between the frame
-  /// that showed the bulb and the press, the hold is made again first.
+  /// Identification is available only on the ready selected connection.
+  /// A dropped link never starts another connection implicitly. Failure
+  /// leaves an explicit reconnect or retry-disconnect action on this list.
   Future<void> _identify(GatewayPeer peer) async {
     final action = widget.onIdentify;
     if (_selecting || !widget.enabled || action == null) return;
-    if (!_holds || peer.id != _selectedId || _identifyingId != null) return;
+    if (_holdPhase != _Hold.held ||
+        peer.id != _holdId ||
+        peer.id != _selectedId ||
+        _identifyingId != null) {
+      return;
+    }
     setState(() {
       _identified = null;
       _identifyingId = peer.id;
     });
+    _syncChoice();
     try {
-      final held = _holdPhase == _Hold.held || await _holdSelected();
-      if (!mounted || !held || _selectedId != peer.id) return;
+      if (!mounted || _holdPhase != _Hold.held || _selectedId != peer.id) {
+        return;
+      }
       final blinked = await action(peer);
       if (mounted && blinked && _selectedId == peer.id) _showIdentified(peer);
+    } catch (_) {
+      if (!mounted || _selectedId != peer.id) return;
+      // A callback failure leaves readiness uncertain. Close the same held
+      // connection before allowing a new action; never retry the blink.
+      final release = _releaseHold();
+      setState(() {});
+      _syncChoice();
+      await release;
+      if (!mounted) return;
+      setState(() {});
+      _holdSnack(
+        _holdPhase == _Hold.cleanupFailed
+            ? gatewayCleanupFailedText
+            : '辨識未完成，請重新連線後再試。',
+      );
     } finally {
       if (mounted && _identifyingId == peer.id) {
         setState(() => _identifyingId = null);
+        _syncChoice();
       }
     }
   }
@@ -1493,7 +1566,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
             key: ValueKey(peer.id),
             borderRadius: BorderRadius.circular(4),
             // 1.0.0+14: selects, never connects (the bottom button does).
-            onTap: widget.enabled && !_selecting
+            onTap: widget.enabled && _canSelect
                 ? () => _select(heard?.peer ?? peer)
                 : null,
             child: _tileBody(
@@ -1514,7 +1587,8 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
               selected: selected,
               connecting: connecting,
               hold: hold,
-              onIdentify: widget.enabled && !_selecting
+              onIdentify:
+                  widget.enabled && !_selecting && _identifyingId == null
                   ? () => _identify(heard?.peer ?? peer)
                   : null,
             ),
@@ -1830,7 +1904,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
       FilledButton.icon(
         key: const Key('gateway-rescan-primary'),
         style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
-        onPressed: widget.enabled && !_selecting ? _restartByUser : null,
+        onPressed: widget.enabled && _canSelect ? _restartByUser : null,
         icon: const Icon(Icons.search),
         label: const Text('重新搜尋'),
       ),
@@ -1934,6 +2008,73 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
         ),
         const SizedBox(height: 2),
         const Text('RSSI 為手機收到的藍牙訊號，與後端在線狀態不同。'),
+        if (_selectedId != null && widget.onHold != null) ...[
+          const SizedBox(height: 8),
+          Text('已選擇：${_choice.title ?? _selectedPeer?.name ?? ""}'),
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            children: [
+              if (_holdPhase == _Hold.held ||
+                  _holdPhase == _Hold.connecting ||
+                  _holdPhase == _Hold.disconnecting ||
+                  _holdPhase == _Hold.cleanupFailed)
+                OutlinedButton.icon(
+                  key: const Key('gateway-disconnect'),
+                  onPressed:
+                      widget.enabled &&
+                          !_selecting &&
+                          _identifyingId == null &&
+                          _holdPhase != _Hold.disconnecting
+                      ? _disconnectSelected
+                      : null,
+                  icon: const Icon(Icons.bluetooth_disabled),
+                  label: Text(
+                    _holdPhase == _Hold.disconnecting
+                        ? '斷開中…'
+                        : _holdPhase == _Hold.connecting
+                        ? '取消連線'
+                        : _holdPhase == _Hold.cleanupFailed
+                        ? '重試斷開'
+                        : '斷開',
+                  ),
+                )
+              else
+                FilledButton.icon(
+                  key: const Key('gateway-link-identify'),
+                  onPressed: widget.enabled && _canSelect
+                      ? _holdSelected
+                      : null,
+                  icon: const Icon(Icons.bluetooth),
+                  label: const Text('連線以辨識'),
+                ),
+              if (_holdPhase == _Hold.held)
+                OutlinedButton.icon(
+                  key: const Key('gateway-identify-selected'),
+                  onPressed:
+                      widget.enabled && !_selecting && _identifyingId == null
+                      ? () => _identify(_selectedPeer!)
+                      : null,
+                  icon: const Icon(Icons.lightbulb_outline),
+                  label: const Text(identifyGatewayLabel),
+                ),
+            ],
+          ),
+          if (_holdPhase == _Hold.connecting ||
+              _holdPhase == _Hold.disconnecting)
+            const LinearProgressIndicator(),
+          Text(
+            _holdPhase == _Hold.held
+                ? '已連線，可閃燈辨識；換台前請先斷開。'
+                : _holdPhase == _Hold.connecting
+                ? gatewayConnectingLabel
+                : _holdPhase == _Hold.disconnecting
+                ? '等待藍牙清理完成…'
+                : _holdPhase == _Hold.cleanupFailed
+                ? '藍牙清理未完成，請重試斷開。'
+                : '選卡不會連線或修改設定；連線辨識後再開始開通。',
+          ),
+        ],
         const SizedBox(height: 8),
         Wrap(
           spacing: 8,
@@ -1944,7 +2085,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
             if (_search != _Search.notFound)
               FilledButton.icon(
                 key: const Key('gateway-scan-toggle'),
-                onPressed: widget.enabled && !_selecting
+                onPressed: widget.enabled && _canSelect
                     ? (stoppable ? _stopByUser : _restartByUser)
                     : null,
                 icon: Icon(stoppable ? Icons.stop : Icons.search),

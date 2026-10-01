@@ -922,6 +922,7 @@ void main() {
       // The gateway list: nothing running, 返回 does not ask — 09-29: it
       // is 〔結束配置〕, the start page (the list had no way back).
       await tester.runAsync(() => tester.binding.handlePopRoute());
+      await _idle(tester, container);
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('end-confirm')), findsNothing);
       expect(find.byKey(const Key('leave-confirm')), findsNothing);

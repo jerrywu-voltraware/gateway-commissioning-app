@@ -164,7 +164,7 @@ void main() {
       await tester.pump();
       expect(link.stopped, isFalse);
       expect(connected, isFalse);
-      expect(find.text('連線到 未配置閘道器 …EEFD'), findsOneWidget);
+      expect(find.text('開始開通：未配置閘道器 …EEFD'), findsOneWidget);
       await tester.tap(find.byKey(const Key('gateway-connect')));
       await tester.pump(const Duration(milliseconds: 500));
       expect(link.stopped, isTrue, reason: 'connect must stop scanner');
