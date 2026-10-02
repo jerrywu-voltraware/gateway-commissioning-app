@@ -11,6 +11,8 @@
 // Technical lines are in 「設備與連線資訊」 (collapsed); errors, the
 // Bluetooth alert, 請後台協助 and 結束 never are. The star flow's PTU list
 // is unchanged.
+import 'support/direct_pick_actions.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -394,7 +396,7 @@ void main() {
 
   group('5. the direct pick', () {
     testWidgets('360x640 at text scale 1.3: 「請辨識眼前的充電樁…」, '
-        '〔是這台，開始配置〕 after 〔辨識此樁〕, 〔不是這台？〕 beside it', (tester) async {
+        '〔是這台，開始配置〕 after 〔辨識此樁〕, 〔不是這台？〕 in more actions', (tester) async {
       _phoneView(tester, scale: 1.3);
       final fake = PickGateway();
       final container = await _pump(
@@ -412,8 +414,11 @@ void main() {
       var s = container.read(commissionProvider);
       expect(s.step, 4);
       expect(_title(tester), directPickTaskTitle);
+      _onScreen(tester, find.byKey(const Key('direct-more')));
+      await openDirectActions(tester);
       expect(find.text('不是這台？'), findsOneWidget);
       _onScreen(tester, find.byKey(const Key('direct-not-this')));
+      await dismissDirectActions(tester);
       await _tap(tester, find.text('辨識此樁'));
       expect(_label(tester, 'direct-confirm'), directConfirmLabel);
       expect(directConfirmLabel, '是這台，開始配置');

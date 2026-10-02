@@ -1,10 +1,15 @@
 import Flutter
 import UIKit
+import CoreLocation
+import NetworkExtension
 
 @main
-@objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
+@objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate, CLLocationManagerDelegate {
   private var reportChannel: FlutterMethodChannel?
   private var appInfoChannel: FlutterMethodChannel?
+  private var wifiChannel: FlutterMethodChannel?
+  private lazy var wifiLocation = CLLocationManager()
+  private var wifiPermissionReply: FlutterResult?
 
   override func application(
     _ application: UIApplication,
@@ -17,6 +22,79 @@ import UIKit
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
     configureReportChannel(binaryMessenger: engineBridge.applicationRegistrar.messenger())
     configureAppInfoChannel(binaryMessenger: engineBridge.applicationRegistrar.messenger())
+    configureWifiChannel(binaryMessenger: engineBridge.applicationRegistrar.messenger())
+  }
+
+  private func configureWifiChannel(binaryMessenger: FlutterBinaryMessenger) {
+    wifiLocation.delegate = self
+    wifiChannel = FlutterMethodChannel(name: "voltraware/wifi", binaryMessenger: binaryMessenger)
+    wifiChannel?.setMethodCallHandler { [weak self] call, result in
+      guard call.method == "current" || call.method == "requestLocation" else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      guard let self = self else {
+        result(FlutterError(code: "unavailable", message: "Wi-Fi info unavailable", details: nil))
+        return
+      }
+      if call.method == "requestLocation" {
+        self.requestWifiLocationPermission(result)
+        return
+      }
+      // Permission is requested only after the user taps the button.
+      guard CLLocationManager.locationServicesEnabled() else {
+        result(FlutterError(code: "location_off", message: "Location services disabled", details: nil))
+        return
+      }
+      let authorization = self.wifiLocation.authorizationStatus
+      guard authorization == .authorizedWhenInUse || authorization == .authorizedAlways else {
+        result(FlutterError(code: "permission", message: "Location permission required", details: nil))
+        return
+      }
+      guard self.wifiLocation.accuracyAuthorization == .fullAccuracy else {
+        result(FlutterError(code: "precise_location", message: "Precise location required", details: nil))
+        return
+      }
+      NEHotspotNetwork.fetchCurrent { network in
+        // Preserve the SSID exactly. Do not read or log credentials/location.
+        result(network?.ssid)
+      }
+    }
+  }
+
+  private func requestWifiLocationPermission(_ result: @escaping FlutterResult) {
+    guard CLLocationManager.locationServicesEnabled() else {
+      result(FlutterError(code: "location_off", message: "Location services disabled", details: nil))
+      return
+    }
+    guard wifiPermissionReply == nil else {
+      result(FlutterError(code: "busy", message: "Permission request pending", details: nil))
+      return
+    }
+    wifiPermissionReply = result
+    if wifiLocation.authorizationStatus == .notDetermined {
+      // No location updates are requested. Authorization only permits SSID
+      // access; the user can still choose manual entry without granting it.
+      wifiLocation.requestWhenInUseAuthorization()
+    } else {
+      finishWifiLocationPermission()
+    }
+  }
+
+  func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+    finishWifiLocationPermission()
+  }
+
+  private func finishWifiLocationPermission() {
+    guard let result = wifiPermissionReply else { return }
+    let status = wifiLocation.authorizationStatus
+    guard status != .notDetermined else { return }
+    wifiPermissionReply = nil
+    if status == .authorizedWhenInUse || status == .authorizedAlways {
+      result(nil)
+    } else {
+      result(FlutterError(code: "permission_permanently_denied", message: "Location permission denied", details: nil))
+    }
   }
 
   private func configureAppInfoChannel(binaryMessenger: FlutterBinaryMessenger) {

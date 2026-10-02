@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'support/done_sections.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -512,7 +514,9 @@ void main() {
     var state = container.read(commissionProvider);
     expect(state.error, isNull);
     expect(state.step, 7);
-    expect(find.text('開通驗證通過，已恢復自動監控'), findsOneWidget);
+    expect(state.message, '開通驗證通過，已恢復自動監控');
+    expect(find.text('開通驗證通過，已恢復自動監控'), findsNothing);
+    expect(find.byKey(const Key('done-title')), findsOneWidget);
     expect(find.byKey(const Key('dev-ship-note')), findsOneWidget);
     expect(find.text(devShipNoteText), findsOneWidget);
 
@@ -538,8 +542,13 @@ void main() {
     expect(state.error, isNull);
     expect(state.message, '資料持續更新');
     expect(find.byKey(const Key('done-login')), findsNothing);
+    expect(find.text('資料持續更新'), findsNothing);
+    await openDoneSection(tester, 'done-advanced');
     expect(find.text('更新健康狀態'), findsOneWidget);
 
+    if (find.byKey(const Key('done-repair')).evaluate().isEmpty) {
+      await openDoneSection(tester, 'done-advanced');
+    }
     await _tap(tester, find.text('重新連線並驗證'));
     state = container.read(commissionProvider);
     expect(state.error, isNull);
@@ -571,6 +580,9 @@ void main() {
     final logins = fake.logins.length;
 
     expect(find.widgetWithText(TextField, '正式站的登入密碼'), findsNothing);
+    if (find.byKey(const Key('done-repair')).evaluate().isEmpty) {
+      await openDoneSection(tester, 'done-advanced');
+    }
     await _tap(tester, find.text('重新連線並驗證'));
     expect(find.text(missingBackendKeyText), findsOneWidget);
     final state = container.read(commissionProvider);
@@ -593,6 +605,9 @@ void main() {
     await _tap(tester, find.text('使用此站點'));
     await _tap(tester, find.text('配置 3 台並開始監控'));
     await _tap(tester, find.text(devShipSwitchLabel));
+    if (find.byKey(const Key('done-repair')).evaluate().isEmpty) {
+      await openDoneSection(tester, 'done-advanced');
+    }
     await _tap(tester, find.text('重新連線並驗證'));
     final state = container.read(commissionProvider);
     expect(fake.logins.last, (productionApiBase, _buildKey));

@@ -19,6 +19,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'support/direct_pick_actions.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -257,7 +259,7 @@ Future<void> _until(bool Function() done) async {
 }
 
 bool _enabled(WidgetTester tester, String key) =>
-    tester.widget<ButtonStyleButton>(find.byKey(Key(key))).enabled;
+    directActionEnabled(tester, key);
 
 String _label(WidgetTester tester, String key) => tester
     .widgetList<Text>(
@@ -319,14 +321,16 @@ void main() {
       Rect at(String key) => tester.getRect(find.byKey(Key(key)));
       final bar = at('direct-pick-actions');
       final identify = at('direct-identify');
-      final notThis = at('direct-not-this');
+      final more = at('direct-more');
       final confirm = at('direct-confirm');
-      final rescan = at('direct-rescan-bottom');
       final stop = at('direct-stop');
       expect(_enabled(tester, 'direct-identify'), isTrue);
+      expect(_enabled(tester, 'direct-more'), isTrue);
+      expect(_enabled(tester, 'direct-stop'), isFalse, reason: 'idle');
+      await openDirectActions(tester);
       expect(_enabled(tester, 'direct-not-this'), isTrue);
       expect(_enabled(tester, 'direct-rescan-bottom'), isTrue);
-      expect(_enabled(tester, 'direct-stop'), isFalse, reason: 'idle');
+      await dismissDirectActions(tester);
 
       // 「不是這台？」 → the gateway reports no pick while it switches.
       directSwitchWait = const Duration(seconds: 5);
@@ -344,20 +348,13 @@ void main() {
       expect(s.direct!.pickedMac, isNull);
       expect(at('direct-pick-actions'), bar);
       expect(at('direct-identify').topLeft, identify.topLeft);
-      expect(at('direct-others-bottom'), notThis);
+      expect(at('direct-more'), more);
       expect(at('direct-wait'), confirm);
-      expect(at('direct-rescan-bottom'), rescan);
       expect(at('direct-stop'), stop);
-      for (final key in [
-        'direct-identify',
-        'direct-others-bottom',
-        'direct-wait',
-        'direct-rescan-bottom',
-      ]) {
+      for (final key in ['direct-identify', 'direct-more', 'direct-wait']) {
         expect(_enabled(tester, key), isFalse, reason: '$key while busy');
       }
       expect(_enabled(tester, 'direct-stop'), isTrue);
-      expect(_label(tester, 'direct-others-bottom'), contains('不是這台？'));
       expect(_label(tester, 'direct-wait'), directWaitingLabel);
 
       // The switch lands: the same places, enabled again.
@@ -369,16 +366,19 @@ void main() {
       expect(s.direct!.pickedMac, _first);
       expect(at('direct-pick-actions'), bar);
       expect(at('direct-identify'), identify);
-      expect(at('direct-not-this'), notThis);
+      expect(at('direct-more'), more);
       expect(at('direct-confirm'), confirm);
-      expect(at('direct-rescan-bottom'), rescan);
       expect(at('direct-stop'), stop);
       expect(_enabled(tester, 'direct-identify'), isTrue);
-      expect(_enabled(tester, 'direct-not-this'), isTrue);
+      expect(_enabled(tester, 'direct-more'), isTrue);
       expect(_enabled(tester, 'direct-stop'), isFalse);
+      await openDirectActions(tester);
+      expect(_enabled(tester, 'direct-not-this'), isTrue);
+      expect(_enabled(tester, 'direct-rescan-bottom'), isTrue);
+      await dismissDirectActions(tester);
     });
 
-    testWidgets('page: 結束並重新選擇閘道器 stays (disabled) while switching; '
+    testWidgets('page: the end menu is disabled while switching; '
         'after step 3 it asks, 繼續配置 keeps the flow, 結束 ends it', (
       tester,
     ) async {
@@ -414,9 +414,12 @@ void main() {
       // The card has no buttons of its own for these (bottom bar only).
       expect(find.byKey(const Key('direct-rescan')), findsNothing);
       final cancel = find.byKey(const Key('page-cancel'));
+      await openDirectActions(tester);
       expect(cancel, findsOneWidget);
+      expect(_enabled(tester, 'page-cancel'), isTrue);
+      await dismissDirectActions(tester);
 
-      // Switching: still there, same text, disabled.
+      // Switching: the menu entry stays fixed and disabled.
       directSwitchWait = const Duration(seconds: 5);
       fake.directGapReads = 1 << 20;
       late Future<void> switching;
@@ -428,12 +431,9 @@ void main() {
       });
       await tester.pump();
       expect(container.read(commissionProvider).busy, isTrue);
-      expect(cancel, findsOneWidget);
-      expect(tester.widget<TextButton>(cancel).onPressed, isNull);
-      expect(
-        find.descendant(of: cancel, matching: find.text('結束並重新選擇閘道器')),
-        findsOneWidget,
-      );
+      expect(cancel, findsNothing);
+      expect(_enabled(tester, 'direct-more'), isFalse);
+      expect(_enabled(tester, 'direct-stop'), isTrue);
       fake.directGapReads = 0;
       await tester.runAsync(() => switching);
       await tester.pump();
@@ -441,7 +441,7 @@ void main() {
       // After step 3: a confirmation first; 繼續配置 changes nothing.
       final s = container.read(commissionProvider);
       expect(displayStep(s, container.read(backendEnvProvider)), 6);
-      await tester.tap(cancel);
+      await tapDirectAction(tester, 'page-cancel');
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('end-confirm')), findsOneWidget);
       expect(find.text(endFlowConfirmTitle), findsOneWidget);
@@ -457,7 +457,7 @@ void main() {
       expect(fake.config['direct_bind_mac'], _first);
 
       // 結束: the flow ends (the temporary binding is put back).
-      await tester.tap(cancel);
+      await tapDirectAction(tester, 'page-cancel');
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('end-confirm-end')));
       await tester.runAsync(
@@ -546,11 +546,12 @@ void main() {
       expect(s.direct!.candidates, isEmpty);
       await tester.pumpWidget(_screen(container));
       expect(find.text('選台依據：訊號最強且明確'), findsOneWidget);
+      await openDirectActions(tester);
       expect(find.byKey(const Key('direct-not-this')), findsOneWidget);
       expect(_enabled(tester, 'direct-not-this'), isTrue);
       expect(_enabled(tester, 'direct-rescan-bottom'), isTrue);
 
-      await tester.tap(find.byKey(const Key('direct-not-this')));
+      await tapDirectAction(tester, 'direct-not-this');
       await tester.pump();
       expect(find.byKey(const Key('direct-candidates-sheet')), findsOneWidget);
       await _idle(tester, container);

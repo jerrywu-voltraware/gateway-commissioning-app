@@ -18,24 +18,22 @@ import 'field_help_sheet.dart';
 /// makes the gateway switch (a binding) so the installer can identify it.
 /// Hidden for firmware without `direct` (the page keeps the old list).
 ///
-/// Round 16: PTUs are named by MAC + RSSI, never by the old star number
-/// they may still carry (round 15 showed #1–#5 here). With a pick,
-/// 「不是這台？」 sits in the bottom bar ([DirectPickActions]) so it is
-/// always on screen; this card keeps 「改選其他 PTU」 only while there is
-/// no pick.
+/// PTUs are named by MAC + RSSI, never by an old star number. With a pick,
+/// 「不是這台？」 is in the bottom bar's more menu ([DirectPickActions]);
+/// this card keeps 「改選其他 PTU」 only while there is no pick.
 ///
 /// Round 16b: the full MAC in monospace ([MacText]) — 「MAC 後 4 碼」 read
 /// 「9600」 for a whole fleet of 90:xx:xx:xx:96:00 PTUs.
 ///
 /// Round 17: with [actionsInBar] (the page, whose bottom bar
-/// [DirectPickActions] always offers 「重新搜尋」 and 「不是這台？」) the card
+/// [DirectPickActions] offers 「重新搜尋」 and 「不是這台？」 in its menu) the card
 /// has no buttons of its own for them — field round 17: its 「改選其他
 /// PTU」 vanished the moment a switch finished and a late tap landed on
 /// 「結束並重新選擇閘道器」 that moved up into its place.
 class DirectStatusPanel extends ConsumerStatefulWidget {
   const DirectStatusPanel({super.key, this.actionsInBar = false});
 
-  /// 「重新搜尋」/「改選其他 PTU」 live in the bottom bar, not in the card.
+  /// 「重新搜尋」/「改選其他 PTU」 live in the bottom bar's more menu.
   final bool actionsInBar;
 
   @override
@@ -110,23 +108,6 @@ class _DirectStatusPanelState extends ConsumerState<DirectStatusPanel> {
           children: [
             Text('閘道器選中的 PTU', style: text.titleSmall),
             const SizedBox(height: 4),
-            if (widget.actionsInBar) ...[
-              DirectPickActivity(
-                direct: direct,
-                busy: state.busy,
-                identifiedMac: state.identifiedMac,
-                identifyAvailable:
-                    state.config['identify_supported'] == true &&
-                    identifyPtuSupported(state.config),
-                unavailable:
-                    state.error != null ||
-                    state.relinking ||
-                    state.reconnectFailed ||
-                    state.resumePending ||
-                    state.uploadWatch == UploadWatch.linkLost,
-              ),
-              const SizedBox(height: 8),
-            ],
             if (direct == null)
               Text(
                 state.busy ? '正在讀取閘道器的選台結果…' : '尚未取得閘道器的選台結果，請按「重新搜尋」。',
@@ -189,6 +170,25 @@ class _DirectStatusPanelState extends ConsumerState<DirectStatusPanel> {
                 key: const Key('direct-state'),
                 style: text.titleMedium,
               ),
+            // Put the device identity before the illustration so it stays
+            // visible above the action bar on small phones and large text.
+            if (widget.actionsInBar) ...[
+              const SizedBox(height: 8),
+              DirectPickActivity(
+                direct: direct,
+                busy: state.busy,
+                identifiedMac: state.identifiedMac,
+                identifyAvailable:
+                    state.config['identify_supported'] == true &&
+                    identifyPtuSupported(state.config),
+                unavailable:
+                    state.error != null ||
+                    state.relinking ||
+                    state.reconnectFailed ||
+                    state.resumePending ||
+                    state.uploadWatch == UploadWatch.linkLost,
+              ),
+            ],
             if (picked != null && direct!.ambiguous)
               Container(
                 key: const Key('direct-ambiguous'),
@@ -925,46 +925,17 @@ class _WarnBox extends StatelessWidget {
   );
 }
 
-/// Round 15: direct flow bottom bar actions at step 7 — 「辨識此樁」 with its
-/// note, then 「是這台，開始監控」 for the PTU the gateway picked.
+/// Compact, fixed actions for the PTU selected by the gateway (step 7).
+/// Identify, cancel and the more menu share a row; a brief status and the
+/// confirmation button follow. Switching PTU, rescanning and ending live
+/// in the menu, leaving room for the device card above.
 ///
-/// Round 16: 「不是這台？」 sits beside 「辨識此樁」 (always on screen, also
-/// at 360 dp) and the note is one line (「已送出 · 請看樁上燈號 · MAC ·
-/// RSSI」); tapping it shows the full note. Round 15: the four-line note
-/// grew the bar over 「不是這台？」. Round 16b: the MAC is shortened to
-/// the bytes that tell it apart only when the line does not fit.
-///
-/// Round 17: one fixed layout in every state (field round 17: while the
-/// gateway switched PTU the bar held 「重新搜尋」 + 「取消操作」, and when
-/// the switch finished other buttons took their places under the finger).
-/// Every button keeps its place and is disabled rather than removed or
-/// replaced:
-///   1. 「辨識此樁」（「連線建立中…」 right after a connect） · 「不是這台？」
-///      (with no candidates the gateway first collects a new window)
-///   2. the identify note, one line
-///   3. 「是這台，開始監控」（「請先按「辨識此樁」確認」 / 「等待閘道器連上
-///      PTU」）
-///   4. 「重新搜尋」 · 「取消操作」（only while something runs）
-///   5. 「結束並重新選擇閘道器」 ([onEnd]; disabled while something runs)
-///
-/// Round 19: row 5 moved here from below the page's card (field round 19:
-/// the card grew when its RSSI went 「RSSI —」 → 「-49 dBm」 and the button
-/// slid away from under a tap; the ambiguous / notice boxes appearing and
-/// vanishing move it further). The bar is anchored to the bottom of the
-/// screen and this is its last row, so nothing above it can move it. The
-/// note while an identify waits for its ack: [identifyPendingText] with a
-/// spinner.
-///
-/// Round 20 (field round 20: the back office's identify snack bar sat
-/// over the card's yellow box for 8 s): here the notice
-/// ([CommissionState.remoteIdentifyNote]) takes row 2's one line for
-/// [remoteIdentifyNoticeDuration] instead — nothing is covered and no row
-/// moves; a tap shows the whole text. The installer's own identify (a new
-/// [CommissionState.identifyNote]) replaces it at once.
+/// Buttons keep their positions while busy or receiving a remote identify
+/// notice. Full identify details open separately instead of growing the bar.
 class DirectPickActions extends ConsumerStatefulWidget {
   const DirectPickActions({super.key, this.onEnd});
 
-  /// 「結束並重新選擇閘道器」 (asks first); no row 5 when null.
+  /// 「結束並重新選擇閘道器」 (asks first); omitted from the menu when null.
   final VoidCallback? onEnd;
 
   @override
@@ -974,8 +945,8 @@ class DirectPickActions extends ConsumerStatefulWidget {
 /// Round 20: how long the back office's identify notice holds row 2.
 const remoteIdentifyNoticeDuration = Duration(seconds: 8);
 
-/// Round 21: row 2's width taken beside its text — the back office icon
-/// (16 + 6) and the chevron (18).
+/// Row 2's width taken beside its text — the back office icon (16 + 6)
+/// and the details icon (18).
 const identifyLineChrome = 40.0;
 
 /// Round 21: whether every [remoteIdentifyHeads] fits one line of [width]
@@ -1066,9 +1037,9 @@ class RemoteIdentifyLines extends StatelessWidget {
   }
 }
 
-class _DirectPickActionsState extends ConsumerState<DirectPickActions> {
-  bool _detail = false;
+enum _DirectPickMenuAction { switchPtu, rescan, end }
 
+class _DirectPickActionsState extends ConsumerState<DirectPickActions> {
   /// Round 20: the back office's identify notice shown in row 2, if any.
   String? _remote;
 
@@ -1083,7 +1054,6 @@ class _DirectPickActionsState extends ConsumerState<DirectPickActions> {
       _remote = note;
       _remoteHead = head.isEmpty ? note : head;
       _remotePtu = ptu;
-      _detail = false;
     });
     // Timed from the frame that shows it (the ack may arrive in another
     // zone than the frames, e.g. a widget test's real-async block).
@@ -1099,7 +1069,6 @@ class _DirectPickActionsState extends ConsumerState<DirectPickActions> {
     if (!mounted || _remote == null) return;
     setState(() {
       _remote = null;
-      _detail = false;
     });
   }
 
@@ -1107,6 +1076,44 @@ class _DirectPickActionsState extends ConsumerState<DirectPickActions> {
   void dispose() {
     _remoteTimer?.cancel();
     super.dispose();
+  }
+
+  void _selectAction(_DirectPickMenuAction action) {
+    if (!mounted) return;
+    // A gateway update can arrive while the menu is open. Check the live
+    // state again rather than acting on the menu's enabled-state snapshot.
+    final state = ref.read(commissionProvider);
+    if (state.busy || state.relinking) return;
+    switch (action) {
+      case _DirectPickMenuAction.switchPtu:
+        if (state.direct != null) openDirectCandidates(context, ref);
+      case _DirectPickMenuAction.rescan:
+        ref.read(commissionProvider.notifier).rescanDirect();
+      case _DirectPickMenuAction.end:
+        widget.onEnd?.call();
+    }
+  }
+
+  void _showDetail(String note, {required bool remote}) {
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('辨識訊息'),
+        scrollable: true,
+        content: macRichText(
+          note,
+          key: Key(
+            remote ? 'remote-identify-detail' : 'direct-identify-detail',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('關閉'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -1161,7 +1168,6 @@ class _DirectPickActionsState extends ConsumerState<DirectPickActions> {
             : state.identifyLine);
     // Round 20: the back office's notice can always be opened in full.
     final expandable = note.isNotEmpty && (remote != null || note != line);
-    final showDetail = _detail && expandable;
     // Round 19: sent, the ack not back yet.
     final pending =
         remote == null &&
@@ -1174,144 +1180,165 @@ class _DirectPickActionsState extends ConsumerState<DirectPickActions> {
       children: [
         Row(
           children: [
-            if (identifySupported)
-              FilledButton.tonalIcon(
-                key: const Key('direct-identify'),
-                icon: const Icon(Icons.lightbulb_outline, size: 20),
-                onPressed: enabled && ready && !settling
-                    ? controller.identify
-                    : null,
-                label: Text(settling ? directSettlingLabel : '辨識此樁'),
-              ),
-            const SizedBox(width: 8),
             Expanded(
-              child: Align(
-                alignment: Alignment.centerRight,
-                child: TextButton.icon(
+              child: identifySupported
+                  ? FilledButton.tonalIcon(
+                      key: const Key('direct-identify'),
+                      icon: const Icon(Icons.lightbulb_outline, size: 20),
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                      ),
+                      onPressed: enabled && ready && !settling
+                          ? controller.identify
+                          : null,
+                      label: Text(settling ? directSettlingLabel : '辨識此樁'),
+                    )
+                  : const SizedBox.shrink(),
+            ),
+            const SizedBox(width: 4),
+            IconButton(
+              key: const Key('direct-stop'),
+              tooltip: '取消操作',
+              constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+              onPressed: state.busy ? controller.stopStep8 : null,
+              icon: const Icon(Icons.cancel_outlined),
+            ),
+            PopupMenuButton<_DirectPickMenuAction>(
+              key: const Key('direct-more'),
+              tooltip: '更多操作',
+              enabled: enabled,
+              icon: const Icon(Icons.more_horiz),
+              onSelected: _selectAction,
+              itemBuilder: (context) => [
+                PopupMenuItem(
                   key: Key(ready ? 'direct-not-this' : 'direct-others-bottom'),
-                  icon: const Icon(Icons.swap_horiz, size: 20),
-                  onPressed: enabled && state.direct != null
-                      ? () => openDirectCandidates(context, ref)
-                      : null,
-                  // Same label with or without a pick: same size, same
-                  // place (the sheet lists the nearby candidates).
-                  label: const Text('不是這台？'),
+                  value: _DirectPickMenuAction.switchPtu,
+                  enabled: state.direct != null,
+                  child: const Text('不是這台？'),
                 ),
-              ),
+                const PopupMenuItem(
+                  key: Key('direct-rescan-bottom'),
+                  value: _DirectPickMenuAction.rescan,
+                  child: Text('重新搜尋'),
+                ),
+                if (widget.onEnd != null)
+                  const PopupMenuItem(
+                    key: Key('page-cancel'),
+                    value: _DirectPickMenuAction.end,
+                    child: Text(endFlowLabel),
+                  ),
+              ],
             ),
           ],
         ),
         if (identifySupported)
-          InkWell(
-            key: const Key('direct-identify-toggle'),
-            onTap: expandable ? () => setState(() => _detail = !_detail) : null,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              // Round 21: two lines high whenever the back office's longest
-              // notice needs them here (360 dp at text scale 1.3) — also
-              // without a notice, so its arrival moves no button.
-              child: LayoutBuilder(
-                builder: (context, row) {
-                  final twoLines = !remoteIdentifyHeadsFit(
-                    context,
-                    row.maxWidth - identifyLineChrome,
-                  );
-                  return ConstrainedBox(
-                    constraints: BoxConstraints(
-                      minHeight: twoLines ? textLinesHeight(context, 2) : 0,
-                    ),
-                    child: Row(
-                      children: [
-                        // Round 20: the back office's identify, not this phone's.
-                        if (remote != null)
-                          Padding(
-                            padding: const EdgeInsets.only(right: 6),
-                            child: Icon(
-                              Icons.support_agent,
-                              key: const Key('remote-identify-icon'),
-                              size: 16,
-                              color: colors.tertiary,
-                            ),
-                          ),
-                        if (pending)
-                          Padding(
-                            padding: const EdgeInsets.only(right: 6),
-                            child: SizedBox(
-                              key: const Key('direct-identify-pending'),
-                              width: 12,
-                              height: 12,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: colors.primary,
+          DefaultTextStyle.merge(
+            style: Theme.of(context).textTheme.bodySmall,
+            child: InkWell(
+              key: const Key('direct-identify-toggle'),
+              onTap: expandable
+                  ? () => _showDetail(note, remote: remote != null)
+                  : null,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                // Round 21: two lines high whenever the back office's longest
+                // notice needs them here (360 dp at text scale 1.3) — also
+                // without a notice, so its arrival moves no button.
+                child: LayoutBuilder(
+                  builder: (context, row) {
+                    final twoLines = !remoteIdentifyHeadsFit(
+                      context,
+                      row.maxWidth - identifyLineChrome,
+                    );
+                    return ConstrainedBox(
+                      constraints: BoxConstraints(
+                        // Reserve the details icon even before a note arrives.
+                        // Otherwise a 16 dp text line grows to 18 dp on ack.
+                        minHeight: math.max(
+                          18,
+                          textLinesHeight(context, twoLines ? 2 : 1),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          // Round 20: the back office's identify, not this phone's.
+                          if (remote != null)
+                            Padding(
+                              padding: const EdgeInsets.only(right: 6),
+                              child: Icon(
+                                Icons.support_agent,
+                                key: const Key('remote-identify-icon'),
+                                size: 16,
+                                color: colors.tertiary,
                               ),
                             ),
-                          ),
-                        Expanded(
-                          // Round 16b: the full MAC when the line fits, else the
-                          // bytes telling it apart (the full note opens below).
-                          child: LayoutBuilder(
-                            builder: (context, box) {
-                              final style = TextStyle(
-                                color: remote != null
-                                    ? colors.tertiary
-                                    : note.isEmpty
-                                    ? colors.onSurfaceVariant
-                                    : colors.primary,
-                              );
-                              if (remote != null) {
-                                return RemoteIdentifyLines(
-                                  head: _remoteHead,
-                                  ptu: _remotePtu,
-                                  others: others,
-                                  twoLines: twoLines,
-                                  width: box.maxWidth,
+                          if (pending)
+                            Padding(
+                              padding: const EdgeInsets.only(right: 6),
+                              child: SizedBox(
+                                key: const Key('direct-identify-pending'),
+                                width: 12,
+                                height: 12,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: colors.primary,
+                                ),
+                              ),
+                            ),
+                          Expanded(
+                            // Round 16b: the full MAC when the line fits, else the
+                            // bytes telling it apart (tap for the full note).
+                            child: LayoutBuilder(
+                              builder: (context, box) {
+                                final style = TextStyle(
+                                  color: remote != null
+                                      ? colors.tertiary
+                                      : note.isEmpty
+                                      ? colors.onSurfaceVariant
+                                      : colors.primary,
+                                );
+                                if (remote != null) {
+                                  return RemoteIdentifyLines(
+                                    head: _remoteHead,
+                                    ptu: _remotePtu,
+                                    others: others,
+                                    twoLines: twoLines,
+                                    width: box.maxWidth,
+                                    style: style,
+                                  );
+                                }
+                                return macRichText(
+                                  fitsOneLine(
+                                        context,
+                                        macSpan(line, style),
+                                        box.maxWidth,
+                                      )
+                                      ? line
+                                      : shortenMacIn(line, others),
+                                  key: Key(
+                                    remote != null
+                                        ? 'remote-identify'
+                                        : 'direct-identify-note',
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                   style: style,
                                 );
-                              }
-                              return macRichText(
-                                fitsOneLine(
-                                      context,
-                                      macSpan(line, style),
-                                      box.maxWidth,
-                                    )
-                                    ? line
-                                    : shortenMacIn(line, others),
-                                key: Key(
-                                  remote != null
-                                      ? 'remote-identify'
-                                      : 'direct-identify-note',
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: style,
-                              );
-                            },
+                              },
+                            ),
                           ),
-                        ),
-                        if (expandable)
-                          Icon(
-                            showDetail ? Icons.expand_less : Icons.expand_more,
-                            size: 18,
-                            color: colors.onSurfaceVariant,
-                          ),
-                      ],
-                    ),
-                  );
-                },
+                          if (expandable)
+                            Icon(
+                              Icons.info_outline,
+                              size: 18,
+                              color: colors.onSurfaceVariant,
+                            ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
               ),
-            ),
-          ),
-        if (showDetail)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: macRichText(
-              note,
-              key: Key(
-                remote != null
-                    ? 'remote-identify-detail'
-                    : 'direct-identify-detail',
-              ),
-              style: Theme.of(context).textTheme.bodySmall,
             ),
           ),
         const SizedBox(height: 4),
@@ -1328,31 +1355,6 @@ class _DirectPickActionsState extends ConsumerState<DirectPickActions> {
                 : directIdentifyFirstLabel,
           ),
         ),
-        Row(
-          children: [
-            TextButton.icon(
-              key: const Key('direct-rescan-bottom'),
-              icon: const Icon(Icons.refresh, size: 20),
-              onPressed: enabled ? controller.rescanDirect : null,
-              label: const Text('重新搜尋'),
-            ),
-            const Spacer(),
-            TextButton(
-              key: const Key('direct-stop'),
-              // Step 7: ends the run like 「結束並重新選擇閘道器」 (a
-              // temporary binding is put back).
-              onPressed: state.busy ? controller.stopStep8 : null,
-              child: const Text('取消操作'),
-            ),
-          ],
-        ),
-        if (widget.onEnd != null)
-          TextButton(
-            key: const Key('page-cancel'),
-            // Disabled (not removed) while something runs (round 17).
-            onPressed: enabled ? widget.onEnd : null,
-            child: const Text(endFlowLabel),
-          ),
       ],
     );
   }

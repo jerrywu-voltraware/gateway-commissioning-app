@@ -37,6 +37,8 @@
 	<string>此 APP 需要使用藍牙搜尋並連線 IoT Gateway 進行現場配置。</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>此 APP 需要連線到區域網路內的測試後端與 IoT Gateway 服務來完成配置驗證。</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>允許精確位置權限，才能讀取手機目前連線的 Wi-Fi 名稱，並帶入閘道器設定；不會取得或儲存您的位置。</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

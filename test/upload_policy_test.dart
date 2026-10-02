@@ -11,6 +11,8 @@
 //    login → 「資料上傳頻率由後台控制」, never waited for.
 import 'dart:async';
 
+import 'support/done_sections.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -749,19 +751,28 @@ void main() {
     });
 
     for (final scale in [1.0, 1.3]) {
-      testWidgets('star done page, font $scale: 「目前每 5 秒」 under the label '
-          'card', (tester) async {
+      testWidgets('star done page, font $scale: 「目前每 5 秒」 in equipment '
+          'details', (tester) async {
         _phone(tester, scale);
         await _pumpStarDone(tester, _DsGateway());
+        expect(find.byKey(const Key('done-upload-rate')), findsNothing);
+        await openDoneSection(tester, 'commission-details');
         expect(_rateLine(tester), '資料上傳頻率由後台控制（目前每 5 秒）');
-        final label = tester.getRect(find.byKey(const Key('done-label')));
-        final upload = tester.getRect(find.byKey(const Key('done-upload')));
-        final rate = tester.getRect(find.byKey(const Key('done-upload-rate')));
-        expect(rate.top, greaterThanOrEqualTo(label.bottom));
-        expect(rate.top, greaterThanOrEqualTo(upload.bottom));
-        // Inside the summary card.
-        final summary = tester.getRect(find.byKey(const Key('done-summary')));
-        expect(rate.bottom, lessThanOrEqualTo(summary.bottom));
+        final rate = find.byKey(const Key('done-upload-rate'));
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('commission-details')),
+            matching: rate,
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('done-summary')),
+            matching: rate,
+          ),
+          findsNothing,
+        );
         expect(tester.takeException(), isNull);
         await tester.pumpWidget(const SizedBox());
       });
@@ -778,6 +789,7 @@ void main() {
           detail: 'Not Found',
         );
       await _pumpStarDone(tester, fake);
+      await openDoneSection(tester, 'commission-details');
       expect(_rateLine(tester), '資料上傳頻率由後台控制');
       expect(_rateLine(tester), isNot(contains('秒')));
       expect(tester.takeException(), isNull);
@@ -788,8 +800,9 @@ void main() {
         'a number', (tester) async {
       _phone(tester, 1.3);
       await _pumpDeferredDone(tester, _DsGateway(rssi: const [-61, -72, -80]));
-      expect(_rateLine(tester), '資料上傳頻率由後台控制');
       expect(find.byKey(const Key('done-label')), findsOneWidget);
+      await openDoneSection(tester, 'commission-details');
+      expect(_rateLine(tester), '資料上傳頻率由後台控制');
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
     });

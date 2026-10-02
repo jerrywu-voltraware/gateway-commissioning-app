@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'support/direct_pick_actions.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -194,7 +196,7 @@ void main() {
       expect(find.textContaining('已綁定的 PTU 不在場'), findsWidgets);
       expect(find.byKey(const Key('direct-unbind')), findsOneWidget);
       // Round 15: candidates only under 「改選其他 PTU」 / 「不是這台？」.
-      await tester.tap(find.byKey(const Key('direct-not-this')));
+      await tapDirectAction(tester, 'direct-not-this');
       await tester.pump();
       expect(
         find.byKey(const ValueKey('direct-candidate-AA:BB:CC:00:00:01')),

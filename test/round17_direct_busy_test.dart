@@ -6,6 +6,8 @@
 // [CommissionState.busy] does, with no extra wiring needed.
 import 'dart:async';
 
+import 'support/direct_pick_actions.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -116,7 +118,7 @@ void main() {
       });
       addTearDown(container.dispose);
       await tester.pumpWidget(_screen(container));
-      await tester.tap(find.byKey(const Key('direct-not-this')));
+      await tapDirectAction(tester, 'direct-not-this');
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
       expect(find.byKey(const Key('direct-candidates-sheet')), findsOneWidget);

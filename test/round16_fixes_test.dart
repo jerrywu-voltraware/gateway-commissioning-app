@@ -14,6 +14,8 @@
 //    direct flow; it is chosen in its own dialog (round 15: 4 instead of 5).
 import 'dart:convert';
 
+import 'support/direct_pick_actions.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -237,9 +239,9 @@ void main() {
     });
   });
 
-  group('2. bottom bar: one-line note, 不是這台？ always on screen', () {
-    testWidgets('360 dp: identify does not grow the bar; 不是這台？ stays '
-        'visible and opens the candidates', (tester) async {
+  group('2. bottom bar: one-line note, more actions always on screen', () {
+    testWidgets('360 dp: identify does not grow the bar; more actions stay '
+        'visible and open the candidates', (tester) async {
       _phone(tester);
       // Ambiguous: the card is at its tallest (round 15 b03).
       final fake = PickGateway(rssi: [-40, -43, -70]);
@@ -272,7 +274,7 @@ void main() {
       );
       expect(tester.getSize(bar).height, before);
 
-      final link = find.byKey(const Key('direct-not-this'));
+      final link = find.byKey(const Key('direct-more'));
       expect(link, findsOneWidget);
       final rect = tester.getRect(link);
       expect(rect.top, greaterThanOrEqualTo(0));
@@ -283,9 +285,7 @@ void main() {
         findsOneWidget,
         reason: 'in the bottom bar, not the scrolled card',
       );
-      await tester.tap(link);
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 500));
+      await tapDirectAction(tester, 'direct-not-this');
       expect(find.byKey(const Key('direct-candidates-sheet')), findsOneWidget);
       expect(
         find.byKey(const ValueKey('direct-candidate-$_pick')),
@@ -361,7 +361,7 @@ void main() {
       expect(find.textContaining('後 4 碼'), findsNothing);
       expect(find.textContaining(RegExp(r'#\d')), findsNothing);
 
-      await tester.tap(find.byKey(const Key('direct-not-this')));
+      await tapDirectAction(tester, 'direct-not-this');
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
       for (final (mac, rssi) in [(_first, -50), (_pick, -38)]) {
@@ -392,9 +392,7 @@ void main() {
       addTearDown(container.dispose);
       await tester.pumpWidget(_screen(container));
       // Round 28: the no-PTU help sits above it in the card.
-      await tester.ensureVisible(find.byKey(const Key('direct-not-this')));
-      await tester.pump();
-      await tester.tap(find.byKey(const Key('direct-not-this')));
+      await tapDirectAction(tester, 'direct-not-this');
       await tester.pump();
       expect(find.text('峰值 -80 dBm'), findsOneWidget);
       expect(find.text(_first), findsOneWidget);

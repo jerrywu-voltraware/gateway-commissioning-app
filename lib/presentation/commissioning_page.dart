@@ -23,7 +23,7 @@ import '../core/local_backend_address.dart';
 import '../core/mqtt_target.dart';
 import '../core/star_allow_list.dart';
 import '../data/contracts.dart';
-import '../data/wifi_scan.dart';
+import 'wifi_credentials_form.dart';
 import 'connection_status_panel.dart';
 import 'direct_calibration_sheet.dart';
 import 'direct_mode_panel.dart';
@@ -494,6 +494,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   Future<void> _fixWifi() async {
     final s = ref.read(commissionProvider);
     if (s.busy) return;
+    FocusScope.of(context).unfocus();
     final env = ref.read(backendEnvProvider);
     MqttTarget? target;
     final (need, wanted) = uploadSyncNeed(s, env.uploadTarget);
@@ -521,6 +522,17 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         _wifi.clear();
         _customWifi = false;
       });
+      _toTop();
+      // The taller Wi-Fi form can trigger a sliver scroll correction on the
+      // next layout. Keep its heading visible after that correction as well.
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted) return;
+      final current = ref.read(commissionProvider);
+      if (current.peer == next.peer &&
+          current.step == 2 &&
+          current.checkPassed) {
+        _toTop();
+      }
     }
   }
 
@@ -696,89 +708,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     }
   }
 
-  bool _scanningWifi = false;
   bool _customWifi = false;
-  Future<void> _chooseWifi() async {
-    FocusScope.of(context).unfocus();
-    setState(() => _scanningWifi = true);
-    try {
-      var networks = <WifiNetwork>[];
-      String? scanMessage;
-      try {
-        networks = await scanWifiNetworks();
-      } catch (error) {
-        final code = error is PlatformException ? error.code : '';
-        scanMessage = switch (code) {
-          'permission' => '請允許精確位置權限後重試，或選擇自訂網路。',
-          'wifi_off' => '請開啟手機 Wi-Fi 後重試，或選擇自訂網路。',
-          'location_off' => '請開啟手機定位服務後重試，或選擇自訂網路。',
-          'throttled' => '掃描太頻繁，請稍候重試，或選擇自訂網路。',
-          'unsupported' => 'iOS 不支援掃描周邊 Wi-Fi，請選擇自訂網路。',
-          _ => '掃描未完成，請重試或選擇自訂網路。',
-        };
-      }
-      if (!mounted || ref.read(commissionProvider).step != 2) return;
-      final selected = await showDialog<String>(
-        context: context,
-        builder: (context) => SimpleDialog(
-          title: const Text('選擇 2.4 GHz Wi-Fi'),
-          children: [
-            if (networks.isEmpty)
-              Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text(scanMessage ?? '未找到周邊 2.4 GHz Wi-Fi，可稍後重試或選擇自訂網路。'),
-              ),
-            ...networks.map(
-              (network) => SimpleDialogOption(
-                onPressed: () => Navigator.pop(context, network.ssid),
-                child: ListTile(
-                  leading: const Icon(Icons.wifi),
-                  title: Text(network.ssid),
-                  subtitle: Text('訊號 ${network.rssi} dBm'),
-                ),
-              ),
-            ),
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(context, ''),
-              child: const ListTile(
-                leading: Icon(Icons.edit_outlined),
-                title: Text('自訂／隱藏網路'),
-              ),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('取消'),
-            ),
-          ],
-        ),
-      );
-      if (mounted &&
-          selected != null &&
-          ref.read(commissionProvider).step == 2) {
-        setState(() {
-          if (_ssid.text != selected) _wifi.clear();
-          _ssid.text = selected;
-          _customWifi = selected.isEmpty;
-        });
-      }
-    } catch (error) {
-      if (!mounted) return;
-      final code = error is PlatformException ? error.code : '';
-      final message = switch (code) {
-        'permission' => '掃描 Wi-Fi 需要位置權限，請允許精確位置後重試。',
-        'wifi_off' => '請先開啟手機 Wi-Fi。',
-        'location_off' => '請先開啟手機定位服務，再重新掃描。',
-        'throttled' => '系統暫時限制掃描，請稍候再試，或手動輸入名稱。',
-        'unsupported' => 'iOS 不支援掃描周邊 Wi-Fi，請手動輸入名稱。',
-        _ => 'Wi-Fi 掃描未完成，請重試或手動輸入名稱。',
-      };
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(message)));
-    } finally {
-      if (mounted) setState(() => _scanningWifi = false);
-    }
-  }
 
   /// Round 19 (field round 19: the back office flashed the pile and the
   /// installer never knew): its identify ack as a passing snack bar — over
@@ -1587,7 +1517,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     // details too — unless it warns of a weak Wi-Fi (advice kept in sight).
     final stationPages = state.step == 2 && state.checkPassed;
     final panelAt = state.peer != null && state.step >= 2;
-    final status = panelAt && !done
+    final status = panelAt
         ? connectionStatus(
             env: env,
             state: state,
@@ -2285,7 +2215,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                   // card, level with 「設備與連線資訊」 (it was a button in the
                   // card; the field did not know what 「閘道器狀態」 was for).
                   if (!done && state.step == 0) _uploadDataRow(!state.busy),
-                  if (!done && stationChange == null)
+                  if (stationChange == null)
                     _details(
                       state,
                       controller,
@@ -2297,9 +2227,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                       panel: panelOk,
                     ),
                   // After step 3 it asks first (field round 17: a late tap
-                  // ended the flow). Round 19: at direct step 7 it is the
-                  // bottom bar's last row instead ([DirectPickActions]),
-                  // where the card above can no longer move it.
+                  // ended the flow). At direct step 7 it is in the fixed
+                  // bottom bar's more menu ([DirectPickActions]), where
+                  // the card above can no longer move its entry point.
                   // Round 29: not on the done page (〔完成〕／〔配置下一台〕).
                   // 09-29: on the gateway list it is 〔結束配置〕 — back to
                   // the start page ([_leaveList]); 「結束並重新選擇閘道器」
@@ -2499,9 +2429,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       if ((inService && !input) || kept != null)
         TextButton(
           key: const Key('wifi-change'),
-          onPressed: enabled && !_stationWorking && !_scanningWifi
-              ? () => _otherWifi(c)
-              : null,
+          onPressed: enabled && !_stationWorking ? () => _otherWifi(c) : null,
           child: const Text(otherWifiLabel),
         ),
       if (reason != null)
@@ -2536,43 +2464,18 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       padding: EdgeInsets.only(top: 4, bottom: 12),
       child: Text('閘道器只能用 2.4 GHz 的 Wi-Fi，5 GHz 的網路連不上。'),
     ),
-    Row(
-      children: [
-        const Icon(Icons.wifi),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(
-            _customWifi
-                ? '自訂網路'
-                : _ssid.text.isEmpty
-                ? '尚未選擇 Wi-Fi'
-                : _ssid.text,
-            key: const Key('wifi-selected'),
-          ),
-        ),
-        const SizedBox(width: 8),
-        TextButton(
-          key: const Key('wifi-pick'),
-          onPressed: enabled && !_scanningWifi ? _chooseWifi : null,
-          child: Text(_scanningWifi ? '掃描中…' : '更換'),
-        ),
-      ],
-    ),
-    if (_customWifi) field(_ssid, '自訂 Wi-Fi 名稱'),
-    const SizedBox(height: 8),
-    field(_wifi, 'Wi-Fi 密碼', secret: true),
-    Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: SizedBox(
-        width: double.infinity,
-        child: FilledButton(
-          key: const Key('wifi-save'),
-          onPressed: enabled && (wifiOnly || !_gatewaySubmitBlocked)
-              ? () => _saveWifi(wifiOnly)
-              : null,
-          child: const Text(saveWifiLabel),
-        ),
-      ),
+    WifiCredentialsForm(
+      key: ValueKey(s.peer),
+      ssid: _ssid,
+      password: _wifi,
+      enabled: enabled,
+      canSave: wifiOnly || !_gatewaySubmitBlocked,
+      onSave: () async {
+        await _saveWifi(wifiOnly);
+        if (mounted) _toTop();
+      },
+      onNetworkEdited: () => _customWifi = true,
+      saveLabel: saveWifiLabel,
     ),
     TextButton(
       key: const Key('wifi-back'),
@@ -3023,6 +2926,25 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         leading: const Icon(Icons.info_outline, size: 20),
         title: Text(detailsTitle, style: muted),
         children: [
+          if (s.step == 7) ...[
+            Text(
+              uploadRateText(s.uploadIntervalMs),
+              key: const Key('done-upload-rate'),
+              style: muted,
+            ),
+            if (ref.read(topologyProvider).topology.isDirect &&
+                !s.ptuDeferred &&
+                directBoundNote(s) != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: macRichText(
+                  directBoundNote(s)!,
+                  key: const Key('done-bound-detail'),
+                  style: muted,
+                ),
+              ),
+            const SizedBox(height: 6),
+          ],
           Text(
             '目前模式：$topologyLabel',
             key: const Key('topology-banner'),
@@ -3904,22 +3826,6 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                 label: const Text(starListRetryLabel),
               ),
             ),
-          // Round 18: measure the site and write the threshold back.
-          if (topology.isDirect &&
-              !deferred &&
-              s.peer != null &&
-              directAutoConnectSupported(s.config))
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: OutlinedButton.icon(
-                key: const Key('done-calibrate'),
-                icon: const Icon(Icons.tune, size: 20),
-                onPressed: enabled && c.calibrationOwnMac != null
-                    ? () => openDirectCalibration(context)
-                    : null,
-                label: const Text(calibrationTitle),
-              ),
-            ),
           // After a switch of environment: log in there to check the data.
           if (!s.loggedIn && !deferred) ...[
             const SizedBox(height: 16),
@@ -3943,32 +3849,62 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               parseMqttTarget(s.config)?.isLocal == true)
             _devShipNote(enabled),
           _reportTile(s, enabled),
-          if (s.loggedIn && !deferred)
-            TextButton(
-              onPressed: enabled ? () => c.refreshHealth() : null,
-              child: const Text('更新健康狀態'),
-            ),
           if (!deferred)
-            TextButton(
-              onPressed: enabled
-                  ? () async {
-                      if (s.loggedIn) {
-                        await c.repair();
-                      } else if (_credentialReady(demo)) {
-                        await c.repair(base: ref.read(backendEnvProvider).base);
-                      }
-                    }
-                  : null,
-              child: const Text('重新連線並驗證'),
+            Theme(
+              data: Theme.of(
+                context,
+              ).copyWith(dividerColor: Colors.transparent),
+              child: ExpansionTile(
+                key: const Key('done-advanced'),
+                tilePadding: EdgeInsets.zero,
+                expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
+                title: Text(
+                  '進階檢查',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                children: [
+                  if (topology.isDirect &&
+                      s.peer != null &&
+                      directAutoConnectSupported(s.config))
+                    OutlinedButton.icon(
+                      key: const Key('done-calibrate'),
+                      icon: const Icon(Icons.tune, size: 20),
+                      onPressed: enabled && c.calibrationOwnMac != null
+                          ? () => openDirectCalibration(context)
+                          : null,
+                      label: const Text(calibrationTitle),
+                    ),
+                  if (s.loggedIn)
+                    TextButton(
+                      key: const Key('done-refresh-health'),
+                      onPressed: enabled ? () => c.refreshHealth() : null,
+                      child: const Text('更新健康狀態'),
+                    ),
+                  TextButton(
+                    key: const Key('done-repair'),
+                    onPressed: enabled
+                        ? () async {
+                            if (s.loggedIn) {
+                              await c.repair();
+                            } else if (_credentialReady(demo)) {
+                              await c.repair(
+                                base: ref.read(backendEnvProvider).base,
+                              );
+                            }
+                          }
+                        : null,
+                    child: const Text('重新連線並驗證'),
+                  ),
+                ],
+              ),
             ),
         ];
     }
   }
 
-  /// Round 29 (field drill: the done page opened on 「本地測試主機 ✓ 資料上傳
-  /// 中」, a red 「出貨前請切回正式站」 and its biggest button; 「開通完成」
-  /// came after): the success summary on top — done, the station and
-  /// gateway, the mode, the PTU and its binding, the data upload.
+  /// Keep the result, housing label, PTU and current upload status together.
+  /// Technical details and maintenance actions stay in collapsed sections;
+  /// pending work and failures remain visible in the summary.
   Widget _doneSummary(
     CommissionState s,
     CommissioningController c,
@@ -3986,24 +3922,30 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       probe: probe,
       demo: demo,
     ).gateway;
-    final bound = topology.isDirect && !deferred ? directBoundNote(s) : null;
-    Widget line(String text, {Key? key, Color? color, bool strong = false}) =>
+    final bound = topology.isDirect && !deferred
+        ? directBoundMacOf(s.config) ?? s.direct?.boundMac
+        : null;
+    final uploadText = upload.status == '✓ 資料上傳中'
+        ? '✓ 資料持續上傳（${upload.where}）'
+        : upload.status.isEmpty
+        ? '資料上傳：${upload.where}'
+        : '資料上傳：${upload.status}（${upload.where}）';
+    Widget line(String text, {Key? key, Color? color, bool small = false}) =>
         Padding(
           padding: const EdgeInsets.only(top: 6),
           child: Text(
             text,
             key: key,
-            style: TextStyle(
-              color: color,
-              fontWeight: strong ? FontWeight.w600 : null,
-            ),
+            style:
+                (small ? theme.textTheme.bodySmall : theme.textTheme.bodyMedium)
+                    ?.copyWith(color: color),
           ),
         );
     return Card(
       key: const Key('done-summary'),
-      margin: const EdgeInsets.only(top: 8, bottom: 12),
+      margin: const EdgeInsets.only(bottom: 8),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -4015,10 +3957,10 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                       : s.online
                       ? Icons.check_circle
                       : Icons.cloud_off,
-                  size: 40,
+                  size: 28,
                   color: colors.primary,
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     deferred
@@ -4027,17 +3969,36 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                         ? '模擬開通完成'
                         : '開通完成',
                     key: const Key('done-title'),
-                    style: theme.textTheme.headlineSmall,
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 4),
             _doneLabelCard(c.site, c.gateway),
-            line('模式：${topology.label}', key: const Key('done-mode')),
-            if (bound != null)
-              line(bound, key: const Key('direct-bound-note'))
-            else
+            line(
+              '模式：${topology.label}',
+              key: const Key('done-mode'),
+              small: true,
+              color: colors.onSurfaceVariant,
+            ),
+            if (bound != null) ...[
+              line(
+                '已綁定 PTU',
+                key: const Key('direct-bound-note'),
+                small: true,
+                color: colors.onSurfaceVariant,
+              ),
+              MacText(
+                bound,
+                key: const Key('done-ptu-mac'),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+                fullBelow: true,
+              ),
+            ] else
               line(
                 commissionSummaryText(s),
                 key: const Key('commission-summary'),
@@ -4057,25 +4018,29 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                     ? colors.error
                     : null,
               ),
+            const Divider(height: 16),
             line(
-              upload.status.isEmpty
-                  ? '資料上傳：${upload.where}'
-                  : '資料上傳：${upload.status}（${upload.where}）',
+              uploadText,
               key: const Key('done-upload'),
               color: toneColor(context, upload.tone),
             ),
-            // 1.0.0+19: the interval is the back office's (the APP only
-            // set one reading a second while commissioning); after
-            // 〔先完成配置〕 too.
-            line(
-              uploadRateText(s.uploadIntervalMs),
-              key: const Key('done-upload-rate'),
-            ),
+            // This is when the backend last confirmed activity (heartbeat
+            // or data), not an invented timestamp of a PTU sample.
+            if (s.backendSeenAt != null)
+              line(
+                '最近確認上傳：${_doneUploadTime(s.backendSeenAt!)}',
+                key: const Key('done-upload-confirmed-at'),
+                small: true,
+                color: colors.onSurfaceVariant,
+              ),
             // 09-28 / r32: the report goes to the back office on its own;
             // its status (sent / queued / failed with 〔重送〕) sits in the
             // summary so it is on the first screen (r32: below the fold).
-            InstallReportStatusLine(enabled: !s.busy),
-            if (!deferred && s.message.isNotEmpty)
+            InstallReportStatusLine(enabled: !s.busy, compact: true),
+            if (!deferred &&
+                s.message.isNotEmpty &&
+                s.message != verifiedText &&
+                s.message != '資料持續更新')
               line(s.message, key: const Key('done-message')),
             // Until the first health check answers, say so instead of a
             // premature 資料有異常.
@@ -4084,15 +4049,39 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             // Round 28/29: after 〔先完成配置〕 — the PTU connects once
             // powered, the binding is confirmed on site later.
             if (deferred) _deferredNote(),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                key: const Key('done-recent'),
+                onPressed: s.busy
+                    ? null
+                    : () => RecentDataPage.open(context, c.site, c.gateway),
+                icon: const Icon(Icons.table_rows_outlined, size: 20),
+                label: const Text(recentDataLabel),
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 
-  /// 1.0.0+13: the station and gateway in large type — 「請在機殼上標示：站 S
-  /// · 閘道器 N」 — so the installer writes it on the gateway's housing and
-  /// the back office can find the unit it means. Nothing to press.
+  String _doneUploadTime(DateTime at) {
+    final local = at.toLocal();
+    final now = DateTime.now();
+    final time =
+        '${local.hour.toString().padLeft(2, '0')}:'
+        '${local.minute.toString().padLeft(2, '0')}';
+    if (local.year == now.year &&
+        local.month == now.month &&
+        local.day == now.day) {
+      return time;
+    }
+    return '${local.year}/${local.month}/${local.day} $time';
+  }
+
+  /// Two complete identifiers wrap between fields, never inside 閘道器.
+  /// Keep the housing-label instruction visible without a large callout.
   Widget _doneLabelCard(int site, int gateway) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
@@ -4103,51 +4092,39 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       excludeSemantics: true,
       child: Container(
         key: const Key('done-label'),
-        margin: const EdgeInsets.only(top: 8, bottom: 4),
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        margin: const EdgeInsets.only(top: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
           color: colors.primaryContainer,
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: colors.primary, width: 1.5),
         ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: Icon(Icons.edit_note, color: fg, size: 28),
+            Text(
+              doneLabelHead,
+              key: const Key('done-label-head'),
+              style: theme.textTheme.bodySmall?.copyWith(color: fg),
             ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+            const SizedBox(height: 2),
+            Wrap(
+              key: const Key('done-gateway'),
+              spacing: 16,
+              runSpacing: 2,
+              children: [
+                for (final field in [
+                  ('done-site-id', '站點 $site'),
+                  ('done-gateway-id', '閘道器 $gateway'),
+                ])
                   Text(
-                    doneLabelHead,
-                    key: const Key('done-label-head'),
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      color: fg,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  Text(
-                    gatewayIdText(site, gateway),
-                    key: const Key('done-gateway'),
-                    style: theme.textTheme.headlineSmall?.copyWith(
+                    field.$2,
+                    key: Key(field.$1),
+                    style: theme.textTheme.titleMedium?.copyWith(
                       color: fg,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2),
-                    child: Text(
-                      doneLabelHint,
-                      key: const Key('done-label-hint'),
-                      style: theme.textTheme.bodySmall?.copyWith(color: fg),
-                    ),
-                  ),
-                ],
-              ),
+              ],
             ),
           ],
         ),
@@ -4201,43 +4178,28 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         color: colors.surface,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+          child: Row(
+            key: const Key('done-actions'),
             children: [
-              // 09-28: 〔查看最近資料〕 — the back office's last rows from
-              // this gateway on its own page, through the APP's session
-              // (no dashboard login, no key). Secondary to 〔完成〕.
-              TextButton.icon(
-                key: const Key('done-recent'),
-                onPressed: enabled
-                    ? () => RecentDataPage.open(context, c.site, c.gateway)
-                    : null,
-                icon: const Icon(Icons.table_rows_outlined, size: 20),
-                label: const Text(recentDataLabel),
+              Expanded(
+                child: OutlinedButton(
+                  key: const Key('done-next'),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(48, 48),
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                  ),
+                  onPressed: enabled ? () => _finishDone(c, next: true) : null,
+                  child: const Text(doneNextLabel),
+                ),
               ),
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      key: const Key('done-next'),
-                      onPressed: enabled
-                          ? () => _finishDone(c, next: true)
-                          : null,
-                      child: const Text(doneNextLabel),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: FilledButton.icon(
-                      key: const Key('done-finish'),
-                      onPressed: enabled ? () => _finishDone(c) : null,
-                      icon: const Icon(Icons.check, size: 20),
-                      label: const Text(doneFinishLabel),
-                    ),
-                  ),
-                ],
+              const SizedBox(width: 12),
+              Expanded(
+                child: FilledButton.icon(
+                  key: const Key('done-finish'),
+                  onPressed: enabled ? () => _finishDone(c) : null,
+                  icon: const Icon(Icons.check, size: 20),
+                  label: const Text(doneFinishLabel),
+                ),
               ),
             ],
           ),

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -6,6 +8,42 @@ class WifiNetwork {
   const WifiNetwork(this.ssid, this.rssi);
   final String ssid;
   final int rssi;
+}
+
+bool get canScanWifiNetworks =>
+    !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+
+/// Reads only the phone's connected SSID. Permission is requested only after
+/// the user chooses to use it; no password, scan results or location is read.
+Future<String?> readCurrentWifiSsid() async {
+  if (kIsWeb ||
+      (defaultTargetPlatform != TargetPlatform.android &&
+          defaultTargetPlatform != TargetPlatform.iOS)) {
+    throw PlatformException(code: 'unsupported');
+  }
+  const channel = MethodChannel('voltraware/wifi');
+  if (defaultTargetPlatform == TargetPlatform.iOS) {
+    // CoreLocation authorization is handled by the native bridge, independent
+    // of permission_handler's cached Swift Package permission build flags.
+    await channel.invokeMethod<void>('requestLocation');
+  } else {
+    if (!await Permission.locationWhenInUse.serviceStatus.isEnabled) {
+      throw PlatformException(code: 'location_off');
+    }
+    final permission = await Permission.locationWhenInUse.request();
+    if (!permission.isGranted) {
+      throw PlatformException(
+        code: permission.isPermanentlyDenied
+            ? 'permission_permanently_denied'
+            : 'permission',
+      );
+    }
+  }
+  final ssid = await channel
+      .invokeMethod<String>('current')
+      .timeout(const Duration(seconds: 8));
+  // SSIDs may intentionally contain leading/trailing spaces or quotes.
+  return ssid == null || ssid.isEmpty ? null : ssid;
 }
 
 List<WifiNetwork> selectableNetworks(List<dynamic> rows) {
@@ -23,10 +61,10 @@ List<WifiNetwork> selectableNetworks(List<dynamic> rows) {
 }
 
 Future<List<WifiNetwork>> scanWifiNetworks() async {
-  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
+  if (!canScanWifiNetworks) {
     throw PlatformException(
       code: 'unsupported',
-      message: 'Wi-Fi scanning is not available on iOS.',
+      message: 'Wi-Fi scanning is only available on Android.',
     );
   }
   if (!await Permission.locationWhenInUse.request().isGranted) {

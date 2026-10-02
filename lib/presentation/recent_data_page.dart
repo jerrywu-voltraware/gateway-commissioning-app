@@ -30,7 +30,7 @@ String recentEmptyText(int? intervalMs) => intervalMs == null
     ? recentDataEmptyText
     : '後台尚未收到這台閘道器的資料；閘道器約每 ${intervalWords(intervalMs)}'
           '上傳一筆，請稍後再重新整理';
-const recentDataOkText = '資料正常上傳中';
+const recentDataOkText = '上傳正常';
 const recentDataFaultText = 'PTU 回報故障';
 const recentDataRefreshLabel = '重新整理';
 const recentDataRetryLabel = '重試';
@@ -279,8 +279,8 @@ String recentLatestLine(RecentItem item, DateTime now) {
 
 /// 09-28 〔查看最近資料〕 (one thing, one page): is the data coming in, what
 /// is the newest row, is the PTU fine. Top to bottom: the status banner
-/// with the 「最近 N 筆」 summary under it, the newest row per PTU in big
-/// digits, and the last rows as a collapsed table (1.0.0+5: no chart).
+/// followed by the newest measurements per PTU. Row counts and sampling
+/// statistics belong with the collapsed history table.
 /// No polling: 〔重新整理〕 at the top right, 〔重試〕 on an error.
 class RecentDataPage extends ConsumerStatefulWidget {
   const RecentDataPage({
@@ -477,18 +477,6 @@ class _RecentDataPageState extends ConsumerState<RecentDataPage> {
       children: [
         _Banner(kind: banner.kind, text: banner.text),
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-          child: Text(
-            recentTrendText(data),
-            key: const Key('recent-trend'),
-            style: Theme.of(context).textTheme.bodySmall
-                ?.merge(_tabular)
-                .copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-          ),
-        ),
-        Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
           child: latest.length == 1
               ? _LatestCard(item: latest.single, now: now, big: true)
@@ -522,10 +510,15 @@ class _Banner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final compact = kind == RecentBannerKind.ok;
     final (Color bg, Color fg, IconData icon) = switch (kind) {
       RecentBannerKind.ok => (
-        const Color(0xFF2E7D32),
-        Colors.white,
+        Theme.of(context).brightness == Brightness.dark
+            ? const Color(0xFF183C23)
+            : const Color(0xFFE8F5E9),
+        Theme.of(context).brightness == Brightness.dark
+            ? const Color(0xFFA5D6A7)
+            : const Color(0xFF2E7D32),
         Icons.check_circle,
       ),
       RecentBannerKind.stale => (
@@ -544,8 +537,17 @@ class _Banner extends StatelessWidget {
     return Container(
       key: const Key('recent-banner'),
       width: double.infinity,
-      color: bg,
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      margin: compact
+          ? const EdgeInsets.symmetric(horizontal: 16, vertical: 4)
+          : EdgeInsets.zero,
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: compact ? BorderRadius.circular(8) : null,
+      ),
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 12 : 16,
+        vertical: compact ? 8 : 14,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -554,18 +556,19 @@ class _Banner extends StatelessWidget {
               Icon(
                 icon,
                 color: fg,
-                size: 26,
+                size: compact ? 20 : 26,
                 key: Key('recent-banner-${kind.name}'),
               ),
-              const SizedBox(width: 12),
+              SizedBox(width: compact ? 8 : 12),
               Expanded(
                 child: Text(
                   text,
                   key: textKey,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: fg,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style:
+                      (compact
+                              ? Theme.of(context).textTheme.bodyMedium
+                              : Theme.of(context).textTheme.titleMedium)
+                          ?.copyWith(color: fg, fontWeight: FontWeight.w600),
                 ),
               ),
             ],
@@ -586,9 +589,8 @@ class _Banner extends StatelessWidget {
 
 const _tabular = TextStyle(fontFeatures: [FontFeature.tabularFigures()]);
 
-/// The newest row of one PTU: three big numbers and the PTU (whole MAC) /
-/// state / time line. A fault state turns the border red and adds a
-/// warning line.
+/// Latest measurements and separate identity, state, and sample time fields.
+/// A fault state turns the border red and adds a warning line.
 class _LatestCard extends StatelessWidget {
   const _LatestCard({required this.item, required this.now, required this.big});
   final RecentItem item;
@@ -618,7 +620,7 @@ class _LatestCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _BigNumbers(
+            _MeasurementRows(
               keyPrefix: key,
               big: big,
               values: [
@@ -627,28 +629,60 @@ class _LatestCard extends StatelessWidget {
                 (recentTempText(item.tempC), '°C', '溫度'),
               ],
             ),
-            SizedBox(height: big ? 12 : 8),
-            // 1.0.0+8: the whole MAC. 1.0.0+10 (phone: the wrapped part
-            // started with 「・」): two lines — 「PTU 90:5F:E8:9A:96:00」 and
-            // 「充電中・01:34:53（0 秒前）」.
-            Builder(
-              builder: (context) {
-                final (mac, rest) = recentLatestParts(item, now);
-                final style =
-                    (big
-                            ? theme.textTheme.bodyLarge
-                            : theme.textTheme.bodySmall)
-                        ?.merge(_tabular)
-                        .copyWith(color: colors.onSurfaceVariant);
-                return Column(
-                  key: Key('$key-line'),
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(mac, key: Key('$key-line-mac'), style: style),
-                    Text(rest, key: Key('$key-line-rest'), style: style),
-                  ],
-                );
-              },
+            const Divider(height: 24),
+            Column(
+              key: Key('$key-line'),
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _LabeledValue(
+                  label: 'PTU',
+                  value: Text(
+                    item.ptuMacText.isEmpty ? '--:--:--' : item.ptuMacText,
+                    key: Key('$key-line-mac'),
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontFamily: 'monospace',
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                _LabeledValue(
+                  label: '狀態',
+                  value: Text(
+                    ptuStateLabel(item.ptuState),
+                    key: Key('$key-line-state'),
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: fault ? colors.error : colors.onSurface,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                _LabeledValue(
+                  label: '資料時間',
+                  value: Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(
+                        recentClockText(item.ts),
+                        key: Key('$key-line-time'),
+                        style: theme.textTheme.bodyMedium?.merge(_tabular),
+                      ),
+                      Text(
+                        item.ts == null
+                            ? '時間不明'
+                            : '${recentAgeText(now.difference(item.ts!))}前',
+                        key: Key('$key-line-age'),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
             if (fault) ...[
               const SizedBox(height: 6),
@@ -656,12 +690,14 @@ class _LatestCard extends StatelessWidget {
                 children: [
                   Icon(Icons.warning_amber, size: 18, color: colors.error),
                   const SizedBox(width: 6),
-                  Text(
-                    recentDataFaultText,
-                    key: Key('$key-fault'),
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: colors.error,
-                      fontWeight: FontWeight.w600,
+                  Expanded(
+                    child: Text(
+                      recentDataFaultText,
+                      key: Key('$key-fault'),
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: colors.error,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ],
@@ -674,14 +710,10 @@ class _LatestCard extends StatelessWidget {
   }
 }
 
-/// 1.0.0+10 (phone: 「53.2V2.72A36°C」 ran together, each number scaled
-/// by its own FittedBox): three equal columns — the value (one size for
-/// all three, bold) with its unit small on the same baseline, and 「電壓」
-/// ／「電流」／「溫度」 under it. The size is headlineMedium (the direct
-/// mode's card) or titleLarge (a star tile); when one value does not fit
-/// its column, all three drop one step (titleLarge / titleMedium).
-class _BigNumbers extends StatelessWidget {
-  const _BigNumbers({
+/// Each measurement gets the card's full width. Larger text or unusually
+/// long values can wrap below the label without shrinking or hiding digits.
+class _MeasurementRows extends StatelessWidget {
+  const _MeasurementRows({
     required this.keyPrefix,
     required this.big,
     required this.values,
@@ -692,83 +724,77 @@ class _BigNumbers extends StatelessWidget {
   /// (value, unit, label).
   final List<(String, String, String)> values;
 
-  static const _gap = 8.0;
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colors = theme.colorScheme;
-    final scaler = MediaQuery.textScalerOf(context);
+    final valueStyle =
+        (big ? theme.textTheme.headlineSmall : theme.textTheme.titleLarge)
+            ?.merge(_tabular)
+            .copyWith(fontWeight: FontWeight.w700);
     final unitStyle = theme.textTheme.bodyMedium?.copyWith(
-      color: colors.onSurfaceVariant,
+      color: theme.colorScheme.onSurfaceVariant,
+      fontWeight: FontWeight.w500,
     );
-    TextSpan span(String value, String unit, TextStyle? style) => TextSpan(
+    TextSpan span(String value, String unit) => TextSpan(
       text: value,
-      style: style?.merge(_tabular).copyWith(fontWeight: FontWeight.w700),
+      style: valueStyle,
       children: [TextSpan(text: ' $unit', style: unitStyle)],
     );
-    return LayoutBuilder(
+    return Column(
       key: Key('$keyPrefix-numbers'),
-      builder: (context, box) {
-        final column =
-            (box.maxWidth - _gap * (values.length - 1)) / values.length;
-        bool fits(TextStyle? style) => values.every((v) {
-          final painter = TextPainter(
-            text: span(v.$1, v.$2, style),
-            textDirection: Directionality.of(context),
-            textScaler: scaler,
-            maxLines: 1,
-          )..layout();
-          final ok = painter.width <= column;
-          painter.dispose();
-          return ok;
-        });
-        final large = big
-            ? theme.textTheme.headlineMedium
-            : theme.textTheme.titleLarge;
-        final style = fits(large)
-            ? large
-            : big
-            ? theme.textTheme.titleLarge
-            : theme.textTheme.titleMedium;
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            for (final (i, (value, unit, label)) in values.indexed) ...[
-              if (i > 0) const SizedBox(width: _gap),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text.rich(
-                      span(value, unit, style),
-                      key: Key('$keyPrefix-value-$i'),
-                      maxLines: 1,
-                      softWrap: false,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    Text(
-                      label,
-                      key: Key('$keyPrefix-label-$i'),
-                      maxLines: 1,
-                      softWrap: false,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: colors.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ],
-        );
-      },
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final (i, (value, unit, label)) in values.indexed) ...[
+          if (i > 0) const SizedBox(height: 8),
+          _LabeledValue(
+            label: label,
+            labelKey: Key('$keyPrefix-label-$i'),
+            value: Text.rich(
+              span(value, unit),
+              key: Key('$keyPrefix-value-$i'),
+            ),
+          ),
+        ],
+      ],
     );
   }
 }
 
-/// Star mode: one tile per PTU (MAC's last 3 groups, three numbers, state).
+/// Label and value share a row when they fit, otherwise use separate lines.
+class _LabeledValue extends StatelessWidget {
+  const _LabeledValue({
+    required this.label,
+    required this.value,
+    this.labelKey,
+  });
+
+  final String label;
+  final Widget value;
+  final Key? labelKey;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Wrap(
+      alignment: WrapAlignment.spaceBetween,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 16,
+      runSpacing: 4,
+      children: [
+        Text(
+          label,
+          key: labelKey,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        value,
+      ],
+    );
+  }
+}
+
+/// Star mode: one tile per PTU, each with its full MAC and measurements.
 class _LatestGrid extends StatelessWidget {
   const _LatestGrid({required this.items, required this.now});
   final List<RecentItem> items;
@@ -902,6 +928,16 @@ class _RecentTable extends StatelessWidget {
         childrenPadding: const EdgeInsets.only(bottom: 8),
         expandedCrossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Text(
+              recentTrendText(data),
+              key: const Key('recent-trend'),
+              style: theme.textTheme.bodySmall
+                  ?.merge(_tabular)
+                  .copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
+          ),
           LayoutBuilder(
             builder: (context, box) => singlePtu && tableWidth <= box.maxWidth
                 ? table

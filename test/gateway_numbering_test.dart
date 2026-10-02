@@ -1233,7 +1233,7 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('done page: 「請在機殼上標示：站 80 · 閘道器 2」 in large type '
+    testWidgets('done page: 「請在機殼上標示：站 80 · 閘道器 2」 in compact bold type '
         'on the first screen, nothing to press', (tester) async {
       _phoneView(tester);
       final fake = _Site(site: 1, gateway: 1);
@@ -1255,18 +1255,34 @@ void main() {
         find.descendant(of: card, matching: find.text(doneLabelHead)),
         findsOneWidget,
       );
-      final id = find.descendant(of: card, matching: find.text('站 80 · 閘道器 2'));
+      final site = find.descendant(
+        of: card,
+        matching: find.byKey(const Key('done-site-id')),
+      );
+      final id = find.descendant(
+        of: card,
+        matching: find.byKey(const Key('done-gateway-id')),
+      );
+      expect(tester.widget<Text>(site).data, '站點 80');
+      expect(tester.widget<Text>(id).data, '閘道器 2');
       expect(id, findsOneWidget);
       expect(
         find.descendant(of: card, matching: find.text(doneLabelHint)),
-        findsOneWidget,
+        findsNothing,
       );
       expect(doneLabelHead, '請在機殼上標示：');
       expect(doneLabelHint, '後台人員靠這個標示找到這台');
       final semantics = tester.ensureSemantics();
       expect(find.bySemanticsLabel('請在機殼上標示：站 80 · 閘道器 2'), findsOneWidget);
       semantics.dispose();
-      expect(tester.widget<Text>(id).style?.fontSize, greaterThanOrEqualTo(22));
+      for (final identifier in [site, id]) {
+        final style = tester.widget<Text>(identifier).style!;
+        expect(style.fontSize, greaterThanOrEqualTo(16));
+        expect(
+          style.fontWeight!.value,
+          greaterThanOrEqualTo(FontWeight.w600.value),
+        );
+      }
       expect(
         find.descendant(
           of: card,

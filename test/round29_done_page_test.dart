@@ -18,6 +18,8 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'support/done_sections.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -261,17 +263,16 @@ void main() {
         // The summary: done, station/gateway, mode, PTU, upload.
         final summary = tester.getRect(find.byKey(const Key('done-summary')));
         expect(summary.top, lessThan(120));
-        expect(find.text('站 80 · 閘道器 1'), findsOneWidget);
+        expect(find.text('站點 80'), findsOneWidget);
+        expect(find.text('閘道器 1'), findsOneWidget);
         expect(find.text('模式：${GatewayTopology.star.label}'), findsOneWidget);
         expect(find.text('掃到 3 台，本機配置 3 台'), findsOneWidget);
         expect(
           tester.widget<Text>(find.byKey(const Key('done-upload'))).data,
-          startsWith('資料上傳：✓ 資料上傳中'),
+          '✓ 資料持續上傳（正式站）',
         );
-        // Everything else is below the summary; no 結束並重新選擇閘道器.
-        // 1.0.0+13: the summary's label card (「請在機殼上標示：…」) pushes
-        // it further down at font 1.3 — scrolled to (the page builds
-        // lazily).
+        // Healthy connection details stay available in the expandable
+        // section below the summary, with no end-and-reselect action.
         final status = find.byKey(const Key('connection-status-ok'));
         final page = find
             .descendant(
@@ -279,12 +280,16 @@ void main() {
               matching: find.byType(Scrollable),
             )
             .first;
+        expect(status, findsNothing);
+        await openDoneSection(tester, 'commission-details');
         await tester.scrollUntilVisible(status, 100, scrollable: page);
         expect(status, findsOneWidget);
-        final scrolled = tester.state<ScrollableState>(page).position.pixels;
         expect(
-          tester.getRect(status).top + scrolled,
-          greaterThan(summary.bottom - 1),
+          find.descendant(
+            of: find.byKey(const Key('commission-details')),
+            matching: status,
+          ),
+          findsOneWidget,
         );
         expect(find.byKey(const Key('page-cancel')), findsNothing);
         expect(find.byKey(const Key('step-title')), findsNothing);
@@ -305,7 +310,8 @@ void main() {
           tester.widget<Text>(find.byKey(const Key('done-title'))).data,
           deferredDoneTitle,
         );
-        expect(find.text('站 80 · 閘道器 2'), findsOneWidget);
+        expect(find.text('站點 80'), findsOneWidget);
+        expect(find.text('閘道器 2'), findsOneWidget);
         expect(find.text(deferredSummaryText), findsOneWidget);
         // The reminder: the PTU connects once powered, bind on site later.
         expect(find.text(deferredDoneText), findsOneWidget);

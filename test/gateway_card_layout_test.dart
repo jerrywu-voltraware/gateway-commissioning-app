@@ -196,6 +196,45 @@ Finder get _pageList => find.byType(ListView).first;
 ButtonStyleButton _button(WidgetTester tester, Finder finder) =>
     tester.widget<ButtonStyleButton>(finder);
 
+void _expectCardRightInset(
+  WidgetTester tester,
+  GatewayPeer peer, {
+  required bool selected,
+}) {
+  final card = tester.getRect(find.byKey(ValueKey('gateway-card-${peer.id}')));
+  for (final prefix in ['gateway-signal-', 'gateway-start-']) {
+    final rect = tester.getRect(find.byKey(ValueKey('$prefix${peer.id}')));
+    expect(rect.right, closeTo(card.right - 12, 0.01));
+  }
+
+  final marks = find.byKey(ValueKey('gateway-marks-${peer.id}'));
+  final presence = find.byKey(ValueKey('gateway-presence-${peer.id}'));
+  final mark = find.byKey(
+    ValueKey('${selected ? 'gateway-selected-' : 'gateway-state-'}${peer.id}'),
+  );
+  expect(find.descendant(of: marks, matching: mark), findsOneWidget);
+  expect(
+    find.descendant(
+      of: find.byKey(ValueKey('gateway-line3-${peer.id}')),
+      matching: mark,
+    ),
+    findsNothing,
+    reason: 'The connection mark belongs with configuration and presence.',
+  );
+  final marksRect = tester.getRect(marks);
+  final presenceRect = tester.getRect(presence);
+  final markRect = tester.getRect(mark);
+  if (markRect.width + 6 <= marksRect.right - presenceRect.right + 0.01) {
+    expect(markRect.left, closeTo(presenceRect.right + 6, 0.01));
+    expect(markRect.center.dy, closeTo(presenceRect.center.dy, 0.01));
+  } else {
+    expect(markRect.top, greaterThanOrEqualTo(presenceRect.bottom + 4));
+    expect(markRect.left, closeTo(marksRect.left, 0.01));
+  }
+  expect(markRect.right, lessThanOrEqualTo(card.right - 12 + 0.01));
+  expect(markRect.overlaps(presenceRect), isFalse);
+}
+
 void _expectReadOnly(_TwoGateways fake) {
   expect(fake.sentCommands.where((op) => op.startsWith('set_')), isEmpty);
   expect(fake.config['max_connections'], 5);
@@ -258,6 +297,7 @@ void main() {
           expect(startRect.top, greaterThanOrEqualTo(firstCard.top));
           expect(startRect.bottom, lessThanOrEqualTo(firstCard.bottom));
           expect(_button(tester, firstStart).onPressed, isNull);
+          _expectCardRightInset(tester, _a, selected: false);
           final firstConnect = _unselectedConnect(_a);
           final secondTitle = find.byKey(ValueKey('gateway-title-${_b.id}'));
           final titleRect = tester.getRect(secondTitle);
@@ -294,11 +334,22 @@ void main() {
     }
   }
 
-  for (final peer in const [_a, _b]) {
-    testWidgets('unselected ${peer.id} button connects only that peer; '
-        'identify appears only after ready', (tester) async {
+  for (final (peer, size, scale) in const [
+    (_a, Size(360, 740), 1.0),
+    (_b, Size(360, 740), 1.0),
+    (_a, Size(320, 640), 1.3),
+  ]) {
+    testWidgets('unselected ${peer.id} at ${size.width.toInt()} dp @$scale '
+        'button connects only that peer; identify appears only after ready', (
+      tester,
+    ) async {
       final fake = _TwoGateways()..connectGate = Completer<void>();
-      final container = await _openGatewayPage(tester, fake);
+      final container = await _openGatewayPage(
+        tester,
+        fake,
+        size: size,
+        scale: scale,
+      );
       final controller = container.read(commissionProvider.notifier);
       final other = peer.id == _a.id ? _b : _a;
       expect(controller.heldPeerId, isNull);
@@ -314,6 +365,7 @@ void main() {
       fake.connectGate!.complete();
       await _frames(tester);
       expect(controller.heldPeerId, peer.id);
+      _expectCardRightInset(tester, peer, selected: true);
       expect(_bulb(peer), findsOneWidget);
       expect(_bulb(other), findsNothing);
       expect(_button(tester, _commission(peer)).onPressed, isNotNull);

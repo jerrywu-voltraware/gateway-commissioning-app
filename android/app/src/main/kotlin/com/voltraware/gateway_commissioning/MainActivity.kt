@@ -16,8 +16,83 @@ import android.location.LocationManager
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
+import android.net.NetworkRequest
+import android.net.wifi.WifiInfo
+import android.net.wifi.SupplicantState
+import android.Manifest
+import android.content.pm.PackageManager
 
 class MainActivity : FlutterActivity() {
+    private var currentWifiCallback: ConnectivityManager.NetworkCallback? = null
+    private var currentWifiReply: MethodChannel.Result? = null
+    private val currentWifiHandler = Handler(Looper.getMainLooper())
+
+    // WifiInfo wraps UTF-8 SSIDs in quotes. Remove only that wrapper, keeping
+    // spaces and any quotes which are part of the actual network name.
+    private fun connectedSsid(raw: String?): String? {
+        if (raw == null || raw == WifiManager.UNKNOWN_SSID) return null
+        return raw.removeSurrounding("\"").takeIf { it.isNotEmpty() }
+    }
+
+    private fun finishCurrentWifi(ssid: String? = null, error: String? = null) {
+        val reply = currentWifiReply ?: return
+        currentWifiReply = null
+        currentWifiHandler.removeCallbacksAndMessages(null)
+        currentWifiCallback?.let {
+            try {
+                (getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager)
+                    .unregisterNetworkCallback(it)
+            } catch (_: IllegalArgumentException) {}
+        }
+        currentWifiCallback = null
+        if (error != null) reply.error(error, error, null) else reply.success(ssid)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun readCurrentWifi(result: MethodChannel.Result) {
+        if (currentWifiReply != null) { result.error("busy", "busy", null); return }
+        val wifi = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+        if (!wifi.isWifiEnabled) { result.error("wifi_off", "wifi_off", null); return }
+        if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            result.error("precise_location", "precise_location", null); return
+        }
+        val location = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        if (!location.isProviderEnabled(LocationManager.GPS_PROVIDER) && !location.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
+            result.error("location_off", "location_off", null); return
+        }
+        try {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+                val info = wifi.connectionInfo
+                result.success(if (info?.supplicantState == SupplicantState.COMPLETED) connectedSsid(info.ssid) else null)
+                return
+            }
+            // Android 12+ redacts SSID unless location info is explicitly
+            // requested. Observe Wi-Fi itself, including a LAN without internet
+            // or a Wi-Fi connection underneath a VPN/cellular default route.
+            val connectivity = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val callback = object : ConnectivityManager.NetworkCallback(ConnectivityManager.NetworkCallback.FLAG_INCLUDE_LOCATION_INFO) {
+                override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
+                    if (currentWifiCallback !== this) return
+                    val info = caps.transportInfo as? WifiInfo ?: return
+                    connectedSsid(info.ssid)?.let { finishCurrentWifi(it) }
+                }
+            }
+            currentWifiReply = result
+            currentWifiCallback = callback
+            val request = NetworkRequest.Builder()
+                .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+                .build()
+            connectivity.registerNetworkCallback(request, callback, currentWifiHandler)
+            currentWifiHandler.postDelayed({ finishCurrentWifi() }, 4000)
+        } catch (_: SecurityException) {
+            if (currentWifiReply != null) finishCurrentWifi(error = "permission")
+            else result.error("permission", "permission", null)
+        } catch (_: Exception) {
+            if (currentWifiReply != null) finishCurrentWifi(error = "unavailable")
+            else result.error("unavailable", "unavailable", null)
+        }
+    }
+
     private var scanReceiver: BroadcastReceiver? = null
     private var scanReply: MethodChannel.Result? = null
     private val scanHandler = Handler(Looper.getMainLooper())
@@ -97,6 +172,7 @@ class MainActivity : FlutterActivity() {
         }
     }
     override fun onDestroy() {
+        finishCurrentWifi(error = "cancelled")
         finishScan("cancelled")
         stopNetworkWatch()
         super.onDestroy()
@@ -107,7 +183,11 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler(AppUpdateBridge(this))
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "voltraware/wifi")
             .setMethodCallHandler { call, result ->
-                if (call.method == "scan") scanWifi(result) else result.notImplemented()
+                when (call.method) {
+                    "current" -> readCurrentWifi(result)
+                    "scan" -> scanWifi(result)
+                    else -> result.notImplemented()
+                }
             }
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, "voltraware/network")
             .setStreamHandler(object : EventChannel.StreamHandler {

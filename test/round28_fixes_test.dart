@@ -19,6 +19,8 @@
 //    Bluetooth one in brackets.
 import 'dart:convert';
 
+import 'support/direct_pick_actions.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -552,6 +554,7 @@ void main() {
         scrollable: find.byType(Scrollable).first,
       );
       expect(find.byKey(const Key('deferred-bind-now')), findsOneWidget);
+      expect(find.byKey(const Key('done-advanced')), findsNothing);
       expect(find.byKey(const Key('done-calibrate')), findsNothing);
       expect(find.text('重新連線並驗證'), findsNothing);
       expect(tester.takeException(), isNull);
@@ -564,7 +567,7 @@ void main() {
       final fake = _PileB();
       await _pumpPileB(tester, fake);
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('page-cancel')));
+      await tapDirectAction(tester, 'page-cancel');
       await tester.pumpAndSettle();
       final text = tester
           .widget<Text>(find.byKey(const Key('end-confirm-text')))

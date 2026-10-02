@@ -1689,8 +1689,8 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     //    too long) and 「-40 dBm」 fixed at the right end;
     // 2. the marks as small chips: 「最近」 (filled green, the strongest
     //    gateway only), 「已配置」／「未配置」, the back office's short
-    //    phrase (「已閃燈」 for 3 s after 〔辨識〕);
-    // 3. 「…3A00」 (bodySmall); 1.0.0+14: 「✓ 已選取」 at its right end.
+    //    phrase (「已閃燈」 for 3 s after 〔辨識〕), then the link state;
+    // 3. 「…3A00」 (bodySmall).
     final (badgeKey, badgeText) = configured
         ? ('gateway-configured-', gatewayConfiguredLabel)
         : unconfigured
@@ -1812,7 +1812,9 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     final theme = Theme.of(context).textTheme;
     final colors = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 2, 8),
+      // Explicit-link cards put the bulb in the action row. Their content
+      // and start button share the same inset.
+      padding: EdgeInsets.fromLTRB(12, 8, widget.onHold != null ? 12 : 2, 8),
       child: Row(
         children: [
           Expanded(
@@ -1861,6 +1863,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
                   key: ValueKey('gateway-marks-${peer.id}'),
                   spacing: 6,
                   runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     if (nearest)
                       GatewayMark(
@@ -1887,25 +1890,8 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
                           ? colors.primary
                           : colors.onSurfaceVariant,
                     ),
-                  ],
-                ),
-                const SizedBox(height: 2),
-                Row(
-                  key: ValueKey('gateway-line3-${peer.id}'),
-                  children: [
-                    Expanded(
-                      child: Text(
-                        detail,
-                        key: ValueKey('gateway-detail-${peer.id}'),
-                        style: small,
-                        maxLines: 1,
-                        softWrap: false,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    // Keep one state slot per card so selection never moves
-                    // metadata; explicit-link cards also show their idle state.
+                    // Connection belongs with the other status marks. Wrap
+                    // the group when needed instead of crowding the MAC row.
                     Visibility(
                       visible: selected || widget.onHold != null,
                       maintainSize: true,
@@ -1920,6 +1906,22 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
                         connecting: connecting,
                         phase: hold,
                         selected: selected || widget.onHold == null,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Row(
+                  key: ValueKey('gateway-line3-${peer.id}'),
+                  children: [
+                    Expanded(
+                      child: Text(
+                        detail,
+                        key: ValueKey('gateway-detail-${peer.id}'),
+                        style: small,
+                        maxLines: 1,
+                        softWrap: false,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ],
@@ -2092,7 +2094,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
         (identify == null ? 8 : gatewayBulbBox + 16);
     return Padding(
       key: ValueKey('gateway-actions-${peer.id}'),
-      padding: const EdgeInsets.fromLTRB(12, 0, 8, 8),
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
       child: LayoutBuilder(
         builder: (context, constraints) {
           if (constraints.maxWidth >= requiredWidth) {

@@ -14,10 +14,17 @@ import '../application/install_report.dart';
 const installReportResendLabel = '重送';
 
 class InstallReportStatusLine extends ConsumerStatefulWidget {
-  const InstallReportStatusLine({super.key, this.enabled = true});
+  const InstallReportStatusLine({
+    super.key,
+    this.enabled = true,
+    this.compact = false,
+  });
 
   /// The page is not busy.
   final bool enabled;
+
+  /// Compact completion summary; failures and resend remain fully visible.
+  final bool compact;
 
   @override
   ConsumerState<InstallReportStatusLine> createState() =>
@@ -58,7 +65,7 @@ class _InstallReportStatusLineState
     };
     return Padding(
       key: const Key('install-report-status'),
-      padding: const EdgeInsets.only(top: 12),
+      padding: EdgeInsets.only(top: widget.compact ? 6 : 12),
       child: Row(
         children: [
           Icon(icon, size: 20, color: color),
@@ -67,7 +74,11 @@ class _InstallReportStatusLineState
             child: Text(
               installReportStatusText(status),
               key: const Key('install-report-status-text'),
-              style: TextStyle(color: color),
+              style: widget.compact
+                  ? Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: color)
+                  : TextStyle(color: color),
             ),
           ),
           if (status.canResend)

@@ -15,6 +15,8 @@
 //    tap; the bar and its buttons do not move when it comes.
 import 'dart:async';
 
+import 'support/direct_pick_actions.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -624,11 +626,9 @@ void main() {
 
     const buttons = [
       'direct-identify',
-      'direct-not-this',
+      'direct-more',
       'direct-confirm',
-      'direct-rescan-bottom',
       'direct-stop',
-      'page-cancel',
     ];
 
     for (final (size, scale) in const [
@@ -696,6 +696,7 @@ void main() {
         expect(full, contains('dBm'));
         expect(tester.takeException(), isNull);
 
+        await closeIdentifyDetails(tester);
         await tester.pump(remoteIdentifyNoticeDuration);
         await tester.pump();
         expect(head, findsNothing);

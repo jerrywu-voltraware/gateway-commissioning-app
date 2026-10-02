@@ -9,6 +9,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -426,6 +427,87 @@ void main() {
       await tester.pumpAndSettle();
       await tap(tester, find.byKey(const Key('wifi-save')));
     }
+
+    testWidgets(
+      'manual Wi-Fi entry saves through the existing gateway command on both platforms',
+      (tester) async {
+        final fake = _NewGateway();
+        final container = await pump(tester, fake);
+        await pickGateway(
+          (f) => tap(tester, f),
+          find.byKey(const ValueKey('demo-gateway')),
+        );
+        await tap(tester, find.byKey(const Key('wifi-reset-confirm')));
+
+        expect(find.byKey(const Key('wifi-use-phone')), findsOneWidget);
+        await tap(tester, find.byKey(const Key('wifi-manual')));
+        final ssid = find.widgetWithText(TextField, 'Wi-Fi 名稱（SSID）');
+        expect(tester.widget<TextField>(ssid).controller!.text, 'Xiaomi_WU');
+        final password = find.widgetWithText(TextField, 'Wi-Fi 密碼');
+        await tester.enterText(password, 'previous-password');
+        await tester.enterText(ssid, 'Office-2G');
+        expect(tester.widget<TextField>(password).controller!.text, isEmpty);
+        await save(tester, 'password123');
+
+        expect(fake.wifiParams.single, {
+          'ssid': 'Office-2G',
+          'password': 'password123',
+        });
+        expect(container.read(commissionProvider).error, isNull);
+        expect(find.byKey(const Key('wifi-first-done')), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+      variant: const TargetPlatformVariant({
+        TargetPlatform.iOS,
+        TargetPlatform.android,
+      }),
+    );
+
+    testWidgets(
+      'phone Wi-Fi selection uses the existing set_wifi flow on both platforms',
+      (tester) async {
+        final messenger =
+            TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+        const permissions = MethodChannel(
+          'flutter.baseflow.com/permissions/methods',
+        );
+        const wifi = MethodChannel('voltraware/wifi');
+        messenger.setMockMethodCallHandler(
+          permissions,
+          (call) async => call.method == 'checkServiceStatus' ? 1 : {5: 1},
+        );
+        messenger.setMockMethodCallHandler(wifi, (call) async {
+          if (call.method == 'requestLocation') return null;
+          expect(call.method, 'current');
+          return 'Phone-2G';
+        });
+        addTearDown(() {
+          messenger.setMockMethodCallHandler(permissions, null);
+          messenger.setMockMethodCallHandler(wifi, null);
+        });
+        final fake = _NewGateway();
+        final container = await pump(tester, fake);
+        await pickGateway(
+          (f) => tap(tester, f),
+          find.byKey(const ValueKey('demo-gateway')),
+        );
+        await tap(tester, find.byKey(const Key('wifi-reset-confirm')));
+        await tap(tester, find.byKey(const Key('wifi-use-phone')));
+        expect(text(tester, 'wifi-selected'), 'Phone-2G');
+        await save(tester, 'password123');
+        expect(fake.wifiParams.single, {
+          'ssid': 'Phone-2G',
+          'password': 'password123',
+        });
+        expect(fake.count('set_site_identity'), 0);
+        expect(container.read(commissionProvider).error, isNull);
+        expect(find.byKey(const Key('wifi-first-done')), findsOneWidget);
+      },
+      variant: const TargetPlatformVariant({
+        TargetPlatform.android,
+        TargetPlatform.iOS,
+      }),
+    );
 
     testWidgets('〔重設 Wi-Fi〕 → 「設定閘道器的 Wi-Fi」 (3 / 10 閘道器網路體檢, '
         'no station field); a failure keeps it with its reason; joined → '

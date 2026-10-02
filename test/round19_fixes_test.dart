@@ -21,6 +21,8 @@
 //    until the ack (firmware 1.7.25+ waits up to 1.5 s for the PTU).
 import 'dart:async';
 
+import 'support/direct_pick_actions.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -658,18 +660,17 @@ void main() {
       });
       await tester.pump();
       expect(container.read(commissionProvider).direct!.ambiguous, isTrue);
+      final more = find.byKey(const Key('direct-more'));
+      final moreBefore = tester.getRect(more);
       final end = find.byKey(const Key('page-cancel'));
+      await openDirectActions(tester);
       expect(end, findsOneWidget);
-      expect(
-        find.descendant(of: find.byType(DirectPickActions), matching: end),
-        findsOneWidget,
-        reason: 'the bottom bar, not the scrolled page',
-      );
       expect(
         find.descendant(of: end, matching: find.text(endFlowLabel)),
         findsOneWidget,
       );
       final before = tester.getRect(end);
+      await dismissDirectActions(tester);
       final card = tester.getRect(find.byKey(const Key('direct-status')));
 
       // 不是這台？ → bound to another PTU: no yellow box, a shorter card.
@@ -681,8 +682,10 @@ void main() {
         tester.getRect(find.byKey(const Key('direct-status'))).height,
         lessThan(card.height),
       );
+      expect(tester.getRect(more), moreBefore);
+      await openDirectActions(tester);
       expect(tester.getRect(end), before);
-      expect(tester.widget<TextButton>(end).onPressed, isNotNull);
+      expect(directActionEnabled(tester, 'page-cancel'), isTrue);
 
       // Still asks first.
       await tester.tap(end);
@@ -731,39 +734,44 @@ void main() {
     }
 
     for (final scale in [1.0, 1.3]) {
-      testWidgets(
-        '360x640 at text scale $scale: the end button stays on screen, '
-        'clear of the bar\'s other buttons',
-        (tester) async {
-          await pumpStep7(tester, textScale: scale);
-          // No overflow (a row too wide for the phone, or the bar
-          // clipped off the bottom) went unnoticed.
-          expect(tester.takeException(), isNull);
-          final end = find.byKey(const Key('page-cancel'));
-          expect(end, findsOneWidget);
-          const screen = Rect.fromLTWH(0, 0, 360, 640);
-          final endRect = tester.getRect(end);
-          expect(screen.contains(endRect.topLeft), isTrue);
-          expect(screen.contains(endRect.bottomRight), isTrue);
-          for (final key in const [
-            'direct-identify',
-            'direct-not-this',
-            'direct-others-bottom',
-            'direct-confirm',
-            'direct-wait',
-            'direct-rescan-bottom',
-            'direct-stop',
-          ]) {
-            final finder = find.byKey(Key(key));
-            if (finder.evaluate().isEmpty) continue;
-            expect(
-              endRect.overlaps(tester.getRect(finder)),
-              isFalse,
-              reason: '$key overlaps the end button at text scale $scale',
-            );
-          }
-        },
-      );
+      testWidgets('360x640 at text scale $scale: more actions stay on screen, '
+          'and the end action is reachable in the menu', (tester) async {
+        await pumpStep7(tester, textScale: scale);
+        // No overflow (a row too wide for the phone, or the bar
+        // clipped off the bottom) went unnoticed.
+        expect(tester.takeException(), isNull);
+        final more = find.byKey(const Key('direct-more'));
+        const screen = Rect.fromLTWH(0, 0, 360, 640);
+        final moreRect = tester.getRect(more);
+        expect(screen.contains(moreRect.topLeft), isTrue);
+        expect(screen.contains(moreRect.bottomRight), isTrue);
+        for (final key in const [
+          'direct-identify',
+          'direct-confirm',
+          'direct-stop',
+        ]) {
+          expect(
+            moreRect.overlaps(tester.getRect(find.byKey(Key(key)))),
+            isFalse,
+            reason: '$key overlaps more actions at text scale $scale',
+          );
+        }
+        await openDirectActions(tester);
+        final end = find.byKey(const Key('page-cancel'));
+        final endRect = tester.getRect(end);
+        expect(screen.contains(endRect.topLeft), isTrue);
+        expect(screen.contains(endRect.bottomRight), isTrue);
+        expect(directActionEnabled(tester, 'page-cancel'), isTrue);
+        for (final key in const ['direct-not-this', 'direct-rescan-bottom']) {
+          expect(
+            endRect.overlaps(tester.getRect(find.byKey(Key(key)))),
+            isFalse,
+            reason: '$key overlaps the end menu item at text scale $scale',
+          );
+        }
+        await dismissDirectActions(tester);
+        expect(tester.takeException(), isNull);
+      });
     }
   });
 

@@ -15,6 +15,8 @@
 //    the bottom bar's identify line; every button and the box stay visible.
 import 'dart:async';
 
+import 'support/direct_pick_actions.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -530,11 +532,9 @@ void main() {
   group('4. the back office\'s identify does not cover the card', () {
     const buttons = [
       'direct-identify',
-      'direct-not-this',
+      'direct-more',
       'direct-confirm',
-      'direct-rescan-bottom',
       'direct-stop',
-      'page-cancel',
     ];
 
     for (final size in const [Size(360, 640), Size(411, 891)]) {
@@ -650,6 +650,8 @@ void main() {
           ),
           findsOneWidget,
         );
+
+        await closeIdentifyDetails(tester);
 
         // 8 s later the installer's own line is back.
         await tester.pump(remoteIdentifyNoticeDuration);

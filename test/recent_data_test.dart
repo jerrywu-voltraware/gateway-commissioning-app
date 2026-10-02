@@ -16,6 +16,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -546,21 +547,19 @@ void main() {
       expect(cardFinder, findsOneWidget);
       expect(find.byKey(const Key('recent-latest-grid')), findsNothing);
       expect(find.byKey(const Key('recent-latest-fault')), findsNothing);
-      // 1.0.0+8: the whole MAC on the line (a Wrap of two pieces); the
-      // small 「MAC …」 print under it is gone.
+      // Identity, state, sample time and age remain complete and distinct.
       expect(find.byKey(const Key('recent-latest-line')), findsOneWidget);
-      expect(
-        tester
-            .widget<Text>(find.byKey(const Key('recent-latest-line-mac')))
-            .data,
-        'PTU 90:5F:E8:9A:96:00',
-      );
-      expect(
-        tester
-            .widget<Text>(find.byKey(const Key('recent-latest-line-rest')))
-            .data,
-        '充電中・13:00:05（5 秒前）',
-      );
+      for (final (part, value) in [
+        ('mac', '90:5F:E8:9A:96:00'),
+        ('state', '充電中'),
+        ('time', '13:00:05'),
+        ('age', '5 秒前'),
+      ]) {
+        expect(
+          tester.widget<Text>(find.byKey(Key('recent-latest-line-$part'))).data,
+          value,
+        );
+      }
       expect(find.textContaining('PTU 9A:96:00'), findsNothing);
       expect(find.textContaining('PTU 9600'), findsNothing);
       expect(find.byKey(const Key('recent-latest-mac')), findsNothing);
@@ -574,16 +573,23 @@ void main() {
           .map((r) => r.text.toPlainText())
           .toList();
       expect(bigText, containsAll(['5.0 V', '1.61 A', '31 °C']));
+      for (final (i, value) in ['5.0 V', '1.61 A', '31 °C'].indexed) {
+        final number = find.byKey(Key('recent-latest-value-$i'));
+        final text = tester.widget<Text>(number);
+        expect(text.textSpan!.toPlainText(), value);
+        expect(text.overflow, isNot(TextOverflow.ellipsis));
+        final paragraph = tester.renderObject<RenderParagraph>(
+          find.descendant(of: number, matching: find.byType(RichText)),
+        );
+        expect(paragraph.didExceedMaxLines, isFalse, reason: value);
+      }
       final card = tester.widget<Card>(cardFinder);
       final side = (card.shape! as RoundedRectangleBorder).side;
       final colors = Theme.of(tester.element(cardFinder)).colorScheme;
       expect(side.color, isNot(colors.error));
-      // 3. The summary line under the banner; no chart (1.0.0+5).
-      expect(find.text('最近 2 筆・跨 20 秒・平均每秒 0.1 筆'), findsOneWidget);
-      final trend = tester.getRect(find.byKey(const Key('recent-trend')));
-      final bannerRect = tester.getRect(find.byKey(const Key('recent-banner')));
-      expect(trend.top, greaterThanOrEqualTo(bannerRect.bottom));
-      expect(trend.bottom, lessThanOrEqualTo(tester.getRect(cardFinder).top));
+      // 3. The statistical summary stays with the collapsed history table.
+      expect(find.byKey(const Key('recent-trend')), findsNothing);
+      expect(find.text('最近 2 筆・跨 20 秒・平均每秒 0.1 筆'), findsNothing);
       expect(find.byKey(const Key('recent-trend-chart')), findsNothing);
       // 4. Table collapsed, then expanded with short words for the state.
       expect(find.byKey(const Key('recent-table-tile')), findsOneWidget);
@@ -595,13 +601,28 @@ void main() {
       );
       await tester.tap(find.byKey(const Key('recent-table-tile')));
       await tester.pumpAndSettle();
-      expect(find.byKey(const Key('recent-table')), findsOneWidget);
-      expect(find.text('13:00:05'), findsOneWidget);
+      final table = find.byKey(const Key('recent-table'));
+      expect(table, findsOneWidget);
+      expect(find.text('最近 2 筆・跨 20 秒・平均每秒 0.1 筆'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('recent-table-tile')),
+          matching: find.byKey(const Key('recent-trend')),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: table, matching: find.text('13:00:05')),
+        findsOneWidget,
+      );
       expect(find.text('12:59:45'), findsOneWidget);
       expect(find.text('充電'), findsNWidgets(2));
       expect(find.text('POWER_TRANSFER'), findsNothing);
       // One PTU: no PTU column, no sideways scroll.
-      expect(find.text('PTU'), findsNothing);
+      expect(
+        find.descendant(of: table, matching: find.text('PTU')),
+        findsNothing,
+      );
       expect(find.byKey(const Key('recent-table-scroll')), findsNothing);
       expect(find.byKey(const Key('recent-empty')), findsNothing);
       expect(find.byKey(const Key('recent-error')), findsNothing);
@@ -666,8 +687,8 @@ void main() {
       expect(find.byKey(const Key('recent-latest-9602-fault')), findsOneWidget);
       expect(find.byKey(const Key('recent-latest-9601-fault')), findsNothing);
       // 1.0.0+8: star tiles show the whole MAC too.
-      expect(find.text('PTU 90:5F:E8:9A:96:03'), findsOneWidget);
-      expect(find.textContaining('低功率・'), findsOneWidget);
+      expect(find.text('90:5F:E8:9A:96:03'), findsOneWidget);
+      expect(find.text('低功率'), findsOneWidget);
       expect(find.byKey(const Key('recent-latest-9603-mac')), findsNothing);
       expect(find.byKey(const Key('recent-trend-chart')), findsNothing);
       // Several PTUs: the PTU column and a sideways scroll.
@@ -678,7 +699,13 @@ void main() {
       await tester.tap(find.byKey(const Key('recent-table-tile')));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('recent-table-scroll')), findsOneWidget);
-      expect(find.text('PTU'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('recent-table')),
+          matching: find.text('PTU'),
+        ),
+        findsOneWidget,
+      );
       expect(find.text('9A:96:01'), findsOneWidget);
       expect(find.text('9A:96:02'), findsOneWidget);
       expect(find.text('9A:96:03'), findsOneWidget);
@@ -724,7 +751,12 @@ void main() {
       // The last column (狀態) ends inside the 360 dp screen, for the
       // header and for every row.
       for (final label in ['狀態', '充電', '超範圍', '低功率', '故障']) {
-        final rect = tester.getRect(find.text(label));
+        final rect = tester.getRect(
+          find.descendant(
+            of: find.byKey(const Key('recent-table')),
+            matching: find.text(label),
+          ),
+        );
         expect(rect.right, lessThanOrEqualTo(360), reason: label);
         expect(rect.left, greaterThanOrEqualTo(0), reason: label);
       }
@@ -752,8 +784,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('recent-empty')), findsNothing);
       expect(find.text(recentDataOkText), findsOneWidget);
-      expect(find.text('PTU 90:5F:E8:9A:96:00'), findsOneWidget);
-      expect(find.text('充電中・13:00:08（2 秒前）'), findsOneWidget);
+      expect(find.text('90:5F:E8:9A:96:00'), findsOneWidget);
+      expect(find.text('充電中'), findsOneWidget);
+      expect(find.text('13:00:08'), findsOneWidget);
+      expect(find.text('2 秒前'), findsOneWidget);
     });
 
     testWidgets('error: red banner with 〔重試〕; retry recovers', (tester) async {
@@ -831,7 +865,22 @@ void main() {
       final button = find.byKey(const Key('done-recent'));
       expect(button, findsOneWidget);
       expect(find.text(recentDataLabel), findsOneWidget);
-      // Still on the first screen next to 〔完成〕／〔配置下一台〕.
+      // Recent data belongs to the summary; the fixed bar retains the
+      // two commissioning actions, all reachable on the first screen.
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('done-summary')),
+          matching: button,
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('done-actions')),
+          matching: button,
+        ),
+        findsNothing,
+      );
       expect(find.byKey(const Key('done-finish')), findsOneWidget);
       expect(find.byKey(const Key('done-next')), findsOneWidget);
       final rect = tester.getRect(button);
@@ -845,7 +894,7 @@ void main() {
       // The demo backend answers one row per connected PTU (just sent).
       expect(find.byKey(const Key('recent-body')), findsOneWidget);
       expect(find.text(recentDataOkText), findsOneWidget);
-      expect(find.byKey(const Key('recent-trend')), findsOneWidget);
+      expect(find.byKey(const Key('recent-trend')), findsNothing);
       expect(find.byKey(const Key('recent-trend-chart')), findsNothing);
       // Back: the done page, its buttons untouched.
       await tester.pageBack();

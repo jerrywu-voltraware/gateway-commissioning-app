@@ -18,6 +18,8 @@
 //    (identify ack MAC, re-checked against get_status); a temporary
 //    「不是這台？」 binding is cleared on 取消 (「確認後綁定」 off) and a
 //    leftover binding found on entering step 7 asks 「保留」/「解除」.
+import 'support/direct_pick_actions.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -212,7 +214,10 @@ void main() {
 
       await c.identify();
       s = container.read(commissionProvider);
-      expect(fake.sent('identify').last, {'target': 'both', 'duration_ms': 4000});
+      expect(fake.sent('identify').last, {
+        'target': 'both',
+        'duration_ms': 4000,
+      });
       expect(s.identifyNote, startsWith(identifySentText));
       expect(s.identifyNote, contains(_pick));
       expect(s.identifyNote, contains('-38 dBm'));
@@ -365,7 +370,7 @@ void main() {
       await _idle(tester, container);
       await tester.pump();
       // Round 16: one line (「已送出 · 請看樁上燈號 · MAC · RSSI」); the
-      // full note opens below it. Round 16b: the whole MAC when it fits.
+      // full note opens in a dialog. Round 16b: the whole MAC when it fits.
       final note = tester.widget<Text>(
         find.byKey(const Key('direct-identify-note')),
       );
@@ -381,6 +386,7 @@ void main() {
           .toPlainText();
       expect(detail, contains(identifySentText));
       expect(detail, contains(_pick));
+      await closeIdentifyDetails(tester);
       expect(find.text('是這台，開始配置'), findsOneWidget);
     });
   });
@@ -447,7 +453,7 @@ void main() {
       addTearDown(container.dispose);
       await tester.pumpWidget(_panel(container));
       // Round 16: 「不是這台？」 (bottom bar) opens the candidates sheet.
-      await tester.tap(find.byKey(const Key('direct-not-this')));
+      await tapDirectAction(tester, 'direct-not-this');
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
       expect(
@@ -498,7 +504,9 @@ void main() {
       await tester.pumpWidget(_panel(container));
       expect(find.text('請靠近／確認同樁 PTU 已上電'), findsOneWidget);
       expect(find.byKey(const Key('direct-rescan')), findsOneWidget);
+      await openDirectActions(tester);
       expect(find.byKey(const Key('direct-rescan-bottom')), findsOneWidget);
+      await dismissDirectActions(tester);
       expect(find.byKey(const Key('direct-confirm')), findsNothing);
 
       fake.device(_pick)['rssi'] = -38;

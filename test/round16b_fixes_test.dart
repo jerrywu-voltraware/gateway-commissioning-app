@@ -18,6 +18,8 @@
 //    with nothing sent (field: one tap on the last row was lost).
 import 'dart:async';
 
+import 'support/direct_pick_actions.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -361,8 +363,10 @@ void main() {
       expect(detail.textSpan!.toPlainText(), contains(_f3B));
       expect(_macSpans(detail, _f3B).single.style?.fontFamily, 'monospace');
 
+      await closeIdentifyDetails(tester);
+
       // Candidates: every row its own full MAC, monospace; no 9600.
-      await tester.tap(find.byKey(const Key('direct-not-this')));
+      await tapDirectAction(tester, 'direct-not-this');
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
       for (final mac in _fleet) {
@@ -702,7 +706,7 @@ void main() {
       });
       addTearDown(container.dispose);
       await tester.pumpWidget(_screen(container));
-      await tester.tap(find.byKey(const Key('direct-not-this')));
+      await tapDirectAction(tester, 'direct-not-this');
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
       expect(find.byKey(const Key('direct-candidates-sheet')), findsOneWidget);

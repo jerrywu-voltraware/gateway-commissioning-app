@@ -21,6 +21,8 @@
 // reason); the widest values (12.35 A, 255 °C, 落後 75 秒).
 import 'dart:async';
 
+import 'support/done_sections.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -1072,10 +1074,13 @@ void main() {
     expect(read().verified, isTrue);
     // 1.0.0+13: 「請在機殼上標示：」 and 「站 80 · 閘道器 1」 in large type.
     expect(find.byKey(const Key('done-label')), findsOneWidget);
-    // 1.0.0+19: the back office's upload interval under it.
+    // Secondary upload details are collapsed until explicitly opened.
+    expect(find.byKey(const Key('done-upload-rate')), findsNothing);
+    await _checkPage(tester, 'done');
+    await openDoneSection(tester, 'commission-details');
     expect(find.byKey(const Key('done-upload-rate')), findsOneWidget);
     expect(find.text('資料上傳頻率由後台控制（目前每 5 秒）'), findsOneWidget);
-    await _checkPage(tester, 'done');
+    await _checkPage(tester, 'done details');
     await tester.pumpWidget(const SizedBox());
   });
 

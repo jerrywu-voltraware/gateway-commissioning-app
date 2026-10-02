@@ -5,7 +5,7 @@
 .DESCRIPTION
   -Env local : flutter build apk --release --dart-define=LOCAL_DEVELOPMENT=true
                (HTTP allowed for the private-LAN test backend), signed with
-               the Android debug keystore (%USERPROFILE%\.android\debug.keystore,
+               the Android debug keystore (<user home>/.android/debug.keystore,
                alias androiddebugkey) - the same certificate as the field-test
                APKs of rounds 19/20 (SHA-256 bea4c874...), so `adb install -r`
                updates the installed APP without an uninstall.
@@ -75,6 +75,9 @@
 
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File tools\build_apk.ps1 -Env prod -BuildNumber 21 -BuildName 1.0.1
+
+.EXAMPLE
+  pwsh -NoProfile -File tools/build_apk.ps1 -Env local
 #>
 [CmdletBinding()]
 param(
@@ -98,6 +101,15 @@ param(
 # file without BOM as the ANSI code page).
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
+
+# Do not use $IsWindows: it is not defined in Windows PowerShell 5.1.
+$RunningOnWindows = [System.IO.Path]::DirectorySeparatorChar -eq '\'
+$ApkSignerName = if ($RunningOnWindows) { 'apksigner.bat' } else { 'apksigner' }
+$ZipAlignName = if ($RunningOnWindows) { 'zipalign.exe' } else { 'zipalign' }
+$BuildUserProfile = [Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)
+if (-not $BuildUserProfile) {
+    $BuildUserProfile = if ($RunningOnWindows) { $env:USERPROFILE } else { $env:HOME }
+}
 
 # Temporary --dart-define-from-file JSON holding the backend credential.
 $DefineFile = $null
@@ -148,14 +160,46 @@ function Read-Properties([string]$Path) {
     return $props
 }
 
+function Convert-BuildPath([string]$Path) {
+    if ($RunningOnWindows) { return $Path }
+    # Accept repo-relative paths copied from the Windows build settings.
+    return $Path.Replace('\', '/')
+}
+
+function Write-PrivateUtf8File([string]$Path, [string]$Content) {
+    try {
+        # Create an empty, unique file first; restrict access before writing
+        # credentials. CreateNew also refuses to follow an existing symlink.
+        $stream = [System.IO.File]::Open($Path, [System.IO.FileMode]::CreateNew,
+            [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
+        $stream.Dispose()
+        if (-not $RunningOnWindows) {
+            $chmod = Get-Command chmod -CommandType Application -ErrorAction SilentlyContinue
+            if (-not $chmod) { Fail 'chmod not found; cannot protect the temporary backend credential.' }
+            Invoke-Native $chmod.Source @('600', $Path) | Out-Null
+            if ($LASTEXITCODE -ne 0) { Fail 'Cannot protect the temporary backend credential (chmod 600 failed).' }
+        }
+        [System.IO.File]::WriteAllText($Path, $Content, (New-Object System.Text.UTF8Encoding($false)))
+    } catch {
+        # Do not print exception details that could contain credential data.
+        Fail 'Cannot write the protected temporary backend credential.'
+    }
+}
+
 function Find-AndroidSdk([string]$Root) {
     $candidates = @($env:ANDROID_HOME, $env:ANDROID_SDK_ROOT)
-    $localProps = Join-Path $Root 'android\local.properties'
+    $localProps = Join-Path $Root 'android/local.properties'
     if (Test-Path -LiteralPath $localProps) {
         $p = Read-Properties $localProps
-        if ($p.ContainsKey('sdk.dir')) { $candidates += ($p['sdk.dir'] -replace '\\\\', '\') }
+        if ($p.ContainsKey('sdk.dir')) {
+            $candidates += (Convert-BuildPath ($p['sdk.dir'] -replace '\\\\', '\' -replace '\\:', ':'))
+        }
     }
-    if ($env:LOCALAPPDATA) { $candidates += (Join-Path $env:LOCALAPPDATA 'Android\Sdk') }
+    if ($env:LOCALAPPDATA) { $candidates += (Join-Path $env:LOCALAPPDATA 'Android/Sdk') }
+    if ($BuildUserProfile) {
+        $candidates += (Join-Path $BuildUserProfile 'Library/Android/sdk')
+        $candidates += (Join-Path $BuildUserProfile 'Android/Sdk')
+    }
     foreach ($c in $candidates) {
         if ($c -and (Test-Path -LiteralPath (Join-Path $c 'build-tools'))) { return $c }
     }
@@ -166,8 +210,8 @@ function Find-BuildTools([string]$Sdk) {
     $best = $null
     $bestVersion = $null
     foreach ($d in (Get-ChildItem -LiteralPath (Join-Path $Sdk 'build-tools') -Directory)) {
-        if (-not (Test-Path -LiteralPath (Join-Path $d.FullName 'apksigner.bat'))) { continue }
-        if (-not (Test-Path -LiteralPath (Join-Path $d.FullName 'zipalign.exe'))) { continue }
+        if (-not (Test-Path -LiteralPath (Join-Path $d.FullName $ApkSignerName))) { continue }
+        if (-not (Test-Path -LiteralPath (Join-Path $d.FullName $ZipAlignName))) { continue }
         $v = $null
         if (-not [version]::TryParse(($d.Name -replace '[^0-9.].*$', ''), [ref]$v)) { continue }
         if ($null -eq $bestVersion -or $v -gt $bestVersion) {
@@ -181,7 +225,7 @@ function Find-BuildTools([string]$Sdk) {
 # ---------------------------------------------------------------- inputs
 $buildSuffix = if ($PSBoundParameters.ContainsKey('BuildNumber')) { "_b$BuildNumber" } else { '' }
 $Root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
-if (-not $OutDir) { $OutDir = Join-Path $Root 'build\dist' }
+if (-not $OutDir) { $OutDir = Join-Path $Root 'build/dist' }
 if (-not (Test-Path -LiteralPath $OutDir)) {
     New-Item -ItemType Directory -Path $OutDir | Out-Null
 }
@@ -207,9 +251,9 @@ if ($dirty.Count -gt 0) {
 $sdk = Find-AndroidSdk $Root
 if (-not $sdk) { Fail 'Android SDK not found (ANDROID_HOME / android\local.properties sdk.dir).' }
 $bt = Find-BuildTools $sdk
-if (-not $bt) { Fail "no build-tools with apksigner.bat and zipalign.exe under $sdk\build-tools." }
-$apksigner = Join-Path $bt 'apksigner.bat'
-$zipalign = Join-Path $bt 'zipalign.exe'
+if (-not $bt) { Fail "no build-tools with $ApkSignerName and $ZipAlignName under $sdk/build-tools." }
+$apksigner = Join-Path $bt $ApkSignerName
+$zipalign = Join-Path $bt $ZipAlignName
 Write-Host "build-tools: $bt"
 
 $flutter = Get-Command flutter -ErrorAction SilentlyContinue
@@ -218,7 +262,8 @@ if (-not $flutter) { Fail 'flutter not found on PATH.' }
 # ---------------------------------------------------------------- signing
 # Resolved before building: a missing key fails fast, never an unsigned APK.
 if ($Env -eq 'local' -or $Env -eq 'prodtest') {
-    $ks = Join-Path $env:USERPROFILE '.android\debug.keystore'
+    if (-not $BuildUserProfile) { Fail 'User home directory not found (needed for the debug keystore).' }
+    $ks = Join-Path $BuildUserProfile '.android/debug.keystore'
     if (-not (Test-Path -LiteralPath $ks)) {
         Fail ("debug keystore not found: $ks. Copy the field-test debug.keystore " +
             "(cert SHA-256 $($FieldTestCertSha256.Substring(0, 8))...) there; a new one " +
@@ -228,7 +273,7 @@ if ($Env -eq 'local' -or $Env -eq 'prodtest') {
     $ksPass = 'android'
     $keyPass = 'android'
 } else {
-    $keyProps = Join-Path $Root 'android\key.properties'
+    $keyProps = Join-Path $Root 'android/key.properties'
     $ks = $env:GIOS_KEYSTORE
     $alias = $env:GIOS_KEY_ALIAS
     $ksPass = $env:GIOS_KEYSTORE_PASS
@@ -238,8 +283,8 @@ if ($Env -eq 'local' -or $Env -eq 'prodtest') {
         foreach ($k in 'storeFile', 'storePassword', 'keyAlias', 'keyPassword') {
             if (-not $p.ContainsKey($k) -or -not $p[$k]) { Fail "android\key.properties lacks $k." }
         }
-        $ks = $p['storeFile']
-        if (-not [System.IO.Path]::IsPathRooted($ks)) { $ks = Join-Path $Root "android\app\$ks" }
+        $ks = Convert-BuildPath $p['storeFile']
+        if (-not [System.IO.Path]::IsPathRooted($ks)) { $ks = Join-Path (Join-Path $Root 'android/app') $ks }
         $alias = $p['keyAlias']
         $ksPass = $p['storePassword']
         $keyPass = $p['keyPassword']
@@ -258,7 +303,7 @@ if ($Env -eq 'local' -or $Env -eq 'prodtest') {
 # ---------------------------------------------------------------- backend credential
 # Resolved before building too: an APK without it would ask nobody for a
 # password and just say it lacks the credential.
-$secretsFile = Join-Path $Root ".secrets\$Env.env"
+$secretsFile = Join-Path $Root ".secrets/$Env.env"
 if (-not (Test-Path -LiteralPath $secretsFile)) {
     Fail (".secrets\$Env.env not found. Create it (git-ignored) with one line " +
         "APP_BACKEND_KEY=<the backend APP_API_KEY for $Env>; see README.")
@@ -283,7 +328,7 @@ if ($secrets.ContainsKey('API_CERT_SHA256') -and $secrets['API_CERT_SHA256']) {
     Write-Host "API_CERT_SHA256: $pin"
 }
 if ($secrets.ContainsKey('API_CA_FILE') -and $secrets['API_CA_FILE']) {
-    $caFile = $secrets['API_CA_FILE']
+    $caFile = Convert-BuildPath $secrets['API_CA_FILE']
     if (-not [System.IO.Path]::IsPathRooted($caFile)) { $caFile = Join-Path $Root $caFile }
     if (-not (Test-Path -LiteralPath $caFile)) { Fail "API_CA_FILE not found: $caFile" }
     $caBytes = [System.IO.File]::ReadAllBytes($caFile)
@@ -311,11 +356,11 @@ if ($Env -eq 'local') { $flutterArgs += '--dart-define=LOCAL_DEVELOPMENT=true' }
 # The credential goes through a file (UTF-8 without BOM), never argv.
 $buildDir = Join-Path $Root 'build'
 if (-not (Test-Path -LiteralPath $buildDir)) { New-Item -ItemType Directory -Path $buildDir | Out-Null }
-$DefineFile = Join-Path $buildDir ".app_backend_key_$PID.json"
+$DefineFile = Join-Path $buildDir ('.app_backend_key_{0}_{1}.json' -f $PID, [Guid]::NewGuid().ToString('N'))
 $defineJson = ($defines | ConvertTo-Json -Compress)
-[System.IO.File]::WriteAllText($DefineFile, $defineJson, (New-Object System.Text.UTF8Encoding($false)))
+Write-PrivateUtf8File $DefineFile $defineJson
 $flutterArgs += "--dart-define-from-file=$DefineFile"
-$gradleOut = Join-Path $Root 'build\app\outputs\flutter-apk\app-release.apk'
+$gradleOut = Join-Path $Root 'build/app/outputs/flutter-apk/app-release.apk'
 # Never sign a leftover from an earlier build.
 if (Test-Path -LiteralPath $gradleOut) { Remove-Item -LiteralPath $gradleOut -Force }
 
