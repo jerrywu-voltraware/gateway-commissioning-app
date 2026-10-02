@@ -1813,8 +1813,14 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     final colors = Theme.of(context).colorScheme;
     return Padding(
       // Explicit-link cards put the bulb in the action row. Their content
-      // and start button share the same inset.
-      padding: EdgeInsets.fromLTRB(12, 8, widget.onHold != null ? 12 : 2, 8),
+      // and start button share the same inset. Keep the metadata-to-action
+      // gap compact when status marks wrap on narrow screens.
+      padding: EdgeInsets.fromLTRB(
+        12,
+        8,
+        widget.onHold != null ? 12 : 2,
+        widget.onHold != null ? 4 : 8,
+      ),
       child: Row(
         children: [
           Expanded(

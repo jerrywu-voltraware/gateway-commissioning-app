@@ -1,10 +1,12 @@
 # 手機目前的 Wi-Fi：Android / iOS 驗證
 
-兩個平台都在 Wi-Fi 表單提供「使用手機目前的 Wi-Fi」。按下後才要求定位權限並讀取 SSID，不會自動更換手機網路，也不會讀取密碼或位置座標。帶入名稱後仍需使用者輸入密碼，再按「儲存並繼續」。
+兩個平台都在 Wi-Fi 表單提供「使用手機目前的 Wi-Fi」與「手動輸入其他網路」，不提供 Wi-Fi 掃描入口。按下讀取後才要求定位權限並取得 SSID，不會自動更換手機網路，也不會讀取密碼或位置座標。帶入名稱後仍需使用者輸入密碼，再按「儲存並繼續」。
 
 手機須先連到現場路由器／AP；手機與 gateway 仍走原有 BLE 配置流程。這次沒有新增 gateway 指令或修改韌體。
 
-## 已完成的自動檢查
+## 原始手機 Wi-Fi 功能的自動檢查紀錄
+
+以下為 `f2f4ea0` 來源內的既有紀錄。本次 Android 一致性修正的測試、候選 APK 與限制另記於專案根目錄 `CONTINUE_2026-10-03_APP_IOS_PARITY.md`，不能以這份歷史紀錄代替本輪驗收。
 
 - `flutter analyze`：無問題。
 - 完整 `flutter test`：1506 項通過、3 項略過，包含手機中途斷線與殺 App 後續作的自動回歸。
@@ -12,14 +14,14 @@
 - Android `:app:compileDebugKotlin`：通過。
 - `ruby tools/build_ios.rb --build`：iOS 未簽章建置通過。
 
-Mac 的完整測試需把 `GIOS_TEST_CJK_FONT` 指向本機的 PingFang.ttc；第一次未指定時的字型載入失敗，已在指定字型後重跑通過。上述結果是編譯與自動測試，不代表已完成手機上的 SSID 讀取或 gateway 連線驗證。目前沒有安裝到手機，也沒有發布版本。
+Mac 的完整測試需把 `GIOS_TEST_CJK_FONT` 指向本機的 PingFang.ttc；第一次未指定時的字型載入失敗，已在指定字型後重跑通過。上述結果是編譯與自動測試，不代表已完成手機上的 SSID 讀取或 gateway 連線驗證。`f2f4ea0` 記錄當時尚未安裝或發布這個手機 Wi-Fi 版本；後續候選與發布狀態請依本輪進度紀錄。
 
 ## 上機前
 
 - iOS：Runner 的 Debug / Profile / Release 已指定 `Runner/Runner.entitlements`，含 `com.apple.developer.networking.wifi-info`。開發者帳號的 App ID 與實機 provisioning profile 也必須啟用 Access WiFi Information；舊 profile 若未包含此 entitlement，需由 Xcode 更新後重新簽章安裝。模擬器與未簽章建置不能驗證 SSID 讀取。
 - iOS 直接透過 CoreLocation 要求「使用 App 期間」權限，並檢查「精確位置」。不依賴 permission_handler 的 Swift Package 權限編譯快取，也不要求背景定位或取得位置座標。
 - Android：允許定位權限／精確位置，並開啟定位服務。Android 12 以上透過含 location info 的網路 callback 取得 SSID；舊版使用 WifiManager 的目前連線資訊。
-- Android 交付或安裝的 APK 仍須使用 `tools/build_apk.ps1` 簽章、驗證；本地測試使用 `-Env local`。本次未產生可交付的 APK。
+- Android 交付或安裝的 APK 仍須使用 `tools/build_apk.ps1` 簽章、驗證；本地測試使用 `-Env local`。`f2f4ea0` 的原始紀錄當時未產生可交付 APK；後續候選的來源、真實 versionCode 與完整 SHA256 必須記錄並獨立驗收。
 
 ## 請在兩個平台各驗證
 
@@ -35,7 +37,7 @@ Mac 的完整測試需把 `GIOS_TEST_CJK_FONT` 指向本機的 PingFang.ttc；�
 | 手機中途斷線 | 配置途中中斷 BLE，重新連線 | 沿用既有對帳／續作流程，不重做已完成的配置 |
 | 殺 App 續作 | 配置途中殺 App，再開啟並續作 | 重新向 gateway 對帳，不只相信本地存檔 |
 
-Android 另驗證「選擇其他 Wi-Fi」：只列出掃描到的 2.4 GHz 網路，仍可選自訂／隱藏網路。iOS 不顯示這個掃描入口。
+兩個平台另確認表單均沒有「選擇其他 Wi-Fi」或掃描入口；要使用其他網路時，可先在手機系統設定連上該網路再讀取，或手動輸入名稱。
 
 ## API 依據
 

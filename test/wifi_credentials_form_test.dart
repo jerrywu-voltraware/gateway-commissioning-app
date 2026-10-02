@@ -54,12 +54,6 @@ void main() {
         return null;
       }
       if (call.method == 'current') return pending?.future ?? current;
-      if (call.method == 'scan') {
-        return [
-          {'ssid': 'Other-2G', 'rssi': -40, 'frequency': 2412},
-          {'ssid': 'Only5G', 'rssi': -20, 'frequency': 5180},
-        ];
-      }
       throw StateError('Unexpected Wi-Fi operation');
     });
   });
@@ -259,24 +253,7 @@ void main() {
   );
 
   testWidgets(
-    'Android can scan other 2.4 GHz networks and keeps manual entry',
-    (tester) async {
-      await pump(tester);
-      await tap(tester, 'wifi-pick');
-      expect(find.text('Other-2G'), findsOneWidget);
-      expect(find.text('Only5G'), findsNothing);
-      expect(find.text('自訂／隱藏網路'), findsOneWidget);
-      await tester.tap(find.text('Other-2G'));
-      await tester.pumpAndSettle();
-      expect(ssid.text, 'Other-2G');
-      expect(password.text, isEmpty);
-      expect(calls, ['requestPermissions', 'scan']);
-    },
-    variant: TargetPlatformVariant.only(TargetPlatform.android),
-  );
-
-  testWidgets(
-    'iOS shows current Wi-Fi and manual entry, without a scan action',
+    'both platforms show current Wi-Fi and manual entry, without a scan action',
     (tester) async {
       await pump(tester);
       expect(find.byKey(const Key('wifi-use-phone')), findsOneWidget);
@@ -284,6 +261,6 @@ void main() {
       expect(find.byKey(const Key('wifi-pick')), findsNothing);
       expect(calls, isEmpty);
     },
-    variant: TargetPlatformVariant.only(TargetPlatform.iOS),
+    variant: platforms,
   );
 }

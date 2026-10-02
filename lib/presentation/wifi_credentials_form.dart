@@ -34,13 +34,11 @@ class WifiCredentialsForm extends StatefulWidget {
 
 class _WifiCredentialsFormState extends State<WifiCredentialsForm> {
   bool _reading = false;
-  bool _scanning = false;
   bool _manual = false;
   bool _showSettings = false;
   String? _message;
   int _request = 0;
 
-  bool get _busy => _reading || _scanning;
   bool _accepts(int request) =>
       mounted && widget.enabled && request == _request;
 
@@ -49,7 +47,7 @@ class _WifiCredentialsFormState extends State<WifiCredentialsForm> {
     super.didUpdateWidget(oldWidget);
     if (!widget.enabled && oldWidget.enabled) {
       _request++;
-      _reading = _scanning = false;
+      _reading = false;
     }
   }
 
@@ -107,77 +105,9 @@ class _WifiCredentialsFormState extends State<WifiCredentialsForm> {
     }
   }
 
-  Future<void> _chooseWifi() async {
-    final request = ++_request;
-    FocusScope.of(context).unfocus();
-    setState(() {
-      _scanning = true;
-      _message = null;
-      _showSettings = false;
-    });
-    try {
-      var networks = <WifiNetwork>[];
-      String? scanMessage;
-      try {
-        networks = await scanWifiNetworks();
-      } catch (error) {
-        final code = error is PlatformException ? error.code : '';
-        scanMessage = switch (code) {
-          'permission' => '請允許精確位置權限後重試，或手動輸入網路名稱。',
-          'wifi_off' => '請開啟手機 Wi-Fi 後重試，或手動輸入網路名稱。',
-          'location_off' => '請開啟手機定位服務後重試，或手動輸入網路名稱。',
-          'throttled' => '掃描太頻繁，請稍候重試，或手動輸入網路名稱。',
-          _ => '掃描未完成，請重試或手動輸入網路名稱。',
-        };
-      }
-      if (!mounted || !_accepts(request)) return;
-      final selected = await showDialog<String>(
-        context: context,
-        builder: (context) => SimpleDialog(
-          title: const Text('選擇 2.4 GHz Wi-Fi'),
-          children: [
-            if (networks.isEmpty)
-              Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text(scanMessage ?? '未找到周邊 2.4 GHz Wi-Fi，可稍後重試或手動輸入名稱。'),
-              ),
-            ...networks.map(
-              (network) => SimpleDialogOption(
-                onPressed: () => Navigator.pop(context, network.ssid),
-                child: ListTile(
-                  leading: const Icon(Icons.wifi),
-                  title: Text(network.ssid),
-                  subtitle: Text('訊號 ${network.rssi} dBm'),
-                ),
-              ),
-            ),
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(context, ''),
-              child: const ListTile(
-                leading: Icon(Icons.edit_outlined),
-                title: Text('自訂／隱藏網路'),
-              ),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('取消'),
-            ),
-          ],
-        ),
-      );
-      if (!_accepts(request) || selected == null) return;
-      setState(() {
-        _manual = selected.isEmpty;
-        if (!_manual) _select(selected);
-      });
-    } finally {
-      if (_accepts(request)) setState(() => _scanning = false);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    final enabled = widget.enabled && !_busy;
+    final enabled = widget.enabled && !_reading;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -233,12 +163,6 @@ class _WifiCredentialsFormState extends State<WifiCredentialsForm> {
                   : null,
               child: const Text('手動輸入其他網路'),
             ),
-            if (canScanWifiNetworks)
-              TextButton(
-                key: const Key('wifi-pick'),
-                onPressed: enabled ? _chooseWifi : null,
-                child: Text(_scanning ? '掃描中…' : '選擇其他 Wi-Fi'),
-              ),
           ],
         ),
         const SizedBox(height: 8),
