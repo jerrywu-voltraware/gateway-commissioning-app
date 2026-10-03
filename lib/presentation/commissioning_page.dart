@@ -2445,12 +2445,27 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             style: TextStyle(color: theme.colorScheme.error),
           ),
         ),
+      if (!input)
+        Padding(
+          padding: const EdgeInsets.only(top: 16),
+          child: Visibility(
+            visible: enabled && !_stationWorking,
+            maintainSize: true,
+            maintainState: true,
+            maintainAnimation: true,
+            child: NextActionHint(
+              canUse ? '請選擇：使用此站點，或改用其他站號' : '改用其他站號，或先處理上方提示再沿用此站',
+              active: enabled && !_stationWorking,
+            ),
+          ),
+        ),
       Padding(
-        padding: const EdgeInsets.only(top: 16),
+        padding: EdgeInsets.only(top: input ? 16 : 0),
         child: SizedBox(
           width: double.infinity,
           child: NextActionGuide.button(
-            hint: label,
+            active: input,
+            hint: input ? label : null,
             child: FilledButton(
               key: const Key('station-use'),
               onPressed: enabled && !_stationWorking && canUse
@@ -2462,15 +2477,21 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         ),
       ),
       if (!input)
-        TextButton(
-          key: const Key('station-change'),
-          onPressed: enabled && !_stationWorking
-              ? () => setState(() {
-                  _otherSite = true;
-                  _site.clear();
-                })
-              : null,
-          child: const Text(otherSiteLabel),
+        Padding(
+          padding: const EdgeInsets.only(top: 10),
+          child: SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              key: const Key('station-change'),
+              onPressed: enabled && !_stationWorking
+                  ? () => setState(() {
+                      _otherSite = true;
+                      _site.clear();
+                    })
+                  : null,
+              child: const Text(otherSiteLabel),
+            ),
+          ),
         )
       else if (current != null)
         TextButton(
