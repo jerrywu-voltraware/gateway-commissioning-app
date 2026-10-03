@@ -85,7 +85,10 @@ class _NextActionGuideState extends State<NextActionGuide>
 
   @override
   Widget build(BuildContext context) {
-    final color = Theme.of(context).colorScheme.primary;
+    // Contrast with the blue action buttons instead of resembling a shadow.
+    final color = Theme.of(context).brightness == Brightness.dark
+        ? const Color(0xFFFFD54F)
+        : const Color(0xFFF59E0B);
     final glow = AnimatedBuilder(
       animation: _pulse,
       child: widget.child,
@@ -99,14 +102,21 @@ class _NextActionGuideState extends State<NextActionGuide>
             boxShadow: widget.active
                 ? [
                     BoxShadow(
-                      color: color.withValues(alpha: 0.18 + breath * 0.16),
-                      blurRadius: 5 + breath * 9,
-                      spreadRadius: 1 + breath * 2,
+                      color: color.withValues(alpha: 0.30 + breath * 0.30),
+                      blurRadius: 8 + breath * 10,
+                      spreadRadius: 2 + breath * 3,
                     ),
                   ]
                 : const [],
           ),
-          child: child,
+          child: DecoratedBox(
+            position: DecorationPosition.foreground,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              border: widget.active ? Border.all(color: color, width: 3) : null,
+            ),
+            child: child,
+          ),
         );
       },
     );
