@@ -1577,16 +1577,17 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       },
       child: Scaffold(
         appBar: AppBar(
-          // 1.0.0+10 (phone 360 dp at text scale 1.1: 「GIOS 現場…」 beside
-          // the help icon): the theme's AppBar title style (titleMedium
-          // w600, [gatewayTheme]) on every page — no size picked by width;
-          // the help icon compact and the environment chip small leave it
-          // room whole up to text scale 1.3.
-          title: const Text(
-            appBarTitle,
-            key: Key('appbar-title'),
-            maxLines: 1,
-            softWrap: false,
+          // Keep the full title beside help, environment and menu actions.
+          // Fit the actual platform font to the remaining toolbar width.
+          title: const FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              appBarTitle,
+              key: Key('appbar-title'),
+              maxLines: 1,
+              softWrap: false,
+            ),
           ),
           actions: [
             // Field rescue v1: no error, but the installer does not know

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -334,15 +335,20 @@ void main() {
     }
   }
 
-  for (final (peer, size, scale) in const [
-    (_a, Size(360, 740), 1.0),
-    (_b, Size(360, 740), 1.0),
-    (_a, Size(320, 640), 1.3),
+  for (final (platform, peer, size, scale) in const [
+    (TargetPlatform.android, _a, Size(360, 740), 1.0),
+    (TargetPlatform.android, _b, Size(360, 740), 1.0),
+    (TargetPlatform.android, _a, Size(320, 640), 1.3),
+    (TargetPlatform.iOS, _a, Size(375, 812), 1.3),
+    (TargetPlatform.iOS, _a, Size(320, 640), 1.6),
   ]) {
-    testWidgets('unselected ${peer.id} at ${size.width.toInt()} dp @$scale '
+    testWidgets('${platform.name} unselected ${peer.id} '
+        'at ${size.width.toInt()} dp @$scale '
         'button connects only that peer; identify appears only after ready', (
       tester,
     ) async {
+      debugDefaultTargetPlatformOverride = platform;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
       final fake = _TwoGateways()..connectGate = Completer<void>();
       final container = await _openGatewayPage(
         tester,
@@ -366,6 +372,16 @@ void main() {
       await _frames(tester);
       expect(controller.heldPeerId, peer.id);
       _expectCardRightInset(tester, peer, selected: true);
+      final disconnectRect = tester.getRect(_disconnect);
+      final startRect = tester.getRect(_commission(peer));
+      expect(
+        disconnectRect.center.dy,
+        closeTo(startRect.center.dy, 0.01),
+        reason: 'Disconnect and Start must remain on the same action row.',
+      );
+      expect(disconnectRect.right + 8, lessThanOrEqualTo(startRect.left));
+      expect(tester.getRect(_bulb(peer)).overlaps(disconnectRect), isFalse);
+      expect(tester.getRect(_bulb(peer)).overlaps(startRect), isFalse);
       expect(_bulb(peer), findsOneWidget);
       expect(_bulb(other), findsNothing);
       expect(_button(tester, _commission(peer)).onPressed, isNotNull);
