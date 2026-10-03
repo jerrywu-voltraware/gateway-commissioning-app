@@ -3865,7 +3865,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                           child: CircularProgressIndicator(strokeWidth: 2),
                         ),
                         const SizedBox(width: 12),
-                        Expanded(child: Text('${s.message}（${s.seconds} 秒）')),
+                        Expanded(child: Text('${s.message}（剩餘 ${s.seconds} 秒）')),
                       ],
                     )
                   : Column(

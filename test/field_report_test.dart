@@ -27,7 +27,9 @@ const _wifiPassword = 'Wifi-Secret-4455';
 class FieldFake extends DemoSystem implements SessionInfo {
   String mode = 'ok';
   bool loggedIn = true;
+  String originValue = _base;
   String? failOp;
+  Completer<Map<String, dynamic>>? pendingPost;
   final uploads = <(String, Map<String, dynamic>)>[];
   final ops = <String>[];
 
@@ -44,7 +46,7 @@ class FieldFake extends DemoSystem implements SessionInfo {
   bool get hasSession => loggedIn;
 
   @override
-  String? get origin => loggedIn ? _base : null;
+  String? get origin => loggedIn ? originValue : null;
 
   @override
   Future<void> login(String base, String password) async {
@@ -74,6 +76,11 @@ class FieldFake extends DemoSystem implements SessionInfo {
       return super.request(method, path, body);
     }
     uploads.add((path, Map<String, dynamic>.from(body ?? const {})));
+    final pending = pendingPost;
+    if (pending != null) {
+      pendingPost = null;
+      return pending.future;
+    }
     switch (mode) {
       case 'network':
         throw GatewayFailure.network(endpoint: '$method $path', detail: 'x');
@@ -253,26 +260,57 @@ void main() {
     });
 
     test(
-      'a step unchanged for the stuck time sends one stuck package',
+      'idle is not stuck; a busy operation has its own stuck clock',
       () async {
         final fake = FieldFake();
-        final container = _container(
-          fake,
-          config: const FieldReporterConfig(
-            allowDemoLink: true,
-            stuckAfter: Duration(milliseconds: 80),
+        var now = DateTime(2026, 10, 3, 12);
+        var state = const CommissionState(step: 1);
+        final reporter = FieldReporter(
+          api: fake,
+          enabled: true,
+          config: FieldReporterConfig(
+            now: () => now,
+            appInfo: () async => {
+              'version': '1.0.11',
+              'build': 'Build 50 / sample',
+            },
           ),
         );
-        final c = container.read(commissionProvider.notifier);
-        await c.prepare(_base, 'pw-00001');
-        await _until(() => fake.diags.isNotEmpty);
+        addTearDown(reporter.dispose);
+        reporter.attach(
+          input: () => FieldInput(
+            state: state,
+            env: const BackendEnvState(loaded: true),
+          ),
+        );
+        await reporter.ready;
+        reporter.onState();
         await _settle();
-        await Future<void>.delayed(const Duration(milliseconds: 200));
-        expect(fake.diags, hasLength(1), reason: 'once per step');
+        now = now.add(const Duration(minutes: 20));
+        reporter.checkStuck();
+        expect(fake.diags, isEmpty);
+        state = state.copy(busy: true);
+        reporter.onState();
+        await _settle();
+        reporter.checkStuck();
+        expect(
+          fake.diags,
+          isEmpty,
+          reason: 'idle time must not count against busy timeout',
+        );
+        now = now.add(const Duration(seconds: 121));
+        reporter.checkStuck();
+        await _settle();
         expect(fake.diags.single['trigger'], 'stuck');
-        expect((fake.diags.single['error'] as Map)['code'], 'STEP_STUCK');
-        expect(fake.reports.last['error_code'], 'STEP_STUCK');
-        expect(fake.reports.last['event'], 'error');
+        expect(fake.reports.last['app'], containsPair('version', '1.0.11'));
+        expect(
+          fake.reports.last['app'],
+          containsPair('build', 'Build 50 / sample'),
+        );
+        state = state.copy(busy: false);
+        reporter.onState();
+        await _settle();
+        expect(fake.reports.last['error_code'], isNull);
       },
     );
 
@@ -359,10 +397,13 @@ void main() {
 
   group('outbox', () {
     test('not logged in: queued and saved, sent after the login', () async {
-      final fake = FieldFake()..loggedIn = false;
+      final selectedBase = const BackendEnvState().base;
+      final fake = FieldFake()
+        ..loggedIn = false
+        ..originValue = selectedBase;
       final container = _container(fake);
       final c = container.read(commissionProvider.notifier);
-      await c.prepare(_base, '', offline: true);
+      await c.prepare(selectedBase, '', offline: true);
       await c.scan();
       await _settle();
       await c.requestHelp();
@@ -378,7 +419,7 @@ void main() {
       expect(saved.first, containsPair('kind', 'session'));
 
       final queued = reporter.outbox.length;
-      await c.login(_base, 'pw-00001');
+      await c.login(selectedBase, 'pw-00001');
       await _until(() => reporter.outbox.isEmpty);
       // The queued reports first (in seq order), then the package; the
       // login's own reports may come before it (reports go first).
@@ -547,11 +588,63 @@ void main() {
   });
 
   group('restart and demo', () {
+    test(
+      'backend switch during an upload never drains new reports to the old API',
+      () async {
+        final fake = FieldFake();
+        var state = const CommissionState(step: 1);
+        final reporter = FieldReporter(api: fake, enabled: true);
+        addTearDown(reporter.dispose);
+        reporter.attach(
+          input: () => FieldInput(
+            state: state,
+            env: const BackendEnvState(loaded: true),
+          ),
+        );
+        await reporter.ready;
+        final pending = Completer<Map<String, dynamic>>();
+        fake.pendingPost = pending;
+        reporter.onState();
+        await _settle();
+        expect(fake.uploads, hasLength(1));
+        reporter.onBackendChanged('https://new-backend.invalid');
+        state = state.copy(busy: true);
+        reporter.onState();
+        await _settle();
+        pending.complete({'ok': true});
+        await _settle();
+        expect(fake.uploads, hasLength(1));
+        expect(reporter.outbox, isNotEmpty);
+      },
+    );
+    test(
+      'abandoned help opens a new session and changed backend cannot send through old API',
+      () async {
+        final fake = FieldFake();
+        final container = _container(fake);
+        await _toStep7(container, fake);
+        final reporter = container.read(fieldReporterProvider);
+        await reporter.requestHelp();
+        final previous = reporter.help.sessionId;
+        reporter.end('abandoned');
+        expect(reporter.help.sessionId, isNull);
+        await reporter.requestHelp();
+        expect(reporter.help.sessionId, isNot(previous));
+        final before = fake.uploads.length;
+        reporter.onBackendChanged('https://new-backend.invalid');
+        await reporter.requestHelp();
+        expect(reporter.help.phase, FieldHelpPhase.needsConnection);
+        expect(fake.uploads.length, before);
+      },
+    );
+
     test('restore after a kill: same session id, seq continues', () async {
       final fake = FieldFake();
       final container = _container(fake);
       await _toStep7(container, fake);
       final reporter = container.read(fieldReporterProvider);
+      await reporter.requestHelp();
+      await _settle();
       final id = reporter.session!.id;
       final lastSeq = fake.reports.last['seq'] as int;
       container.dispose();
@@ -562,6 +655,7 @@ void main() {
       await c2.restore();
       final restored = container2.read(fieldReporterProvider).session!;
       expect(restored.id, id);
+      expect(container2.read(fieldHelpProvider).sessionId, id);
 
       await c2.resumeSaved();
       await _settle();

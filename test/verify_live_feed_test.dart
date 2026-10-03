@@ -584,6 +584,30 @@ void main() {
         verifyLiveText(busy: false, passed: false, feed: const [], ptus: 1),
         isNull,
       );
+      expect(
+        verifyLiveText(
+          busy: true,
+          passed: false,
+          feed: [
+            _entry(2, ok: false, reasons: const ['error_num=1']),
+            _entry(1),
+          ],
+          ptus: 1,
+        ),
+        verifyWaitingNormalText,
+      );
+      expect(
+        verifyLiveText(
+          busy: false,
+          passed: false,
+          feed: [
+            _entry(2, ok: false, reasons: const ['error_num=1']),
+          ],
+          ptus: 1,
+        ),
+        isNull,
+        reason: 'Final failures remain the page error, not a waiting message',
+      );
     });
   });
 
@@ -743,7 +767,9 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
 
-    testWidgets('a late row: red, its reason, the count kept', (tester) async {
+    testWidgets('a late row: collapsed details, neutral waiting, count kept', (
+      tester,
+    ) async {
       final fake = _Scripted(lateAt: {2}, holdAt: 3);
       final (container, c) = await _pageAtStep9(tester, fake);
       final (:run) = await _verifyUntil(tester, c, () => fake.held);
@@ -753,6 +779,14 @@ void main() {
       for (final id in ids) {
         final late = s.verifyFeed.firstWhere((e) => e.id == id);
         expect(late.ok, isFalse);
+        expect(
+          find.byKey(ValueKey('verify-feed-row-${late.serial}')),
+          findsNothing,
+        );
+        final details = find.byKey(ValueKey('verify-feed-details-$id'));
+        await tester.ensureVisible(details);
+        await tester.tap(details);
+        await tester.pump(const Duration(milliseconds: 350));
         expect(
           _text(tester, ValueKey('verify-feed-reason-${late.serial}')),
           '原因：延遲 75 秒',
@@ -784,7 +818,7 @@ void main() {
       }
       expect(
         _text(tester, const Key('verify-live-text')),
-        ids.length > 1 ? '每台資料未計入：延遲 75 秒' : '資料未計入：延遲 75 秒',
+        verifyWaitingNormalText,
       );
       final liveText = tester.widget<Text>(
         find.byKey(const Key('verify-live-text')),
@@ -793,7 +827,14 @@ void main() {
         liveText.style?.color,
         Theme.of(
           tester.element(find.byKey(const Key('verify-live-text'))),
-        ).colorScheme.error,
+        ).colorScheme.primary,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('verify-feedback')),
+          matching: find.textContaining('剩餘'),
+        ),
+        findsOneWidget,
       );
       await _finish(tester, fake, run);
       expect(container.read(commissionProvider).verified, isTrue);
@@ -913,37 +954,39 @@ void main() {
       expect(clip.heightFactor, 1);
     });
 
-    testWidgets('a poll with a row not counted: the dot runs red', (
-      tester,
-    ) async {
-      _platformCalls(tester);
-      Color? dot() => [
-        for (final paint in tester.widgetList<CustomPaint>(
-          find.descendant(
-            of: find.byKey(const Key('verify-flow')),
-            matching: find.byType(CustomPaint),
-          ),
-        ))
-          if (paint.painter case final VerifyFlowLinkPainter p
-              when p.progress != null)
-            p.dot,
-      ].firstOrNull;
-      final good = _entry(1);
-      await tester.pumpWidget(app(const []));
-      await tester.pumpWidget(app([good]));
-      await tester.pump(const Duration(milliseconds: 100));
-      final context = tester.element(find.byKey(const Key('verify-flow')));
-      expect(dot(), isNot(Theme.of(context).colorScheme.error));
-      await tester.pumpAndSettle();
-      final late = _entry(2, ok: false, reasons: const ['延遲 75 秒']);
-      await tester.pumpWidget(app([late, good]));
-      await tester.pump(const Duration(milliseconds: 100));
-      expect(dot(), Theme.of(context).colorScheme.error);
-      expect(
-        tester.widget<Text>(find.byKey(const Key('verify-live-text'))).data,
-        '資料未計入：延遲 75 秒',
-      );
-      await tester.pumpAndSettle();
-    });
+    testWidgets(
+      'a poll with a row not counted: neutral flow and hidden reason',
+      (tester) async {
+        _platformCalls(tester);
+        Color? dot() => [
+          for (final paint in tester.widgetList<CustomPaint>(
+            find.descendant(
+              of: find.byKey(const Key('verify-flow')),
+              matching: find.byType(CustomPaint),
+            ),
+          ))
+            if (paint.painter case final VerifyFlowLinkPainter p
+                when p.progress != null)
+              p.dot,
+        ].firstOrNull;
+        final good = _entry(1);
+        await tester.pumpWidget(app(const []));
+        await tester.pumpWidget(app([good]));
+        await tester.pump(const Duration(milliseconds: 100));
+        final context = tester.element(find.byKey(const Key('verify-flow')));
+        expect(dot(), isNot(Theme.of(context).colorScheme.error));
+        await tester.pumpAndSettle();
+        final late = _entry(2, ok: false, reasons: const ['延遲 75 秒']);
+        await tester.pumpWidget(app([late, good]));
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(dot(), Theme.of(context).colorScheme.primary);
+        expect(
+          tester.widget<Text>(find.byKey(const Key('verify-live-text'))).data,
+          verifyWaitingNormalText,
+        );
+        expect(find.textContaining('原因：延遲'), findsNothing);
+        await tester.pumpAndSettle();
+      },
+    );
   });
 }

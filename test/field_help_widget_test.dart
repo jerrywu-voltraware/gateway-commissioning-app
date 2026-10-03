@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:gateway_commissioning/application/commissioning_controller.dart';
+import 'package:gateway_commissioning/application/backend_environment.dart';
 import 'package:gateway_commissioning/application/field_report.dart';
 import 'package:gateway_commissioning/core/protocol.dart';
 import 'package:gateway_commissioning/data/contracts.dart';
@@ -40,7 +41,7 @@ class _Fake extends DemoSystem implements SessionInfo, OperatorInfo {
   bool get hasSession => true;
 
   @override
-  String? get origin => 'https://example.invalid';
+  String? get origin => const BackendEnvState().base;
 
   @override
   Future<Map<String, dynamic>> command(
@@ -67,6 +68,13 @@ class _Fake extends DemoSystem implements SessionInfo, OperatorInfo {
     if (mode == 'network') {
       throw GatewayFailure.network(endpoint: '$method $path', detail: 'x');
     }
+    if (path.endsWith('/support'))
+      return {
+        'state': 'pending',
+        'revision': 0,
+        'supported': true,
+        'events': [],
+      };
     return {'ok': true, 'duplicate': false};
   }
 }
@@ -86,6 +94,9 @@ Future<ProviderContainer> _pump(
   bool reporting = true,
 }) async {
   _phoneView(tester);
+  tester.platformDispatcher.accessibilityFeaturesTestValue =
+      const FakeAccessibilityFeatures(disableAnimations: true);
+  addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
   SharedPreferences.setMockInitialValues({'backend_environment': 'production'});
   await tester.pumpWidget(
     ProviderScope(
@@ -201,7 +212,7 @@ void main() {
       findsOneWidget,
       reason: 'title',
     );
-    expect(_status(tester), '✓ 已通知後台');
+    expect(_status(tester), fieldHelpSentText);
     expect(find.text('請唸給後台：'), findsOneWidget);
     // The lines to read out stay: site / gateway, MAC, step, error, firmware.
     expect(find.textContaining('閘道器'), findsWidgets);
@@ -227,6 +238,8 @@ void main() {
     expect(report['operator_name'], '王小明');
     // The sheet fits the phone's screen (no overflow, inside 360 wide).
     for (final key in ['field-help-status', 'field-help-read']) {
+      await tester.ensureVisible(find.byKey(Key(key)));
+      await tester.pumpAndSettle();
       final rect = tester.getRect(find.byKey(Key(key)));
       expect(rect.left, greaterThanOrEqualTo(0));
       expect(rect.right, lessThanOrEqualTo(360));
@@ -264,7 +277,7 @@ void main() {
     );
     await _tap(tester, appbar);
     await _wait(tester);
-    expect(_status(tester), '✓ 已通知後台');
+    expect(_status(tester), fieldHelpSentText);
     _noHelpCode(tester, fake);
     // Not logged in by name: null, still sent.
     expect(
@@ -314,7 +327,7 @@ void main() {
     fake.mode = 'ok';
     await _tap(tester, resend);
     await _wait(tester);
-    expect(_status(tester), '✓ 已通知後台');
+    expect(_status(tester), fieldHelpSentText);
     expect(fake.diags.last['trigger'], 'help');
     _noHelpCode(tester, fake);
   });

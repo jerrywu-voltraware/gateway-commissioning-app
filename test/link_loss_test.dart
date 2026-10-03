@@ -96,6 +96,9 @@ Future<ProviderContainer> pumpApp(
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = ratio;
+  tester.platformDispatcher.accessibilityFeaturesTestValue =
+      const FakeAccessibilityFeatures(disableAnimations: true);
+  addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
   SharedPreferences.setMockInitialValues(prefs);

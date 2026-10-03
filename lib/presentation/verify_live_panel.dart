@@ -7,8 +7,8 @@
 ///   selection click), nothing moves while waiting; under it the live
 ///   line (Semantics liveRegion: 「收到第 k 筆」, then 「資料正常上傳」 with a
 ///   tick that scales in once).
-/// - [VerifyFeedRows]: under each PTU, its last rows sliding in from the
-///   top — data time, V / A / °C, 「第 k 筆」 or, red, why not.
+/// - [VerifyFeedRows]: normal rows on the main view; uncounted rows and
+///   their reasons stay available in a collapsed details section.
 /// - [VerifyStepCard]: the step's card, green once the data passed.
 ///
 /// Presentation only: what the rows say comes from the verification's own
@@ -61,6 +61,9 @@ const verifyPassedText = '資料正常上傳';
 
 /// The live line while no row has come in yet.
 const verifyWaitingFirstText = '等待第一筆資料…';
+
+/// A rejected intermediate sample is not the final verification result.
+const verifyWaitingNormalText = '等待下一筆正常資料…';
 
 /// The flow's three stops.
 const verifyFlowLabels = ['PTU', '閘道器', '後台'];
@@ -146,6 +149,7 @@ String? verifyLiveText({
   if (!busy) return null;
   final rows = verifyFeedLastPoll(feed);
   if (rows.isEmpty) return verifyWaitingFirstText;
+  if (rows.any((e) => !e.ok)) return verifyWaitingNormalText;
   return verifyPollAnnounce(rows, ptus: ptus);
 }
 
@@ -274,7 +278,7 @@ class _VerifyLiveHeaderState extends State<VerifyLiveHeader>
           return CustomPaint(
             painter: VerifyFlowLinkPainter(
               line: widget.passed ? ok : colors.outline,
-              dot: _flowOk ? ok : colors.error,
+              dot: _flowOk ? ok : colors.primary,
               progress: _flow.isAnimating && p >= 0 && p <= 1 ? p : null,
             ),
           );
@@ -350,13 +354,7 @@ class _VerifyLiveHeaderState extends State<VerifyLiveHeader>
                               fontWeight: FontWeight.w700,
                             )
                           : theme.textTheme.bodyLarge?.copyWith(
-                              // A row of the newest poll not counted: red.
-                              color:
-                                  verifyFeedLastPoll(
-                                    widget.feed,
-                                  ).every((e) => e.ok)
-                                  ? colors.primary
-                                  : colors.error,
+                              color: colors.primary,
                               fontWeight: FontWeight.w600,
                             ),
                     ),
@@ -412,7 +410,7 @@ class VerifyFlowLinkPainter extends CustomPainter {
       old.line != line || old.dot != dot || old.progress != progress;
 }
 
-/// One PTU's rows, newest on top, each sliding in once.
+/// Normal samples stay visible; rejected samples are available on demand.
 class VerifyFeedRows extends StatelessWidget {
   const VerifyFeedRows({super.key, required this.entries});
 
@@ -424,10 +422,24 @@ class VerifyFeedRows extends StatelessWidget {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (final e in entries)
+        for (final e in entries.where((e) => e.ok))
           _SlideIn(
             key: ValueKey('verify-feed-slide-${e.serial}'),
             child: VerifyFeedRow(entry: e),
+          ),
+        if (entries.any((e) => !e.ok))
+          ExpansionTile(
+            key: ValueKey('verify-feed-details-${entries.first.id}'),
+            tilePadding: EdgeInsets.zero,
+            childrenPadding: EdgeInsets.zero,
+            title: Text(
+              '查看未計入資料（${entries.where((e) => !e.ok).length} 筆）',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            children: [
+              for (final e in entries.where((e) => !e.ok))
+                VerifyFeedRow(entry: e),
+            ],
           ),
       ],
     ),

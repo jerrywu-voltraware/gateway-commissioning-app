@@ -32,6 +32,8 @@ import '../core/mqtt_target.dart';
 import '../core/protocol.dart';
 import '../core/rescue_code.dart';
 import '../data/contracts.dart';
+import '../data/android_app_update.dart';
+import '../data/ios_app_version.dart';
 import '../data/network_watch.dart';
 import 'backend_environment.dart';
 import 'commissioning_controller.dart';
@@ -41,8 +43,25 @@ import 'network_check.dart';
 
 // ---- Build info (no package_info dependency) ----
 
-const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '1.0.0');
 const appBuild = String.fromEnvironment('APP_BUILD', defaultValue: 'dev');
+
+Future<Map<String, dynamic>> installedFieldAppInfo() async {
+  if (!kIsWeb && Platform.isAndroid) {
+    final info = await MethodChannelAndroidUpdate().installed();
+    return {
+      'version': info.versionName,
+      'build': 'Build ${info.versionCode} / $appBuild',
+    };
+  }
+  if (!kIsWeb && Platform.isIOS) {
+    final info = await readInstalledIosAppVersion();
+    return {
+      'version': info.versionName,
+      'build': 'Build ${info.buildNumber} / $appBuild',
+    };
+  }
+  return {'version': 'unknown', 'build': appBuild};
+}
 
 /// 09-28: `error_message` of the `status` report sent when 〔查看最近資料〕
 /// opens ([FieldReporter.noteRecentDataViewed]).
@@ -136,6 +155,7 @@ class FieldReporterConfig {
     this.allowDemoLink = false,
     this.now,
     this.phoneInfo,
+    this.appInfo,
     this.random,
     this.networkEvents,
   });
@@ -164,6 +184,7 @@ class FieldReporterConfig {
   final bool allowDemoLink;
   final DateTime Function()? now;
   final Future<Map<String, dynamic>> Function()? phoneInfo;
+  final Future<Map<String, dynamic>> Function()? appInfo;
   final Random? random;
 }
 
@@ -778,11 +799,13 @@ class FieldSession {
     required this.createdMs,
     this.seq = 0,
     this.diagSeq = 0,
+    this.helpRequested = false,
   });
 
   final String id;
   final int createdMs;
   int seq, diagSeq;
+  bool helpRequested;
 
   /// Runtime only: the step last entered and when.
   int? step;
@@ -801,6 +824,7 @@ class FieldSession {
     'seq': seq,
     'diag_seq': diagSeq,
     'created_ms': createdMs,
+    'help_requested': helpRequested,
   };
 
   static final _id = RegExp(r'^[0-9a-f]{32}$');
@@ -816,6 +840,7 @@ class FieldSession {
       seq: seq is int && seq >= 0 ? seq : 0,
       diagSeq: diag is int && diag >= 0 ? diag : 0,
       createdMs: created is int ? created : 0,
+      helpRequested: raw['help_requested'] == true,
     );
   }
 }
@@ -949,6 +974,9 @@ enum FieldHelpPhase {
   /// The backend has no rescue endpoints yet (404).
   unsupported,
 
+  /// The selected environment has not been connected yet.
+  needsConnection,
+
   /// Demo mode: nothing is sent.
   disabled,
 }
@@ -958,6 +986,7 @@ class FieldHelpState {
     this.phase = FieldHelpPhase.idle,
     this.reason = '',
     this.errorCode,
+    this.sessionId,
   });
 
   final FieldHelpPhase phase;
@@ -967,12 +996,14 @@ class FieldHelpState {
 
   /// The code sent with the help report (shown with the error line).
   final String? errorCode;
+  final String? sessionId;
 
   FieldHelpState copyWith({
     FieldHelpPhase? phase,
     String? reason,
     Object? errorCode = _keepValue,
   }) => FieldHelpState(
+    sessionId: sessionId,
     phase: phase ?? this.phase,
     reason: reason ?? this.reason,
     errorCode: identical(errorCode, _keepValue)
@@ -1060,7 +1091,9 @@ class FieldReporter {
        _now = config.now ?? DateTime.now,
        _random = config.random ?? _secureRandom(),
        journal = CommandJournal(now: config.now) {
-    _loaded = _enabled ? _load() : Future<void>.value();
+    _loaded = _enabled
+        ? Future.wait([_load(), _loadAppInfo()]).then((_) {})
+        : Future<void>.value();
     if (_enabled) {
       unawaited(_loadPhone());
       try {
@@ -1097,6 +1130,11 @@ class FieldReporter {
   FieldSession? _session;
   _Reported? _last;
   bool _lastBusy = false, _checkFailed = false, _assignFailed = false;
+  DateTime? _busySince;
+  Map<String, dynamic> _appInfo = const {
+    'version': 'unknown',
+    'build': appBuild,
+  };
   FieldFailure? _failure;
   FieldHelpState _help = const FieldHelpState();
 
@@ -1109,6 +1147,7 @@ class FieldReporter {
   Map<String, dynamic>? _installBody;
   Map<String, dynamic> _phone = const {};
   String? _lastOrigin;
+  String? _selectedOrigin;
 
   final Map<String, DateTime> _disabledUntil = {};
   DateTime? _backoffUntil;
@@ -1192,9 +1231,18 @@ class FieldReporter {
     } catch (_) {}
   }
 
+  Future<void> _loadAppInfo() async {
+    try {
+      _appInfo = await (_config.appInfo ?? installedFieldAppInfo)().timeout(
+        const Duration(seconds: 3),
+      );
+    } catch (_) {}
+  }
+
   Map<String, dynamic> _app(FieldInput i) => {
-    'version': _cut(appVersion, 32),
-    'build': _cut(appBuild, 40),
+    'support_protocol': 1,
+    'version': _cut(_appInfo['version'], 32),
+    'build': _cut(_appInfo['build'], 40),
     'env': i.env.environment.name,
     'backend_origin': _originFor(i),
   };
@@ -1216,7 +1264,7 @@ class FieldReporter {
   }
 
   String? _originFor(FieldInput i) {
-    final origin = _apiOrigin() ?? originOf(i.env.base);
+    final origin = _selectedOrigin ?? _apiOrigin() ?? originOf(i.env.base);
     if (origin != null) _lastOrigin = origin;
     return origin;
   }
@@ -1314,12 +1362,18 @@ class FieldReporter {
     _last = null;
     _rebootSeen = null;
     _lastBusy = false;
+    _busySince = null;
     _checkFailed = false;
     _assignFailed = false;
     _recent.clear();
     _startHeartbeat();
     _saveLive();
-    _setHelp(const FieldHelpState());
+    _setHelp(
+      session.helpRequested
+          ? FieldHelpState(phase: FieldHelpPhase.sent, sessionId: session.id)
+          : const FieldHelpState(),
+    );
+    if (session.helpRequested) _setHelp(_helpOutcome());
   }
 
   void _startHeartbeat() {
@@ -1335,8 +1389,8 @@ class FieldReporter {
     session.diagSentThisStep = false;
     session.stuck = false;
     _checkFailed = false;
+    _busySince = null;
     _stuckTimer?.cancel();
-    _stuckTimer = Timer(_config.stuckFor(step), checkStuck);
   }
 
   /// The running session for the progress file (null when none).
@@ -1360,6 +1414,7 @@ class FieldReporter {
         if (other != null && other.id == saved.id) {
           saved.seq = max(saved.seq, other.seq);
           saved.diagSeq = max(saved.diagSeq, other.diagSeq);
+          saved.helpRequested = saved.helpRequested || other.helpRequested;
         }
       } catch (_) {}
       if (_session != null || _disposed) return;
@@ -1395,7 +1450,8 @@ class FieldReporter {
     }
     _heartbeatTimer = _stuckTimer = _throttleTimer = _diagTimer = null;
     _saveLive();
-    _setHelp(const FieldHelpState());
+    // Keep the conversation accessible for a final field confirmation.
+    if (status != 'completed') _setHelp(const FieldHelpState());
     unawaited(flush());
   });
 
@@ -1480,6 +1536,17 @@ class FieldReporter {
       return;
     }
     if (session.step != step) _enterStep(session, step);
+    if (s.busy && _busySince == null) {
+      _busySince = _now();
+      session.diagSentThisStep = false;
+      _stuckTimer?.cancel();
+      _stuckTimer = Timer(_config.stuckFor(step), checkStuck);
+    } else if (!s.busy) {
+      _busySince = null;
+      session.stuck = false;
+      _stuckTimer?.cancel();
+      _stuckTimer = null;
+    }
     final cur = _current(i, step);
     final status = _status(i, cur.help);
     final busyStarted = s.busy && !_lastBusy;
@@ -1836,9 +1903,9 @@ class FieldReporter {
     final session = _session;
     if (!_enabled || session == null) return;
     final i = _read();
-    if (i == null) return;
+    if (i == null || !i.state.busy) return;
     final step = fieldStep(i);
-    final entered = session.stepEnteredAt;
+    final entered = _busySince;
     if (session.step != step || session.diagSentThisStep || entered == null) {
       return;
     }
@@ -1888,7 +1955,9 @@ class FieldReporter {
   /// dropped (never sent across environments).
   void onBackendChanged(String base) => _guard(() {
     if (!_enabled) return;
+    _setHelp(const FieldHelpState());
     final origin = originOf(base);
+    _selectedOrigin = origin;
     _lastOrigin = origin;
     _items.removeWhere((i) => i.origin != null && i.origin != origin);
     _early.removeWhere((i) => i.origin != null && i.origin != origin);
@@ -1922,15 +1991,24 @@ class FieldReporter {
     }
     try {
       await _loaded;
+      if (_selectedOrigin != null && _apiOrigin() != _selectedOrigin) {
+        _setHelp(const FieldHelpState(phase: FieldHelpPhase.needsConnection));
+        return;
+      }
       final i = _read();
       final session = _session ?? _startSession();
       final step = i == null ? (session.step ?? 1) : fieldStep(i);
       if (session.step != step) _enterStep(session, step);
       final base = i == null ? null : _baseCode(i);
       session.help = (step: step, base: base);
+      session.helpRequested = true;
       final code = base ?? RescueCode.helpOnly;
       _setHelp(
-        FieldHelpState(phase: FieldHelpPhase.sending, errorCode: code.wire),
+        FieldHelpState(
+          phase: FieldHelpPhase.sending,
+          errorCode: code.wire,
+          sessionId: session.id,
+        ),
       );
       if (i != null) {
         _report(session, 'help', i, status: 'help', code: code);
@@ -2195,6 +2273,7 @@ class FieldReporter {
   Future<void> _drain() async {
     await _loaded;
     if (_disposed) return;
+    if (_selectedOrigin != null && _apiOrigin() != _selectedOrigin) return;
     final now = _now();
     pruneOutbox(_items, now);
     if (_items.isEmpty) {
@@ -2218,6 +2297,13 @@ class FieldReporter {
     while (!_disposed) {
       final item = _next();
       if (item == null) break;
+      final activeOrigin = _apiOrigin();
+      if ((_selectedOrigin != null && activeOrigin != _selectedOrigin) ||
+          (api is SessionInfo &&
+              (!(api as SessionInfo).hasSession ||
+                  (item.origin != null && item.origin != activeOrigin)))) {
+        break;
+      }
       final body = {
         ...item.body,
         'queued_ms': max(0, _now().millisecondsSinceEpoch - item.createdMs),

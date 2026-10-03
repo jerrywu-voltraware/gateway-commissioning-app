@@ -7,19 +7,23 @@ import '../application/backend_environment.dart';
 import '../application/commissioning_controller.dart';
 import '../application/field_report.dart';
 import '../application/topology_settings.dart';
+import '../core/gateway_identity.dart';
+import 'field_support_panel.dart';
 
 /// 「請後台協助」: the help button (red box, AppBar) and the sheet's title.
 const fieldHelpLabel = '請後台協助';
 
 /// The help report reached the back office.
-const fieldHelpSentText = '✓ 已通知後台';
+const fieldHelpSentText = '✓ 求助已送達後台';
 
 /// Field rescue v1 (PLAN_2026-09-26_FIELD_RESCUE.md §5.3): asks the
 /// controller to send a help report and opens [FieldHelpSheet]. The sheet
 /// opens at once; the upload goes on behind it.
 Future<void> openFieldHelp(BuildContext context, WidgetRef ref) {
   final controller = ref.read(commissionProvider.notifier);
-  unawaited(controller.requestHelp());
+  if (ref.read(fieldHelpProvider).sessionId == null) {
+    unawaited(controller.requestHelp());
+  }
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
@@ -64,6 +68,10 @@ class FieldHelpSheet extends ConsumerWidget {
         colors.error,
       ),
       FieldHelpPhase.unsupported => ('後台版本還不支援線上通知，請直接唸下面的資訊。', colors.error),
+      FieldHelpPhase.needsConnection => (
+        '已切換後台，請先連線到新的後台，再重新求助。',
+        colors.error,
+      ),
       FieldHelpPhase.disabled => (
         '示範模式不會傳送，請直接唸下面的資訊。',
         colors.onSurfaceVariant,
@@ -94,6 +102,18 @@ class FieldHelpSheet extends ConsumerWidget {
                 onPressed: () =>
                     ref.read(commissionProvider.notifier).resendHelp(),
                 label: const Text('重新傳送'),
+              ),
+            ),
+          if (help.phase == FieldHelpPhase.sent && help.sessionId != null)
+            FieldSupportPanel(
+              key: ValueKey('${env.base}/${help.sessionId}'),
+              sessionId: help.sessionId!,
+              currentGatewayMac: gatewayWifiMac(
+                uid: state.config['gateway_uid'],
+                bleId: state.peer?.id,
+              ),
+              onRequestAgain: () => unawaited(
+                ref.read(commissionProvider.notifier).requestHelp(),
               ),
             ),
           const SizedBox(height: 12),
