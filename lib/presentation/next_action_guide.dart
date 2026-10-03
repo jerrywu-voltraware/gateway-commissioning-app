@@ -137,14 +137,17 @@ class NextActionHint extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = Theme.of(context).colorScheme.primary;
+    // Use a deeper gold on light surfaces so yellow text remains readable.
+    final color = Theme.of(context).brightness == Brightness.dark
+        ? const Color(0xFFFFD54F)
+        : const Color(0xFFA66A00);
     final caption = switch (text) {
       '檢查並開始' => '從這裡開始',
       '確認目標閘道器，再點「藍牙連線」' => '確認目標後，點下方連線',
       '確認目標閘道器，再點「開始開通」' => '連線完成，可以開始開通',
       _ => text,
     };
-    final arrow = Icon(Icons.arrow_downward_rounded, size: 16, color: color);
+    final arrow = Icon(Icons.arrow_downward_rounded, size: 18, color: color);
     return _HintPulse(
       active: active,
       child: Padding(
@@ -162,8 +165,8 @@ class NextActionHint extends StatelessWidget {
                 textAlign: alignEnd ? TextAlign.end : TextAlign.start,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: color,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
                   height: 1.35,
                 ),
               ),
@@ -196,7 +199,7 @@ class _HintPulseState extends State<_HintPulse>
   );
   late final Animation<double> _opacity = _pulse.drive(
     Tween<double>(
-      begin: 0.35,
+      begin: 0.65,
       end: 1,
     ).chain(CurveTween(curve: Curves.easeInOut)),
   );
