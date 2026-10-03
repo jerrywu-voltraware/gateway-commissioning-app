@@ -929,6 +929,16 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     });
   }
 
+  bool _waitingForWifiUpload(CommissionState s, NetworkCheck check) =>
+      s.config['choose_station'] == true &&
+      keptWifiSsid(s) != null &&
+      s.uploadWatch == UploadWatch.polling &&
+      check.wifiOk &&
+      check.targetOk &&
+      !check.testMode &&
+      !check.uploadPaused &&
+      !check.ready;
+
   /// One-thing screens (09-28): the one sentence at the top of every page
   /// but the done page — what this page asks, or what runs by itself.
   String _taskTitle(CommissionState s, BackendEnvState env) {
@@ -955,6 +965,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         if (wifiFormOfCheck(s) ||
             (_wifiStage && s.config['choose_station'] != true)) {
           return wifiTaskTitle;
+        }
+        if (_waitingForWifiUpload(s, networkCheck(state: s, env: env))) {
+          return 'Wi-Fi 已連線，正在確認資料上傳';
         }
         final current = _stationCurrent(s);
         return current != null && !_stationInput(s)
@@ -2315,6 +2328,21 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   ) {
     final theme = Theme.of(context);
     final muted = TextStyle(color: theme.colorScheme.onSurfaceVariant);
+    // A verified Wi-Fi change still needs time for uploads to resume.
+    // Keep the station decision hidden until polling succeeds or ends.
+    if (_waitingForWifiUpload(s, check)) {
+      return [
+        const LinearProgressIndicator(key: Key('wifi-upload-wait')),
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 16),
+          child: Text('Wi-Fi 已儲存，正在等待閘道器恢復資料上傳。確認完成後會自動顯示下一步，請稍候。'),
+        ),
+        TextButton(
+          onPressed: enabled ? _reviewNetworkCheck : null,
+          child: const Text('查看網路狀態'),
+        ),
+      ];
+    }
     // A gateway in service (its question, or a new number typed for it).
     final inService =
         s.config['choose_station'] == true || s.config['new_station'] == true;
