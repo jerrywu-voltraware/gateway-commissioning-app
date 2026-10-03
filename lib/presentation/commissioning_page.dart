@@ -24,6 +24,7 @@ import '../core/mqtt_target.dart';
 import '../core/star_allow_list.dart';
 import '../data/contracts.dart';
 import 'wifi_credentials_form.dart';
+import 'next_action_guide.dart';
 import 'connection_status_panel.dart';
 import 'direct_calibration_sheet.dart';
 import 'direct_mode_panel.dart';
@@ -1045,13 +1046,22 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     super.dispose();
   }
 
-  Widget button(String label, VoidCallback action, bool enabled) => Padding(
+  Widget button(
+    String label,
+    VoidCallback action,
+    bool enabled, {
+    bool guide = true,
+  }) => Padding(
     padding: const EdgeInsets.only(top: 16),
     child: SizedBox(
       width: double.infinity,
-      child: FilledButton(
-        onPressed: enabled ? action : null,
-        child: Text(label),
+      child: NextActionGuide.button(
+        active: guide,
+        hint: label,
+        child: FilledButton(
+          onPressed: enabled ? action : null,
+          child: Text(label),
+        ),
       ),
     ),
   );
@@ -1742,10 +1752,13 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                   color: colors.surface,
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                    child: FilledButton(
-                      key: const Key('check-next'),
-                      onPressed: state.busy ? null : checkNext.$2,
-                      child: Text(checkNext.$1),
+                    child: NextActionGuide.button(
+                      hint: checkNext.$1,
+                      child: FilledButton(
+                        key: const Key('check-next'),
+                        onPressed: state.busy ? null : checkNext.$2,
+                        child: Text(checkNext.$1),
+                      ),
                     ),
                   ),
                 ),
@@ -1813,48 +1826,57 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                             ),
                             const SizedBox(height: 6),
                           ],
-                          FilledButton(
-                            key: const Key('ptu-configure'),
-                            // Round 26: a gateway in test mode cannot scan;
-                            // the one action is to switch it back.
-                            onPressed: state.relinking
-                                ? null
-                                : state.testMode && !state.busy
-                                ? controller.leaveTestMode
-                                : step7LinkLost(state) ||
-                                      (!state.busy &&
-                                          configureLabel(state) == rescanLabel)
-                                ? () => controller.discover()
-                                : !state.busy &&
-                                      configureLabel(state) != scanningLabel &&
-                                      (state.resumePending ||
-                                          state.selected.isNotEmpty)
-                                ? () {
-                                    if (!state.resumePending &&
-                                        configureTargets(state).isEmpty) {
-                                      // Round 9: all assigned → 開始驗證 /
-                                      // 恢復監控, never a disabled dead end.
-                                      controller.finishConfigured();
-                                      return;
+                          NextActionGuide.button(
+                            active: !state.busy,
+                            hint: state.testMode
+                                ? leaveTestModeLabel
+                                : configureLabel(state),
+                            child: FilledButton(
+                              key: const Key('ptu-configure'),
+                              // Round 26: a gateway in test mode cannot scan;
+                              // the one action is to switch it back.
+                              onPressed: state.relinking
+                                  ? null
+                                  : state.testMode && !state.busy
+                                  ? controller.leaveTestMode
+                                  : step7LinkLost(state) ||
+                                        (!state.busy &&
+                                            configureLabel(state) ==
+                                                rescanLabel)
+                                  ? () => controller.discover()
+                                  : !state.busy &&
+                                        configureLabel(state) !=
+                                            scanningLabel &&
+                                        (state.resumePending ||
+                                            state.selected.isNotEmpty)
+                                  ? () {
+                                      if (!state.resumePending &&
+                                          configureTargets(state).isEmpty) {
+                                        // Round 9: all assigned → 開始驗證 /
+                                        // 恢復監控, never a disabled dead end.
+                                        controller.finishConfigured();
+                                        return;
+                                      }
+                                      final warning =
+                                          controller.starFullWarning;
+                                      if (warning != null) {
+                                        _snack(warning);
+                                        return;
+                                      }
+                                      if (state.resumePending) {
+                                        controller.resumeAssign();
+                                      } else {
+                                        controller.configurePtus(
+                                          skip: state.assignedOk,
+                                        );
+                                      }
                                     }
-                                    final warning = controller.starFullWarning;
-                                    if (warning != null) {
-                                      _snack(warning);
-                                      return;
-                                    }
-                                    if (state.resumePending) {
-                                      controller.resumeAssign();
-                                    } else {
-                                      controller.configurePtus(
-                                        skip: state.assignedOk,
-                                      );
-                                    }
-                                  }
-                                : null,
-                            child: Text(
-                              state.testMode && !state.busy
-                                  ? leaveTestModeLabel
-                                  : configureLabel(state),
+                                  : null,
+                              child: Text(
+                                state.testMode && !state.busy
+                                    ? leaveTestModeLabel
+                                    : configureLabel(state),
+                              ),
                             ),
                           ),
                           if (state.busy)
@@ -2427,12 +2449,15 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         padding: const EdgeInsets.only(top: 16),
         child: SizedBox(
           width: double.infinity,
-          child: FilledButton(
-            key: const Key('station-use'),
-            onPressed: enabled && !_stationWorking && canUse
-                ? () => _useStation(c)
-                : null,
-            child: Text(label),
+          child: NextActionGuide.button(
+            hint: label,
+            child: FilledButton(
+              key: const Key('station-use'),
+              onPressed: enabled && !_stationWorking && canUse
+                  ? () => _useStation(c)
+                  : null,
+              child: Text(label),
+            ),
           ),
         ),
       ),
@@ -3249,11 +3274,15 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       ),
     if (s.savedResume || s.savedProgress) const SizedBox(height: 16),
     if (s.savedResume) ...[
-      FilledButton.icon(
-        key: const Key('saved-resume'),
-        icon: const Icon(Icons.bluetooth_searching, size: 20),
-        onPressed: enabled ? () => _resumeSaved(c) : null,
-        label: const Text('重新連線並繼續'),
+      NextActionGuide.button(
+        active: s.step == 0,
+        hint: '重新連線並繼續',
+        child: FilledButton.icon(
+          key: const Key('saved-resume'),
+          icon: const Icon(Icons.bluetooth_searching, size: 20),
+          onPressed: enabled ? () => _resumeSaved(c) : null,
+          label: const Text('重新連線並繼續'),
+        ),
       ),
       const SizedBox(height: 16),
     ],
@@ -3345,23 +3374,28 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                 ),
               ),
             ),
-          button('檢查並開始', () async {
-            _flushBase();
-            final current = ref.read(backendEnvProvider);
-            if (current.environment == BackendEnv.local &&
-                !ref.read(envSwitchPolicyProvider).localAllowed) {
-              _snack(localUnavailableText);
-              return;
-            }
-            if (current.environment == BackendEnv.local) {
-              final error = localHostError(current.localHost);
-              if (error != null) {
-                _snack(error);
+          button(
+            '檢查並開始',
+            () async {
+              _flushBase();
+              final current = ref.read(backendEnvProvider);
+              if (current.environment == BackendEnv.local &&
+                  !ref.read(envSwitchPolicyProvider).localAllowed) {
+                _snack(localUnavailableText);
                 return;
               }
-            }
-            await c.prepare(current.base, '', offline: _offline);
-          }, enabled),
+              if (current.environment == BackendEnv.local) {
+                final error = localHostError(current.localHost);
+                if (error != null) {
+                  _snack(error);
+                  return;
+                }
+              }
+              await c.prepare(current.base, '', offline: _offline);
+            },
+            enabled,
+            guide: !s.savedResume && !localBlocked,
+          ),
         ];
       case 1:
         return [
@@ -4227,11 +4261,13 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: FilledButton.icon(
-                  key: const Key('done-finish'),
-                  onPressed: enabled ? () => _finishDone(c) : null,
-                  icon: const Icon(Icons.check, size: 20),
-                  label: const Text(doneFinishLabel),
+                child: NextActionGuide.button(
+                  child: FilledButton.icon(
+                    key: const Key('done-finish'),
+                    onPressed: enabled ? () => _finishDone(c) : null,
+                    icon: const Icon(Icons.check, size: 20),
+                    label: const Text(doneFinishLabel),
+                  ),
                 ),
               ),
             ],
@@ -4691,10 +4727,14 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           padding: const EdgeInsets.only(top: 8),
           child: SizedBox(
             width: double.infinity,
-            child: FilledButton.tonal(
-              key: const Key('check-sync'),
-              onPressed: enabled ? () => _syncGateway(explicit: true) : null,
-              child: Text('讓閘道器改送到${placeOf(check.syncTarget!)}（重新開機約 1 分鐘）'),
+            child: NextActionGuide.button(
+              active: !check.testMode,
+              hint: '確認資料上傳目的地',
+              child: FilledButton.tonal(
+                key: const Key('check-sync'),
+                onPressed: enabled ? () => _syncGateway(explicit: true) : null,
+                child: Text('讓閘道器改送到${placeOf(check.syncTarget!)}（重新開機約 1 分鐘）'),
+              ),
             ),
           ),
         ),
@@ -4705,10 +4745,14 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           padding: const EdgeInsets.only(top: 8),
           child: SizedBox(
             width: double.infinity,
-            child: FilledButton.tonal(
-              key: const Key('check-resume-upload'),
-              onPressed: enabled ? c.resumeUpload : null,
-              child: const Text(resumeUploadLabel),
+            child: NextActionGuide.button(
+              active: !check.wifiProblem && check.targetOk,
+              hint: resumeUploadLabel,
+              child: FilledButton.tonal(
+                key: const Key('check-resume-upload'),
+                onPressed: enabled ? c.resumeUpload : null,
+                child: const Text(resumeUploadLabel),
+              ),
             ),
           ),
         ),

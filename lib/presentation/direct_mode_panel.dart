@@ -10,6 +10,7 @@ import '../core/direct_mode.dart';
 import '../core/ptu_rssi.dart';
 import 'direct_calibration_sheet.dart';
 import 'direct_pick_activity.dart';
+import 'next_action_guide.dart';
 import 'field_help_sheet.dart';
 
 /// Step 7 (direct mode, firmware 1.7.20+): the PTU the gateway itself
@@ -1178,20 +1179,36 @@ class _DirectPickActionsState extends ConsumerState<DirectPickActions> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        Visibility(
+          visible:
+              enabled &&
+              ready &&
+              !settling &&
+              (identifySupported || confirmable),
+          maintainSize: true,
+          maintainState: true,
+          maintainAnimation: true,
+          child: NextActionHint(
+            confirmable ? '確認閃燈的是這台 PTU，再開始監控' : '點「辨識此樁」，確認現場燈號',
+          ),
+        ),
         Row(
           children: [
             Expanded(
               child: identifySupported
-                  ? FilledButton.tonalIcon(
-                      key: const Key('direct-identify'),
-                      icon: const Icon(Icons.lightbulb_outline, size: 20),
-                      style: FilledButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                  ? NextActionGuide.button(
+                      active: !confirmable,
+                      child: FilledButton.tonalIcon(
+                        key: const Key('direct-identify'),
+                        icon: const Icon(Icons.lightbulb_outline, size: 20),
+                        style: FilledButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                        ),
+                        onPressed: enabled && ready && !settling
+                            ? controller.identify
+                            : null,
+                        label: Text(settling ? directSettlingLabel : '辨識此樁'),
                       ),
-                      onPressed: enabled && ready && !settling
-                          ? controller.identify
-                          : null,
-                      label: Text(settling ? directSettlingLabel : '辨識此樁'),
                     )
                   : const SizedBox.shrink(),
             ),
@@ -1342,17 +1359,19 @@ class _DirectPickActionsState extends ConsumerState<DirectPickActions> {
             ),
           ),
         const SizedBox(height: 4),
-        FilledButton(
-          key: Key(ready ? 'direct-confirm' : 'direct-wait'),
-          onPressed: enabled && confirmable
-              ? controller.confirmDirectPick
-              : null,
-          child: Text(
-            !ready
-                ? directWaitingLabel
-                : confirmable
-                ? directConfirmLabel
-                : directIdentifyFirstLabel,
+        NextActionGuide.button(
+          child: FilledButton(
+            key: Key(ready ? 'direct-confirm' : 'direct-wait'),
+            onPressed: enabled && confirmable
+                ? controller.confirmDirectPick
+                : null,
+            child: Text(
+              !ready
+                  ? directWaitingLabel
+                  : confirmable
+                  ? directConfirmLabel
+                  : directIdentifyFirstLabel,
+            ),
           ),
         ),
       ],

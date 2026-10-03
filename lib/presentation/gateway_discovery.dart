@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'next_action_guide.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -2002,6 +2003,12 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
         hold != _Hold.disconnecting;
     final holdEpoch = _holdEpoch;
     final actionStyle = Theme.of(context).textTheme.labelLarge;
+    final guideConnect =
+        widget.enabled &&
+        _canSelect &&
+        !release &&
+        (selected || (_selectedId == null && _shown.length == 1));
+    final guideStart = _canStartPeer(peer, holdEpoch);
     const padding = EdgeInsets.symmetric(horizontal: 10);
     final bluetooth = release
         ? OutlinedButton.icon(
@@ -2028,20 +2035,23 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
                   : '斷開',
             ),
           )
-        : FilledButton.icon(
-            key: selected
-                ? const Key('gateway-link-identify')
-                : ValueKey('gateway-link-${peer.id}'),
-            style: FilledButton.styleFrom(
-              minimumSize: const Size(0, 48),
-              padding: padding,
-              textStyle: actionStyle,
+        : NextActionGuide.button(
+            active: guideConnect,
+            child: FilledButton.icon(
+              key: selected
+                  ? const Key('gateway-link-identify')
+                  : ValueKey('gateway-link-${peer.id}'),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(0, 48),
+                padding: padding,
+                textStyle: actionStyle,
+              ),
+              onPressed: widget.enabled && _canSelect
+                  ? () => _holdFromCard(peer)
+                  : null,
+              icon: const Icon(Icons.bluetooth, size: 20),
+              label: const Text('藍牙連線'),
             ),
-            onPressed: widget.enabled && _canSelect
-                ? () => _holdFromCard(peer)
-                : null,
-            icon: const Icon(Icons.bluetooth, size: 20),
-            label: const Text('藍牙連線'),
           );
     final identify = widget.onIdentify == null
         ? null
@@ -2059,17 +2069,19 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
                 ? () => _identify(peer)
                 : null,
           );
-    final start = FilledButton(
-      key: ValueKey('gateway-start-${peer.id}'),
-      style: FilledButton.styleFrom(
-        minimumSize: const Size(0, 48),
-        padding: padding,
-        textStyle: actionStyle,
+    final start = NextActionGuide.button(
+      child: FilledButton(
+        key: ValueKey('gateway-start-${peer.id}'),
+        style: FilledButton.styleFrom(
+          minimumSize: const Size(0, 48),
+          padding: padding,
+          textStyle: actionStyle,
+        ),
+        onPressed: _canStartPeer(peer, holdEpoch)
+            ? () => _connect(peer, expectedHoldEpoch: holdEpoch)
+            : null,
+        child: const Text('開始開通'),
       ),
-      onPressed: _canStartPeer(peer, holdEpoch)
-          ? () => _connect(peer, expectedHoldEpoch: holdEpoch)
-          : null,
-      child: const Text('開始開通'),
     );
     double widthOf(String label) {
       final painter = TextPainter(
@@ -2101,34 +2113,54 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     return Padding(
       key: ValueKey('gateway-actions-${peer.id}'),
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          if (constraints.maxWidth >= requiredWidth) {
-            return Row(
-              children: [
-                bluetooth,
-                if (identify != null) ...[const SizedBox(width: 8), identify],
-                const Spacer(),
-                const SizedBox(width: 8),
-                start,
-              ],
-            );
-          }
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Visibility(
+            visible: guideConnect || guideStart,
+            maintainSize: true,
+            maintainState: true,
+            maintainAnimation: true,
+            child: NextActionHint(
+              guideStart ? '確認目標閘道器，再點「開始開通」' : '確認目標閘道器，再點「藍牙連線」',
+            ),
+          ),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              if (constraints.maxWidth >= requiredWidth) {
+                return Row(
+                  children: [
+                    bluetooth,
+                    if (identify != null) ...[
+                      const SizedBox(width: 8),
+                      identify,
+                    ],
+                    const Spacer(),
+                    const SizedBox(width: 8),
+                    start,
+                  ],
+                );
+              }
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Flexible(child: bluetooth),
-                  const Spacer(),
-                  if (identify != null) ...[const SizedBox(width: 8), identify],
+                  Row(
+                    children: [
+                      Flexible(child: bluetooth),
+                      const Spacer(),
+                      if (identify != null) ...[
+                        const SizedBox(width: 8),
+                        identify,
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Align(alignment: Alignment.centerRight, child: start),
                 ],
-              ),
-              const SizedBox(height: 4),
-              Align(alignment: Alignment.centerRight, child: start),
-            ],
-          );
-        },
+              );
+            },
+          ),
+        ],
       ),
     );
   }
@@ -2399,6 +2431,11 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
               context,
             ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
           ),
+        if (widget.enabled &&
+            _canSelect &&
+            selectedId == null &&
+            _shown.length > 1)
+          const NextActionHint('先選擇要配置的閘道器卡片，再點「藍牙連線」'),
         if (_error != null)
           Text(
             _error!,
