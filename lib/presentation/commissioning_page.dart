@@ -569,15 +569,15 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   /// 「儲存並連接 WiFi」 for a new station: pre-checks (site, gateway) for an
   /// existing MAC before committing, so a conflict can offer 「取代舊機」 or
   /// 「下一個編號」 instead of just failing with a generic error.
-  Future<void> _saveWifi(bool wifiOnly) async {
+  Future<bool> _saveWifi(bool wifiOnly) async {
     final c = ref.read(commissionProvider.notifier);
     final peer = ref.read(commissionProvider).peer;
     // 1.0.0+15: the Wi-Fi-first form of a gateway not in service — the
     // Wi-Fi only; the station is chosen after it joined.
     if (wifiOnly && ref.read(commissionProvider).config[wifiFirstKey] == true) {
-      await c.configureWifiFirst(_ssid.text, _wifi.text);
+      final verified = await c.configureWifiFirst(_ssid.text, _wifi.text);
       _wifi.clear();
-      return;
+      return verified;
     }
     final site = int.tryParse(_site.text) ?? 0;
     var gw = int.tryParse(_gateway.text) ?? 0;
@@ -590,7 +590,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     // 上次「取代舊機」在後台已成功，只差寫入裝置失敗：直接以同樣的取代設定
     // 重試，不必再跳一次確認對話框（也不必重打一次 reserve-identity）。
     if (!wifiOnly && c.pendingReplace) {
-      await c.configureWifi(
+      final verified = await c.configureWifi(
         site,
         gw,
         _ssid.text,
@@ -598,7 +598,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         replaceExisting: true,
       );
       _wifi.clear();
-      return;
+      return verified;
     }
     // r33: 〔取代舊機〕 was chosen on the 「閘道器編號已被使用」 question;
     // 1.0.0+13: or the old gateway on 〔這台是來換掉壞掉的舊機〕 ([_swap]).
@@ -608,19 +608,19 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       // 1.0.0+13: asked once more right before it is sent — an old gateway
       // online (again) is never replaced (two gateways on one number).
       final online = await c.gatewayOnline(site, gw);
-      if (!mounted) return;
+      if (!mounted) return false;
       if (online == true) {
         await _replaceRefused(gw);
-        return;
+        return false;
       }
       // 換機 takes over only a gateway known to be offline (r33's
       // 〔取代舊機〕: unknown goes on as before).
       if (swapping && online == null) {
         _snack(swapNeedsNetworkText);
-        return;
+        return false;
       }
       _replaceSlot = null;
-      await c.configureWifi(
+      final verified = await c.configureWifi(
         site,
         gw,
         _ssid.text,
@@ -628,7 +628,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         replaceExisting: true,
       );
       _wifi.clear();
-      return;
+      return verified;
     }
     if (!wifiOnly) {
       final conflictMac = await c.conflictingMac(site, gw);
@@ -638,7 +638,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         // 1.0.0+13: an old gateway online is never replaced (unknown: as
         // before).
         final online = await c.gatewayOnline(site, gw);
-        if (!mounted) return;
+        if (!mounted) return false;
         final action = await showDialog<String>(
           context: context,
           builder: (context) => AlertDialog(
@@ -667,19 +667,19 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             ],
           ),
         );
-        if (action == null) return;
+        if (action == null) return false;
         if (action == 'next') {
           for (gw = gw + 1; gw <= kMaxGatewayId; gw++) {
             if (await c.conflictingMac(site, gw) == null) break;
           }
           if (gw > kMaxGatewayId) {
             _snack('站點 $site 的 1–$kMaxGatewayId 號閘道器都已被使用，請確認站點 ID 是否正確。');
-            return;
+            return false;
           }
           if (mounted) setState(() => _gateway.text = '$gw');
         }
-        if (!mounted) return;
-        await c.configureWifi(
+        if (!mounted) return false;
+        final verified = await c.configureWifi(
           site,
           gw,
           _ssid.text,
@@ -687,11 +687,11 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           replaceExisting: action == 'replace',
         );
         _wifi.clear();
-        return;
+        return verified;
       }
     }
-    await c.configureWifi(site, gw, _ssid.text, _wifi.text);
-    if (!mounted) return;
+    final verified = await c.configureWifi(site, gw, _ssid.text, _wifi.text);
+    if (!mounted) return false;
     _wifi.clear();
     final next = ref.read(commissionProvider);
     if (wifiOnly &&
@@ -706,6 +706,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       _autoCheckPaused = false;
       c.backToStationChoice();
     }
+    return verified;
   }
 
   bool _customWifi = false;
@@ -2471,8 +2472,12 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       enabled: enabled,
       canSave: wifiOnly || !_gatewaySubmitBlocked,
       onSave: () async {
-        await _saveWifi(wifiOnly);
+        final verified = await _saveWifi(wifiOnly);
         if (mounted) _toTop();
+        return verified;
+      },
+      onStorageError: () {
+        if (mounted) _snack('Wi-Fi 已連線，但無法記住密碼；下次請重新輸入。');
       },
       onNetworkEdited: () => _customWifi = true,
       saveLabel: saveWifiLabel,

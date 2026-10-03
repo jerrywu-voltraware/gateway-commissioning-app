@@ -4913,9 +4913,9 @@ class CommissioningController extends Notifier<CommissionState> {
   /// 1.0.0+15: 〔儲存並繼續〕 on the Wi-Fi-first form ([startWifiFix], a
   /// gateway not in service): set_wifi only, with the gateway's numbers as
   /// they are (nothing else is sent).
-  Future<void> configureWifiFirst(String ssid, String password) async {
-    if (state.config[wifiFirstKey] != true) return;
-    await configureWifi(site, gateway, ssid, password);
+  Future<bool> configureWifiFirst(String ssid, String password) async {
+    if (state.config[wifiFirstKey] != true) return false;
+    return configureWifi(site, gateway, ssid, password);
   }
 
   /// Back to the network check from the station choice or a Wi-Fi form.
@@ -5039,15 +5039,34 @@ class CommissioningController extends Notifier<CommissionState> {
     if (!newStation && !wifiOnly) await discover();
   }
 
-  Future<void> configureWifi(
+  /// Returns true only when this submitted password was used and verified.
+  /// Keeping an existing connection does not validate the supplied password.
+  Future<bool> configureWifi(
     int newSite,
     int newGateway,
     String ssid,
     String password, {
     bool replaceExisting = false,
   }) async {
-    await _configureWifi(newSite, newGateway, ssid, password, replaceExisting);
+    int? verifiedGeneration;
+    final peer = state.peer;
+    await _configureWifi(
+      newSite,
+      newGateway,
+      ssid,
+      password,
+      replaceExisting,
+      onPasswordVerified: (generation) => verifiedGeneration = generation,
+    );
+    final verified =
+        verifiedGeneration != null &&
+        verifiedGeneration == _generation &&
+        ref.mounted &&
+        state.peer == peer &&
+        !state.busy &&
+        state.error == null;
     _watchUploadIfPending();
+    return verified;
   }
 
   /// Auto-picks the gateway number for [forSite] so the user only enters the
@@ -5372,8 +5391,9 @@ class CommissioningController extends Notifier<CommissionState> {
     int newGateway,
     String ssid,
     String password,
-    bool replaceExisting,
-  ) => _run(_configureWifiLabel, 150, (generation) async {
+    bool replaceExisting, {
+    required void Function(int generation) onPasswordVerified,
+  }) => _run(_configureWifiLabel, 150, (generation) async {
     // 1.0.0+15: the Wi-Fi-first form ([startWifiFix]) of a gateway not in
     // service sends the Wi-Fi like 「保留站點」 (no identity, no backend).
     final wifiFirst = state.config[wifiFirstKey] == true;
@@ -5569,6 +5589,7 @@ class CommissioningController extends Notifier<CommissionState> {
         sinceSent: wifiDeadline.elapsed,
       );
     }
+    if (!keepWifi) onPasswordVerified(generation);
     // The MQTT client reconnects over the new Wi-Fi: an earlier
     // mqtt_connected no longer applies until it is read again (a kept
     // Wi-Fi without a restart never dropped it).

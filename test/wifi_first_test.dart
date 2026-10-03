@@ -11,6 +11,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:gateway_commissioning/application/backend_environment.dart';
@@ -98,6 +99,23 @@ class _Prober implements LocalBackendProber {
       const ProbeResult(ProbeOutcome.healthy, status: 200);
 }
 
+class _PendingWifiGateway extends _NewGateway {
+  final entered = Completer<void>();
+  final release = Completer<void>();
+
+  @override
+  Future<Map<String, dynamic>> command(
+    String op, [
+    Map<String, dynamic> params = const {},
+  ]) async {
+    if (op == 'set_wifi') {
+      if (!entered.isCompleted) entered.complete();
+      await release.future;
+    }
+    return super.command(op, params);
+  }
+}
+
 class _SignalGateway extends _NewGateway implements GatewaySignalSource {
   @override
   bool signalConnected = true;
@@ -150,8 +168,28 @@ String _shown(ProviderContainer container) =>
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  setUp(() => FlutterSecureStorage.setMockInitialValues({}));
 
   group('controller', () {
+    test(
+      'busy and cancelled submissions cannot authorize remembering a password',
+      () async {
+        final fake = _PendingWifiGateway();
+        final (container, c) = await _connected(fake);
+        addTearDown(container.dispose);
+        await c.startWifiFix();
+        final first = c.configureWifiFirst('Office-2G', 'test-only-password');
+        await fake.entered.future;
+        expect(
+          await c.configureWifiFirst('Other-2G', 'test-only-password'),
+          isFalse,
+        );
+        await c.cancel();
+        fake.release.complete();
+        expect(await first, isFalse);
+      },
+    );
+
     test('Wi-Fi failed, 〔重設 Wi-Fi〕: the Wi-Fi form (not the station), '
         'set_wifi only; joined → the check again → the station, whose '
         'identity is written with that Wi-Fi kept', () async {
@@ -175,7 +213,7 @@ void main() {
       expect(fake.commands, isNot(contains('set_wifi')));
 
       fake.paths.clear();
-      await c.configureWifiFirst('Office-2G', 'password123');
+      expect(await c.configureWifiFirst('Office-2G', 'password123'), isTrue);
       s = container.read(commissionProvider);
       expect(s.error, isNull);
       expect(fake.wifiParams, [
@@ -205,7 +243,10 @@ void main() {
       expect(wifiFirstJoined(s), isTrue);
 
       // The station: identity only, no Wi-Fi asked for or sent again.
-      await c.configureWifi(82, 1, 'Office-2G', '');
+      expect(
+        await c.configureWifi(82, 1, 'Office-2G', 'unverified-input'),
+        isFalse,
+      );
       s = container.read(commissionProvider);
       expect(s.error, isNull);
       expect(s.step, 3);
@@ -248,7 +289,7 @@ void main() {
       final (container, c) = await _connected(fake);
       addTearDown(container.dispose);
       await c.startWifiFix();
-      await c.configureWifiFirst('Xiaomi_WU', 'wrong-pass-1');
+      expect(await c.configureWifiFirst('Xiaomi_WU', 'wrong-pass-1'), isFalse);
       var s = container.read(commissionProvider);
       expect(s.error, wifiSetFailedText(15));
       expect(s.error, contains('密碼可能錯誤'));
@@ -648,6 +689,8 @@ void main() {
       expect(after.config['gateway_id'], before.config['gateway_id']);
       expect(after.ptus, before.ptus);
       expect(after.selected, before.selected);
+      await tester.ensureVisible(find.byKey(const Key('wifi-save')));
+      await tester.pumpAndSettle();
       expect(find.byKey(const Key('wifi-save')).hitTestable(), findsOneWidget);
       expect(fake.count('set_wifi'), 0);
       expect(fake.count('set_site_identity'), 0);

@@ -26,10 +26,10 @@ void main() {
     );
     final selected = container.read(commissionProvider).selected;
     await c.chooseStation(newStation: false, wifiOnly: true);
-    await c.configureWifi(81, 1, 'new-network', 'password123');
+    expect(await c.configureWifi(81, 1, 'new-network', 'password123'), isFalse);
     expect(container.read(commissionProvider).error, isNotNull);
     expect(demo.config['wifi_ssid'], 'old-network');
-    await c.configureWifi(80, 1, 'new-network', 'password123');
+    expect(await c.configureWifi(80, 1, 'new-network', 'password123'), isTrue);
     // The station is kept, so the upload is confirmed before step 6.
     var state = container.read(commissionProvider);
     expect(state.error, isNull);

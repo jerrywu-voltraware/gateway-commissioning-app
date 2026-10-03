@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../data/wifi_scan.dart';
+import '../data/wifi_password_store.dart';
 
 /// Phone Wi-Fi selection is local to this form: a result arriving after the
 /// installer leaves, changes gateway, or starts saving cannot change the SSID.
@@ -18,22 +19,42 @@ class WifiCredentialsForm extends StatefulWidget {
     required this.onSave,
     required this.onNetworkEdited,
     required this.saveLabel,
+    this.passwordStore = const SecureWifiPasswordStore(),
+    this.onStorageError,
   });
 
   final TextEditingController ssid;
   final TextEditingController password;
   final bool enabled;
   final bool canSave;
-  final VoidCallback onSave;
+
+  /// True only when this submission's password was used and verified.
+  final Future<bool> Function() onSave;
   final VoidCallback onNetworkEdited;
   final String saveLabel;
+  final WifiPasswordStore passwordStore;
+  final VoidCallback? onStorageError;
 
   @override
   State<WifiCredentialsForm> createState() => _WifiCredentialsFormState();
 }
 
-class _WifiCredentialsFormState extends State<WifiCredentialsForm> {
+class _WifiCredentialsFormState extends State<WifiCredentialsForm>
+    with WidgetsBindingObserver {
+  // Forgetting in a newer form also invalidates an older submission that has
+  // not reached storage yet. The store orders writes already in its queue.
+  static final _forgetEpochBySsid = <String, int>{};
   bool _reading = false;
+  bool _showPassword = false;
+  bool _rememberPassword = true;
+  bool _hasStoredPassword = false;
+  bool _saving = false;
+  bool _forgetting = false;
+  String? _passwordMessage;
+  String _selectedSsid = '';
+  int _passwordRequest = 0;
+  Timer? _passwordReadTimer;
+  int _passwordRevision = 0;
   bool _manual = false;
   bool _showSettings = false;
   String? _message;
@@ -43,16 +64,200 @@ class _WifiCredentialsFormState extends State<WifiCredentialsForm> {
       mounted && widget.enabled && request == _request;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _selectedSsid = widget.ssid.text;
+    widget.ssid.addListener(_ssidChanged);
+    widget.password.addListener(_passwordChanged);
+    unawaited(_loadPassword());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _passwordReadTimer?.cancel();
+    widget.ssid.removeListener(_ssidChanged);
+    widget.password.removeListener(_passwordChanged);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed && _showPassword) {
+      setState(() => _showPassword = false);
+    }
+  }
+
+  @override
   void didUpdateWidget(WifiCredentialsForm oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (!widget.enabled && oldWidget.enabled) {
       _request++;
       _reading = false;
+      _showPassword = false;
+      _passwordRequest++;
+      _passwordReadTimer?.cancel();
+    }
+    if (widget.password != oldWidget.password ||
+        widget.ssid != oldWidget.ssid) {
+      oldWidget.ssid.removeListener(_ssidChanged);
+      oldWidget.password.removeListener(_passwordChanged);
+      widget.ssid.addListener(_ssidChanged);
+      widget.password.addListener(_passwordChanged);
+      _selectedSsid = widget.ssid.text;
+      _hasStoredPassword = false;
+      _passwordMessage = null;
+      _passwordRequest++;
+      _showPassword = false;
+      unawaited(_loadPassword());
+    } else if (widget.enabled && !oldWidget.enabled && !_saving) {
+      unawaited(_loadPassword());
+    }
+  }
+
+  void _passwordChanged() => _passwordRevision++;
+
+  void _ssidChanged() {
+    if (widget.ssid.text == _selectedSsid) return;
+    _selectedSsid = widget.ssid.text;
+    widget.password.clear();
+    setState(() {
+      _showPassword = false;
+      _hasStoredPassword = false;
+      _passwordMessage = null;
+    });
+    unawaited(_loadPassword());
+  }
+
+  Future<void> _loadPassword() async {
+    _passwordReadTimer?.cancel();
+    final request = ++_passwordRequest;
+    final ssid = widget.ssid.text;
+    final revision = _passwordRevision;
+    if (!widget.enabled || _saving || _forgetting || ssid.isEmpty) return;
+    bool current() =>
+        mounted &&
+        widget.enabled &&
+        !_saving &&
+        !_forgetting &&
+        request == _passwordRequest &&
+        widget.ssid.text == ssid;
+    final timer = Timer(const Duration(seconds: 3), () {
+      if (!current()) return;
+      _passwordRequest++;
+      setState(() => _passwordMessage = '讀取已存密碼逾時，請手動輸入。');
+    });
+    _passwordReadTimer = timer;
+    try {
+      final saved = await widget.passwordStore.read(ssid);
+      if (!current()) return;
+      setState(() {
+        _hasStoredPassword = saved != null;
+        if (saved != null &&
+            _rememberPassword &&
+            widget.password.text.isEmpty &&
+            revision == _passwordRevision) {
+          widget.password.text = saved;
+          _showPassword = false;
+          _passwordMessage = '已帶入這支手機記住的密碼，可按眼睛查看或手動修改。';
+        }
+      });
+    } catch (_) {
+      if (!current()) return;
+      setState(() => _passwordMessage = '暫時無法讀取已存密碼，請手動輸入。');
+    } finally {
+      timer.cancel();
+      if (identical(_passwordReadTimer, timer)) _passwordReadTimer = null;
+    }
+  }
+
+  Future<void> _forgetPassword({required bool clearInput}) async {
+    if (_forgetting || _saving || !widget.enabled) return;
+    final ssid = widget.ssid.text;
+    _passwordRequest++;
+    _passwordReadTimer?.cancel();
+    _forgetEpochBySsid[ssid] = (_forgetEpochBySsid[ssid] ?? 0) + 1;
+    setState(() {
+      _forgetting = true;
+      _showPassword = false;
+      if (!clearInput) _rememberPassword = false;
+    });
+    try {
+      if (ssid.isNotEmpty) await widget.passwordStore.delete(ssid);
+      if (!mounted || widget.ssid.text != ssid) return;
+      setState(() {
+        _hasStoredPassword = false;
+        _rememberPassword = clearInput;
+        if (clearInput) widget.password.clear();
+        _passwordMessage = '已忘記這個 Wi-Fi 的已存密碼。';
+      });
+    } catch (_) {
+      if (mounted && widget.ssid.text == ssid) {
+        setState(() {
+          _passwordMessage = '舊密碼尚未刪除，請重試；本次不會記住新密碼。';
+          _rememberPassword = false;
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _forgetting = false);
+    }
+  }
+
+  Future<void> _save() async {
+    if (_saving ||
+        _forgetting ||
+        _reading ||
+        !widget.enabled ||
+        !widget.canSave) {
+      return;
+    }
+    // The parent clears its controllers and can navigate away on success.
+    // This submission owns its immutable snapshot until the verified result.
+    final ssid = widget.ssid.text;
+    final password = widget.password.text;
+    final remember = _rememberPassword;
+    final forgetEpoch = _forgetEpochBySsid[ssid] ?? 0;
+    final store = widget.passwordStore;
+    final onSave = widget.onSave;
+    final onStorageError = widget.onStorageError;
+    _passwordRequest++;
+    _passwordReadTimer?.cancel();
+    setState(() {
+      _saving = true;
+      _showPassword = false;
+    });
+    try {
+      final verified = await onSave();
+      if (verified &&
+          remember &&
+          ssid.isNotEmpty &&
+          password.isNotEmpty &&
+          (_forgetEpochBySsid[ssid] ?? 0) == forgetEpoch) {
+        try {
+          await store.write(ssid, password);
+          if (mounted && widget.ssid.text == ssid) {
+            setState(() => _hasStoredPassword = true);
+          }
+        } catch (_) {
+          onStorageError?.call();
+          if (mounted) {
+            setState(() => _passwordMessage = 'Wi-Fi 已連線，但無法記住密碼；下次請重新輸入。');
+          }
+        }
+      }
+    } catch (_) {
+      if (mounted) setState(() => _passwordMessage = '連線尚未完成，未記住本次密碼。');
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
   void _select(String ssid) {
-    if (widget.ssid.text != ssid) widget.password.clear();
+    if (widget.ssid.text != ssid) {
+      widget.password.clear();
+      _showPassword = false;
+    }
     widget.ssid.text = ssid;
     widget.onNetworkEdited();
   }
@@ -62,6 +267,7 @@ class _WifiCredentialsFormState extends State<WifiCredentialsForm> {
     FocusScope.of(context).unfocus();
     setState(() {
       _reading = true;
+      _showPassword = false;
       _message = null;
       _showSettings = false;
     });
@@ -74,7 +280,7 @@ class _WifiCredentialsFormState extends State<WifiCredentialsForm> {
         } else {
           _select(ssid);
           _manual = false;
-          _message = '已帶入手機的 Wi-Fi 名稱，請確認此網路支援 2.4 GHz，再輸入密碼。';
+          _message = '已帶入手機的 Wi-Fi 名稱，請確認此網路支援 2.4 GHz，並確認下方密碼。';
         }
       });
     } catch (error) {
@@ -107,11 +313,11 @@ class _WifiCredentialsFormState extends State<WifiCredentialsForm> {
 
   @override
   Widget build(BuildContext context) {
-    final enabled = widget.enabled && !_reading;
+    final enabled = widget.enabled && !_reading && !_saving && !_forgetting;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text('先讓手機連上現場要使用的 Wi-Fi，再帶入名稱。密碼需自行輸入。'),
+        const Text('帶入手機目前的 Wi-Fi 名稱後，輸入密碼或使用已記住的密碼。'),
         const SizedBox(height: 8),
         OutlinedButton.icon(
           key: const Key('wifi-use-phone'),
@@ -140,7 +346,6 @@ class _WifiCredentialsFormState extends State<WifiCredentialsForm> {
             enableSuggestions: false,
             decoration: const InputDecoration(labelText: 'Wi-Fi 名稱（SSID）'),
             onChanged: (_) {
-              widget.password.clear();
               widget.onNetworkEdited();
             },
           )
@@ -167,17 +372,62 @@ class _WifiCredentialsFormState extends State<WifiCredentialsForm> {
         ),
         const SizedBox(height: 8),
         TextField(
+          key: const Key('wifi-password'),
           controller: widget.password,
           enabled: enabled,
-          obscureText: true,
+          obscureText: !_showPassword,
           autocorrect: false,
           enableSuggestions: false,
-          decoration: const InputDecoration(labelText: 'Wi-Fi 密碼'),
+          decoration: InputDecoration(
+            labelText: 'Wi-Fi 密碼',
+            suffixIcon: IconButton(
+              key: const Key('wifi-password-visibility'),
+              tooltip: _showPassword ? '隱藏密碼' : '顯示密碼',
+              onPressed: enabled
+                  ? () => setState(() => _showPassword = !_showPassword)
+                  : null,
+              icon: Icon(
+                _showPassword ? Icons.visibility_off : Icons.visibility,
+              ),
+            ),
+          ),
         ),
+        CheckboxListTile(
+          key: const Key('wifi-remember-password'),
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+          visualDensity: VisualDensity.compact,
+          controlAffinity: ListTileControlAffinity.leading,
+          title: const Text('記住密碼（僅限這支手機）'),
+          value: _rememberPassword,
+          onChanged: enabled
+              ? (value) {
+                  if (value == true) {
+                    setState(() => _rememberPassword = true);
+                    unawaited(_loadPassword());
+                  } else {
+                    unawaited(_forgetPassword(clearInput: false));
+                  }
+                }
+              : null,
+        ),
+        if (_passwordMessage != null)
+          Text(_passwordMessage!, key: const Key('wifi-password-message')),
+        if (_hasStoredPassword)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              key: const Key('wifi-forget-password'),
+              onPressed: enabled
+                  ? () => _forgetPassword(clearInput: true)
+                  : null,
+              child: const Text('忘記已存密碼'),
+            ),
+          ),
         const SizedBox(height: 22),
         FilledButton(
           key: const Key('wifi-save'),
-          onPressed: enabled && widget.canSave ? widget.onSave : null,
+          onPressed: enabled && widget.canSave ? _save : null,
           child: Text(widget.saveLabel),
         ),
       ],

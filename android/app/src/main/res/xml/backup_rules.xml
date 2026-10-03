@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- flutter_secure_storage 9.2.4 values and the device-bound wrapped key. -->
+    <exclude domain="sharedpref" path="FlutterSecureStorage.xml" />
+    <exclude domain="sharedpref" path="FlutterSecureKeyStorage.xml" />
+</full-backup-content>

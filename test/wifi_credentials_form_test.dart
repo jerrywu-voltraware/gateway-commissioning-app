@@ -5,6 +5,33 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gateway_commissioning/presentation/wifi_credentials_form.dart';
+import 'package:gateway_commissioning/data/wifi_password_store.dart';
+
+class FakePasswordStore implements WifiPasswordStore {
+  final values = <String, String>{};
+  final writes = <String>[];
+  Completer<String?>? pendingRead;
+  bool failRead = false;
+  bool failWrite = false;
+
+  @override
+  Future<String?> read(String ssid) async {
+    if (failRead) throw StateError('test-only storage error');
+    final pending = pendingRead;
+    pendingRead = null;
+    return pending == null ? values[ssid] : await pending.future;
+  }
+
+  @override
+  Future<void> write(String ssid, String password) async {
+    if (failWrite) throw StateError('test-only storage error');
+    writes.add(ssid);
+    values[ssid] = password;
+  }
+
+  @override
+  Future<void> delete(String ssid) async => values.remove(ssid);
+}
 
 void main() {
   const wifi = MethodChannel('voltraware/wifi');
@@ -23,6 +50,8 @@ void main() {
   late int saves;
   late int permission;
   late int service;
+  late FakePasswordStore store;
+  late int storageErrors;
   String? current;
   PlatformException? failure;
   Completer<String?>? pending;
@@ -36,6 +65,8 @@ void main() {
     failure = null;
     pending = null;
     calls = [];
+    store = FakePasswordStore();
+    storageErrors = 0;
     messenger.setMockMethodCallHandler(permissions, (call) async {
       calls.add(call.method);
       if (call.method == 'checkServiceStatus') return service;
@@ -64,7 +95,11 @@ void main() {
     password.dispose();
   });
 
-  Future<void> pump(WidgetTester tester, {bool enabled = true}) async {
+  Future<void> pump(
+    WidgetTester tester, {
+    bool enabled = true,
+    Future<bool> Function()? onSave,
+  }) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -74,7 +109,14 @@ void main() {
               password: password,
               enabled: enabled,
               canSave: true,
-              onSave: () => saves++,
+              onSave:
+                  onSave ??
+                  () async {
+                    saves++;
+                    return true;
+                  },
+              passwordStore: store,
+              onStorageError: () => storageErrors++,
               onNetworkEdited: () => edits++,
               saveLabel: '儲存並連接 Wi-Fi',
             ),
@@ -91,6 +133,220 @@ void main() {
     await tester.tap(finder);
     await tester.pumpAndSettle();
   }
+
+  bool isPasswordHidden(WidgetTester tester) => tester
+      .widget<TextField>(find.byKey(const Key('wifi-password')))
+      .obscureText;
+
+  testWidgets('remembered password loads only for the exact SSID', (
+    tester,
+  ) async {
+    store.values['Old-2G'] = 'test-only saved';
+    password.clear();
+    await pump(tester);
+    expect(password.text, 'test-only saved');
+    expect(isPasswordHidden(tester), isTrue);
+    expect(find.textContaining('已帶入這支手機記住的密碼'), findsOneWidget);
+    await tap(tester, 'wifi-manual');
+    await tester.enterText(find.byKey(const Key('wifi-ssid')), 'old-2g');
+    await tester.pumpAndSettle();
+    expect(password.text, isEmpty);
+    await tester.enterText(find.byKey(const Key('wifi-ssid')), 'Old-2G');
+    await tester.pumpAndSettle();
+    expect(password.text, 'test-only saved');
+    expect(saves, 0);
+  }, variant: platforms);
+
+  testWidgets('late stored password never overwrites manual edits', (
+    tester,
+  ) async {
+    password.clear();
+    final read = Completer<String?>();
+    store.pendingRead = read;
+    await pump(tester);
+    await tester.enterText(
+      find.byKey(const Key('wifi-password')),
+      'test-only typed',
+    );
+    read.complete('test-only saved');
+    await tester.pumpAndSettle();
+    expect(password.text, 'test-only typed');
+  }, variant: platforms);
+
+  for (final change in ['network', 'disable', 'dispose']) {
+    testWidgets('late stored password is discarded after $change', (
+      tester,
+    ) async {
+      password.clear();
+      final read = Completer<String?>();
+      store.pendingRead = read;
+      await pump(tester);
+      if (change == 'network') {
+        await tap(tester, 'wifi-manual');
+        await tester.enterText(
+          find.byKey(const Key('wifi-ssid')),
+          'Different-2G',
+        );
+      } else if (change == 'disable') {
+        await pump(tester, enabled: false);
+        await pump(tester);
+      } else {
+        await tester.pumpWidget(const SizedBox());
+      }
+      read.complete('test-only stale');
+      await tester.pumpAndSettle();
+      expect(password.text, isEmpty);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets(
+    'verified submission stores its snapshot even after clearing and leaving',
+    (tester) async {
+      final saved = Completer<bool>();
+      await pump(tester, onSave: () => saved.future);
+      await tap(tester, 'wifi-save');
+      expect(store.writes, isEmpty);
+      password.clear();
+      await tester.pumpWidget(const SizedBox());
+      ssid.text = 'Next-2G';
+      saved.complete(true);
+      await tester.pumpAndSettle();
+      expect(store.values['Old-2G'], 'old-password');
+      expect(store.values['Next-2G'], isNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'unverified or cancelled submission preserves the saved password',
+    (tester) async {
+      store.values['Old-2G'] = 'test-only valid';
+      await pump(tester, onSave: () async => false);
+      await tap(tester, 'wifi-save');
+      expect(store.writes, isEmpty);
+      expect(store.values['Old-2G'], 'test-only valid');
+    },
+  );
+
+  testWidgets(
+    'forget deletes the saved password and invalidates in-flight reads',
+    (tester) async {
+      store.values['Old-2G'] = 'test-only saved';
+      password.clear();
+      await pump(tester);
+      await pump(tester, enabled: false);
+      final read = Completer<String?>();
+      store.pendingRead = read;
+      await pump(tester);
+      await tap(tester, 'wifi-forget-password');
+      read.complete('test-only stale');
+      await tester.pumpAndSettle();
+      expect(password.text, isEmpty);
+      expect(store.values, isEmpty);
+      expect(find.byKey(const Key('wifi-forget-password')), findsNothing);
+    },
+  );
+
+  testWidgets('turning remember off deletes the record but keeps this input', (
+    tester,
+  ) async {
+    store.values['Old-2G'] = 'test-only saved';
+    await pump(tester);
+    await tap(tester, 'wifi-remember-password');
+    expect(store.values, isEmpty);
+    expect(password.text, 'old-password');
+    await tap(tester, 'wifi-save');
+    expect(store.writes, isEmpty);
+  });
+
+  testWidgets(
+    'storage failures keep manual entry usable and never expose exceptions',
+    (tester) async {
+      store.failRead = true;
+      await pump(tester);
+      expect(find.textContaining('請手動輸入'), findsWidgets);
+      expect(find.textContaining('test-only storage error'), findsNothing);
+      store.failWrite = true;
+      await tap(tester, 'wifi-save');
+      expect(storageErrors, 1);
+      expect(find.textContaining('無法記住密碼'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'password visibility changes without changing credentials or submitting',
+    (tester) async {
+      password.text = '  test-only 中文 !  ';
+      await pump(tester);
+      expect(isPasswordHidden(tester), isTrue);
+      expect(find.byTooltip('顯示密碼'), findsOneWidget);
+      await tap(tester, 'wifi-password-visibility');
+      expect(isPasswordHidden(tester), isFalse);
+      expect(find.byTooltip('隱藏密碼'), findsOneWidget);
+      expect(password.text, '  test-only 中文 !  ');
+      await tap(tester, 'wifi-password-visibility');
+      expect(isPasswordHidden(tester), isTrue);
+      expect(password.text, '  test-only 中文 !  ');
+      expect(edits, 0);
+      expect(saves, 0);
+      expect(calls, isEmpty);
+    },
+    variant: platforms,
+  );
+
+  testWidgets(
+    'leaving the app or disabling the form hides a revealed password',
+    (tester) async {
+      await pump(tester);
+      await tap(tester, 'wifi-password-visibility');
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      await tester.pump();
+      expect(isPasswordHidden(tester), isTrue);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      expect(isPasswordHidden(tester), isTrue);
+      await tap(tester, 'wifi-password-visibility');
+      await pump(tester, enabled: false);
+      expect(isPasswordHidden(tester), isTrue);
+      expect(
+        tester
+            .widget<IconButton>(
+              find.byKey(const Key('wifi-password-visibility')),
+            )
+            .onPressed,
+        isNull,
+      );
+      await pump(tester);
+      expect(isPasswordHidden(tester), isTrue);
+      expect(password.text, 'old-password');
+    },
+    variant: platforms,
+  );
+
+  testWidgets(
+    'changing network or reopening the form resets password visibility',
+    (tester) async {
+      await pump(tester);
+      await tap(tester, 'wifi-password-visibility');
+      await tap(tester, 'wifi-manual');
+      await tester.enterText(find.byKey(const Key('wifi-ssid')), 'New-2G');
+      await tester.pumpAndSettle();
+      expect(isPasswordHidden(tester), isTrue);
+      expect(password.text, isEmpty);
+      await tester.enterText(
+        find.byKey(const Key('wifi-password')),
+        'test-only',
+      );
+      await tap(tester, 'wifi-password-visibility');
+      await tester.pumpWidget(const SizedBox());
+      await pump(tester);
+      expect(isPasswordHidden(tester), isTrue);
+      expect(password.text, 'test-only');
+    },
+    variant: platforms,
+  );
 
   testWidgets(
     'phone Wi-Fi requires an explicit choice, preserves SSID, and clears old password',
