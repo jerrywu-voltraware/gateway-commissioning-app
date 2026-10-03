@@ -45,7 +45,7 @@ class _NextActionGuideState extends State<NextActionGuide>
 
   void _start() {
     _pulse.stop();
-    // Three slow breaths, then a steady outline. Background and reduced
+    // Three slow breaths, then the original button. Background and reduced
     // motion settings never keep a repeating animation alive.
     if (widget.active && !_reduceMotion) {
       _pulse.forward(from: 0);
@@ -85,42 +85,25 @@ class _NextActionGuideState extends State<NextActionGuide>
 
   @override
   Widget build(BuildContext context) {
-    // Contrast with the blue action buttons instead of resembling a shadow.
-    final color = Theme.of(context).brightness == Brightness.dark
-        ? const Color(0xFFFFD54F)
-        : const Color(0xFFF59E0B);
-    final glow = AnimatedBuilder(
+    final action = AnimatedBuilder(
       animation: _pulse,
       child: widget.child,
       builder: (context, child) {
-        final breath = _pulse.isAnimating
+        final breath = widget.active && !_reduceMotion && _pulse.isAnimating
             ? (1 - math.cos(_pulse.value * math.pi * 6)) / 2
-            : 0.35;
-        return DecoratedBox(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
-            boxShadow: widget.active
-                ? [
-                    BoxShadow(
-                      color: color.withValues(alpha: 0.30 + breath * 0.30),
-                      blurRadius: 8 + breath * 10,
-                      spreadRadius: 2 + breath * 3,
-                    ),
-                  ]
-                : const [],
+            : 0.0;
+        // Tint only the existing pixels: preserve the exact button shape,
+        // size and hit area, with no border or shadow outside the action.
+        return ColorFiltered(
+          colorFilter: ColorFilter.mode(
+            Colors.white.withValues(alpha: breath * 0.12),
+            BlendMode.srcATop,
           ),
-          child: DecoratedBox(
-            position: DecorationPosition.foreground,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-              border: widget.active ? Border.all(color: color, width: 3) : null,
-            ),
-            child: child,
-          ),
+          child: child,
         );
       },
     );
-    if (widget.hint == null) return glow;
+    if (widget.hint == null) return action;
     // Keep the child's element in place when guidance switches off.
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -134,26 +117,52 @@ class _NextActionGuideState extends State<NextActionGuide>
             maintainAnimation: true,
             child: NextActionHint(widget.hint!),
           ),
-        glow,
+        action,
       ],
     );
   }
 }
 
 class NextActionHint extends StatelessWidget {
-  const NextActionHint(this.text, {super.key});
+  const NextActionHint(this.text, {super.key, this.alignEnd = false});
 
   final String text;
+  final bool alignEnd;
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(top: 6, bottom: 8),
-    child: Text(
-      '下一步：$text',
-      style: Theme.of(context).textTheme.labelLarge?.copyWith(
-        color: Theme.of(context).colorScheme.primary,
-        fontWeight: FontWeight.w700,
+  Widget build(BuildContext context) {
+    final color = Theme.of(context).colorScheme.primary;
+    final caption = switch (text) {
+      '檢查並開始' => '從這裡開始',
+      '確認目標閘道器，再點「藍牙連線」' => '確認目標後，點下方連線',
+      '確認目標閘道器，再點「開始開通」' => '連線完成，可以開始開通',
+      _ => text,
+    };
+    final arrow = Icon(Icons.arrow_downward_rounded, size: 16, color: color);
+    return Padding(
+      padding: const EdgeInsets.only(top: 4, bottom: 8),
+      child: Row(
+        mainAxisAlignment: alignEnd
+            ? MainAxisAlignment.end
+            : MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (!alignEnd) ...[arrow, const SizedBox(width: 6)],
+          Flexible(
+            child: Text(
+              caption,
+              textAlign: alignEnd ? TextAlign.end : TextAlign.start,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: color,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                height: 1.35,
+              ),
+            ),
+          ),
+          if (alignEnd) ...[const SizedBox(width: 6), arrow],
+        ],
       ),
-    ),
-  );
+    );
+  }
 }
