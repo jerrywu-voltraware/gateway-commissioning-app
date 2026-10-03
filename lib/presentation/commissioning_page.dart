@@ -47,7 +47,7 @@ import 'android_app_update_dialog.dart';
 import '../core/gateway_swap.dart';
 
 /// The AppBar title (1.0.0+8: shown whole at 360 dp, never 「GIOS …」).
-const appBarTitle = 'GIOS 現場開通';
+const appBarTitle = 'GIOS 設備助手';
 
 enum _AutomaticAction { wifiReset, networkCheck, online, verify }
 

@@ -43,7 +43,7 @@ class _GatewayAppState extends State<GatewayApp> {
 
   @override
   Widget build(BuildContext context) => MaterialApp(
-    title: 'GIOS 現場開通',
+    title: appBarTitle,
     debugShowCheckedModeBanner: false,
     theme: widget.theme(Brightness.light),
     darkTheme: widget.theme(Brightness.dark),

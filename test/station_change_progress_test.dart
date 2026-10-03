@@ -16,7 +16,7 @@ Widget _app(
     child: child!,
   ),
   home: Scaffold(
-    appBar: AppBar(title: const Text('GIOS 現場開通')),
+    appBar: AppBar(title: const Text('GIOS 設備助手')),
     body: ListView(
       padding: const EdgeInsets.all(16),
       children: [

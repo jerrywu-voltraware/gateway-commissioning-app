@@ -33,7 +33,7 @@ ThemeData gatewayTheme(Brightness brightness) {
   );
   // 1.0.0+10 (phone, 360 dp at text scale 1.1: 「GIOS 現場…」): every
   // page's AppBar title is titleMedium w600 — one size on all pages, and
-  // 「GIOS 現場開通」 whole beside the help icon and the environment chip.
+  // 「GIOS 設備助手」 whole beside the help icon and the environment chip.
   // (ThemeData.textTheme has no sizes until Theme.of localizes it: the
   // style is taken from the localized theme.)
   final sized = ThemeData.localize(theme, theme.typography.englishLike);

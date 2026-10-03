@@ -70,7 +70,7 @@ Future<void> _pump(
           child: child!,
         ),
         home: Scaffold(
-          appBar: AppBar(title: const Text('GIOS 現場開通')),
+          appBar: AppBar(title: const Text('GIOS 設備助手')),
           body: const SingleChildScrollView(
             padding: EdgeInsets.all(16),
             child: RepaintBoundary(
