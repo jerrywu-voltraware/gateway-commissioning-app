@@ -2124,6 +2124,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
             child: NextActionHint(
               guideStart ? '確認目標閘道器，再點「開始開通」' : '確認目標閘道器，再點「藍牙連線」',
               alignEnd: guideStart,
+              active: guideConnect || guideStart,
             ),
           ),
           LayoutBuilder(

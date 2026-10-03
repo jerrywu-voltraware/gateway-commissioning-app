@@ -1190,6 +1190,11 @@ class _DirectPickActionsState extends ConsumerState<DirectPickActions> {
           maintainAnimation: true,
           child: NextActionHint(
             confirmable ? '確認閃燈的是這台 PTU，再開始監控' : '點「辨識此樁」，確認現場燈號',
+            active:
+                enabled &&
+                ready &&
+                !settling &&
+                (identifySupported || confirmable),
           ),
         ),
         Row(
