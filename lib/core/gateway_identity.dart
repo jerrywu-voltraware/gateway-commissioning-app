@@ -10,8 +10,11 @@
 ///   generates test data and never scans PTUs, one with a paused upload
 ///   sends heartbeats but no PTU data ([isTestMode], [uploadPausedProblem]).
 ///
-/// Pure Dart so every rule can be unit-tested without widgets.
+/// Pure Dart so every rule can be unit-tested without widgets. 畫面文字在
+/// lib/l10n/parts/gatewayIdentity_*.arb（[L10n.current]）。
 library;
+
+import '../l10n/l10n.dart';
 
 /// `GIOS-S{site}-GW{nn}`: the gateway's Bluetooth advertising name.
 final gatewayNamePattern = RegExp(
@@ -34,7 +37,8 @@ final gatewayNamePattern = RegExp(
 }
 
 /// 「站 80 · 閘道器 2」.
-String gatewayIdText(int site, int gateway) => '站 $site · 閘道器 $gateway';
+String gatewayIdText(int site, int gateway) =>
+    L10n.current.gatewayIdentity_idText(site, gateway);
 
 /// A gateway row's title: 「站 80 · 閘道器 2」 when the name parses, else the
 /// full name (never cut).
@@ -48,7 +52,7 @@ String gatewayTitle(String name) {
 /// 80/2): the title of a gateway known not to be configured — 「未配置閘道器
 /// …3A00」 with its Wi-Fi MAC tail ([tail], as the list shows it), never a
 /// station or number.
-const unconfiguredGatewayText = '未配置閘道器';
+String get unconfiguredGatewayText => L10n.current.gatewayIdentity_unconfigured;
 
 /// 「未配置閘道器 …3A00」, or 「未配置閘道器」 without a MAC [tail].
 String unconfiguredGatewayTitle(String? tail) => tail == null || tail.isEmpty
@@ -82,7 +86,7 @@ String? macTail(String? id) {
 /// 「MAC 後 4 碼 70F2」; null when [id] is not a MAC.
 String? macTailText(String? id) {
   final tail = macTail(id);
-  return tail == null ? null : 'MAC 後 4 碼 $tail';
+  return tail == null ? null : L10n.current.gatewayIdentity_macTail(tail);
 }
 
 /// Round 28 (field: the list read 「MAC 後 4 碼 70F2」, the help panel and
@@ -120,8 +124,8 @@ String? gatewayMacText({Object? uid, String? bleId, bool withBle = true}) {
   final ble = withBle ? macTail(bleId) : null;
   final tail = wifi.substring(8);
   return ble == null || ble == tail
-      ? 'MAC 後 4 碼 $tail'
-      : 'MAC 後 4 碼 $tail（藍牙 $ble）';
+      ? L10n.current.gatewayIdentity_macTail(tail)
+      : L10n.current.gatewayIdentity_macTailWithBle(tail, ble);
 }
 
 /// 1.0.0+8: the gateway list's short form — 「MAC …70F0」 (the Wi-Fi MAC's
@@ -241,16 +245,24 @@ directWithoutGateways(
   return (direct: out, dropped: dropped, pickedGateway: pickedGateway);
 }
 
-const _directGatewayPickHead = '閘道器連到的是附近另一台閘道器';
-
 /// Yellow direct-mode notice: the gateway connected another gateway.
 String directGatewayPickText(String mac) =>
-    '$_directGatewayPickHead（$mac），不是 PTU，APP 不會把它當成 PTU。'
-    '請按「不是這台？」改選同樁的 PTU，或靠近同樁 PTU 後按「重新搜尋」。';
+    L10n.current.gatewayIdentity_directGatewayPick(mac);
 
-/// [text] is a [directGatewayPickText] (for any MAC).
-bool isDirectGatewayPickText(String text) =>
-    text.startsWith(_directGatewayPickHead);
+/// [text] is a [directGatewayPickText] (for any MAC) in any APP language —
+/// a notice written before a language switch is still recognised
+/// (docs/i18n.md §8.3): it starts with the sentence's text before the MAC.
+bool isDirectGatewayPickText(String text) {
+  const probe = '\u0000mac\u0000';
+  for (final language in AppLanguage.values) {
+    final filled = lookupAppLocalizations(
+      language.locale,
+    ).gatewayIdentity_directGatewayPick(probe);
+    final head = filled.substring(0, filled.indexOf(probe));
+    if (head.isNotEmpty && text.startsWith(head)) return true;
+  }
+  return false;
+}
 
 // ---- Test mode and a paused upload (get_config `mode` / `upload_paused`) ----
 
@@ -283,45 +295,51 @@ bool uploadHeldUntilJoin(Map<String, dynamic> config) =>
 /// Round 30 (user rehearsal 09-27, E: 「✓ 已連上後台；PTU 資料上傳暫停中…」
 /// — a ✓ beside 「暫停」 read as a fault; the installer waited 95 s and
 /// asked for help): says the pause is normal and what to press.
-const uploadHeldText = '後台連線正常。PTU 資料會在完成配置後自動開始上傳（目前暫停是正常的），APP 會自動繼續';
+String get uploadHeldText => L10n.current.gatewayIdentity_uploadHeld;
 
 /// Round 30: 確認資料上傳's (controller step 3) retry, in the bottom bar.
 /// 09-28: named after its action (no 「下一步：…」 labels).
-const confirmOnlineLabel = '確認閘道器上線';
+String get confirmOnlineLabel =>
+    L10n.current.gatewayIdentity_confirmOnlineLabel;
 
 /// Round 28: the 「連線狀態」 gateway row for [uploadHeldUntilJoin].
-const uploadHeldStatus = '✓ 已連上（完成配置後才上傳）';
+String get uploadHeldStatus => L10n.current.gatewayIdentity_uploadHeldStatus;
 
 /// Test-mode card and the error that replaces 「PTU 沒有回應」 in test mode.
-const testModeText = '這台閘道器處於測試模式（只產生測試資料、不會連 PTU），配置前需切回正常模式。';
+String get testModeText => L10n.current.gatewayIdentity_testMode;
 
 /// Under [testModeText]: what the switch does.
-const testModeActionHint = '切回後閘道器會重新開機（約 1 分鐘），APP 會自動重新連線並繼續。';
+String get testModeActionHint =>
+    L10n.current.gatewayIdentity_testModeActionHint;
 
 /// The button of the test-mode card.
-const leaveTestModeLabel = '切回正常模式';
+String get leaveTestModeLabel =>
+    L10n.current.gatewayIdentity_leaveTestModeLabel;
 
 /// Busy text while switching.
-const leavingTestModeText = '正在把閘道器切回正常模式（會重新開機，約 1 分鐘）';
+String get leavingTestModeText => L10n.current.gatewayIdentity_leavingTestMode;
 
 /// After the switch.
-const leftTestModeText = '閘道器已切回正常模式並重新連上，可以繼續配置。';
+String get leftTestModeText => L10n.current.gatewayIdentity_leftTestMode;
 
 /// Network check / status panel line in test mode.
-const testModeUploadText = '閘道器在測試模式：只上傳測試資料，不會上傳 PTU 資料。';
+String get testModeUploadText => L10n.current.gatewayIdentity_testModeUpload;
 
 /// Upload paused: the network check line and the card.
-const uploadPausedText = '閘道器已連上後台，但資料上傳已暫停：PTU 資料不會送出。請按「恢復上傳」。';
+String get uploadPausedText =>
+    L10n.current.gatewayIdentity_uploadPaused(resumeUploadLabel);
 
 /// 連線狀態 panel hints (short: the card above says the whole thing).
-const testModeStatusHint = '閘道器在測試模式（只產生測試資料），請按「$leaveTestModeLabel」。';
-const uploadPausedStatusHint = '閘道器的資料上傳已暫停，PTU 資料不會送出；請按「$resumeUploadLabel」。';
+String get testModeStatusHint =>
+    L10n.current.gatewayIdentity_testModeStatusHint(leaveTestModeLabel);
+String get uploadPausedStatusHint =>
+    L10n.current.gatewayIdentity_uploadPausedStatusHint(resumeUploadLabel);
 
 /// The button that sends set_data_upload enabled.
-const resumeUploadLabel = '恢復上傳';
+String get resumeUploadLabel => L10n.current.gatewayIdentity_resumeUploadLabel;
 
 /// Busy text while resuming.
-const resumingUploadText = '正在恢復資料上傳';
+String get resumingUploadText => L10n.current.gatewayIdentity_resumingUpload;
 
 /// After a resume the gateway confirmed.
-const uploadResumedText = '已恢復資料上傳，閘道器開始送出 PTU 資料。';
+String get uploadResumedText => L10n.current.gatewayIdentity_uploadResumed;

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../application/backend_environment.dart';
 import '../application/commissioning_controller.dart';
 import '../core/local_backend_address.dart';
+import '../l10n/l10n.dart';
 import 'local_backend_field.dart';
 
 Color envColor(BuildContext context, BackendEnv env) {
@@ -16,10 +17,11 @@ Color envColor(BuildContext context, BackendEnv env) {
 }
 
 /// 1.0.0+8: the start page's 正式站 line (no more 「客戶看得到」).
-const productionHintText = '資料送到正式站。';
+String get productionHintText => L10n.current.environmentSwitch_productionHint;
 
 /// The sheet's 正式站 option description.
-const productionSheetHint = '資料送到正式站';
+String get productionSheetHint =>
+    L10n.current.environmentSwitch_productionSheetHint;
 
 /// AppBar chip showing the current environment; tap to switch.
 class EnvironmentChip extends ConsumerWidget {
@@ -30,7 +32,7 @@ class EnvironmentChip extends ConsumerWidget {
     final env = ref.watch(backendEnvProvider).environment;
     final color = envColor(context, env);
     return Tooltip(
-      message: '切換連線環境',
+      message: context.l10n.environmentSwitch_title,
       // 1.0.0+9: compact — the AppBar title must stay whole at 360 dp
       // beside it. 1.0.0+10: labelMedium (no fixed size), a smaller dot
       // box and less padding (the title whole at text scale 1.3).
@@ -61,8 +63,9 @@ class EnvironmentChip extends ConsumerWidget {
 
 /// Why a switch is refused while [s] is busy. 「取消操作」 is named only
 /// where the page has that button (after the 準備 step).
-String switchBlockedText(CommissionState s) =>
-    '正在進行「${s.message}」，${s.step > 0 ? '完成或按「取消操作」後' : '完成後'}才能切換。';
+String switchBlockedText(CommissionState s) => s.step > 0
+    ? L10n.current.environmentSwitch_blocked(s.message)
+    : L10n.current.environmentSwitch_blockedPrep(s.message);
 
 /// Bottom sheet with 本地測試 / 正式站 / 其他網址. Returns the chosen
 /// environment (its local IP or URL already stored), or null.
@@ -139,6 +142,7 @@ class _EnvironmentSheetState extends ConsumerState<_EnvironmentSheet> {
     final busy = commission.busy;
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
+    final l10n = context.l10n;
 
     final localAllowed = ref.read(envSwitchPolicyProvider).localAllowed;
 
@@ -197,10 +201,10 @@ class _EnvironmentSheetState extends ConsumerState<_EnvironmentSheet> {
     }
 
     final children = <Widget>[
-      Text('切換連線環境', style: theme.textTheme.titleLarge),
+      Text(l10n.environmentSwitch_title, style: theme.textTheme.titleLarge),
       const SizedBox(height: 4),
       Text(
-        '手機和已連上的閘道器會一起切換。',
+        l10n.environmentSwitch_sheetSubtitle,
         style: TextStyle(color: colors.onSurfaceVariant),
       ),
       const SizedBox(height: 12),
@@ -220,14 +224,18 @@ class _EnvironmentSheetState extends ConsumerState<_EnvironmentSheet> {
         !localAllowed
             ? localUnavailableText
             : env.localValid
-            ? '資料送到這台電腦上的測試主機（${env.localHost}）'
-            : '資料送到這台電腦上的測試主機（還沒設定電腦 IP）',
+            ? l10n.environmentSwitch_localWithHost(env.localHost)
+            : l10n.environmentSwitch_localNoHost,
         available: localAllowed,
       ),
       if (!localAllowed)
         const SizedBox.shrink()
       else if (_editing == BackendEnv.local) ...[
-        Text(env.localValid ? '可修改測試主機的 IP：' : '還沒有測試主機的 IP，請按「自動尋找」或直接輸入。'),
+        Text(
+          env.localValid
+              ? l10n.environmentSwitch_editIp
+              : l10n.environmentSwitch_noIp,
+        ),
         const SizedBox(height: 8),
         LocalBackendField(
           hostController: _host,
@@ -242,7 +250,7 @@ class _EnvironmentSheetState extends ConsumerState<_EnvironmentSheet> {
             onPressed: !busy && localHostError(value.text) == null
                 ? _useLocal
                 : null,
-            child: const Text('使用本地測試'),
+            child: Text(l10n.environmentSwitch_useLocal),
           ),
         ),
         const SizedBox(height: 12),
@@ -253,18 +261,21 @@ class _EnvironmentSheetState extends ConsumerState<_EnvironmentSheet> {
             onPressed: busy
                 ? null
                 : () => setState(() => _editing = BackendEnv.local),
-            child: const Text('變更電腦 IP'),
+            child: Text(l10n.environmentSwitch_changeIp),
           ),
         ),
       option(BackendEnv.production, productionSheetHint),
       option(
         BackendEnv.custom,
         env.customUrl.trim().isEmpty
-            ? '使用自訂的後端網址（尚未設定）'
-            : '使用自訂的後端網址：${env.customUrl.trim()}',
+            ? l10n.environmentSwitch_customNotSet
+            : l10n.environmentSwitch_customUrl(env.customUrl.trim()),
       ),
       if (_editing == BackendEnv.custom) ...[
-        BackendUrlField(controller: _url, label: '後端網址'),
+        BackendUrlField(
+          controller: _url,
+          label: l10n.environmentSwitch_urlLabel,
+        ),
         ValueListenableBuilder<TextEditingValue>(
           valueListenable: _url,
           builder: (context, value, _) => FilledButton(
@@ -272,7 +283,7 @@ class _EnvironmentSheetState extends ConsumerState<_EnvironmentSheet> {
                 !busy && Uri.tryParse(value.text.trim())?.hasAuthority == true
                 ? _useCustom
                 : null,
-            child: const Text('使用這個網址'),
+            child: Text(l10n.environmentSwitch_useUrl),
           ),
         ),
         const SizedBox(height: 12),

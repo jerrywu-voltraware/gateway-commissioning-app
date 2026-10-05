@@ -1,0 +1,19 @@
+{
+  "@@locale": "zh",
+  "identifyDurationSetting_savedOff": "已儲存：0 秒（關閉辨識燈）",
+  "identifyDurationSetting_saved": "已儲存：{seconds} 秒",
+  "@identifyDurationSetting_saved": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "identifyDurationSetting_saveFailed": "無法儲存，請重試",
+  "identifyDurationSetting_title": "辨識秒數",
+  "identifyDurationSetting_fieldLabel": "秒數（0 或 2–10）",
+  "identifyDurationSetting_suffix": "秒",
+  "identifyDurationSetting_help": "預設 4 秒。閘道器與 PTU 使用相同秒數。可填 2–10 秒；0＝關燈，閘道器會停止辨識並恢復正常狀態燈。不提供 1 秒（PTU 的 1 秒封包會讓燈恆亮）。",
+  "identifyDurationSetting_saving": "儲存中…",
+  "identifyDurationSetting_save": "儲存秒數"
+}

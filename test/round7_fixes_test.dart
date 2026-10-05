@@ -7,6 +7,8 @@ import 'package:gateway_commissioning/application/commissioning_controller.dart'
 import 'package:gateway_commissioning/data/demo_system.dart';
 import 'package:gateway_commissioning/presentation/ptu_selection_tile.dart';
 import 'compact_ptu_test.dart' as compact;
+import 'support/l10n.dart';
+import 'package:gateway_commissioning/l10n/l10n.dart';
 
 List<String> _tileOrder(WidgetTester tester) => tester
     .widgetList<PtuSelectionTile>(find.byType(PtuSelectionTile))
@@ -132,5 +134,29 @@ void main() {
       for (var i = 2; i <= 6; i++) {'mac': '$i', 'rssi': -40 - i},
     ]..sort(comparePtuForSelection);
     expect(rows.take(4).map((r) => r['mac']), contains('1'));
+  });
+
+  testWidgets('English (i18n B2): PTU row and default blocked text', (
+    tester,
+  ) async {
+    useLanguage(AppLanguage.en);
+    await tester.pumpWidget(
+      wrapWithL10n(
+        Scaffold(
+          body: PtuSelectionTile(
+            ptu: const {'mac': 'AA:BB', 'device_number': 7},
+            selected: false,
+            onChanged: null,
+            blocked: true,
+            onReset: () {},
+          ),
+        ),
+        language: AppLanguage.en,
+      ),
+    );
+    expect(find.text('Not connected'), findsOneWidget);
+    expect(find.text('Belongs to another gateway'), findsOneWidget);
+    expect(find.text('Reset and add'), findsOneWidget);
+    expect(find.byTooltip('PTU #7 device info'), findsOneWidget);
   });
 }

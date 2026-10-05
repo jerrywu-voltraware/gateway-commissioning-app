@@ -1,0 +1,39 @@
+{
+  "@@locale": "zh",
+  "recentGateways_unknownUnverified": "後端狀態未知・連線後確認身分",
+  "@recentGateways_unknownUnverified": {
+    "description": "Gateway list: back-office status of a gateway; the part after the dot says why it is unknown."
+  },
+  "recentGateways_unknownNoHeartbeat": "後端狀態未知・後台沒有這個 MAC 的心跳紀錄",
+  "recentGateways_unknownDuplicates": "{count, plural, other{後端狀態未知・後台有 {count} 筆相同 MAC 的紀錄}}",
+  "@recentGateways_unknownDuplicates": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "recentGateways_unknownConflict": "後端狀態未知・後台標示身分衝突",
+  "recentGateways_reportedOnline": "後端回報在線上",
+  "recentGateways_reportedOffline": "後端回報離線",
+  "recentGateways_unknown": "後端狀態未知",
+  "recentGateways_shortOnline": "後端在線",
+  "@recentGateways_shortOnline": {
+    "description": "Short badge on the gateway list (BackendPresence.online)."
+  },
+  "recentGateways_shortOffline": "後端離線",
+  "recentGateways_shortNoRecord": "後端無紀錄",
+  "recentGateways_shortArchived": "後端已封存",
+  "recentGateways_shortUnknown": "後端未知",
+  "recentGateways_archivedLabel": "已封存（後台已移除）",
+  "recentGateways_configuredLabel": "已配置",
+  "recentGateways_queryTimeout": "後端狀態未知・查詢逾時（8 秒）",
+  "recentGateways_queryFailed": "後端狀態未知・查詢失敗（{detail}）",
+  "@recentGateways_queryFailed": {
+    "placeholders": {
+      "detail": {
+        "type": "String"
+      }
+    }
+  }
+}

@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gateway_commissioning/presentation/wifi_credentials_form.dart';
 import 'package:gateway_commissioning/data/wifi_password_store.dart';
+import 'support/l10n.dart';
+import 'package:gateway_commissioning/l10n/l10n.dart';
 
 class FakePasswordStore implements WifiPasswordStore {
   final values = <String, String>{};
@@ -519,4 +521,14 @@ void main() {
     },
     variant: platforms,
   );
+
+  testWidgets('English (i18n B2): labels follow the app language', (
+    tester,
+  ) async {
+    useLanguage(AppLanguage.en);
+    await pump(tester);
+    expect(find.text("Use phone's current Wi-Fi"), findsOneWidget);
+    expect(find.text('Remember password (this phone only)'), findsOneWidget);
+    expect(find.text('Wi-Fi for the gateway'), findsOneWidget);
+  });
 }

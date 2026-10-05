@@ -1,0 +1,11 @@
+{
+  "@@locale": "en",
+  "localBackendProbe_hint": "Check: the phone and PC are on the same Wi-Fi, the Docker local backend is running on the PC, and allow_local_api_lan.ps1 has been run for the PC firewall.",
+  "localBackendProbe_healthy": "✓ Connected to the local backend",
+  "localBackendProbe_healthyVersion": "✓ Connected to the local backend (version {version})",
+  "localBackendProbe_degraded": "✗ Reached the local backend, but its database is not ready (HTTP 503). Wait until the Docker local backend has fully started, then retry.",
+  "localBackendProbe_notBackend": "✗ Not the local backend (HTTP {status}). Another service is on this IP / port; check the PC's IP.",
+  "localBackendProbe_httpError": "✗ Not the local backend (HTTP {status}). Check the PC's IP and port.",
+  "localBackendProbe_timeout": "✗ Timed out: {message}",
+  "localBackendProbe_unreachable": "✗ Cannot connect: {message}"
+}

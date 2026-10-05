@@ -1,0 +1,4 @@
+{
+  "@@locale": "zh",
+  "gatewayModeCard_resumeHint": "恢復後閘道器立刻開始送出 PTU 資料，不會重新開機。"
+}

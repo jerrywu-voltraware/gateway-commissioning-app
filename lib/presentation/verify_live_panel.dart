@@ -26,17 +26,19 @@ import '../application/commissioning_controller.dart' show verifyPollSeconds;
 import '../application/connection_status.dart' show StatusTone;
 import '../application/verify_feed.dart';
 import '../data/recent_data_api.dart' show intervalWords, recentClockText;
+import '../l10n/l10n.dart';
 import 'connection_status_panel.dart' show toneColor;
 import 'recent_data_page.dart'
     show recentAmpsText, recentTempText, recentVoltsBigText;
 
 /// The step's sentence (was 「逐台檢查資料時間、落後秒數與錯誤碼。連續三次
 /// 通過後才判定完成。」).
-const verifyGoalText = '收到 3 筆正常資料就算完成';
+String get verifyGoalText => L10n.current.verifyLivePanel_goal;
 
 /// The check cadence, not a promise that the gateway uploads at that rate.
 /// Every PTU still needs three distinct normal rows.
-const verifyPaceText = '每 $verifyPollSeconds 秒確認新資料，收到 3 筆正常資料即完成';
+String get verifyPaceText =>
+    L10n.current.verifyLivePanel_pace(verifyPollSeconds);
 
 /// 1.0.0+20: the pace of a data check whose gateway is not in build mode
 /// ([CommissionState.verifyIntervalMs]): one row per PTU every interval,
@@ -46,27 +48,34 @@ String verifyPaceTextFor(int? intervalMs) {
   if (intervalMs == null || intervalMs <= verifyPollSeconds * 1000) {
     return verifyPaceText;
   }
-  return '約每 ${intervalWords(intervalMs)}收一筆，'
-      '通常 ${intervalWords(intervalMs * 3)}內完成';
+  return L10n.current.verifyLivePanel_paceInterval(
+    intervalWords(intervalMs),
+    intervalWords(intervalMs * 3),
+  );
 }
 
 /// The checklist's small print while the data check runs (was 「最多等待
 /// N 秒」): the pace ([verifyPaceTextFor] [intervalMs]), then the seconds
 /// left.
 String verifyFooterText(int seconds, {int? intervalMs}) =>
-    '${verifyPaceTextFor(intervalMs)}・剩餘 $seconds 秒';
+    L10n.current.verifyLivePanel_footer(verifyPaceTextFor(intervalMs), seconds);
 
 /// The live line once the data passed.
-const verifyPassedText = '資料正常上傳';
+String get verifyPassedText => L10n.current.verifyLivePanel_passed;
 
 /// The live line while no row has come in yet.
-const verifyWaitingFirstText = '等待第一筆資料…';
+String get verifyWaitingFirstText => L10n.current.verifyLivePanel_waitingFirst;
 
 /// A rejected intermediate sample is not the final verification result.
-const verifyWaitingNormalText = '等待下一筆正常資料…';
+String get verifyWaitingNormalText =>
+    L10n.current.verifyLivePanel_waitingNormal;
 
 /// The flow's three stops.
-const verifyFlowLabels = ['PTU', '閘道器', '後台'];
+List<String> get verifyFlowLabels => [
+  'PTU',
+  L10n.current.verifyLivePanel_flowGateway,
+  L10n.current.verifyLivePanel_flowBackOffice,
+];
 
 /// The dot's run from PTU to 後台.
 const verifyFlowDuration = Duration(milliseconds: 800);
@@ -77,10 +86,11 @@ const verifyFeedSlideDuration = Duration(milliseconds: 300);
 /// A row's count part: 「第 2 筆」, 「重新計數：第 1/3 筆」, 「正常（已滿 3
 /// 筆）」, or 「未計入（維持 2/3）」.
 String verifyFeedCountText(VerifyFeedEntry e) {
-  if (!e.ok) return '未計入（維持 ${e.count}/3）';
-  if (!e.counted) return '正常（已滿 3 筆）';
-  if (e.restart) return '重新計數：第 ${e.count}/3 筆';
-  return '第 ${e.count} 筆';
+  final l10n = L10n.current;
+  if (!e.ok) return l10n.verifyLivePanel_countNotCounted(e.count);
+  if (!e.counted) return l10n.verifyLivePanel_countFull;
+  if (e.restart) return l10n.verifyLivePanel_countRestart(e.count);
+  return l10n.verifyLivePanel_countNth(e.count);
 }
 
 /// The values of a row, each with the separator after it but the last
@@ -96,7 +106,7 @@ List<String> verifyFeedValueParts(VerifyFeedEntry e) {
   ];
   return [
     for (final (i, part) in parts.indexed)
-      i < parts.length - 1 ? '$part・' : part,
+      i < parts.length - 1 ? '$part${L10n.current.common_dotSeparator}' : part,
   ];
 }
 
@@ -107,18 +117,29 @@ String verifyFeedValuesText(VerifyFeedEntry e) =>
 /// Why a row was not counted, in the verification's own words
 /// ([VerifyFeedEntry.reasons]).
 String verifyFeedReasonText(VerifyFeedEntry e) =>
-    '原因：${e.reasons.isEmpty ? '未通過檢查' : e.reasons.join('、')}';
+    L10n.current.verifyLivePanel_reason(_reasonsText(e));
+
+/// The reasons of [e] in one, or 「未通過檢查」 when it has none.
+String _reasonsText(VerifyFeedEntry e) => e.reasons.isEmpty
+    ? L10n.current.verifyLivePanel_reasonDefault
+    : e.reasons.join(L10n.current.verifyLivePanel_listSeparator);
 
 /// The announced line for [e]; 「PTU #n」 first when [ptus] > 1.
 String verifyFeedAnnounce(VerifyFeedEntry e, {required int ptus}) {
-  final who = ptus > 1 ? 'PTU #${e.id} ' : '';
+  final l10n = L10n.current;
+  final String text;
   if (!e.ok) {
-    return '$who資料未計入：'
-        '${e.reasons.isEmpty ? '未通過檢查' : e.reasons.join('、')}';
+    text = l10n.verifyLivePanel_announceNotCounted(_reasonsText(e));
+  } else if (!e.counted) {
+    text = l10n.verifyLivePanel_announceNew;
+  } else if (e.restart) {
+    text = l10n.verifyLivePanel_countRestart(e.count);
+  } else {
+    text = l10n.verifyLivePanel_announceNth(e.count);
   }
-  if (!e.counted) return '$who收到新資料';
-  if (e.restart) return '$who重新計數：第 ${e.count}/3 筆';
-  return '$who收到第 ${e.count} 筆';
+  return ptus > 1
+      ? l10n.verifyLivePanel_announcePtu('PTU #${e.id}', text)
+      : text;
 }
 
 /// The announced line for the rows of one poll ([verifyFeedLastPoll]):
@@ -126,13 +147,22 @@ String verifyFeedAnnounce(VerifyFeedEntry e, {required int ptus}) {
 /// (every PTU) or 「PTU #1、PTU #2 …」; otherwise each in turn.
 String verifyPollAnnounce(List<VerifyFeedEntry> rows, {required int ptus}) {
   if (rows.length == 1) return verifyFeedAnnounce(rows.single, ptus: ptus);
+  final l10n = L10n.current;
+  // 同一語言、同一來源產生的句子互比（不比對固定中文）。
   final said = {for (final e in rows) verifyFeedAnnounce(e, ptus: 1)};
   if (said.length == 1) {
     return rows.length >= ptus
-        ? '每台${said.single}'
-        : '${rows.map((e) => 'PTU #${e.id}').join('、')} ${said.single}';
+        ? l10n.verifyLivePanel_announceEvery(said.single)
+        : l10n.verifyLivePanel_announcePtu(
+            rows
+                .map((e) => 'PTU #${e.id}')
+                .join(l10n.verifyLivePanel_listSeparator),
+            said.single,
+          );
   }
-  return [for (final e in rows) verifyFeedAnnounce(e, ptus: ptus)].join('；');
+  return [
+    for (final e in rows) verifyFeedAnnounce(e, ptus: ptus),
+  ].join(l10n.verifyLivePanel_announceSeparator);
 }
 
 /// The live line: [verifyPassedText] once passed; while the check runs
@@ -433,7 +463,9 @@ class VerifyFeedRows extends StatelessWidget {
             tilePadding: EdgeInsets.zero,
             childrenPadding: EdgeInsets.zero,
             title: Text(
-              '查看未計入資料（${entries.where((e) => !e.ok).length} 筆）',
+              context.l10n.verifyLivePanel_uncountedDetails(
+                entries.where((e) => !e.ok).length,
+              ),
               style: Theme.of(context).textTheme.bodySmall,
             ),
             children: [
@@ -506,7 +538,9 @@ class VerifyFeedRow extends StatelessWidget {
               e.ok ? Icons.check_circle : Icons.cancel,
               size: 18,
               color: tone,
-              semanticLabel: e.ok ? '正常' : '異常',
+              semanticLabel: e.ok
+                  ? context.l10n.verifyLivePanel_rowOk
+                  : context.l10n.verifyLivePanel_rowBad,
             ),
           ),
           const SizedBox(width: 8),

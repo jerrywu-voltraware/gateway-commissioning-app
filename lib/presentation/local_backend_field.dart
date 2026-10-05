@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../application/local_backend_finder.dart';
 import '../core/local_backend_address.dart';
 import '../data/local_backend_probe.dart';
+import '../l10n/l10n.dart';
 
 /// Keeps only digits and dots; a decimal comma (some keyboards) becomes a dot.
 class Ipv4InputFormatter extends TextInputFormatter {
@@ -105,8 +106,8 @@ class _LocalBackendFieldState extends ConsumerState<LocalBackendField> {
     widget.onHostPicked();
     _setStatus(
       found.healthy
-          ? '✓ 找到本地後端 ${found.host}，已自動填入。'
-          : '已填入 ${found.host}，但該後端的資料庫尚未就緒，請稍後按「測試連線」確認。',
+          ? L10n.current.localBackendField_foundFilled(found.host)
+          : L10n.current.localBackendField_filledNotReady(found.host),
       ok: found.healthy,
     );
   }
@@ -125,7 +126,7 @@ class _LocalBackendFieldState extends ConsumerState<LocalBackendField> {
       final ownIp = await ref.read(phoneIpv4Provider)();
       if (!mounted || cancel.cancelled) return;
       if (ownIp == null) {
-        _setStatus('找不到手機的 Wi-Fi IP。請先讓手機連上與電腦相同的 Wi-Fi 後再試。');
+        _setStatus(L10n.current.localBackendField_noPhoneIp);
         return;
       }
       final hosts = subnetHosts(ownIp);
@@ -148,17 +149,21 @@ class _LocalBackendFieldState extends ConsumerState<LocalBackendField> {
       if (!mounted || result.cancelled) return;
       final found = result.found;
       if (found.isEmpty) {
-        _setStatus(
-          '在 $subnet 網段找不到本地後端（連接埠 ${widget.port}）。'
-          '${result.timedOut ? '（已達搜尋時間上限）' : ''}\n$localBackendHint',
-        );
+        final l10n = L10n.current;
+        final port = '${widget.port}';
+        final notFound = result.timedOut
+            ? l10n.localBackendField_notFoundTimedOut(subnet, port)
+            : l10n.localBackendField_notFound(subnet, port);
+        _setStatus('$notFound\n$localBackendHint');
       } else if (found.length == 1) {
         _fill(found.single);
       } else {
         final picked = await showDialog<FoundBackend>(
           context: context,
           builder: (context) => SimpleDialog(
-            title: Text('找到 ${found.length} 台本地後端'),
+            title: Text(
+              context.l10n.localBackendField_foundCount(found.length),
+            ),
             children: [
               for (final f in found)
                 SimpleDialogOption(
@@ -167,20 +172,26 @@ class _LocalBackendFieldState extends ConsumerState<LocalBackendField> {
                     leading: const Icon(Icons.computer_outlined),
                     title: Text(f.host),
                     subtitle: Text(
-                      f.healthy ? '版本 ${f.result.version ?? '—'}' : '資料庫尚未就緒',
+                      f.healthy
+                          ? context.l10n.localBackendField_version(
+                              f.result.version ?? '—',
+                            )
+                          : context.l10n.localBackendField_dbNotReady,
                     ),
                   ),
                 ),
               TextButton(
                 onPressed: () => Navigator.pop(context),
-                child: const Text('取消'),
+                child: Text(context.l10n.common_cancel),
               ),
             ],
           ),
         );
         if (!mounted) return;
         if (picked == null) {
-          _setStatus('找到 ${found.length} 台本地後端，尚未選擇。');
+          _setStatus(
+            L10n.current.localBackendField_foundNotChosen(found.length),
+          );
         } else {
           _fill(picked);
         }
@@ -195,7 +206,7 @@ class _LocalBackendFieldState extends ConsumerState<LocalBackendField> {
   void _stopScan() {
     _cancel?.cancel();
     setState(() => _cancel = null);
-    _setStatus('已取消搜尋。');
+    _setStatus(L10n.current.localBackendField_scanCancelled);
   }
 
   Future<void> _test() async {
@@ -238,6 +249,7 @@ class _LocalBackendFieldState extends ConsumerState<LocalBackendField> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final colors = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
     final idle = widget.enabled && !_scanning && !_testing;
@@ -271,8 +283,8 @@ class _LocalBackendFieldState extends ConsumerState<LocalBackendField> {
                     // field — on a narrow phone they squeezed the IP to
                     // 「http://192.168.0.:18000」; the full URL is the line
                     // below (「將連線：…」).
-                    decoration: const InputDecoration(
-                      labelText: '電腦 IP 位址',
+                    decoration: InputDecoration(
+                      labelText: l10n.localBackendField_ipLabel,
                       hintText: '192.168.1.187',
                       floatingLabelBehavior: FloatingLabelBehavior.always,
                     ).copyWith(errorText: error, errorMaxLines: 3),
@@ -280,8 +292,10 @@ class _LocalBackendFieldState extends ConsumerState<LocalBackendField> {
                   const SizedBox(height: 8),
                   Text(
                     host.isEmpty || error != null
-                        ? '將連線：（請先輸入正確的 IP）'
-                        : '將連線：${composeLocalUrl(host, widget.port)}',
+                        ? l10n.localBackendField_willConnectNone
+                        : l10n.localBackendField_willConnect(
+                            composeLocalUrl(host, widget.port),
+                          ),
                     style: text.bodyMedium?.copyWith(
                       color: colors.onSurfaceVariant,
                     ),
@@ -298,16 +312,22 @@ class _LocalBackendFieldState extends ConsumerState<LocalBackendField> {
               OutlinedButton.icon(
                 onPressed: idle ? _autoFind : null,
                 icon: const Icon(Icons.travel_explore),
-                label: const Text('自動尋找'),
+                label: Text(l10n.localBackendField_autoFind),
               ),
               OutlinedButton.icon(
                 onPressed: idle ? _test : null,
                 icon: const Icon(Icons.network_check),
-                label: Text(_testing ? '測試中…' : '測試連線'),
+                label: Text(
+                  _testing
+                      ? l10n.localBackendField_testing
+                      : l10n.localBackendField_testConnection,
+                ),
               ),
               TextButton(
                 onPressed: idle ? _editPort : null,
-                child: Text('進階：連接埠 ${widget.port}'),
+                child: Text(
+                  l10n.localBackendField_advancedPort('${widget.port}'),
+                ),
               ),
             ],
           ),
@@ -319,11 +339,18 @@ class _LocalBackendFieldState extends ConsumerState<LocalBackendField> {
                 Expanded(
                   child: Text(
                     _progressHost == null
-                        ? '正在取得手機的 Wi-Fi 網段…'
-                        : '正在搜尋 $_progressHost…（$_done／$_total）',
+                        ? l10n.localBackendField_gettingSubnet
+                        : l10n.localBackendField_searching(
+                            _progressHost!,
+                            _done,
+                            _total,
+                          ),
                   ),
                 ),
-                TextButton(onPressed: _stopScan, child: const Text('取消')),
+                TextButton(
+                  onPressed: _stopScan,
+                  child: Text(l10n.common_cancel),
+                ),
               ],
             ),
           ],
@@ -369,15 +396,17 @@ class _PortDialogState extends State<_PortDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-    title: const Text('本地後端連接埠'),
+    title: Text(context.l10n.localBackendField_portDialogTitle),
     content: TextField(
       controller: _controller,
       autofocus: true,
       keyboardType: TextInputType.number,
       inputFormatters: [FilteringTextInputFormatter.digitsOnly],
       decoration: InputDecoration(
-        labelText: '連接埠',
-        helperText: '預設 $defaultLocalPort',
+        labelText: context.l10n.localBackendField_portLabel,
+        helperText: context.l10n.localBackendField_portDefault(
+          '$defaultLocalPort',
+        ),
         errorText: _error,
       ),
       onSubmitted: (_) => _submit(),
@@ -385,13 +414,13 @@ class _PortDialogState extends State<_PortDialog> {
     actions: [
       TextButton(
         onPressed: () => _controller.text = '$defaultLocalPort',
-        child: const Text('還原預設'),
+        child: Text(context.l10n.localBackendField_restoreDefault),
       ),
       TextButton(
         onPressed: () => Navigator.pop(context),
-        child: const Text('取消'),
+        child: Text(context.l10n.common_cancel),
       ),
-      FilledButton(onPressed: _submit, child: const Text('確定')),
+      FilledButton(onPressed: _submit, child: Text(context.l10n.common_ok)),
     ],
   );
 }

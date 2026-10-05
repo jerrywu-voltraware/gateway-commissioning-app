@@ -1,0 +1,7 @@
+{
+  "@@locale": "en",
+  "bleGatewayLink_stageClearing": "Clearing the old connection",
+  "bleGatewayLink_stageRetry": "Retry #{attempt}",
+  "bleGatewayLink_stageConnecting": "Connecting to the gateway",
+  "bleGatewayLink_stageRescanning": "Gateway not found, rescanning"
+}

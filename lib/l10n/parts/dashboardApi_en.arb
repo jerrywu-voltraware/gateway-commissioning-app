@@ -1,0 +1,6 @@
+{
+  "@@locale": "en",
+  "dashboardApi_backendUnset": "(no backend URL set)",
+  "dashboardApi_backendLocal": "LAN / local backend {origin}",
+  "dashboardApi_backend": "Backend {origin}"
+}

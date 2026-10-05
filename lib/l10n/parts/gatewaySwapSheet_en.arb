@@ -1,0 +1,20 @@
+{
+  "@@locale": "en",
+  "gatewaySwapSheet_label": "This replaces a broken gateway",
+  "gatewaySwapSheet_cancelLabel": "Cancel replacement",
+  "gatewaySwapSheet_assignmentHint": "(replacing old gateway)",
+  "gatewaySwapSheet_assignmentHintTail": "(replacing old gateway {tail})",
+  "gatewaySwapSheet_needsNetwork": "Replacement needs a network connection",
+  "gatewaySwapSheet_sheetTitle": "Pick the gateway to replace (Site {site})",
+  "gatewaySwapSheet_sheetHint": "Only this site's offline gateways are listed. The old gateway must be removed or powered off.",
+  "gatewaySwapSheet_none": "No offline gateway on this site to replace",
+  "gatewaySwapSheet_rowTitle": "Gateway {gateway}",
+  "gatewaySwapSheet_noRecord": "Never online",
+  "gatewaySwapSheet_lastSeen": "Last online {age} ago",
+  "gatewaySwapSheet_confirmTitle": "Replace the gateway?",
+  "gatewaySwapSheet_confirmText": "This gateway takes over Site {site} · gateway {gateway}. The old gateway must be removed or powered off.",
+  "gatewaySwapSheet_confirmTextTail": "This gateway takes over Site {site} · gateway {gateway}. The old gateway ({tail}) must be removed or powered off.",
+  "gatewaySwapSheet_confirmOk": "Replace",
+  "gatewaySwapSheet_online": "Gateway {gateway} is online. Power off the old gateway first.",
+  "gatewaySwapSheet_onlineOk": "Got it"
+}

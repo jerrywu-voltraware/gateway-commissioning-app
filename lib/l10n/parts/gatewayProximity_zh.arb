@@ -1,0 +1,9 @@
+{
+  "@@locale": "zh",
+  "gatewayProximity_nearest": "最近",
+  "@gatewayProximity_nearest": {
+    "description": "Chip on the strongest gateway row of the list."
+  },
+  "gatewayProximity_nearestHint": "本樁的閘道器通常是訊號最強的那台；不確定就點選它，連線後按燈泡看哪台閃燈",
+  "gatewayProximity_closeHint": "兩台距離相近，請連線後按燈泡辨識確認"
+}

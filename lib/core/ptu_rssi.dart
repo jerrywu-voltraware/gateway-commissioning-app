@@ -1,12 +1,17 @@
+import '../l10n/l10n.dart';
+
 /// Gateway-to-PTU signal strength, never the phone-to-gateway RSSI.
 String ptuRssiText(Map<String, dynamic> ptu) {
   final rssi = ptu['rssi'];
   if (rssi is! num || rssi < -127 || rssi >= 0) return 'RSSI —';
-  if (ptu['rssi_stale'] == true) return '上次 $rssi dBm';
-  if (ptu['connected'] != true) return '掃描 $rssi dBm';
+  final l10n = L10n.current;
+  if (ptu['rssi_stale'] == true) return l10n.ptuRssi_last('$rssi');
+  if (ptu['connected'] != true) return l10n.ptuRssi_scan('$rssi');
   final age = ptu['rssi_age_ms'];
   if (age is num && age >= 0 && age <= 15000) return '$rssi dBm';
-  return '${age == null ? '快取' : '上次'} $rssi dBm';
+  return age == null
+      ? l10n.ptuRssi_cached('$rssi')
+      : l10n.ptuRssi_last('$rssi');
 }
 
 String _mac(Object? value) =>

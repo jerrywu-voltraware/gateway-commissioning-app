@@ -1,0 +1,752 @@
+{
+  "@@locale": "zh",
+  "commissioning_updateLatest": "目前已是最新版本",
+  "commissioning_updateCheckFailed": "暫時無法檢查更新，請確認網路後重試",
+  "commissioning_checkingUpdate": "正在檢查更新…",
+  "@commissioning_checkingUpdate": {
+    "description": "More menu item while checking."
+  },
+  "commissioning_checkUpdate": "檢查更新",
+  "@commissioning_checkUpdate": {
+    "description": "More menu item."
+  },
+  "commissioning_versionBuild": "版本 {version} · Build {build}",
+  "@commissioning_versionBuild": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      },
+      "build": {
+        "type": "String"
+      }
+    }
+  },
+  "commissioning_updateAfterHome": "返回首頁且結束配置後可用",
+  "commissioning_appVersion": "App 版本",
+  "commissioning_versionUnavailable": "暫時無法讀取版本",
+  "commissioning_viewUploadData": "查看上傳資料…",
+  "@commissioning_viewUploadData": {
+    "description": "More menu item."
+  },
+  "commissioning_envSwitched": "已切換到{env}。",
+  "@commissioning_envSwitched": {
+    "description": "env: environment label.",
+    "placeholders": {
+      "env": {
+        "type": "String"
+      }
+    }
+  },
+  "commissioning_envSwitchedAutoSync": "已切換到{env}。連上閘道器後會自動讓它一起切換。",
+  "@commissioning_envSwitchedAutoSync": {
+    "placeholders": {
+      "env": {
+        "type": "String"
+      }
+    }
+  },
+  "commissioning_envSwitchedManualSync": "已切換到{env}。連上閘道器後可在「連線狀態」按「同步」。",
+  "@commissioning_envSwitchedManualSync": {
+    "placeholders": {
+      "env": {
+        "type": "String"
+      }
+    }
+  },
+  "commissioning_gatewaySwitching": "正在把閘道器切到{target}，約 1 分鐘，請留在閘道器旁。",
+  "@commissioning_gatewaySwitching": {
+    "placeholders": {
+      "target": {
+        "type": "String"
+      }
+    }
+  },
+  "commissioning_reconfigureAllTitle": "全部重新配置？",
+  "commissioning_reconfigureAllText": "已成功指派的台也會重新指派一次，確定要繼續嗎？",
+  "commissioning_reconfigureAll": "全部重新配置",
+  "commissioning_saveNumberTakenTitle": "編號已被使用",
+  "commissioning_saveNumberTakenText": "站點 {site} / 閘道器 {gateway} 目前登記給另一台裝置（MAC {mac}）。",
+  "@commissioning_saveNumberTakenText": {
+    "placeholders": {
+      "site": {
+        "type": "int"
+      },
+      "gateway": {
+        "type": "int"
+      },
+      "mac": {
+        "type": "String"
+      }
+    }
+  },
+  "commissioning_powerOffOldFirst": "請先確認舊機已斷電，否則後台會再次標記衝突。",
+  "commissioning_replaceOldKeepNumber": "取代舊機（沿用此編號）",
+  "commissioning_useNextFreeNumber": "改用下一個可用編號",
+  "commissioning_siteNumbersFull": "站點 {site} 的 1–{max} 號閘道器都已被使用，請確認站點 ID 是否正確。",
+  "@commissioning_siteNumbersFull": {
+    "placeholders": {
+      "site": {
+        "type": "int"
+      },
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "commissioning_wifiResetTitle": "是否重設 Wi-Fi？",
+  "commissioning_wifiResetGoHint": "按「是」將前往 Wi-Fi 設定。",
+  "commissioning_wifiResetLater": "暫不重設",
+  "commissioning_wifiResetConfirm": "是，重設 Wi-Fi",
+  "commissioning_wifiUploadWaitTitle": "Wi-Fi 已連線，正在確認資料上傳",
+  "@commissioning_wifiUploadWaitTitle": {
+    "description": "Task title."
+  },
+  "commissioning_gatewayNumberComputing": "正在計算閘道器編號…",
+  "commissioning_stationFull": "本站閘道器已滿（1–{max} 皆已使用），請確認站點 ID 或改用「{swap}」。",
+  "@commissioning_stationFull": {
+    "placeholders": {
+      "max": {
+        "type": "int"
+      },
+      "swap": {
+        "type": "String"
+      }
+    }
+  },
+  "commissioning_offlineNumberNoList": "（無法取得同站閘道器清單，暫配 1 號，請上線核對）",
+  "@commissioning_offlineNumberNoList": {
+    "description": "Appended to assignmentLine."
+  },
+  "commissioning_offlineNumber": "（離線配號，上線後會再核對）",
+  "@commissioning_offlineNumber": {
+    "description": "Appended to assignmentLine."
+  },
+  "commissioning_assignmentLine": "將配置為 站點 {site} / 閘道器 {gateway}{hint}",
+  "@commissioning_assignmentLine": {
+    "description": "hint: an optional note in parentheses, or empty.",
+    "placeholders": {
+      "site": {
+        "type": "String"
+      },
+      "gateway": {
+        "type": "String"
+      },
+      "hint": {
+        "type": "String"
+      }
+    }
+  },
+  "commissioning_starCountTitle": "星狀模式：每台 PTU 數",
+  "commissioning_ptuCount": "{count, plural, other{{count} 台}}",
+  "@commissioning_ptuCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "commissioning_starCountChanged": "{count, plural, other{星狀模式每台 PTU 數已改為 {count} 台}}",
+  "@commissioning_starCountChanged": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "commissioning_topologyTitle": "連接模式",
+  "commissioning_oneToOne": "一對一",
+  "commissioning_oneToMany": "一對多",
+  "commissioning_topologyBusy": "操作進行中，完成後才能切換。",
+  "commissioning_ptusPerGateway": "每台 PTU 數",
+  "commissioning_directSettings": "直連進階設定",
+  "commissioning_topologyMenuBusy": "操作完成後可切換",
+  "commissioning_topologyMenuDirect": "直連 · 一對一",
+  "commissioning_topologyMenuStar": "星狀 · 一對多",
+  "commissioning_retryFailed": "{count, plural, other{重試這 {count} 台}}",
+  "@commissioning_retryFailed": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "commissioning_cancelAction": "取消操作",
+  "commissioning_demoBanner": "模擬模式 · 不會設定真實設備或驗證正式資料",
+  "commissioning_gotIt": "知道了",
+  "commissioning_waitUpTo": "最多等待 {seconds} 秒",
+  "@commissioning_waitUpTo": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "commissioning_reconnectContinue": "重新連線並繼續",
+  "commissioning_reconnect": "重新連線",
+  "commissioning_skip": "略過",
+  "commissioning_details": "詳細資訊",
+  "commissioning_busyWaitUpTo": "處理中 · 最多等待 {seconds} 秒",
+  "@commissioning_busyWaitUpTo": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "commissioning_notLoggedIn": "尚未登入{env}：站號衝突檢查會先略過，之後需要時會自動登入。",
+  "@commissioning_notLoggedIn": {
+    "placeholders": {
+      "env": {
+        "type": "String"
+      }
+    }
+  },
+  "commissioning_demoWifiLabel": "模擬閘道器的 Wi-Fi",
+  "commissioning_demoWifiConnected": "已連上",
+  "commissioning_demoWifiConnecting": "剛開機，正在連",
+  "commissioning_demoWifiDisconnected": "連不上（Wi-Fi 不在附近）",
+  "commissioning_wifiSavedWaiting": "Wi-Fi 已儲存，正在等待閘道器恢復資料上傳。確認完成後會自動顯示下一步，請稍候。",
+  "commissioning_viewNetworkStatus": "查看網路狀態",
+  "commissioning_stationKeep": "沿用站點 {site}／閘道器 {gateway}，原站資料不變。",
+  "@commissioning_stationKeep": {
+    "placeholders": {
+      "site": {
+        "type": "String"
+      },
+      "gateway": {
+        "type": "String"
+      }
+    }
+  },
+  "commissioning_reuseBlockedTapAbove": "要使用此站點，請先按上方「{button}」（目前：{reason}）。",
+  "@commissioning_reuseBlockedTapAbove": {
+    "placeholders": {
+      "button": {
+        "type": "String"
+      },
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "commissioning_reuseBlockedWifi": "要使用此站點，閘道器必須先連上 Wi-Fi 並開始上傳資料（目前：{reason}）。請按「{otherWifi}」，或按「{review}」。",
+  "@commissioning_reuseBlockedWifi": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      },
+      "otherWifi": {
+        "type": "String"
+      },
+      "review": {
+        "type": "String"
+      }
+    }
+  },
+  "commissioning_stationHintCanUse": "請選擇：使用此站點，或改用其他站號",
+  "commissioning_stationHintBlocked": "改用其他站號，或先處理上方提示再沿用此站",
+  "commissioning_backToSite": "改回站號 {site}",
+  "@commissioning_backToSite": {
+    "placeholders": {
+      "site": {
+        "type": "int"
+      }
+    }
+  },
+  "commissioning_backToNetworkCheck": "回到網路體檢",
+  "commissioning_wifiOnlyKeep": "保留站點 {site}／閘道器 {gateway}，只更新 Wi-Fi。",
+  "@commissioning_wifiOnlyKeep": {
+    "placeholders": {
+      "site": {
+        "type": "String"
+      },
+      "gateway": {
+        "type": "String"
+      }
+    }
+  },
+  "commissioning_wifi24Only": "閘道器只能用 2.4 GHz 的 Wi-Fi，5 GHz 的網路連不上。",
+  "commissioning_wifiPasswordNotSaved": "Wi-Fi 已連線，但無法記住密碼；下次請重新輸入。",
+  "commissioning_wifiBackKeep": "不改 Wi-Fi，返回",
+  "commissioning_wifiBackSite": "返回修改站號",
+  "commissioning_numberTakenMac": "（閘道器 {taken} 目前登記的 MAC：{mac}）",
+  "@commissioning_numberTakenMac": {
+    "placeholders": {
+      "taken": {
+        "type": "int"
+      },
+      "mac": {
+        "type": "String"
+      }
+    }
+  },
+  "commissioning_reenter": "重新輸入",
+  "commissioning_newSiteOk": "是新站，使用站號 {site}",
+  "@commissioning_newSiteOk": {
+    "placeholders": {
+      "site": {
+        "type": "int"
+      }
+    }
+  },
+  "commissioning_identifyPile": "辨識此樁（PTU 與閘道器閃燈）",
+  "commissioning_identifyGateway": "辨識這台・{seconds} 秒",
+  "@commissioning_identifyGateway": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "commissioning_identifyUnsupported": "連線時藍燈呼吸；更新韌體後可使用雙閃辨識。",
+  "commissioning_currentMode": "目前模式：{mode}",
+  "@commissioning_currentMode": {
+    "placeholders": {
+      "mode": {
+        "type": "String"
+      }
+    }
+  },
+  "commissioning_continueCommissioning": "繼續配置",
+  "commissioning_end": "結束",
+  "commissioning_stayOnList": "留在清單",
+  "commissioning_resumeMissingKey": "{missing}。\n{resume}",
+  "@commissioning_resumeMissingKey": {
+    "description": "Two sentences from other areas joined.",
+    "placeholders": {
+      "missing": {
+        "type": "String"
+      },
+      "resume": {
+        "type": "String"
+      }
+    }
+  },
+  "commissioning_savedGateway": "上次配置的閘道器：{name}",
+  "@commissioning_savedGateway": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "commissioning_restart": "重新開始",
+  "commissioning_startPowerHint": "先確認現場 WiFi 路由器與裝置電源已開啟。",
+  "commissioning_backendUrl": "後端網址",
+  "commissioning_localHint": "手機與電腦需連同一個 Wi-Fi；電腦 IP 若變更，可在上方修改或按「自動尋找」。",
+  "commissioning_offlineFirst": "先離線配置，稍後驗證資料",
+  "commissioning_checkAndStart": "檢查並開始",
+  "@commissioning_checkAndStart": {
+    "description": "Start page main button."
+  },
+  "commissioning_onlineIntro": "確認閘道器不只連上 WiFi，後端也持續收到心跳。",
+  "commissioning_gatewayReports": "閘道器自己回報：{line}",
+  "@commissioning_gatewayReports": {
+    "placeholders": {
+      "line": {
+        "type": "String"
+      }
+    }
+  },
+  "commissioning_onlineRunning": "正在確認後台收到心跳，成功後會自動尋找 PTU，請稍候。",
+  "commissioning_onlineFailed": "檢查尚未通過。請依提示修正後，按下方按鈕重新檢查。",
+  "commissioning_onlineTapStart": "請按下方按鈕開始檢查。",
+  "commissioning_onlineOffline": "目前為離線配置，請選擇確認上線或稍後驗證。",
+  "commissioning_onlineAuto": "即將自動確認上線，請稍候。",
+  "commissioning_skipOnline": "暫未確認，先配置 PTU",
+  "commissioning_skipOnlineHint": "略過的話，最後「驗證資料」仍會確認資料有沒有上傳。",
+  "commissioning_retryReconnect": "重試重新連線",
+  "commissioning_backToGatewaySearch": "回到找閘道器",
+  "commissioning_rescanPtus": "由閘道器重新掃描 PTU",
+  "commissioning_noPtuFound": "未掃到 PTU，請確認 PTU 已上電後重新掃描",
+  "commissioning_assignFailedCount": "{count, plural, other{{count} 台指派失敗：}}",
+  "@commissioning_assignFailedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "commissioning_assignFailedRow": "PTU {id}：{reason}",
+  "@commissioning_assignFailedRow": {
+    "placeholders": {
+      "id": {
+        "type": "String"
+      },
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "commissioning_ptuOtherGateway": "已屬於其他閘道器",
+  "commissioning_ptuOutOfRange": "編號不在本機範圍，所屬閘道器未確認",
+  "commissioning_resetInclude": "重置並納入",
+  "commissioning_sortBySignal": "依訊號重新排序",
+  "commissioning_liveRssi": "動態 RSSI · 每 5 秒更新（順序不變）",
+  "commissioning_notConnectedList": "尚未連線：{list}",
+  "@commissioning_notConnectedList": {
+    "placeholders": {
+      "list": {
+        "type": "String"
+      }
+    }
+  },
+  "commissioning_listSeparator": "、",
+  "@commissioning_listSeparator": {
+    "description": "Separator between items of an inline list."
+  },
+  "commissioning_scanHelpTitle": "掃描說明與完整流程",
+  "commissioning_scanHelpDirectFlow": "由閘道器掃描附近的 PTU，再透過藍牙把清單傳回手機。直連模式：由閘道器自己選最近的 PTU（門檻內最強，或已綁定的那台），這裡只顯示它的選擇；請用「辨識此樁」確認是眼前這台，不是的話按「不是這台？」改選。RSSI 是閘道器與 PTU 之間的訊號；未連線裝置顯示掃描值。「上次」表示暫停或過期，「快取」表示韌體未提供讀值時間。韌體 1.7.5 起可在配置期間量測；RSSI — 表示尚無有效讀值。",
+  "commissioning_scanHelpDirect": "由閘道器掃描附近的 PTU，再透過藍牙把清單傳回手機。直連模式：已自動選定訊號最強的一台。RSSI 是閘道器與 PTU 之間的訊號；未連線裝置顯示掃描值。「上次」表示暫停或過期，「快取」表示韌體未提供讀值時間。韌體 1.7.5 起可在配置期間量測；RSSI — 表示尚無有效讀值。",
+  "commissioning_scanHelpStar": "由閘道器掃描附近的 PTU，再透過藍牙把清單傳回手機。最多可選 {max} 台。RSSI 是閘道器與 PTU 之間的訊號；未連線裝置顯示掃描值。「上次」表示暫停或過期，「快取」表示韌體未提供讀值時間。韌體 1.7.5 起可在配置期間量測；RSSI — 表示尚無有效讀值。",
+  "@commissioning_scanHelpStar": {
+    "placeholders": {
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "commissioning_verifyBackend": "驗證後端：{env}",
+  "@commissioning_verifyBackend": {
+    "placeholders": {
+      "env": {
+        "type": "String"
+      }
+    }
+  },
+  "commissioning_verifyBackendLocal": "驗證後端：{env}（這台電腦上的測試主機）",
+  "@commissioning_verifyBackendLocal": {
+    "placeholders": {
+      "env": {
+        "type": "String"
+      }
+    }
+  },
+  "commissioning_skipThisPtu": "略過此台",
+  "commissioning_notVerifiedSkipped": "未驗證（已略過）",
+  "commissioning_noDataYet": "尚無資料",
+  "commissioning_backToPtuSelect": "返回選擇 PTU",
+  "commissioning_backToPtuRescan": "返回選擇 PTU，由閘道器重新掃描",
+  "commissioning_startVerify": "開始資料驗證",
+  "commissioning_messageRemaining": "{message}（剩餘 {seconds} 秒）",
+  "@commissioning_messageRemaining": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      },
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "commissioning_loginAndCheck": "登入並確認資料",
+  "commissioning_advancedCheck": "進階檢查",
+  "commissioning_refreshHealth": "更新健康狀態",
+  "commissioning_reconnectVerify": "重新連線並驗證",
+  "commissioning_uploadOngoing": "✓ 資料持續上傳（{where}）",
+  "@commissioning_uploadOngoing": {
+    "placeholders": {
+      "where": {
+        "type": "String"
+      }
+    }
+  },
+  "commissioning_uploadWhere": "資料上傳：{where}",
+  "@commissioning_uploadWhere": {
+    "placeholders": {
+      "where": {
+        "type": "String"
+      }
+    }
+  },
+  "commissioning_uploadStatusWhere": "資料上傳：{status}（{where}）",
+  "@commissioning_uploadStatusWhere": {
+    "placeholders": {
+      "status": {
+        "type": "String"
+      },
+      "where": {
+        "type": "String"
+      }
+    }
+  },
+  "commissioning_doneTitleDemo": "模擬開通完成",
+  "commissioning_doneTitle": "開通完成",
+  "commissioning_doneMode": "模式：{mode}",
+  "@commissioning_doneMode": {
+    "placeholders": {
+      "mode": {
+        "type": "String"
+      }
+    }
+  },
+  "commissioning_boundPtu": "已綁定 PTU",
+  "commissioning_lastUploadConfirmed": "最近確認上傳：{time}",
+  "@commissioning_lastUploadConfirmed": {
+    "description": "time: formatted in Dart (HH:mm or y/M/d HH:mm).",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "commissioning_siteN": "站點 {site}",
+  "@commissioning_siteN": {
+    "placeholders": {
+      "site": {
+        "type": "int"
+      }
+    }
+  },
+  "commissioning_gatewayN": "閘道器 {gateway}",
+  "@commissioning_gatewayN": {
+    "placeholders": {
+      "gateway": {
+        "type": "int"
+      }
+    }
+  },
+  "commissioning_reportTitleDemo": "模擬安裝報告",
+  "commissioning_reportTitle": "安裝報告",
+  "commissioning_reportSubtitle": "全文；也可分享或複製",
+  "commissioning_shareFailed": "無法開啟分享，可改用複製報告。",
+  "commissioning_shareReport": "分享安裝報告",
+  "commissioning_copied": "已複製，可貼上分享",
+  "commissioning_copyReport": "複製安裝報告",
+  "commissioning_setWifi": "設定 Wi-Fi",
+  "commissioning_resetWifi": "重設 Wi-Fi",
+  "commissioning_skipChooseSite": "先選擇站點（沿用要等網路正常）",
+  "commissioning_skipOfflineNewSite": "先離線配置新站點（稍後再確認上傳）",
+  "commissioning_skipNewSite": "仍要繼續設定新站點（稍後再確認上傳）",
+  "commissioning_confirmUploadTitle": "確認資料上傳",
+  "commissioning_networkCheckTitle": "閘道器網路體檢",
+  "commissioning_recheckIntro": "Wi-Fi 已更新。等閘道器開始上傳資料，再確認站點（沿用或設定新站點）。",
+  "commissioning_checkIntro": "先確認閘道器能上網、資料送對地方，再選擇站點。",
+  "commissioning_checkWifiItem": "閘道器的 Wi-Fi",
+  "commissioning_syncFirstHint": "按下後會先讓閘道器改送到{place}（重新開機一次），再設定 Wi-Fi。",
+  "@commissioning_syncFirstHint": {
+    "placeholders": {
+      "place": {
+        "type": "String"
+      }
+    }
+  },
+  "commissioning_checkTargetItem": "資料送到哪裡",
+  "commissioning_confirmTargetHint": "確認資料上傳目的地",
+  "commissioning_syncTo": "讓閘道器改送到{place}（重新開機約 1 分鐘）",
+  "@commissioning_syncTo": {
+    "placeholders": {
+      "place": {
+        "type": "String"
+      }
+    }
+  },
+  "commissioning_checkUploadItem": "資料上傳",
+  "commissioning_recheck": "重新檢查",
+  "commissioning_skipStationNote": "沒有通過網路體檢時不能沿用目前站點；可以重設 Wi-Fi 或設定新站點。",
+  "commissioning_skipNewNote": "⚠ 閘道器的網路還沒確認好。設定完新站點後會再確認資料上傳，最後的「驗證資料」也會檢查。",
+  "commissioning_backToStationChoice": "回到站點選擇",
+  "commissioning_startTaskTitle": "登入後台，開始配置",
+  "commissioning_pickGatewayTaskTitle": "選擇閘道器",
+  "commissioning_checkingTaskTitle": "正在連線並檢查網路，請稍候",
+  "commissioning_checkPassedTaskTitle": "網路檢查通過，看完請按下方繼續",
+  "commissioning_testModeTaskTitle": "閘道器在測試模式，請先切回正常模式",
+  "commissioning_wifiProblemTaskTitle": "閘道器沒有連上 Wi-Fi，請設定 Wi-Fi",
+  "commissioning_targetTaskTitle": "請讓閘道器把資料送到目前的後台",
+  "commissioning_uploadPausedTaskTitle": "閘道器的資料上傳已暫停，請恢復上傳",
+  "commissioning_uploadBadTaskTitle": "閘道器還沒開始上傳資料，請依下方提示處理",
+  "commissioning_wifiTaskTitle": "設定閘道器的 Wi-Fi",
+  "commissioning_wifiFirstPageText": "先讓閘道器連上 Wi-Fi，網路正常後再設定站號。",
+  "commissioning_stationQuestionTitle": "目前站號是 {site}，這台要配置在本站嗎？",
+  "@commissioning_stationQuestionTitle": {
+    "placeholders": {
+      "site": {
+        "type": "int"
+      }
+    }
+  },
+  "commissioning_stationInputTitle": "請輸入這台要配置的站號",
+  "commissioning_onlineRunningTaskTitle": "正在確認閘道器上線，請稍候",
+  "commissioning_onlineTaskTitle": "確認閘道器上線",
+  "commissioning_directPickTaskTitle": "請辨識眼前的充電樁，確認後開始配置",
+  "commissioning_starPickTaskTitle": "請選擇本閘道器負責的 PTU",
+  "commissioning_starAssignTaskTitle": "正在配置 PTU 並開始監控",
+  "commissioning_starVerifyTaskTitle": "正在確認資料上傳",
+  "commissioning_verifyLoginTaskTitle": "請登入後台，確認資料上傳",
+  "commissioning_finishingTaskTitle": "正在完成設定並確認資料上傳",
+  "commissioning_useStationLabel": "使用此站點",
+  "commissioning_useSiteEmptyLabel": "使用站點",
+  "commissioning_useSiteLabel": "使用站點 {site}",
+  "@commissioning_useSiteLabel": {
+    "placeholders": {
+      "site": {
+        "type": "int"
+      }
+    }
+  },
+  "commissioning_otherSiteLabel": "改用其他站號",
+  "commissioning_otherWifiLabel": "改用其他 Wi-Fi",
+  "commissioning_saveWifiLabel": "儲存並繼續",
+  "commissioning_siteFieldLabel": "站號（1–65535）",
+  "commissioning_checkContinueLabel": "繼續設定站點",
+  "commissioning_detailsTitle": "設備與連線資訊",
+  "commissioning_newSiteConfirmTitle": "確定是新站？",
+  "commissioning_newSiteConfirmText": "後台還沒有站號 {site} 的任何閘道器。請確認站號沒有打錯；確定是新站再繼續。",
+  "@commissioning_newSiteConfirmText": {
+    "placeholders": {
+      "site": {
+        "type": "int"
+      }
+    }
+  },
+  "commissioning_archivedConfirmTitle": "這台閘道器之前在後台被移除（封存），要重新加入嗎？",
+  "commissioning_archivedConfirmText": "站點 {site}／閘道器 {gateway} 在後台已被移除（封存）。封存的閘道器，後台不會記錄它的心跳，配置會停在「確認閘道器上線」。重新加入後會恢復記錄，原本的歷史資料不變。",
+  "@commissioning_archivedConfirmText": {
+    "placeholders": {
+      "site": {
+        "type": "int"
+      },
+      "gateway": {
+        "type": "int"
+      }
+    }
+  },
+  "commissioning_archivedRejoinLabel": "重新加入並繼續",
+  "commissioning_doneLabelHead": "請在機殼上標示：",
+  "commissioning_doneLabelText": "請在機殼上標示：{label}",
+  "@commissioning_doneLabelText": {
+    "description": "label: e.g. 站 80 · 閘道器 2.",
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "commissioning_doneLabelHint": "後台人員靠這個標示找到這台",
+  "commissioning_uploadRateHead": "資料上傳頻率由後台控制",
+  "commissioning_uploadRateNow": "資料上傳頻率由後台控制（目前每 {seconds} 秒）",
+  "@commissioning_uploadRateNow": {
+    "description": "seconds: formatted in Dart, e.g. 30 or 2.5.",
+    "placeholders": {
+      "seconds": {
+        "type": "String"
+      }
+    }
+  },
+  "commissioning_numberTakenTitle": "閘道器編號已被使用",
+  "commissioning_numberTakenText": "站 {site} 的閘道器 {taken} 已被其他設備使用，改用閘道器 {gateway}。",
+  "@commissioning_numberTakenText": {
+    "placeholders": {
+      "site": {
+        "type": "int"
+      },
+      "taken": {
+        "type": "int"
+      },
+      "gateway": {
+        "type": "int"
+      }
+    }
+  },
+  "commissioning_numberTakenOnlyText": "站 {site} 的閘道器 {taken} 已被其他設備使用。",
+  "@commissioning_numberTakenOnlyText": {
+    "placeholders": {
+      "site": {
+        "type": "int"
+      },
+      "taken": {
+        "type": "int"
+      }
+    }
+  },
+  "commissioning_numberTakenOnlineText": "閘道器 {taken} 目前在線上，不能取代；如果這台是來換掉它，請先把舊機斷電。",
+  "@commissioning_numberTakenOnlineText": {
+    "placeholders": {
+      "taken": {
+        "type": "int"
+      }
+    }
+  },
+  "commissioning_numberTakenReplaceHint": "若這台是來取代那台舊機（舊機已拆除或斷電），按〔取代舊機〕沿用閘道器 {taken}。",
+  "@commissioning_numberTakenReplaceHint": {
+    "placeholders": {
+      "taken": {
+        "type": "int"
+      }
+    }
+  },
+  "commissioning_numberTakenReplaceLabel": "取代舊機（沿用閘道器 {taken}）",
+  "@commissioning_numberTakenReplaceLabel": {
+    "placeholders": {
+      "taken": {
+        "type": "int"
+      }
+    }
+  },
+  "commissioning_numberTakenNextLabel": "改用閘道器 {gateway}",
+  "@commissioning_numberTakenNextLabel": {
+    "placeholders": {
+      "gateway": {
+        "type": "int"
+      }
+    }
+  },
+  "commissioning_identityConflictTitle": "身分衝突",
+  "commissioning_identityConflictHint": "若舊機已拆除或換掉，按〔取代舊機〕由這台接手站 {site}／閘道器 {gateway}；否則請先找出另一台同編號的閘道器，或改用其他站號。",
+  "@commissioning_identityConflictHint": {
+    "placeholders": {
+      "site": {
+        "type": "int"
+      },
+      "gateway": {
+        "type": "int"
+      }
+    }
+  },
+  "commissioning_replaceOldLabel": "取代舊機",
+  "commissioning_replacedText": "已由這台接手站 {site}／閘道器 {gateway}",
+  "@commissioning_replacedText": {
+    "placeholders": {
+      "site": {
+        "type": "int"
+      },
+      "gateway": {
+        "type": "int"
+      }
+    }
+  },
+  "commissioning_replaceFailedText": "取代舊機沒有成功，請確認網路後重試",
+  "commissioning_topologyAskDirectTitle": "這台閘道器是一對一模式",
+  "commissioning_topologyAskStarTitle": "這台閘道器是星狀模式",
+  "commissioning_topologyAskDirectUnbound": "這台閘道器目前是一對一模式（尚未綁定 PTU），要改成星狀嗎？\n\n選〔維持一對一〕：APP 改用直連模式，閘道器的設定不變。",
+  "commissioning_topologyAskDirectBound": "這台閘道器目前是一對一模式（已綁定 PTU {mac}），要改成星狀嗎？\n\n選〔維持一對一〕：APP 改用直連模式，閘道器的設定不變。",
+  "@commissioning_topologyAskDirectBound": {
+    "placeholders": {
+      "mac": {
+        "type": "String"
+      }
+    }
+  },
+  "commissioning_topologyAskStarText": "這台閘道器目前是星狀模式（最多 {max} 台 PTU），要改成一對一嗎？\n\n選〔維持星狀〕：APP 改用星狀模式，閘道器的設定不變。",
+  "@commissioning_topologyAskStarText": {
+    "placeholders": {
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "commissioning_topologyKeepDirect": "維持一對一",
+  "commissioning_topologyKeepStar": "維持星狀",
+  "commissioning_topologyChangeToStar": "改成星狀",
+  "commissioning_topologyChangeToDirect": "改成一對一",
+  "commissioning_topologyKeptText": "APP 已改用{mode}，這台閘道器維持原模式",
+  "@commissioning_topologyKeptText": {
+    "placeholders": {
+      "mode": {
+        "type": "String"
+      }
+    }
+  },
+  "commissioning_rejoinLabel": "重新加入",
+  "commissioning_rejoinHintText": "這台閘道器在後台被移除（封存），心跳不會被記錄。按下方「重新加入」後會繼續確認上線。"
+}

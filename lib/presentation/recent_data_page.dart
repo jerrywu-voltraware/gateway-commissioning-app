@@ -7,14 +7,18 @@ import '../application/app_session.dart';
 import '../application/field_report.dart';
 import '../core/gateway_identity.dart' show gatewayIdText;
 import '../data/recent_data_api.dart';
+import '../l10n/l10n.dart';
+
+// i18n（docs/i18n.md）：字串在 lib/l10n/parts/recentDataPage_*.arb；被別檔或測試
+// 引用的 top-level 文字維持同名改 getter。
 
 /// Title of the done page's button.
-const recentDataLabel = '查看最近資料';
+String get recentDataLabel => L10n.current.recentDataPage_label;
 
 /// 1.0.0+10 (phone: 「站 81 閘道器 1 …」 cut in the AppBar): the AppBar
 /// says 「最近資料」; the gateway is the first line under it
 /// ([recentDataSubtitle]).
-const recentDataPageTitle = '最近資料';
+String get recentDataPageTitle => L10n.current.recentDataPage_title;
 
 /// 「站 81 · 閘道器 1」, the line under the AppBar.
 String recentDataSubtitle(int site, int gateway) =>
@@ -22,20 +26,20 @@ String recentDataSubtitle(int site, int gateway) =>
 
 /// `count` 0: the back office has nothing from this gateway yet (1.0.0+20:
 /// no fixed number of seconds — the interval can be up to 5 minutes).
-const recentDataEmptyText = '後台尚未收到這台閘道器的資料，請稍等一下再重新整理';
+String get recentDataEmptyText => L10n.current.recentDataPage_empty;
 
 /// 1.0.0+20: the empty page's sentence; with the back office's interval
 /// ([RecentData.uploadIntervalMs]) it says how often a row comes.
 String recentEmptyText(int? intervalMs) => intervalMs == null
     ? recentDataEmptyText
-    : '後台尚未收到這台閘道器的資料；閘道器約每 ${intervalWords(intervalMs)}'
-          '上傳一筆，請稍後再重新整理';
-const recentDataOkText = '上傳正常';
-const recentDataFaultText = 'PTU 回報故障';
-const recentDataRefreshLabel = '重新整理';
-const recentDataRetryLabel = '重試';
-const recentDataLoadingText = '正在向後台查詢…';
-const recentDataTableTitle = '最近資料';
+    : L10n.current.recentDataPage_emptyInterval(intervalWords(intervalMs));
+String get recentDataOkText => L10n.current.recentDataPage_ok;
+String get recentDataFaultText => L10n.current.recentDataPage_fault;
+String get recentDataRefreshLabel => L10n.current.common_refresh;
+String get recentDataRetryLabel => L10n.current.common_retry;
+// 與「查看上傳資料」頁同一句，共用 gatewayStatus 的 key。
+String get recentDataLoadingText => L10n.current.gatewayStatus_loading;
+String get recentDataTableTitle => L10n.current.recentDataPage_title;
 
 /// Fresh: the newest row is younger than this.
 const recentFreshAge = Duration(seconds: 30);
@@ -64,19 +68,22 @@ Duration recentRedAge(int intervalMs) => Duration(
 /// The firmware's `ptu_state` strings (`ble_multi_wifi_gateway/main/http/
 /// mqtt_uploader.c` `ptu_state_to_string`, index 0-9 plus `UNKNOWN`) in
 /// the installer's words. Names not listed are shown as sent.
-const ptuStateLabels = <String, String>{
-  'CONFIGURATION': '設定中',
-  'POWER_SAVE': '省電',
-  'LOW_POWER': '低功率',
-  'POWER_TRANSFER': '充電中',
-  'LATCH_FAULT': '鎖定故障',
-  'LATCHING_FAULT': '鎖定故障',
-  'LOCAL_FAULT': '本地故障',
-  'OTA_MODE': 'OTA 更新中',
-  'COOLING': '冷卻中',
-  'EXCEEDED_RANGE': 'PRU 超出範圍',
-  'UNKNOWN': '未知',
-};
+Map<String, String> get ptuStateLabels {
+  final l10n = L10n.current;
+  return <String, String>{
+    'CONFIGURATION': l10n.recentDataPage_stateConfiguration,
+    'POWER_SAVE': l10n.recentDataPage_statePowerSave,
+    'LOW_POWER': l10n.recentDataPage_stateLowPower,
+    'POWER_TRANSFER': l10n.recentDataPage_statePowerTransfer,
+    'LATCH_FAULT': l10n.recentDataPage_stateLatchFault,
+    'LATCHING_FAULT': l10n.recentDataPage_stateLatchFault,
+    'LOCAL_FAULT': l10n.recentDataPage_stateLocalFault,
+    'OTA_MODE': l10n.recentDataPage_stateOta,
+    'COOLING': l10n.recentDataPage_stateCooling,
+    'EXCEEDED_RANGE': l10n.recentDataPage_stateExceededRange,
+    'UNKNOWN': l10n.common_unknown,
+  };
+}
 
 /// The state in words; `--` for none, the raw string when unknown.
 String ptuStateLabel(String state) {
@@ -92,20 +99,23 @@ bool ptuStateIsFault(String state) => state.toUpperCase().contains('FAULT');
 /// a 360 dp phone with the other columns). Same keys as [ptuStateLabels];
 /// `IDLE` reads 「待機」; any other `*_FAULT` 「故障」; the rest as sent,
 /// cut to 4 characters.
-const ptuStateShortLabels = <String, String>{
-  'CONFIGURATION': '設定',
-  'POWER_SAVE': '省電',
-  'LOW_POWER': '低功率',
-  'POWER_TRANSFER': '充電',
-  'IDLE': '待機',
-  'LATCH_FAULT': '故障',
-  'LATCHING_FAULT': '故障',
-  'LOCAL_FAULT': '故障',
-  'OTA_MODE': 'OTA',
-  'COOLING': '冷卻',
-  'EXCEEDED_RANGE': '超範圍',
-  'UNKNOWN': '未知',
-};
+Map<String, String> get ptuStateShortLabels {
+  final l10n = L10n.current;
+  return <String, String>{
+    'CONFIGURATION': l10n.recentDataPage_shortConfiguration,
+    'POWER_SAVE': l10n.recentDataPage_shortPowerSave,
+    'LOW_POWER': l10n.recentDataPage_shortLowPower,
+    'POWER_TRANSFER': l10n.recentDataPage_shortCharging,
+    'IDLE': l10n.recentDataPage_shortIdle,
+    'LATCH_FAULT': l10n.recentDataPage_shortFault,
+    'LATCHING_FAULT': l10n.recentDataPage_shortFault,
+    'LOCAL_FAULT': l10n.recentDataPage_shortFault,
+    'OTA_MODE': 'OTA',
+    'COOLING': l10n.recentDataPage_shortCooling,
+    'EXCEEDED_RANGE': l10n.recentDataPage_shortExceeded,
+    'UNKNOWN': l10n.common_unknown,
+  };
+}
 
 /// The short state word for the table; `--` for none.
 String ptuStateShort(String state) {
@@ -113,7 +123,7 @@ String ptuStateShort(String state) {
   if (s.isEmpty || s.toUpperCase() == 'NULL') return '--';
   final known = ptuStateShortLabels[s.toUpperCase()];
   if (known != null) return known;
-  if (ptuStateIsFault(s)) return '故障';
+  if (ptuStateIsFault(s)) return L10n.current.recentDataPage_shortFault;
   return s.length > 4 ? s.substring(0, 4) : s;
 }
 
@@ -137,10 +147,11 @@ String recentTempText(num? c) => c == null ? '--' : c.round().toString();
 /// back office's reads as 0 秒).
 String recentAgeText(Duration age) {
   final s = age.inSeconds < 0 ? 0 : age.inSeconds;
-  if (s < 60) return '$s 秒';
-  if (s < 3600) return '${s ~/ 60} 分鐘';
-  if (s < 86400) return '${s ~/ 3600} 小時';
-  return '${s ~/ 86400} 天';
+  final l10n = L10n.current;
+  if (s < 60) return l10n.recentDataPage_ageSeconds(s);
+  if (s < 3600) return l10n.recentDataPage_ageMinutes(s ~/ 60);
+  if (s < 86400) return l10n.recentDataPage_ageHours(s ~/ 3600);
+  return l10n.recentDataPage_ageDays(s ~/ 86400);
 }
 
 /// 1.0.0+10 (review P2-9: a phone clock 30 s fast read fresh data as
@@ -182,7 +193,10 @@ RecentBanner recentBanner(RecentData data, DateTime now) {
   }
   final latest = data.latest;
   if (latest == null) {
-    return const RecentBanner(RecentBannerKind.unknown, '最近一筆的時間不明');
+    return RecentBanner(
+      RecentBannerKind.unknown,
+      L10n.current.recentDataPage_latestUnknown,
+    );
   }
   // 1.0.0+10: a row newer than now (clock skew) is 0 s old.
   final raw = now.difference(latest);
@@ -191,12 +205,12 @@ RecentBanner recentBanner(RecentData data, DateTime now) {
       ? age < recentFreshAge
       : age <= recentGreenAge(interval);
   if (fresh) {
-    return const RecentBanner(RecentBannerKind.ok, recentDataOkText);
+    return RecentBanner(RecentBannerKind.ok, recentDataOkText);
   }
   final stale = interval == null
       ? age < recentStoppedAge
       : age <= recentRedAge(interval);
-  final text = '最近 ${recentAgeText(age)}沒有新資料';
+  final text = L10n.current.recentDataPage_noNewData(recentAgeText(age));
   return RecentBanner(
     stale ? RecentBannerKind.stale : RecentBannerKind.stopped,
     text,
@@ -244,12 +258,12 @@ List<RecentItem> recentChronological(RecentData data) {
 String recentTrendText(RecentData data) {
   final rows = recentChronological(data);
   final n = data.items.length;
-  if (rows.length < 2) return '最近 $n 筆';
+  if (rows.length < 2) return L10n.current.recentDataPage_trendCount(n);
   final span = rows.last.ts!.difference(rows.first.ts!);
   final seconds = span.inMilliseconds / 1000;
   final rate = seconds > 0 ? rows.length / seconds : null;
   final rateText = rate == null ? '--' : rate.toStringAsFixed(1);
-  return '最近 $n 筆・跨 ${recentAgeText(span)}・平均每秒 $rateText 筆';
+  return L10n.current.recentDataPage_trend(n, recentAgeText(span), rateText);
 }
 
 /// 「PTU 90:5F:E8:9A:96:00・充電中・13:00:03（7 秒前）」 (1.0.0+8: the whole
@@ -266,10 +280,17 @@ String recentLatestLine(RecentItem item, DateTime now) {
 (String, String) recentLatestParts(RecentItem item, DateTime now) {
   final mac = item.ptuMacText.isEmpty ? '--:--:--' : item.ptuMacText;
   final ts = item.ts;
-  final ago = ts == null ? '時間不明' : '${recentAgeText(now.difference(ts))}前';
+  final l10n = L10n.current;
+  final ago = ts == null
+      ? l10n.recentDataPage_timeUnknown
+      : l10n.recentDataPage_ago(recentAgeText(now.difference(ts)));
   return (
     'PTU $mac',
-    '${ptuStateLabel(item.ptuState)}・${recentClockText(ts)}（$ago）',
+    l10n.recentDataPage_latestRest(
+      ptuStateLabel(item.ptuState),
+      recentClockText(ts),
+      ago,
+    ),
   );
 }
 
@@ -360,9 +381,9 @@ class _RecentDataPageState extends ConsumerState<RecentDataPage> {
     final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
+        title: Text(
           recentDataPageTitle,
-          key: Key('recent-appbar-title'),
+          key: const Key('recent-appbar-title'),
           maxLines: 1,
           softWrap: false,
         ),
@@ -416,15 +437,15 @@ class _RecentDataPageState extends ConsumerState<RecentDataPage> {
     final error = _error;
     final data = _data;
     if (_loading && data == null && error == null) {
-      return const Center(
-        key: Key('recent-loading'),
+      return Center(
+        key: const Key('recent-loading'),
         child: Padding(
-          padding: EdgeInsets.all(24),
+          padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 16),
+              const CircularProgressIndicator(),
+              const SizedBox(height: 16),
               Text(recentDataLoadingText),
             ],
           ),
@@ -444,7 +465,7 @@ class _RecentDataPageState extends ConsumerState<RecentDataPage> {
               key: const Key('recent-retry'),
               onPressed: _loading ? null : _load,
               icon: const Icon(Icons.refresh, size: 20),
-              label: const Text(recentDataRetryLabel),
+              label: Text(recentDataRetryLabel),
             ),
           ),
         ],
@@ -462,7 +483,7 @@ class _RecentDataPageState extends ConsumerState<RecentDataPage> {
               key: const Key('recent-empty-refresh'),
               onPressed: _loading ? null : _load,
               icon: const Icon(Icons.refresh, size: 20),
-              label: const Text(recentDataRefreshLabel),
+              label: Text(recentDataRefreshLabel),
             ),
           ),
         ],
@@ -624,9 +645,21 @@ class _LatestCard extends StatelessWidget {
               keyPrefix: key,
               big: big,
               values: [
-                (recentVoltsBigText(item.inputMv), 'V', '電壓'),
-                (recentAmpsText(item.inputMa), 'A', '電流'),
-                (recentTempText(item.tempC), '°C', '溫度'),
+                (
+                  recentVoltsBigText(item.inputMv),
+                  'V',
+                  context.l10n.recentDataPage_voltage,
+                ),
+                (
+                  recentAmpsText(item.inputMa),
+                  'A',
+                  context.l10n.recentDataPage_current,
+                ),
+                (
+                  recentTempText(item.tempC),
+                  '°C',
+                  context.l10n.recentDataPage_temperature,
+                ),
               ],
             ),
             const Divider(height: 24),
@@ -647,7 +680,7 @@ class _LatestCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 _LabeledValue(
-                  label: '狀態',
+                  label: context.l10n.recentDataPage_stateLabel,
                   value: Text(
                     ptuStateLabel(item.ptuState),
                     key: Key('$key-line-state'),
@@ -659,7 +692,7 @@ class _LatestCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 _LabeledValue(
-                  label: '資料時間',
+                  label: context.l10n.recentDataPage_dataTime,
                   value: Wrap(
                     spacing: 8,
                     runSpacing: 4,
@@ -672,8 +705,10 @@ class _LatestCard extends StatelessWidget {
                       ),
                       Text(
                         item.ts == null
-                            ? '時間不明'
-                            : '${recentAgeText(now.difference(item.ts!))}前',
+                            ? context.l10n.recentDataPage_timeUnknown
+                            : context.l10n.recentDataPage_ago(
+                                recentAgeText(now.difference(item.ts!)),
+                              ),
                         key: Key('$key-line-age'),
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: colors.onSurfaceVariant,
@@ -852,12 +887,12 @@ class _RecentTable extends StatelessWidget {
     final size = cell?.fontSize ?? 14;
     final scale = MediaQuery.textScalerOf(context).scale(size) / size;
     final columns = <_Col>[
-      const _Col('時間', 66),
+      _Col(context.l10n.recentDataPage_time, 66),
       if (!singlePtu) const _Col('PTU', 72),
       const _Col('V', 42, numeric: true),
       const _Col('A', 42, numeric: true),
       const _Col('°C', 30, numeric: true),
-      const _Col('狀態', 58),
+      _Col(context.l10n.recentDataPage_stateLabel, 58),
     ];
     Widget text(String s, _Col col, TextStyle? style) => SizedBox(
       width: (col.width * scale).ceilToDouble(),
@@ -922,7 +957,10 @@ class _RecentTable extends StatelessWidget {
         initiallyExpanded: false,
         // 1.0.0+10: a collapsed section's title (bodyMedium).
         title: Text(
-          '$recentDataTableTitle（${data.items.length} 筆）',
+          context.l10n.recentDataPage_tableTitleCount(
+            recentDataTableTitle,
+            data.items.length,
+          ),
           style: theme.textTheme.bodyMedium,
         ),
         childrenPadding: const EdgeInsets.only(bottom: 8),

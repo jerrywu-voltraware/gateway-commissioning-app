@@ -1,0 +1,197 @@
+{
+  "@@locale": "zh",
+  "protocol_currentBackend": "目前設定的後端",
+  "@protocol_currentBackend": {
+    "description": "Fallback name of the backend inside error sentences."
+  },
+  "protocol_notFoundWhere": "（站 {site} / 閘道器 {gateway}）",
+  "@protocol_notFoundWhere": {
+    "description": "Parenthetical inserted as {where} into the gateway-not-found sentences.",
+    "placeholders": {
+      "site": {
+        "type": "int"
+      },
+      "gateway": {
+        "type": "int"
+      }
+    }
+  },
+  "protocol_gatewayNotFoundCause": "後端找不到此閘道器{where}（APP 目前連的是 {backend}）。{cause}",
+  "@protocol_gatewayNotFoundCause": {
+    "description": "HTTP 404 gateway_not_found with a known cause sentence.",
+    "placeholders": {
+      "where": {
+        "type": "String"
+      },
+      "backend": {
+        "type": "String"
+      },
+      "cause": {
+        "type": "String"
+      }
+    }
+  },
+  "protocol_gatewayNotFound": "後端找不到此閘道器{where}。閘道器的資料可能上傳到其他後端環境（例如正式站），而 APP 目前連的是 {backend}。",
+  "@protocol_gatewayNotFound": {
+    "placeholders": {
+      "where": {
+        "type": "String"
+      },
+      "backend": {
+        "type": "String"
+      }
+    }
+  },
+  "protocol_httpServerError": "後端內部錯誤（HTTP {status}），請查看後端紀錄後重試。",
+  "@protocol_httpServerError": {
+    "placeholders": {
+      "status": {
+        "type": "int"
+      }
+    }
+  },
+  "protocol_httpRejected": "後端拒絕此請求（HTTP {status}）。",
+  "@protocol_httpRejected": {
+    "placeholders": {
+      "status": {
+        "type": "int"
+      }
+    }
+  },
+  "protocol_gatewayFailedNoReason": "閘道器回報失敗（未提供原因）。",
+  "protocol_gatewayServiceNotReady": "閘道器藍牙服務尚未就緒，請稍後再試",
+  "protocol_ptuConnectFailed": "PTU 連線失敗，請確認 PTU 電源與距離",
+  "protocol_ptuNoResponse": "PTU 沒有回應",
+  "protocol_gatewayFailedSeeDetails": "閘道器回報失敗，請查看詳細資訊。",
+  "protocol_gatewayFailedWithCode": "閘道器回報失敗：{code}",
+  "@protocol_gatewayFailedWithCode": {
+    "description": "{code} is the raw firmware failure text (not translated).",
+    "placeholders": {
+      "code": {
+        "type": "String"
+      }
+    }
+  },
+  "protocol_networkUnreachable": "無法連到 {backend}。請確認手機與後端電腦在同一個 Wi-Fi 網段、電腦防火牆允許該連接埠，以及後端網址是否正確。",
+  "@protocol_networkUnreachable": {
+    "placeholders": {
+      "backend": {
+        "type": "String"
+      }
+    }
+  },
+  "protocol_badResponse": "後端回應格式無法解析（{backend}）。",
+  "@protocol_badResponse": {
+    "placeholders": {
+      "backend": {
+        "type": "String"
+      }
+    }
+  },
+  "protocol_unexpected": "APP 發生未預期錯誤：{detail}",
+  "@protocol_unexpected": {
+    "placeholders": {
+      "detail": {
+        "type": "String"
+      }
+    }
+  },
+  "protocol_targetMismatch": "閘道器目前把資料送到{gatewayTarget}，但手機連的是{appTarget}，資料到不了手機連的這個後端，所以直接停止驗證（不必空等）。\n請在「連線狀態」按「同步」，或點右上角的環境按鈕重新選一次，讓閘道器和手機連同一個地方後再驗證。",
+  "@protocol_targetMismatch": {
+    "description": "Targets are upload-target labels (e.g. production / local test host).",
+    "placeholders": {
+      "gatewayTarget": {
+        "type": "String"
+      },
+      "appTarget": {
+        "type": "String"
+      }
+    }
+  },
+  "protocol_targetReadback": "閘道器重新連上後回報的資料上傳目的地是{actual}，不是要求的{wanted}。設定可能沒有生效，請在「連線狀態」按重新讀取確認，或再同步一次。",
+  "@protocol_targetReadback": {
+    "placeholders": {
+      "actual": {
+        "type": "String"
+      },
+      "wanted": {
+        "type": "String"
+      }
+    }
+  },
+  "protocol_targetReconnect": "閘道器已收到切換指令並重新開機，但 45 秒內未能重新連上藍牙。請靠近閘道器，按「結束並重新選擇閘道器」重新連線後看「連線狀態」。",
+  "protocol_timeNotSynced": "閘道器時間尚未同步。若無可用網路，請先以 USB 更新韌體。",
+  "protocol_expired": "指令已逾期（手機時間與閘道器差異過大或傳送延遲），請重試",
+  "protocol_otpRequired": "此閘道器已啟用一次性密碼，請聯絡管理員。",
+  "protocol_otpInvalid": "一次性密碼錯誤",
+  "protocol_otpLocked": "一次性密碼已鎖定，請稍後再試",
+  "protocol_otpReused": "一次性密碼已用過",
+  "protocol_gatewayBusy": "閘道器正在準備或處理其他操作，請稍後重試。",
+  "protocol_permission": "需要藍牙權限，請至系統設定允許後重試。",
+  "protocol_bluetoothOff": "請開啟手機藍牙後重試。",
+  "protocol_ambiguousTarget": "閘道器同時連著多台 PTU，無法判斷要辨識哪一台，請指定 PTU 後重試。",
+  "protocol_writeFailed": "寫入 PTU 失敗（閘道器未能送出辨識指令），請確認 PTU 電源與距離後重試。",
+  "protocol_identifyNoPtu": "閘道器尚未連上 PTU，無法讓 PTU 閃燈。請確認同樁 PTU 已上電並靠近後重試。",
+  "protocol_directNoPtu": "閘道器目前沒有連上 PTU，無法綁定。請等 PTU 連上後再試。",
+  "protocol_directUnsupported": "此韌體尚未支援直連門檻與綁定，請先更新韌體（1.7.20 起）。",
+  "protocol_directPickMissing": "閘道器目前沒有連上 PTU，請確認 PTU 電源後按「重新搜尋」。",
+  "protocol_directThresholdNotSaved": "門檻未寫入閘道器（回讀的值不同），請重試。",
+  "protocol_directDeferUnconfirmed": "閘道器沒有回報已加入運作並恢復上傳，配置尚未完成。請再按一次「先完成配置」；若仍不行，請按「請後台協助」。",
+  "protocol_directSwitchFailed": "閘道器在等待時限內還沒改連這台 PTU（已暫時綁定它）。連上後畫面會自動更新；也可確認這台 PTU 已上電並靠近，或改選其他 PTU。",
+  "protocol_invalidIdentifySeconds": "辨識秒數必須是 0（關燈）或 2–10 的整數；1 秒會讓 PTU 燈恆亮，因此不提供。",
+  "protocol_identifyDurationUnsupported": "這台舊版閘道器不支援所選辨識秒數。支援 PTU 辨識的舊版僅可用 1–30 秒，更早版本固定 6 秒；其他秒數（含 0 秒關燈）請更新閘道器韌體。",
+  "protocol_identifyUnsupported": "此韌體尚未支援辨識燈號，請先更新韌體。連線時的呼吸燈仍可協助辨識。",
+  "protocol_locationOff": "此版本 Android 搜尋藍牙需要定位服務，請開啟手機定位後重新搜尋。",
+  "protocol_disconnected": "與閘道器的連線已中斷，請靠近後重新連線。",
+  "protocol_timeout": "等待超時，請確認裝置與網路後重試。",
+  "protocol_cancelled": "操作已取消，可從最近完成的步驟重試。",
+  "protocol_monitorUnconfirmed": "30 秒內未確認閘道器已恢復監控，可按「重新連線並繼續」重試，或「略過」直接驗證資料。",
+  "protocol_conflict": "此站點或編號已被使用，請選擇其他編號。",
+  "protocol_replaceUnsupported": "後端版本不支援取代舊機，請改用下一個編號。裝置設定未變更。",
+  "protocol_replacePending": "後台已登記為新機，但寫入裝置失敗。請重新執行配置，系統會沿用取代設定。",
+  "protocol_newSiteRequired": "請輸入與目前站點不同的新站點 ID。",
+  "protocol_wifiPasswordNeeded": "閘道器目前沒有連上這個 Wi-Fi，無法沿用。請輸入 Wi-Fi 密碼後再按「儲存並繼續」。",
+  "protocol_noDevices": "未找到 PTU。請確認已上電並靠近閘道器後重掃。",
+  "protocol_ptuIdentityMismatch": "後台資料的 PTU 身分與本次選擇不符，或缺少 MAC，尚未完成驗證。請返回確認本樁 PTU；若仍不符，請後台協助。",
+  "protocol_testModeStuck": "閘道器重新開機後仍在測試模式，請再按一次「{button}」；若仍不行，請按求助。",
+  "@protocol_testModeStuck": {
+    "description": "{button} is the leave-test-mode button name.",
+    "placeholders": {
+      "button": {
+        "type": "String"
+      }
+    }
+  },
+  "protocol_uploadPaused": "閘道器仍回報資料上傳暫停，請再按一次「{button}」；若仍不行，請按求助。",
+  "@protocol_uploadPaused": {
+    "description": "{button} is the resume-upload button name.",
+    "placeholders": {
+      "button": {
+        "type": "String"
+      }
+    }
+  },
+  "protocol_gatewayFull": "本機已滿，請連另一台閘道器。",
+  "protocol_incomplete": "仍有 PTU 未連線或資料未到達，請查看各台狀態後重試。",
+  "protocol_authentication": "後台登入失敗或已失效，請稍後重試；若仍失敗，請聯絡管理員更新 APP。",
+  "protocol_httpsRequired": "正式環境需要有效的 HTTPS 網址。",
+  "protocol_otherFailure": "操作未完成，請確認裝置狀態後重試。",
+  "protocol_fleetUnconfirmed": "資料已上傳，但閘道器沒有回報「已加入監控」（APP 已自動補送一次），開通尚未完成。請靠近閘道器後按「開始資料驗證」重試；若仍不行，請按「請後台協助」。",
+  "protocol_phoneLinkLost": "手機與閘道器的藍牙連線中斷，請靠近閘道器後按「重新連線並繼續」",
+  "protocol_identityArchived": "這台閘道器之前在後台被移除（封存），後台不會記錄它的心跳。請按下方「重新加入」，恢復記錄後會繼續確認上線。",
+  "@protocol_identityArchived": {
+    "description": "The first sentence is used alone as a checklist reason."
+  },
+  "protocol_backendUnavailable": "後端暫時無回應，已自動重試 60 秒仍未恢復。請確認後端後按「重試」，已累計的驗證進度會保留。",
+  "protocol_reconnectFailed": "重新連線失敗，請靠近閘道器後重試，或回到找閘道器。",
+  "protocol_bleErrorNoCode": "無法連上閘道器（藍牙錯誤），請靠近閘道器後重試",
+  "protocol_bleErrorCode": "無法連上閘道器（藍牙錯誤 {code}），請靠近閘道器後重試",
+  "@protocol_bleErrorCode": {
+    "description": "{code} is the numeric GATT status (e.g. 133).",
+    "placeholders": {
+      "code": {
+        "type": "String"
+      }
+    }
+  }
+}

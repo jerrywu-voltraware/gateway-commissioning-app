@@ -1,0 +1,4 @@
+{
+  "@@locale": "en",
+  "gatewayModeCard_resumeHint": "After resuming, the gateway sends PTU data at once, without a restart."
+}

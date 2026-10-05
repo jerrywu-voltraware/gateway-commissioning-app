@@ -46,6 +46,7 @@ library;
 
 import 'dart:math' as math;
 
+import '../l10n/l10n.dart';
 import 'direct_mode.dart';
 
 /// Sampling length and read interval (tests shorten them).
@@ -95,77 +96,82 @@ const calibrationNeighborTieDb = 1;
 /// …at most this many.
 const calibrationNeighborTieMax = 3;
 
-const calibrationTitle = '校正門檻';
+String get calibrationTitle => L10n.current.directCalibration_title;
 
 /// Signals too close for any threshold (yellow).
-const calibrationTooCloseText = '鄰近樁訊號太強，無法只靠門檻區分，請在確認後綁定此 PTU';
+String get calibrationTooCloseText => L10n.current.directCalibration_tooClose;
 
 /// Round 19 fix: [DirectThresholdVerdict.tooClose] only because the
 /// gateway's -100…-20 write range clamped the natural midpoint outside
 /// [DirectThresholdSuggestion.lower] / [DirectThresholdSuggestion.upper]
 /// — the gap wording ([calibrationGapText]) would contradict itself here
 /// (e.g. a 16 dB gap called 「餘裕不足」).
-const calibrationOutOfRangeText = '本樁讀數已超出閘道器可用範圍（-100～-20 dBm），請重新取樣';
+String get calibrationOutOfRangeText =>
+    L10n.current.directCalibration_outOfRange;
 
 /// This pile's advertising and the strongest neighbour's peak are closer
 /// than [calibrationAmbiguousDb] (firmware 1.7.27 only).
-const calibrationAmbiguousText =
-    '本樁與鄰近樁的廣播訊號相差不到 $calibrationAmbiguousDb dB：'
-    '選台時可能判為不確定，綁定後就不受影響。';
+String get calibrationAmbiguousText =>
+    L10n.current.directCalibration_ambiguous(calibrationAmbiguousDb);
 
 /// The written threshold was read back from the gateway.
-const calibrationSavedText = '已寫入閘道器（重開機仍保留）';
+String get calibrationSavedText => L10n.current.directCalibration_saved;
 
-const calibrationNoOwnText =
-    '未取得本樁 PTU 的連線訊號（閘道器目前沒有連著已確認的 PTU），無法建議門檻。'
-    '請確認本樁 PTU 已連上後重新取樣。';
+String get calibrationNoOwnText => L10n.current.directCalibration_noOwn;
 
 /// Round 28: no neighbour heard — the threshold is held at [hold] dBm.
 String calibrationNoNeighborText(int hold) =>
-    '未偵測到鄰近 PTU（已連線的 PTU 不會廣播），無法確認放寬是否安全，'
-    '建議維持 $hold dBm。';
+    L10n.current.directCalibration_noNeighbor(hold);
 
 /// Round 28: no neighbour heard and this pile's own signal is under the
 /// held threshold's reach ([upper] dBm): still not loosened.
 String calibrationOwnBelowHoldText(int upper, int hold) =>
-    '本樁 PTU 訊號偏弱（可用上限 $upper dBm，低於門檻 $hold dBm），'
-    '但沒有鄰近資料不能放寬門檻：請確認已開啟「確認後綁定 PTU」（綁定後不受門檻影響），'
-    '或調整 PTU 擺放後重新取樣。';
+    L10n.current.directCalibration_ownBelowHold(upper, hold);
 
 /// Round 28: the write button when the suggestion is the gateway's
 /// current threshold.
-String calibrationHoldLabel(int hold) => '維持目前門檻（$hold dBm），不需寫入';
+String calibrationHoldLabel(int hold) =>
+    L10n.current.directCalibration_holdLabel(hold);
 
 /// No confirmed PTU yet: where to get one.
-const calibrationNeedsOwnText = '請先在第 7 步按「辨識此樁」確認本樁 PTU，再校正門檻。';
+String get calibrationNeedsOwnText => L10n.current.directCalibration_needsOwn;
 
 /// Round 19: the resample button while neighbour data is stale.
-const calibrationRescanLabel = '重新掃描鄰近';
+String get calibrationRescanLabel => L10n.current.directCalibration_rescanLabel;
 
 /// Round 19: a suggestion not built on firmware 1.7.27's fields.
-const calibrationReferenceLegacyText = '參考值（閘道器韌體較舊）';
-const calibrationReferenceNoAdvText = '參考值（閘道器未回報本樁廣播訊號）';
+String get calibrationReferenceLegacyText =>
+    L10n.current.directCalibration_referenceLegacy;
+String get calibrationReferenceNoAdvText =>
+    L10n.current.directCalibration_referenceNoAdv;
 
 /// Round 20: this pile's advertising median too old / without an age.
-const calibrationReferenceStaleAdvText =
-    '參考值（本樁廣播值超過 ${calibrationSelfAdvMaxAge ~/ 60} 分鐘，上限只用連線訊號）';
-const calibrationReferenceUndatedAdvText = '參考值（本樁廣播值未附選台時間，上限只用連線訊號）';
+String get calibrationReferenceStaleAdvText => L10n.current
+    .directCalibration_referenceStaleAdv(calibrationSelfAdvMaxAge ~/ 60);
+String get calibrationReferenceUndatedAdvText =>
+    L10n.current.directCalibration_referenceUndatedAdv;
 
 /// Round 20: how old this pile's advertising median is ([ageS]:
 /// `self_adv_age_s`, null when not reported) — measured while the gateway
 /// selected, frozen once connected.
 String calibrationSelfAdvAgeText(num? ageS) {
-  if (ageS == null) return '本樁廣播值未附選台時間';
-  if (ageS < 60) return '本樁廣播值來自 ${ageS.round()} 秒前選台';
-  return '本樁廣播值來自 ${ageS ~/ 60} 分鐘前選台';
+  final l10n = L10n.current;
+  if (ageS == null) return l10n.directCalibration_selfAdvUndated;
+  if (ageS < 60) return l10n.directCalibration_selfAdvSeconds(ageS.round());
+  return l10n.directCalibration_selfAdvMinutes(ageS ~/ 60);
 }
 
 /// Round 20: the neighbours named in [calibrationGapText] — each MAC
 /// segment kept on one line ([noBreak]), joined by 「、」; [total] ties
 /// beyond the ones named: 「等 N 台」.
 String calibrationNeighborLabel(List<String> segments, {int? total}) {
-  final named = segments.map(noBreak).join('、');
-  return total != null && total > segments.length ? '$named 等 $total 台' : named;
+  final l10n = L10n.current;
+  final named = segments
+      .map(noBreak)
+      .join(l10n.directCalibration_neighborSeparator);
+  return total != null && total > segments.length
+      ? l10n.directCalibration_neighborsAndMore(named, total)
+      : named;
 }
 
 /// Round 19: [value] dBm that never breaks between the number and 「dBm」.
@@ -180,10 +186,10 @@ String noBreak(String text) => text.split('').join('\u2060');
 /// ([DirectThresholdSuggestion.gap]), [neighbor] that neighbour's MAC
 /// segment (round 20: the tied neighbours, [calibrationNeighborLabel]).
 String calibrationGapText(int gap, String neighbor) {
-  final who = '鄰近樁 $neighbor ';
-  if (gap < 0) return '$who比本樁還強 ${-gap} dB';
-  if (gap == 0) return '$who和本樁一樣強';
-  return '$who只比本樁弱 $gap dB，餘裕不足（至少要弱 $calibrationMinGap dB）';
+  final l10n = L10n.current;
+  if (gap < 0) return l10n.directCalibration_gapStronger(neighbor, -gap);
+  if (gap == 0) return l10n.directCalibration_gapEqual(neighbor);
+  return l10n.directCalibration_gapSmall(neighbor, gap, calibrationMinGap);
 }
 
 /// Round 19 fix: the too-close reason in the installer's words — the gap
@@ -201,16 +207,21 @@ String calibrationTooCloseReason(
 
 /// Round 19: neighbours left out for being heard too long ago ([ageS]: the
 /// oldest, seconds).
-String calibrationStaleText(int ageS) =>
-    '鄰近資料已 $ageS 秒未更新（超過 $calibrationNeighborMaxAge 秒，未列入計算），'
-    '請按「$calibrationRescanLabel」再取樣一次。';
+String calibrationStaleText(int ageS) => L10n.current.directCalibration_stale(
+  ageS,
+  calibrationNeighborMaxAge,
+  calibrationRescanLabel,
+);
 
 /// Round 19 fix: neighbours counted toward the lower bound despite too
 /// few readings — a rescan hint, not an exclusion (excluding them here
 /// used to let the suggestion come out under that neighbour's own peak).
 String calibrationFewSamplesText(int count) =>
-    '有 $count 台鄰近 PTU 讀數較少（不足 $calibrationMinNeighborSamples 筆），'
-    '已計入下限但可能不穩定，請按「$calibrationRescanLabel」再取樣一次。';
+    L10n.current.directCalibration_fewSamples(
+      count,
+      calibrationMinNeighborSamples,
+      calibrationRescanLabel,
+    );
 
 enum DirectThresholdVerdict {
   /// Midpoint of [DirectThresholdSuggestion.lower] and

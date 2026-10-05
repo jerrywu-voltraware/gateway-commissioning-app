@@ -1,0 +1,14 @@
+{
+  "@@locale": "en",
+  "autoChecklist_oldFirmwareLater": "This firmware can't report; checked at the final data verification",
+  "autoChecklist_linkLost": "Bluetooth lost; can't confirm",
+  "autoChecklist_wifiConnected": "Connected",
+  "autoChecklist_wifiNotSet": "Wi-Fi not set up; tap [Set up Wi-Fi] below",
+  "autoChecklist_wifiFailed": "Can't connect to Wi-Fi; tap [Reset Wi-Fi] below",
+  "autoChecklist_testMode": "Gateway in test mode; switch back to normal mode first",
+  "autoChecklist_targetElsewhere": "Data goes to another back office; follow the hint below",
+  "autoChecklist_uploadPaused": "Data upload paused; tap [Resume upload] below",
+  "autoChecklist_uploadHeld": "Connected; data upload starts after setup",
+  "autoChecklist_uploading": "Uploading data",
+  "autoChecklist_uploadNotStarted": "Data upload not started; follow the hint below"
+}

@@ -1,0 +1,30 @@
+{
+  "@@locale": "zh",
+  "ptuRssi_last": "上次 {rssi} dBm",
+  "@ptuRssi_last": {
+    "description": "Gateway-to-PTU RSSI from an earlier reading.",
+    "placeholders": {
+      "rssi": {
+        "type": "String"
+      }
+    }
+  },
+  "ptuRssi_scan": "掃描 {rssi} dBm",
+  "@ptuRssi_scan": {
+    "description": "RSSI from the discovery scan (PTU not connected).",
+    "placeholders": {
+      "rssi": {
+        "type": "String"
+      }
+    }
+  },
+  "ptuRssi_cached": "快取 {rssi} dBm",
+  "@ptuRssi_cached": {
+    "description": "RSSI of a connected PTU without a reading age.",
+    "placeholders": {
+      "rssi": {
+        "type": "String"
+      }
+    }
+  }
+}

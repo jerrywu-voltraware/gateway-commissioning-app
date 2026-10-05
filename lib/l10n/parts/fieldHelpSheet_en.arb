@@ -1,0 +1,15 @@
+{
+  "@@locale": "en",
+  "fieldHelpSheet_label": "Ask back office",
+  "fieldHelpSheet_sent": "✓ Help request reached the back office",
+  "fieldHelpSheet_queued": "⚠ Cannot send now ({reason}); the back office cannot see it yet. Read the info below over the phone.",
+  "fieldHelpSheet_queuedNoReason": "no network / not logged in to the back office",
+  "fieldHelpSheet_unsupported": "This back office version has no online notice. Read the info below.",
+  "fieldHelpSheet_needsConnection": "Back office switched. Connect to the new back office first, then ask again.",
+  "fieldHelpSheet_demo": "Demo mode does not send. Read the info below.",
+  "fieldHelpSheet_sending": "Notifying the back office…",
+  "fieldHelpSheet_resend": "Resend",
+  "fieldHelpSheet_readOut": "Read to the back office:",
+  "fieldHelpSheet_details": "Details",
+  "fieldHelpSheet_noPassword": "The Wi-Fi password is never sent."
+}

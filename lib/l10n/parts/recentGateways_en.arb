@@ -1,0 +1,19 @@
+{
+  "@@locale": "en",
+  "recentGateways_unknownUnverified": "Back office status unknown · identity checked after connecting",
+  "recentGateways_unknownNoHeartbeat": "Back office status unknown · no heartbeat from this MAC",
+  "recentGateways_unknownDuplicates": "{count, plural, other{Back office status unknown · {count} records with the same MAC}}",
+  "recentGateways_unknownConflict": "Back office status unknown · identity conflict flagged",
+  "recentGateways_reportedOnline": "Back office reports online",
+  "recentGateways_reportedOffline": "Back office reports offline",
+  "recentGateways_unknown": "Back office status unknown",
+  "recentGateways_shortOnline": "Backend online",
+  "recentGateways_shortOffline": "Backend offline",
+  "recentGateways_shortNoRecord": "No backend record",
+  "recentGateways_shortArchived": "Backend archived",
+  "recentGateways_shortUnknown": "Backend unknown",
+  "recentGateways_archivedLabel": "Archived (removed in back office)",
+  "recentGateways_configuredLabel": "Configured",
+  "recentGateways_queryTimeout": "Back office status unknown · query timed out (8 s)",
+  "recentGateways_queryFailed": "Back office status unknown · query failed ({detail})"
+}

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/gateway_swap.dart';
+import '../l10n/l10n.dart';
 import 'recent_data_page.dart' show recentAgeText;
 
 /// 1.0.0+13 換機 (replaces 1.0.0+12's 〔修改〕 number picker: an installer
@@ -12,28 +13,31 @@ import 'recent_data_page.dart' show recentAgeText;
 /// ([CommissioningController.swapCandidates]); one picked is confirmed
 /// ([swapConfirmText]) and sent through the existing replacement
 /// (reserve-identity force_replace first, then set_site_identity).
-const swapLabel = '這台是來換掉壞掉的舊機';
+String get swapLabel => L10n.current.gatewaySwapSheet_label;
 
 /// Under the assignment once an old gateway was chosen: back to the
 /// automatic number.
-const swapCancelLabel = '取消換機';
+String get swapCancelLabel => L10n.current.gatewaySwapSheet_cancelLabel;
 
 /// After 「將配置為 站點 X / 閘道器 N」 once an old gateway was chosen:
 /// 「（取代舊機 …70F0）」.
-String swapAssignmentHint(String? tail) =>
-    tail == null ? '（取代舊機）' : '（取代舊機 $tail）';
+String swapAssignmentHint(String? tail) => tail == null
+    ? L10n.current.gatewaySwapSheet_assignmentHint
+    : L10n.current.gatewaySwapSheet_assignmentHintTail(tail);
 
 /// Instead of [swapLabel] when the back office cannot be asked.
-const swapNeedsNetworkText = '換機需要連上網路';
+String get swapNeedsNetworkText => L10n.current.gatewaySwapSheet_needsNetwork;
 
-String swapSheetTitle(int site) => '選擇要取代的舊機（站 $site）';
-const swapSheetHint = '只列出本站目前離線的閘道器；舊機必須已拆除或斷電。';
-const swapNoneText = '本站沒有離線的閘道器可以取代';
-const swapCloseLabel = '關閉';
-const swapSheetCancelLabel = '取消';
+String swapSheetTitle(int site) =>
+    L10n.current.gatewaySwapSheet_sheetTitle(site);
+String get swapSheetHint => L10n.current.gatewaySwapSheet_sheetHint;
+String get swapNoneText => L10n.current.gatewaySwapSheet_none;
+String get swapCloseLabel => L10n.current.common_close;
+String get swapSheetCancelLabel => L10n.current.common_cancel;
 
 /// 「閘道器 3」.
-String swapRowTitle(SwapCandidate c) => '閘道器 ${c.gateway}';
+String swapRowTitle(SwapCandidate c) =>
+    L10n.current.gatewaySwapSheet_rowTitle(c.gateway);
 
 /// 「最後上線 3 小時前 · MAC …70F0」 (「沒有上線紀錄」, no MAC part when the
 /// back office has none).
@@ -41,22 +45,27 @@ String swapRowDetail(SwapCandidate c, DateTime now) {
   final seen = c.lastSeen;
   final tail = c.tail;
   return [
-    seen == null ? '沒有上線紀錄' : '最後上線 ${recentAgeText(now.difference(seen))}前',
+    seen == null
+        ? L10n.current.gatewaySwapSheet_noRecord
+        : L10n.current.gatewaySwapSheet_lastSeen(
+            recentAgeText(now.difference(seen)),
+          ),
     if (tail != null) 'MAC $tail',
   ].join(' · ');
 }
 
-const swapConfirmTitle = '確定換機？';
+String get swapConfirmTitle => L10n.current.gatewaySwapSheet_confirmTitle;
 
 /// 「這台將接手 站 80 · 閘道器 1。舊機（…70F0）必須已拆除或斷電。」
-String swapConfirmText(int site, int gateway, String? tail) =>
-    '這台將接手 站 $site · 閘道器 $gateway。'
-    '${tail == null ? '舊機' : '舊機（$tail）'}必須已拆除或斷電。';
-const swapConfirmOkLabel = '確定換機';
+String swapConfirmText(int site, int gateway, String? tail) => tail == null
+    ? L10n.current.gatewaySwapSheet_confirmText(site, gateway)
+    : L10n.current.gatewaySwapSheet_confirmTextTail(site, gateway, tail);
+String get swapConfirmOkLabel => L10n.current.gatewaySwapSheet_confirmOk;
 
 /// Sent no more: the old gateway came online after it was chosen.
-String swapOnlineText(int gateway) => '閘道器 $gateway 目前在線上，請先把舊機斷電。';
-const swapOnlineOkLabel = '知道了';
+String swapOnlineText(int gateway) =>
+    L10n.current.gatewaySwapSheet_online(gateway);
+String get swapOnlineOkLabel => L10n.current.gatewaySwapSheet_onlineOk;
 
 /// The old gateway picked, or null (closed / cancelled).
 Future<SwapCandidate?> showGatewaySwapSheet(

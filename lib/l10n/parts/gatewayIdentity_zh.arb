@@ -1,0 +1,56 @@
+{
+  "@@locale": "zh",
+  "gatewayIdentity_idText": "站 {site} · 閘道器 {gateway}",
+  "@gatewayIdentity_idText": {
+    "description": "A gateway's identity: site number and gateway number.",
+    "placeholders": {
+      "site": {"type": "int", "example": "80"},
+      "gateway": {"type": "int", "example": "2"}
+    }
+  },
+  "gatewayIdentity_unconfigured": "未配置閘道器",
+  "@gatewayIdentity_unconfigured": {
+    "description": "Title of a gateway known not to be configured (a MAC tail may follow)."
+  },
+  "gatewayIdentity_macTail": "MAC 後 4 碼 {tail}",
+  "@gatewayIdentity_macTail": {
+    "placeholders": {"tail": {"type": "String", "example": "70F0"}}
+  },
+  "gatewayIdentity_macTailWithBle": "MAC 後 4 碼 {tail}（藍牙 {ble}）",
+  "@gatewayIdentity_macTailWithBle": {
+    "description": "Wi-Fi MAC tail, with the Bluetooth MAC tail the phone sees in brackets.",
+    "placeholders": {
+      "tail": {"type": "String", "example": "70F0"},
+      "ble": {"type": "String", "example": "70F2"}
+    }
+  },
+  "gatewayIdentity_directGatewayPick": "閘道器連到的是附近另一台閘道器（{mac}），不是 PTU，APP 不會把它當成 PTU。請按「不是這台？」改選同樁的 PTU，或靠近同樁 PTU 後按「重新搜尋」。",
+  "@gatewayIdentity_directGatewayPick": {
+    "description": "Yellow direct-mode notice. Logic recognises it by the text before {mac}, in every language.",
+    "placeholders": {"mac": {"type": "String", "example": "24:0A:C4:12:70:F2"}}
+  },
+  "gatewayIdentity_uploadHeld": "後台連線正常。PTU 資料會在完成配置後自動開始上傳（目前暫停是正常的），APP 會自動繼續",
+  "gatewayIdentity_confirmOnlineLabel": "確認閘道器上線",
+  "gatewayIdentity_uploadHeldStatus": "✓ 已連上（完成配置後才上傳）",
+  "gatewayIdentity_testMode": "這台閘道器處於測試模式（只產生測試資料、不會連 PTU），配置前需切回正常模式。",
+  "gatewayIdentity_testModeActionHint": "切回後閘道器會重新開機（約 1 分鐘），APP 會自動重新連線並繼續。",
+  "gatewayIdentity_leaveTestModeLabel": "切回正常模式",
+  "gatewayIdentity_leavingTestMode": "正在把閘道器切回正常模式（會重新開機，約 1 分鐘）",
+  "gatewayIdentity_leftTestMode": "閘道器已切回正常模式並重新連上，可以繼續配置。",
+  "gatewayIdentity_testModeUpload": "閘道器在測試模式：只上傳測試資料，不會上傳 PTU 資料。",
+  "gatewayIdentity_uploadPaused": "閘道器已連上後台，但資料上傳已暫停：PTU 資料不會送出。請按「{resume}」。",
+  "@gatewayIdentity_uploadPaused": {
+    "placeholders": {"resume": {"type": "String", "example": "恢復上傳"}}
+  },
+  "gatewayIdentity_testModeStatusHint": "閘道器在測試模式（只產生測試資料），請按「{leave}」。",
+  "@gatewayIdentity_testModeStatusHint": {
+    "placeholders": {"leave": {"type": "String", "example": "切回正常模式"}}
+  },
+  "gatewayIdentity_uploadPausedStatusHint": "閘道器的資料上傳已暫停，PTU 資料不會送出；請按「{resume}」。",
+  "@gatewayIdentity_uploadPausedStatusHint": {
+    "placeholders": {"resume": {"type": "String", "example": "恢復上傳"}}
+  },
+  "gatewayIdentity_resumeUploadLabel": "恢復上傳",
+  "gatewayIdentity_resumingUpload": "正在恢復資料上傳",
+  "gatewayIdentity_uploadResumed": "已恢復資料上傳，閘道器開始送出 PTU 資料。"
+}

@@ -8,6 +8,7 @@
 /// reply, a heartbeat), the page only draws them.
 library;
 
+import '../l10n/l10n.dart';
 import 'mqtt_target.dart';
 
 enum CheckStatus { pending, running, done, failed }
@@ -145,16 +146,48 @@ class Checklist {
 /// A failed item's reason: what happened, from the page's error — its
 /// first line and sentence, without the 「，請…」 advice (the red box
 /// right below keeps the full text, what to do and its retry).
+///
+/// 2026-10-05 (i18n): the error follows the screen language, so both
+/// languages are cut — a sentence ends at 「。」 or at an English period
+/// followed by a space (not inside 1.7.36); the advice starts at 「，請」 or
+/// 「, please」.
 String checklistReason(String? error) {
   var line = (error ?? '').trim().split('\n').first.trim();
-  final end = line.indexOf('。');
+  final end = _sentenceEnd(line);
   if (end >= 0) line = line.substring(0, end);
-  final advice = line.indexOf('，請');
-  if (advice > 0) line = line.substring(0, advice);
-  while (line.endsWith('：') || line.endsWith(':') || line.endsWith('。')) {
-    line = line.substring(0, line.length - 1);
+  for (final marker in _adviceMarkers) {
+    final advice = line.toLowerCase().indexOf(marker);
+    if (advice > 0) line = line.substring(0, advice);
   }
-  return line.isEmpty ? '沒有完成' : line;
+  line = line.trim();
+  while (_reasonTails.any(line.endsWith)) {
+    line = line.substring(0, line.length - 1).trim();
+  }
+  return line.isEmpty ? L10n.current.coreProgressChecklist_notDone : line;
+}
+
+/// Where the advice of an error starts (compared in lower case).
+const _adviceMarkers = [
+  '，請', // i18n-keep-zh（辨識中文錯誤訊息的建議段，不是顯示文字）
+  ', please',
+];
+
+/// Punctuation dropped from the end of a reason.
+const _reasonTails = [
+  '：', // i18n-keep-zh（全形標點，辨識用）
+  ':',
+  '。', // i18n-keep-zh（全形標點，辨識用）
+  '.',
+];
+
+/// End of the first sentence of [line]: 「。」, or 「.」 followed by white
+/// space; -1 when it is one sentence.
+int _sentenceEnd(String line) {
+  final zh = line.indexOf('。'); // i18n-keep-zh（全形句號，辨識用）
+  final en = RegExp(r'\.\s').firstMatch(line)?.start ?? -1;
+  if (zh < 0) return en;
+  if (en < 0) return zh;
+  return zh < en ? zh : en;
 }
 
 // ---- The items of each automatic page (plain words, no codes) ----
@@ -165,12 +198,15 @@ const connectItemBle = 'ble',
     connectItemWifi = 'wifi',
     connectItemBackend = 'backend';
 
-Checklist connectChecklist() => const Checklist(ChecklistKind.connect, [
-  CheckItem(connectItemBle, '藍牙連線'),
-  CheckItem(connectItemStatus, '讀取閘道器狀態'),
-  CheckItem(connectItemWifi, 'Wi-Fi 已連線'),
-  CheckItem(connectItemBackend, '後台連線正常'),
-]);
+Checklist connectChecklist() {
+  final l10n = L10n.current;
+  return Checklist(ChecklistKind.connect, [
+    CheckItem(connectItemBle, l10n.coreProgressChecklist_connectBle),
+    CheckItem(connectItemStatus, l10n.coreProgressChecklist_connectStatus),
+    CheckItem(connectItemWifi, l10n.coreProgressChecklist_connectWifi),
+    CheckItem(connectItemBackend, l10n.coreProgressChecklist_connectBackend),
+  ]);
+}
 
 /// 第 5 步 「確認閘道器上線」.
 const onlineItemBackend = 'backend',
@@ -178,19 +214,22 @@ const onlineItemBackend = 'backend',
     onlineItemBeat2 = 'beat2',
     onlineItemTarget = 'target';
 
-Checklist onlineChecklist() => const Checklist(ChecklistKind.online, [
-  CheckItem(onlineItemBackend, '連上後台'),
-  CheckItem(onlineItemBeat1, '收到第 1 次心跳'),
-  CheckItem(onlineItemBeat2, '收到第 2 次心跳（持續上線）'),
-  CheckItem(onlineItemTarget, '上傳目標確認'),
-]);
+Checklist onlineChecklist() {
+  final l10n = L10n.current;
+  return Checklist(ChecklistKind.online, [
+    CheckItem(onlineItemBackend, l10n.coreProgressChecklist_onlineBackend),
+    CheckItem(onlineItemBeat1, l10n.coreProgressChecklist_onlineBeat1),
+    CheckItem(onlineItemBeat2, l10n.coreProgressChecklist_onlineBeat2),
+    CheckItem(onlineItemTarget, l10n.coreProgressChecklist_onlineTarget),
+  ]);
+}
 
 /// 上傳目標確認's result: where the heartbeats arrived.
 String uploadTargetNote(MqttTarget? target) => target == null
-    ? '送到目前的後台'
+    ? L10n.current.coreProgressChecklist_targetCurrent
     : target.isLocal
-    ? '本地測試'
-    : '正式站';
+    ? L10n.current.coreProgressChecklist_targetLocal
+    : L10n.current.mqttTarget_production;
 
 /// 「正在完成設定」 (one-to-one, after 〔是這台，開始配置〕) and 「正在配置
 /// PTU」 (star, and old firmware's list) — through the data verification.
@@ -209,19 +248,29 @@ Checklist finishChecklist({
   required bool direct,
   bool starList = false,
   int total = 1,
-}) => Checklist(ChecklistKind.finish, [
-  if (direct) ...const [
-    CheckItem(finishItemBind, '寫入 PTU 綁定'),
-    CheckItem(finishItemSettings, '寫入 PTU 設定'),
-  ] else ...[
-    if (starList) const CheckItem(finishItemList, '寫入 PTU 名單'),
-    CheckItem(finishItemAssign, total > 1 ? '指派 PTU（共 $total 台）' : '指派 PTU'),
-  ],
-  const CheckItem(finishItemJoin, '加入監控'),
-  const CheckItem(finishItemJoined, '核對已加入監控'),
-  const CheckItem(finishItemData, '驗證資料上傳'),
-]);
+}) {
+  final l10n = L10n.current;
+  return Checklist(ChecklistKind.finish, [
+    if (direct) ...[
+      CheckItem(finishItemBind, l10n.coreProgressChecklist_finishBind),
+      CheckItem(finishItemSettings, l10n.coreProgressChecklist_finishSettings),
+    ] else ...[
+      if (starList)
+        CheckItem(finishItemList, l10n.coreProgressChecklist_finishList),
+      CheckItem(
+        finishItemAssign,
+        total > 1
+            ? l10n.coreProgressChecklist_finishAssignTotal(total)
+            : l10n.coreProgressChecklist_finishAssign,
+      ),
+    ],
+    CheckItem(finishItemJoin, l10n.coreProgressChecklist_finishJoin),
+    CheckItem(finishItemJoined, l10n.coreProgressChecklist_finishJoined),
+    CheckItem(finishItemData, l10n.coreProgressChecklist_finishData),
+  ]);
+}
 
 /// 「收到 1/3 筆」 (one PTU) / 「每台 1/3 筆」 (several).
-String dataCountNote(int count, int need, {required int ptus}) =>
-    ptus > 1 ? '每台 $count/$need 筆' : '收到 $count/$need 筆';
+String dataCountNote(int count, int need, {required int ptus}) => ptus > 1
+    ? L10n.current.coreProgressChecklist_dataEach(count, need)
+    : L10n.current.coreProgressChecklist_dataReceived(count, need);

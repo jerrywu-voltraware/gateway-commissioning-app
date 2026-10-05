@@ -1,0 +1,36 @@
+{
+  "@@locale": "zh",
+  "installReport_sending": "正在把報告送到後台…",
+  "@installReport_sending": {
+    "description": "Done page: the install report is being uploaded."
+  },
+  "installReport_sent": "報告已送到後台",
+  "installReport_sentAt": "報告已送到後台 {time}",
+  "@installReport_sentAt": {
+    "placeholders": {
+      "time": {
+        "type": "String",
+        "example": "14:03"
+      }
+    }
+  },
+  "installReport_queued": "排隊中，網路恢復後自動送",
+  "installReport_queuedReason": "排隊中，網路恢復後自動送（{reason}）",
+  "@installReport_queuedReason": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "installReport_failed": "報告沒有送到後台",
+  "installReport_failedReason": "報告沒有送到後台：{reason}",
+  "@installReport_failedReason": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "installReport_demo": "模擬模式：報告不送後台"
+}

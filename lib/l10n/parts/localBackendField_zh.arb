@@ -1,0 +1,86 @@
+{
+  "@@locale": "zh",
+  "localBackendField_foundFilled": "✓ 找到本地後端 {host}，已自動填入。",
+  "@localBackendField_foundFilled": {
+    "placeholders": {
+      "host": {"type": "String", "example": "192.168.1.187"}
+    }
+  },
+  "localBackendField_filledNotReady": "已填入 {host}，但該後端的資料庫尚未就緒，請稍後按「測試連線」確認。",
+  "@localBackendField_filledNotReady": {
+    "placeholders": {
+      "host": {"type": "String", "example": "192.168.1.187"}
+    }
+  },
+  "localBackendField_noPhoneIp": "找不到手機的 Wi-Fi IP。請先讓手機連上與電腦相同的 Wi-Fi 後再試。",
+  "localBackendField_notFound": "在 {subnet} 網段找不到本地後端（連接埠 {port}）。",
+  "@localBackendField_notFound": {
+    "placeholders": {
+      "subnet": {"type": "String", "example": "192.168.1.x"},
+      "port": {"type": "String", "example": "18000"}
+    }
+  },
+  "localBackendField_notFoundTimedOut": "在 {subnet} 網段找不到本地後端（連接埠 {port}）。（已達搜尋時間上限）",
+  "@localBackendField_notFoundTimedOut": {
+    "placeholders": {
+      "subnet": {"type": "String", "example": "192.168.1.x"},
+      "port": {"type": "String", "example": "18000"}
+    }
+  },
+  "localBackendField_foundCount": "{count, plural, other{找到 {count} 台本地後端}}",
+  "@localBackendField_foundCount": {
+    "description": "Title of the pick dialog when several local back offices answered.",
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "localBackendField_foundNotChosen": "{count, plural, other{找到 {count} 台本地後端，尚未選擇。}}",
+  "@localBackendField_foundNotChosen": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "localBackendField_version": "版本 {version}",
+  "@localBackendField_version": {
+    "placeholders": {
+      "version": {"type": "String", "example": "1.35.2"}
+    }
+  },
+  "localBackendField_dbNotReady": "資料庫尚未就緒",
+  "localBackendField_scanCancelled": "已取消搜尋。",
+  "localBackendField_ipLabel": "電腦 IP 位址",
+  "localBackendField_willConnectNone": "將連線：（請先輸入正確的 IP）",
+  "localBackendField_willConnect": "將連線：{url}",
+  "@localBackendField_willConnect": {
+    "placeholders": {
+      "url": {"type": "String", "example": "http://192.168.1.187:18000"}
+    }
+  },
+  "localBackendField_autoFind": "自動尋找",
+  "localBackendField_testing": "測試中…",
+  "localBackendField_testConnection": "測試連線",
+  "localBackendField_advancedPort": "進階：連接埠 {port}",
+  "@localBackendField_advancedPort": {
+    "placeholders": {
+      "port": {"type": "String", "example": "18000"}
+    }
+  },
+  "localBackendField_gettingSubnet": "正在取得手機的 Wi-Fi 網段…",
+  "localBackendField_searching": "正在搜尋 {host}…（{done}／{total}）",
+  "@localBackendField_searching": {
+    "placeholders": {
+      "host": {"type": "String", "example": "192.168.1.23"},
+      "done": {"type": "int"},
+      "total": {"type": "int"}
+    }
+  },
+  "localBackendField_portDialogTitle": "本地後端連接埠",
+  "localBackendField_portLabel": "連接埠",
+  "localBackendField_portDefault": "預設 {port}",
+  "@localBackendField_portDefault": {
+    "placeholders": {
+      "port": {"type": "String", "example": "18000"}
+    }
+  },
+  "localBackendField_restoreDefault": "還原預設"
+}

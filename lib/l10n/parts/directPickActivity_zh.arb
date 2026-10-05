@@ -1,0 +1,16 @@
+{
+  "@@locale": "zh",
+  "directPickActivity_unavailable": "連線待確認，請依提示重試",
+  "directPickActivity_foundConfirm": "已找到 PTU，請確認是眼前此樁",
+  "directPickActivity_identifySent": "已送出辨識，請確認燈號",
+  "directPickActivity_ambiguousIdentify": "訊號相近，請辨識此樁",
+  "directPickActivity_foundIdentify": "已找到 PTU，請辨識此樁",
+  "directPickActivity_scanning": "閘道器正在搜尋 PTU",
+  "directPickActivity_connecting": "閘道器正在連線 PTU",
+  "directPickActivity_noCandidate": "尚未找到 PTU，請確認電源",
+  "directPickActivity_boundMissing": "已綁定的 PTU 不在場",
+  "directPickActivity_connected": "等待閘道器回報選中的 PTU",
+  "directPickActivity_reading": "正在讀取 PTU 狀態",
+  "directPickActivity_noStatus": "尚未取得 PTU 狀態",
+  "directPickActivity_gatewayEndpoint": "閘道器"
+}

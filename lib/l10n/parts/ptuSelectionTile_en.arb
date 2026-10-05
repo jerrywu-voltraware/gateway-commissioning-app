@@ -1,0 +1,20 @@
+{
+  "@@locale": "en",
+  "ptuSelectionTile_blocked": "Belongs to another gateway",
+  "ptuSelectionTile_reset": "Reset and add",
+  "ptuSelectionTile_unassigned": "Unassigned PTU",
+  "ptuSelectionTile_mac": "MAC: {mac}",
+  "ptuSelectionTile_name": "Name: {name}",
+  "ptuSelectionTile_connectedHere": "Connected to this gateway",
+  "ptuSelectionTile_peripheralNotConnected": "Not connected",
+  "ptuSelectionTile_signal": "Signal: {value}",
+  "ptuSelectionTile_noReading": "No reading yet",
+  "ptuSelectionTile_readingState": "Reading status: {text}",
+  "ptuSelectionTile_snapshotNote": "Values as of opening; see the list for live values.",
+  "ptuSelectionTile_status": "Status: {text}",
+  "ptuSelectionTile_detailTitle": "Details (last failure)",
+  "ptuSelectionTile_selectSemantic": "Select {title}, {mac}",
+  "ptuSelectionTile_connected": "Connected",
+  "ptuSelectionTile_notConnected": "Not connected",
+  "ptuSelectionTile_infoTooltip": "{title} device info"
+}

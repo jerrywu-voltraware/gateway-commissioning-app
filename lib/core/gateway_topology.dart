@@ -1,3 +1,5 @@
+import '../l10n/l10n.dart';
+
 /// Gateway ↔ PTU topology written into the gateway's `max_connections`
 /// during commissioning. Firmware and backend are unchanged; only the target
 /// PTU count commissioning aims for differs.
@@ -15,13 +17,13 @@ enum GatewayTopology {
   int targetCount(int starCount) => isDirect ? 1 : starCount;
 
   String get shortLabel => switch (this) {
-    GatewayTopology.direct => '直連模式',
-    GatewayTopology.star => '星狀模式',
+    GatewayTopology.direct => L10n.current.gatewayTopology_directShort,
+    GatewayTopology.star => L10n.current.gatewayTopology_starShort,
   };
 
   String get label => switch (this) {
-    GatewayTopology.direct => '直連模式（一對一）',
-    GatewayTopology.star => '星狀模式（一對多）',
+    GatewayTopology.direct => L10n.current.gatewayTopology_directLabel,
+    GatewayTopology.star => L10n.current.gatewayTopology_starLabel,
   };
 }
 

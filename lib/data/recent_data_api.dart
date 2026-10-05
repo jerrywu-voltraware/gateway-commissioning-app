@@ -19,6 +19,7 @@
 library;
 
 import '../core/protocol.dart';
+import '../l10n/l10n.dart';
 import 'contracts.dart';
 
 /// How many rows the page asks for.
@@ -147,9 +148,12 @@ int? recentIntervalOf(Object? value) {
 /// 1.0.0+20: an upload interval in plain words — 「5 分鐘」 for whole
 /// minutes, else 「20 秒」 (「1.5 秒」).
 String intervalWords(int ms) {
-  if (ms >= 60000 && ms % 60000 == 0) return '${ms ~/ 60000} 分鐘';
-  if (ms % 1000 == 0) return '${ms ~/ 1000} 秒';
-  return '${(ms / 1000).toStringAsFixed(1)} 秒';
+  final l10n = L10n.current;
+  if (ms >= 60000 && ms % 60000 == 0) {
+    return l10n.recentDataApi_minutes(ms ~/ 60000);
+  }
+  if (ms % 1000 == 0) return l10n.recentDataApi_seconds(ms ~/ 1000);
+  return l10n.recentDataApi_secondsDecimal((ms / 1000).toStringAsFixed(1));
 }
 
 /// `ts` as local time; null when it is not an ISO-8601 string.
@@ -206,8 +210,11 @@ String recentClockText(DateTime? ts) {
 String recentSummaryText(RecentData data, DateTime now) {
   final latest = data.latest;
   final age = latest == null ? null : now.difference(latest).inSeconds;
-  final ago = age == null ? '時間不明' : '${age < 0 ? 0 : age} 秒前';
-  return '最近一筆 $ago・共 ${data.count} 筆';
+  final l10n = L10n.current;
+  final ago = age == null
+      ? l10n.recentDataApi_timeUnknown
+      : l10n.recentDataApi_secondsAgo(age < 0 ? 0 : age);
+  return l10n.recentDataApi_summary(data.count, ago);
 }
 
 /// The endpoint path for one gateway.
@@ -244,11 +251,12 @@ Future<RecentData> fetchRecentData(
 /// in by themselves ([AppSession]), so a refused login is a reason like
 /// any other — nobody is sent back to the done page any more.
 String recentDataErrorText(Object error) =>
-    '連不上後台（${recentDataErrorReason(error)}）';
+    L10n.current.recentDataApi_errorText(recentDataErrorReason(error));
 
 /// The reason inside [recentDataErrorText].
 String recentDataErrorReason(Object error) => switch (error) {
-  GatewayFailure(code: 'authentication') => '後台拒絕此 APP 的登入憑證，請聯絡管理員更新 APP',
+  GatewayFailure(code: 'authentication') =>
+    L10n.current.recentDataApi_authRefused,
   GatewayFailure f => f.message,
   _ => '$error',
 };

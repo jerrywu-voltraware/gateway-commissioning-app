@@ -1,0 +1,42 @@
+{
+  "@@locale": "zh",
+  "androidAppUpdateDialog_permissionRequired": "請允許安裝此來源的應用程式，返回後按「繼續安裝」。",
+  "androidAppUpdateDialog_installerOpened": "請在系統畫面確認安裝。若已取消，可再按「繼續安裝」。",
+  "androidAppUpdateDialog_verificationFailed": "更新檔的版本或簽章驗證失敗，請聯絡管理人員。",
+  "androidAppUpdateDialog_installFailed": "無法開啟系統安裝畫面，請返回 APP 後重試。",
+  "androidAppUpdateDialog_prepareFailed": "無法準備更新檔，請確認手機儲存空間後重試。",
+  "androidAppUpdateDialog_startFailed": "無法啟動更新安裝，請聯絡管理人員。",
+  "androidAppUpdateDialog_integrityFailed": "更新檔驗證失敗，請重新下載。",
+  "androidAppUpdateDialog_downloadFailed": "更新下載未完成，請確認網路後重試。",
+  "androidAppUpdateDialog_title": "有新版 APP",
+  "androidAppUpdateDialog_currentVersion": "目前版本：{name}（{code}）",
+  "@androidAppUpdateDialog_currentVersion": {
+    "placeholders": {
+      "name": {"type": "String", "example": "1.0.0"},
+      "code": {"type": "String", "example": "21"}
+    }
+  },
+  "androidAppUpdateDialog_latestVersion": "最新版本：{name}（{code}）",
+  "@androidAppUpdateDialog_latestVersion": {
+    "placeholders": {
+      "name": {"type": "String", "example": "1.0.1"},
+      "code": {"type": "String", "example": "22"}
+    }
+  },
+  "androidAppUpdateDialog_defaultNotes": "改善 APP 使用體驗。",
+  "@androidAppUpdateDialog_defaultNotes": {
+    "description": "Shown when the release has no notes (release notes from the server are shown as is)."
+  },
+  "androidAppUpdateDialog_verifying": "正在驗證更新檔…",
+  "androidAppUpdateDialog_downloading": "正在下載 {percent}%",
+  "@androidAppUpdateDialog_downloading": {
+    "placeholders": {
+      "percent": {"type": "int"}
+    }
+  },
+  "androidAppUpdateDialog_cancelDownload": "取消下載",
+  "androidAppUpdateDialog_later": "稍後",
+  "androidAppUpdateDialog_continueInstall": "繼續安裝",
+  "androidAppUpdateDialog_redownload": "重新下載",
+  "androidAppUpdateDialog_updateNow": "立即更新"
+}

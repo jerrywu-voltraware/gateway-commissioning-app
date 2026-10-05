@@ -1,0 +1,59 @@
+{
+  "@@locale": "zh",
+  "ptuSelectionTile_blocked": "已屬於其他閘道器",
+  "ptuSelectionTile_reset": "重置並納入",
+  "@ptuSelectionTile_reset": {
+    "description": "Button: clear this PTU's number and rescan so it can be selected."
+  },
+  "ptuSelectionTile_unassigned": "未指派 PTU",
+  "ptuSelectionTile_mac": "MAC：{mac}",
+  "@ptuSelectionTile_mac": {
+    "placeholders": {
+      "mac": {"type": "String", "example": "AA:BB:CC:DD:EE:FF"}
+    }
+  },
+  "ptuSelectionTile_name": "名稱：{name}",
+  "@ptuSelectionTile_name": {
+    "placeholders": {
+      "name": {"type": "String"}
+    }
+  },
+  "ptuSelectionTile_connectedHere": "已連線至此閘道器",
+  "ptuSelectionTile_peripheralNotConnected": "周邊未連線",
+  "ptuSelectionTile_signal": "訊號：{value}",
+  "@ptuSelectionTile_signal": {
+    "placeholders": {
+      "value": {"type": "String", "example": "-61 dBm"}
+    }
+  },
+  "ptuSelectionTile_noReading": "尚無讀值",
+  "ptuSelectionTile_readingState": "讀值狀態：{text}",
+  "@ptuSelectionTile_readingState": {
+    "placeholders": {
+      "text": {"type": "String"}
+    }
+  },
+  "ptuSelectionTile_snapshotNote": "此處為開啟時的讀值；動態數值請看清單。",
+  "ptuSelectionTile_status": "狀態：{text}",
+  "@ptuSelectionTile_status": {
+    "placeholders": {
+      "text": {"type": "String"}
+    }
+  },
+  "ptuSelectionTile_detailTitle": "詳細（最近一次失敗）",
+  "ptuSelectionTile_selectSemantic": "選擇 {title}，{mac}",
+  "@ptuSelectionTile_selectSemantic": {
+    "placeholders": {
+      "title": {"type": "String", "example": "PTU #3"},
+      "mac": {"type": "String", "example": "AA:BB:CC:DD:EE:FF"}
+    }
+  },
+  "ptuSelectionTile_connected": "已連線",
+  "ptuSelectionTile_notConnected": "未連線",
+  "ptuSelectionTile_infoTooltip": "{title} 裝置資訊",
+  "@ptuSelectionTile_infoTooltip": {
+    "placeholders": {
+      "title": {"type": "String", "example": "PTU #3"}
+    }
+  }
+}

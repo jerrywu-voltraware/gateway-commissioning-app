@@ -1,0 +1,9 @@
+{
+  "@@locale": "en",
+  "localBackendAddress_hostEmpty": "Enter the PC's IP address",
+  "localBackendAddress_hostFormat": "Use 4 numbers 0–255, e.g. 192.168.1.187",
+  "localBackendAddress_hostLoopback": "127.x is the phone itself. Enter the PC's LAN IP",
+  "localBackendAddress_hostNotPrivate": "LAN addresses only (10.x, 172.16–31.x, 192.168.x)",
+  "localBackendAddress_hostLastOctet": "The last number cannot be 0 or 255",
+  "localBackendAddress_portRange": "Port must be 1–65535"
+}

@@ -1,0 +1,22 @@
+{
+  "@@locale": "zh",
+  "fieldHelpSheet_label": "請後台協助",
+  "fieldHelpSheet_sent": "✓ 求助已送達後台",
+  "fieldHelpSheet_queued": "⚠ 目前送不出去（{reason}），後台暫時看不到。請在電話中直接唸下面的資訊。",
+  "@fieldHelpSheet_queued": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "fieldHelpSheet_queuedNoReason": "沒有網路／尚未登入後台",
+  "fieldHelpSheet_unsupported": "後台版本還不支援線上通知，請直接唸下面的資訊。",
+  "fieldHelpSheet_needsConnection": "已切換後台，請先連線到新的後台，再重新求助。",
+  "fieldHelpSheet_demo": "示範模式不會傳送，請直接唸下面的資訊。",
+  "fieldHelpSheet_sending": "正在通知後台…",
+  "fieldHelpSheet_resend": "重新傳送",
+  "fieldHelpSheet_readOut": "請唸給後台：",
+  "fieldHelpSheet_details": "詳細資訊",
+  "fieldHelpSheet_noPassword": "不會傳送 Wi-Fi 密碼。"
+}

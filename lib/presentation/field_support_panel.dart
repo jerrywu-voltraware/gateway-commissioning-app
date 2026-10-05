@@ -8,6 +8,7 @@ import '../application/commissioning_controller.dart';
 import '../application/field_report.dart' show originOf;
 import '../core/protocol.dart';
 import '../data/contracts.dart';
+import '../l10n/l10n.dart';
 
 bool supportOriginMatches(GatewayApi api, String base) {
   if (api is! SessionInfo) return true;
@@ -75,7 +76,7 @@ class _FieldSupportPanelState extends ConsumerState<FieldSupportPanel>
     if (!supportOriginMatches(_api, _origin)) {
       setState(() {
         _data = null;
-        _error = '請先連線到目前選擇的後台，再查看協助回覆。';
+        _error = L10n.current.fieldSupportPanel_notConnected;
       });
       return;
     }
@@ -101,7 +102,7 @@ class _FieldSupportPanelState extends ConsumerState<FieldSupportPanel>
             _error = null;
             _unavailable = true;
           } else {
-            _error = '暫時無法取得後台回覆；以下若有內容是上次收到的，請重新整理或電話聯絡。';
+            _error = L10n.current.fieldSupportPanel_fetchFailed;
           }
         });
       }
@@ -135,7 +136,9 @@ class _FieldSupportPanelState extends ConsumerState<FieldSupportPanel>
         });
       }
     } catch (_) {
-      if (_current) setState(() => _error = '尚未確認回覆結果，請重新整理；若指引更新，請看完後再回覆。');
+      if (_current) {
+        setState(() => _error = L10n.current.fieldSupportPanel_confirmFailed);
+      }
     } finally {
       if (mounted) setState(() => _sending = false);
     }
@@ -143,13 +146,17 @@ class _FieldSupportPanelState extends ConsumerState<FieldSupportPanel>
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final state = _data?['state'];
     final label = switch (state) {
-      'pending' => '等待後台接手',
-      'handling' => '後台已接手，處理中',
-      'waiting_field' => '後台已提供指引，請操作後回覆',
-      'resolved' => '你已確認解決',
-      _ => _unavailable ? '請電話聯絡後台協助' : '正在取得協助狀態…',
+      'pending' => l10n.fieldSupportPanel_statePending,
+      'handling' => l10n.fieldSupportPanel_stateHandling,
+      'waiting_field' => l10n.fieldSupportPanel_stateWaitingField,
+      'resolved' => l10n.fieldSupportPanel_stateResolved,
+      _ =>
+        _unavailable
+            ? l10n.fieldSupportPanel_stateCallSupport
+            : l10n.fieldSupportPanel_stateLoading,
     };
     final events = (_data?['events'] as List? ?? const []).whereType<Map>();
     final requestedAt = _data?['request_at'] as String? ?? '';
@@ -178,28 +185,40 @@ class _FieldSupportPanelState extends ConsumerState<FieldSupportPanel>
               key: const Key('field-support-state'),
               style: Theme.of(context).textTheme.titleMedium,
             ),
-            if (_unavailable) const Text('目前無法在 APP 查看文字回覆，請將下方設備與步驟資訊告知後台。'),
+            if (_unavailable) Text(l10n.fieldSupportPanel_unavailable),
             if (instruction != null) ...[
               const SizedBox(height: 8),
               Text(
-                '後台指引 · 當時第 ${instruction['step']} 步${time == null ? '' : ' · ${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}'}',
+                time == null
+                    ? l10n.fieldSupportPanel_instructionHeader(
+                        '${instruction['step']}',
+                      )
+                    : l10n.fieldSupportPanel_instructionHeaderAt(
+                        '${instruction['step']}',
+                        '${time.hour.toString().padLeft(2, '0')}:'
+                            '${time.minute.toString().padLeft(2, '0')}',
+                      ),
               ),
               if (target?['gateway_mac'] != null)
                 Text(
-                  '指引對象：站 ${target?['site_id'] ?? '?'} / 閘道器 ${target?['gateway_id'] ?? '?'} · MAC ${target?['gateway_mac']}',
+                  l10n.fieldSupportPanel_instructionTarget(
+                    '${target?['site_id'] ?? '?'}',
+                    '${target?['gateway_id'] ?? '?'}',
+                    '${target?['gateway_mac']}',
+                  ),
                 ),
               const SizedBox(height: 4),
               SelectableText(
                 instruction['message'] as String? ?? '',
                 key: const Key('field-support-instruction'),
               ),
-              const Text('請先核對目前畫面與設備，再依指引操作。'),
+              Text(l10n.fieldSupportPanel_checkFirst),
             ],
             if (differentGateway) ...[
-              const Text('這是其他閘道器的協助紀錄，請勿照做；請更新求助資訊，讓後台確認目前設備。'),
+              Text(l10n.fieldSupportPanel_otherGateway),
               TextButton(
                 onPressed: widget.onRequestAgain,
-                child: const Text('更新求助資訊'),
+                child: Text(l10n.fieldSupportPanel_updateRequest),
               ),
             ],
             if (_error != null)
@@ -215,31 +234,35 @@ class _FieldSupportPanelState extends ConsumerState<FieldSupportPanel>
                     _sending || _reading || _error != null || differentGateway
                     ? null
                     : () => _confirm('resolved'),
-                child: Text(_sending ? '回覆中…' : '已解決'),
+                child: Text(
+                  _sending
+                      ? l10n.fieldSupportPanel_replying
+                      : l10n.fieldSupportPanel_resolved,
+                ),
               ),
               TextButton(
                 onPressed:
                     _sending || _reading || _error != null || differentGateway
                     ? null
                     : () => _confirm('still_help'),
-                child: const Text('仍需協助'),
+                child: Text(l10n.fieldSupportPanel_stillHelp),
               ),
             ],
             if (state == 'resolved')
               TextButton(
                 onPressed: widget.onRequestAgain,
-                child: const Text('再次求助'),
+                child: Text(l10n.fieldSupportPanel_askAgain),
               ),
             TextButton(
               onPressed: _sending || _reading
                   ? null
                   : () => _refresh(retryUnavailable: true),
-              child: const Text('重新整理回覆'),
+              child: Text(l10n.fieldSupportPanel_refresh),
             ),
             if (!_unavailable)
-              const Text(
-                '關閉後可點頂部「請後台協助」再次查看回覆。',
-                style: TextStyle(fontSize: 13),
+              Text(
+                l10n.fieldSupportPanel_reopenHint,
+                style: const TextStyle(fontSize: 13),
               ),
           ],
         ),

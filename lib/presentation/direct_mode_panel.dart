@@ -12,6 +12,10 @@ import 'direct_calibration_sheet.dart';
 import 'direct_pick_activity.dart';
 import 'next_action_guide.dart';
 import 'field_help_sheet.dart';
+import '../l10n/l10n.dart';
+
+// i18n（docs/i18n.md）：字串在 lib/l10n/parts/directModePanel_*.arb；被測試引用的
+// top-level 文字維持同名改 getter。
 
 /// Step 7 (direct mode, firmware 1.7.20+): the PTU the gateway itself
 /// picked — MAC, RSSI and why (`select_reason`). Round 15: no list to tick;
@@ -107,17 +111,22 @@ class _DirectStatusPanelState extends ConsumerState<DirectStatusPanel> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('閘道器選中的 PTU', style: text.titleSmall),
+            Text(
+              context.l10n.directModePanel_pickedTitle,
+              style: text.titleSmall,
+            ),
             const SizedBox(height: 4),
             if (direct == null)
               Text(
-                state.busy ? '正在讀取閘道器的選台結果…' : '尚未取得閘道器的選台結果，請按「重新搜尋」。',
+                state.busy
+                    ? context.l10n.directModePanel_readingPick
+                    : context.l10n.directModePanel_noPick,
                 key: const Key('direct-state'),
               )
             else if (picked != null) ...[
               const Divider(height: 16),
               Text(
-                '裝置編號（MAC）',
+                context.l10n.directModePanel_macLabel,
                 style: text.bodySmall?.copyWith(color: colors.onSurfaceVariant),
               ),
               const SizedBox(height: 2),
@@ -134,7 +143,7 @@ class _DirectStatusPanelState extends ConsumerState<DirectStatusPanel> {
                 textBaseline: TextBaseline.alphabetic,
                 children: [
                   Text(
-                    '訊號',
+                    context.l10n.directModePanel_signalLabel,
                     style: text.bodySmall?.copyWith(
                       color: colors.onSurfaceVariant,
                     ),
@@ -158,7 +167,7 @@ class _DirectStatusPanelState extends ConsumerState<DirectStatusPanel> {
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
                   child: Text(
-                    '選台依據：${direct.reasonText}',
+                    context.l10n.directModePanel_reason(direct.reasonText!),
                     key: const Key('direct-reason'),
                     style: text.bodySmall?.copyWith(
                       color: colors.onSurfaceVariant,
@@ -254,14 +263,14 @@ class _DirectStatusPanelState extends ConsumerState<DirectStatusPanel> {
                           onPressed: state.busy
                               ? null
                               : controller.keepStrayBind,
-                          child: const Text('保留'),
+                          child: Text(context.l10n.directModePanel_keep),
                         ),
                         OutlinedButton(
                           key: const Key('direct-stray-release'),
                           onPressed: state.busy || state.relinking
                               ? null
                               : controller.releaseStrayBind,
-                          child: const Text('解除'),
+                          child: Text(context.l10n.directModePanel_release),
                         ),
                       ],
                     ),
@@ -286,15 +295,17 @@ class _DirectStatusPanelState extends ConsumerState<DirectStatusPanel> {
                   children: [
                     if (direct.minRssi != null)
                       Text(
-                        '門檻 ${direct.minRssi} dBm',
+                        context.l10n.directModePanel_threshold(direct.minRssi!),
                         style: text.bodySmall?.copyWith(
                           color: colors.onSurfaceVariant,
                         ),
                       ),
                     macRichText(
                       direct.boundMac == null
-                          ? '未綁定'
-                          : '已綁定 ${formatMac(direct.boundMac)}',
+                          ? context.l10n.directModePanel_unbound
+                          : context.l10n.directModePanel_bound(
+                              formatMac(direct.boundMac),
+                            ),
                       style: text.bodySmall?.copyWith(
                         color: colors.onSurfaceVariant,
                       ),
@@ -314,7 +325,7 @@ class _DirectStatusPanelState extends ConsumerState<DirectStatusPanel> {
                   onPressed: state.busy
                       ? null
                       : () => controller.setDirectBind(false),
-                  child: const Text('解除綁定'),
+                  child: Text(context.l10n.directModePanel_unbind),
                 ),
               ),
             if (picked == null && !widget.actionsInBar)
@@ -326,7 +337,7 @@ class _DirectStatusPanelState extends ConsumerState<DirectStatusPanel> {
                   onPressed: state.busy || state.relinking
                       ? null
                       : controller.discover,
-                  label: const Text('重新搜尋'),
+                  label: Text(context.l10n.directModePanel_searchAgain),
                 ),
               ),
             // With a pick, 「不是這台？」 is in the bottom bar (round 16).
@@ -343,7 +354,7 @@ class _DirectStatusPanelState extends ConsumerState<DirectStatusPanel> {
                     size: 20,
                   ),
                   onPressed: () => setState(() => _others = !_others),
-                  label: const Text('改選其他 PTU'),
+                  label: Text(context.l10n.directModePanel_pickOther),
                 ),
               ),
               if (_others) ...[
@@ -449,7 +460,7 @@ class DirectNoPtuHelp extends ConsumerWidget {
                 key: const Key('no-ptu-rescan'),
                 icon: const Icon(Icons.refresh, size: 18),
                 onPressed: enabled ? controller.rescanDirect : null,
-                label: const Text('重新搜尋'),
+                label: Text(context.l10n.directModePanel_searchAgain),
               ),
               FilledButton.tonalIcon(
                 key: const Key('no-ptu-defer'),
@@ -457,14 +468,14 @@ class DirectNoPtuHelp extends ConsumerWidget {
                 onPressed: enabled
                     ? () => confirmFinishWithoutPtu(context, ref)
                     : null,
-                label: const Text(deferFinishLabel),
+                label: Text(deferFinishLabel),
               ),
               if (controller.fieldHelpAvailable)
                 OutlinedButton.icon(
                   key: const Key('no-ptu-help'),
                   icon: const Icon(Icons.support_agent, size: 18),
                   onPressed: () => openFieldHelp(context, ref),
-                  label: const Text('請後台協助'),
+                  label: Text(context.l10n.directModePanel_askBackOffice),
                 ),
             ],
           ),
@@ -486,18 +497,18 @@ Future<void> confirmFinishWithoutPtu(
     context: context,
     builder: (context) => AlertDialog(
       key: const Key('defer-confirm'),
-      title: const Text(deferConfirmTitle),
+      title: Text(deferConfirmTitle),
       content: Text(deferConfirmText(threshold)),
       actions: [
         TextButton(
           key: const Key('defer-confirm-cancel'),
           onPressed: () => Navigator.pop(context, false),
-          child: const Text('取消'),
+          child: Text(context.l10n.common_cancel),
         ),
         FilledButton(
           key: const Key('defer-confirm-ok'),
           onPressed: () => Navigator.pop(context, true),
-          child: const Text(deferFinishLabel),
+          child: Text(deferFinishLabel),
         ),
       ],
     ),
@@ -507,7 +518,7 @@ Future<void> confirmFinishWithoutPtu(
 }
 
 /// Round 28: the title of [DirectNoPtuHelp].
-const directNoPtuTitle = '找不到本樁 PTU：可能原因與處理';
+String get directNoPtuTitle => L10n.current.directModePanel_noPtuTitle;
 
 /// Round 28: [DirectNoPtuHelp]'s lines for the gateway's report [direct]:
 /// power, placement / housing, the threshold (with the strongest PTU it
@@ -529,31 +540,34 @@ List<String> directNoPtuCauses(DirectStatus? direct) {
       )
       .firstOrNull;
   final denied = rows.any((c) => c.reason == 'denied');
+  final l10n = L10n.current;
   final String threshold;
   if (bound != null) {
-    threshold = '已綁定 PTU ${formatMac(bound)}：閘道器只連這台。若本樁已更換 PTU，請按「解除綁定」後重新搜尋。';
+    threshold = l10n.directModePanel_causeBound(formatMac(bound));
   } else if (weak != null) {
     final rssi = valid(weak.rssiMed) ? weak.rssiMed : weak.rssiPeak;
-    threshold =
-        '附近 PTU 訊號太弱（$rssi dBm，門檻 $min）：PTU '
-        '${formatMac(weak.mac)} 可能是鄰近樁的 PTU——請不要為了連上而放寬門檻。';
+    threshold = l10n.directModePanel_causeWeak(
+      '$rssi',
+      min,
+      formatMac(weak.mac),
+    );
   } else if (denied) {
-    threshold = '附近的 PTU 已綁定給其他充電樁（已自動略過）；本樁 PTU 可能尚未上電。';
+    threshold = l10n.directModePanel_causeDenied;
   } else {
-    threshold = '沒有聽到任何 PTU，請確認本樁 PTU 電源（門檻 $min dBm）。';
+    threshold = l10n.directModePanel_causeNone(min);
   }
   return [
-    '本樁 PTU 沒有上電：確認 PTU 電源開啟、指示燈有亮。',
-    '擺放或機殼遮蔽：PTU 要和閘道器裝在同一個機殼內；金屬外殼、天線被擋住都會讓訊號變弱。',
+    l10n.directModePanel_causePower,
+    l10n.directModePanel_causeHousing,
     threshold,
-    '仍找不到：按「請後台協助」，後台可看到閘道器狀態協助判斷。',
-    'PTU 暫時不在場（尚未安裝或斷電）：按「$deferFinishLabel」，閘道器照常加入運作，PTU 上電後會自動連上。',
+    l10n.directModePanel_causeHelp,
+    l10n.directModePanel_causeDefer(deferFinishLabel),
   ];
 }
 
 /// Above the nearby candidates of 「不是這台？」 / 「改選其他 PTU」.
 String directCandidatesHint(int count) =>
-    '附近候選（$count）：點選後閘道器會綁定並改連那一台，再按「辨識此樁」確認。';
+    L10n.current.directModePanel_candidatesHint(count);
 
 /// One nearby candidate: the full MAC (monospace) with 「峰值 RSSI」 below
 /// (round 16: no old star number); a tap makes the gateway switch to it.
@@ -631,7 +645,9 @@ class DirectCandidateTile extends ConsumerWidget {
                 ),
                 const SizedBox(width: 12),
                 Text(
-                  current ? '目前選中' : '改連這台',
+                  current
+                      ? context.l10n.directModePanel_currentPick
+                      : context.l10n.directModePanel_switchToThis,
                   style: TextStyle(
                     color: current ? colors.onSurfaceVariant : colors.primary,
                   ),
@@ -655,7 +671,8 @@ Future<void> showDirectCandidates(BuildContext context) =>
     );
 
 /// Round 17: the sheet while a new collection window runs.
-const directCandidatesCollectingText = '閘道器正在重新收集附近的 PTU，約需 5–10 秒…';
+String get directCandidatesCollectingText =>
+    L10n.current.directModePanel_collecting;
 
 /// Round 17: 「不是這台？」 / 「改選其他 PTU」. With no candidates reported
 /// (field round 17: the gateway kept its PTU after a binding was undone
@@ -705,7 +722,7 @@ class DirectCandidatesSheet extends ConsumerWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('不是這台？', style: text.titleMedium),
+            Text(context.l10n.directModePanel_notThis, style: text.titleMedium),
             const SizedBox(height: 4),
             // Round 17: the rows go dim while busy but give no reason why
             // a tap does nothing; this line (with the gateway's own
@@ -727,7 +744,7 @@ class DirectCandidatesSheet extends ConsumerWidget {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        '閘道器處理中，請稍候…',
+                        context.l10n.directModePanel_gatewayBusy,
                         style: text.bodySmall?.copyWith(color: colors.primary),
                       ),
                     ),
@@ -738,7 +755,7 @@ class DirectCandidatesSheet extends ConsumerWidget {
               candidates.isEmpty
                   ? state.busy
                         ? directCandidatesCollectingText
-                        : '閘道器目前沒有回報附近候選，請按「重新搜尋」或稍後再試。'
+                        : context.l10n.directModePanel_noCandidates
                   : directCandidatesHint(candidates.length),
               key: const Key('direct-candidates-hint'),
               style: text.bodySmall,
@@ -1099,7 +1116,7 @@ class _DirectPickActionsState extends ConsumerState<DirectPickActions> {
     showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('辨識訊息'),
+        title: Text(context.l10n.directModePanel_identifyDetailTitle),
         scrollable: true,
         content: macRichText(
           note,
@@ -1110,7 +1127,7 @@ class _DirectPickActionsState extends ConsumerState<DirectPickActions> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('關閉'),
+            child: Text(context.l10n.common_close),
           ),
         ],
       ),
@@ -1160,10 +1177,10 @@ class _DirectPickActionsState extends ConsumerState<DirectPickActions> {
         remote ??
         (!ready
             ? state.busy
-                  ? '閘道器處理中，請稍候…'
-                  : '閘道器尚未連上 PTU'
+                  ? context.l10n.directModePanel_gatewayBusy
+                  : context.l10n.directModePanel_notLinked
             : note.isEmpty
-            ? '按下後請看樁上 PTU 與閘道器的燈號'
+            ? context.l10n.directModePanel_watchLights
             : state.identifyLine.isEmpty
             ? note
             : state.identifyLine);
@@ -1189,7 +1206,9 @@ class _DirectPickActionsState extends ConsumerState<DirectPickActions> {
           maintainState: true,
           maintainAnimation: true,
           child: NextActionHint(
-            confirmable ? '確認閃燈的是這台 PTU，再開始監控' : '點「辨識此樁」，確認現場燈號',
+            confirmable
+                ? context.l10n.directModePanel_hintConfirm
+                : context.l10n.directModePanel_hintIdentify,
             active:
                 enabled &&
                 ready &&
@@ -1212,7 +1231,11 @@ class _DirectPickActionsState extends ConsumerState<DirectPickActions> {
                         onPressed: enabled && ready && !settling
                             ? controller.identify
                             : null,
-                        label: Text(settling ? directSettlingLabel : '辨識此樁'),
+                        label: Text(
+                          settling
+                              ? directSettlingLabel
+                              : context.l10n.directModePanel_identifyThis,
+                        ),
                       ),
                     )
                   : const SizedBox.shrink(),
@@ -1220,14 +1243,14 @@ class _DirectPickActionsState extends ConsumerState<DirectPickActions> {
             const SizedBox(width: 4),
             IconButton(
               key: const Key('direct-stop'),
-              tooltip: '取消操作',
+              tooltip: context.l10n.directModePanel_cancelAction,
               constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
               onPressed: state.busy ? controller.stopStep8 : null,
               icon: const Icon(Icons.cancel_outlined),
             ),
             PopupMenuButton<_DirectPickMenuAction>(
               key: const Key('direct-more'),
-              tooltip: '更多操作',
+              tooltip: context.l10n.directModePanel_moreActions,
               enabled: enabled,
               icon: const Icon(Icons.more_horiz),
               onSelected: _selectAction,
@@ -1236,16 +1259,16 @@ class _DirectPickActionsState extends ConsumerState<DirectPickActions> {
                   key: Key(ready ? 'direct-not-this' : 'direct-others-bottom'),
                   value: _DirectPickMenuAction.switchPtu,
                   enabled: state.direct != null,
-                  child: const Text('不是這台？'),
+                  child: Text(context.l10n.directModePanel_notThis),
                 ),
-                const PopupMenuItem(
-                  key: Key('direct-rescan-bottom'),
+                PopupMenuItem(
+                  key: const Key('direct-rescan-bottom'),
                   value: _DirectPickMenuAction.rescan,
-                  child: Text('重新搜尋'),
+                  child: Text(context.l10n.directModePanel_searchAgain),
                 ),
                 if (widget.onEnd != null)
-                  const PopupMenuItem(
-                    key: Key('page-cancel'),
+                  PopupMenuItem(
+                    key: const Key('page-cancel'),
                     value: _DirectPickMenuAction.end,
                     child: Text(endFlowLabel),
                   ),
@@ -1419,9 +1442,17 @@ class _DirectSettingsSheetState extends ConsumerState<DirectSettingsSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('直連進階設定', style: Theme.of(context).textTheme.titleLarge),
+            Text(
+              context.l10n.directModePanel_settingsTitle,
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
             const SizedBox(height: 8),
-            Text('自動連線門檻：${value.round()} dBm（預設 $defaultDirectRssi）'),
+            Text(
+              context.l10n.directModePanel_autoThreshold(
+                value.round(),
+                defaultDirectRssi,
+              ),
+            ),
             Slider(
               key: const Key('direct-min-rssi'),
               min: minDirectRssi.toDouble(),
@@ -1442,7 +1473,7 @@ class _DirectSettingsSheetState extends ConsumerState<DirectSettingsSheet> {
                       if (mounted) setState(() => _dragging = null);
                     },
             ),
-            const Text('閘道器只自動連線訊號強於門檻的 PTU；數值越大（越接近 -20）要越靠近。'),
+            Text(context.l10n.directModePanel_thresholdHelp),
             // Round 18: the right threshold depends on the site (piles side
             // by side, the actual housing): measure it here.
             Padding(
@@ -1456,8 +1487,10 @@ class _DirectSettingsSheetState extends ConsumerState<DirectSettingsSheet> {
                       ? null
                       : () => openDirectCalibration(context),
                   label: Text(
-                    '$calibrationTitle（現場取樣 '
-                    '${directCalibrationDuration.inSeconds} 秒）',
+                    context.l10n.directModePanel_calibrateButton(
+                      calibrationTitle,
+                      directCalibrationDuration.inSeconds,
+                    ),
                   ),
                 ),
               ),
@@ -1470,13 +1503,13 @@ class _DirectSettingsSheetState extends ConsumerState<DirectSettingsSheet> {
             SwitchListTile(
               key: const Key('direct-bind'),
               contentPadding: EdgeInsets.zero,
-              title: const Text('綁定目前 PTU'),
+              title: Text(context.l10n.directModePanel_bindCurrent),
               subtitle: Text(
                 bound != null
-                    ? '已綁定 $bound，只連這台'
+                    ? context.l10n.directModePanel_boundOnly(bound)
                     : linkedMac != null
-                    ? '目前連線：$linkedMac'
-                    : '尚未連上 PTU，無法綁定',
+                    ? context.l10n.directModePanel_linkedNow(linkedMac)
+                    : context.l10n.directModePanel_cannotBind,
               ),
               value: bound != null,
               onChanged: state.busy || (bound == null && linkedMac == null)
@@ -1489,11 +1522,13 @@ class _DirectSettingsSheetState extends ConsumerState<DirectSettingsSheet> {
             SwitchListTile(
               key: const Key('direct-bind-on-confirm'),
               contentPadding: EdgeInsets.zero,
-              title: const Text('確認後綁定 PTU'),
+              title: Text(context.l10n.directModePanel_bindOnConfirm),
               subtitle: Text(
                 ref.watch(topologyProvider).directBindOnConfirm
-                    ? '按「$directConfirmLabel」時把該 PTU 的 MAC 存進閘道器，之後只連這台'
-                    : '關閉後不會鎖定 MAC：本樁 PTU 關機或斷線時，閘道器可能改連鄰近樁的 PTU',
+                    ? context.l10n.directModePanel_bindOnConfirmOn(
+                        directConfirmLabel,
+                      )
+                    : context.l10n.directModePanel_bindOnConfirmOff,
               ),
               value: ref.watch(topologyProvider).directBindOnConfirm,
               onChanged: ref

@@ -1,0 +1,124 @@
+{
+  "@@locale": "zh",
+  "fieldReport_gatewayNotFoundPrefix": "未找到閘道器",
+  "@fieldReport_gatewayNotFoundPrefix": {
+    "description": "Recognition only, never shown: the start of the controller's 'no gateway found after a scan' message in this language (sessionRescueCode matches every language). Keep in sync with that controller message."
+  },
+  "fieldReport_helpStationGateway": "站 {site} / 閘道器 {gateway}",
+  "@fieldReport_helpStationGateway": {
+    "description": "Help sheet line the installer reads to the back office.",
+    "placeholders": {
+      "site": {
+        "type": "String"
+      },
+      "gateway": {
+        "type": "String"
+      }
+    }
+  },
+  "fieldReport_helpStationGatewayMac": "站 {site} / 閘道器 {gateway}（MAC 後 4 碼 {tail}）",
+  "@fieldReport_helpStationGatewayMac": {
+    "placeholders": {
+      "site": {
+        "type": "String"
+      },
+      "gateway": {
+        "type": "String"
+      },
+      "tail": {
+        "type": "String"
+      }
+    }
+  },
+  "fieldReport_helpGatewayName": "閘道器 {name}",
+  "@fieldReport_helpGatewayName": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "fieldReport_helpGatewayNameMac": "閘道器 {name}（MAC 後 4 碼 {tail}）",
+  "@fieldReport_helpGatewayNameMac": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "tail": {
+        "type": "String"
+      }
+    }
+  },
+  "fieldReport_helpNoGateway": "還沒連上閘道器",
+  "fieldReport_helpStep": "目前第 {step} 步：{label}",
+  "@fieldReport_helpStep": {
+    "placeholders": {
+      "step": {
+        "type": "int"
+      },
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "fieldReport_helpError": "錯誤：{error}",
+  "@fieldReport_helpError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "fieldReport_helpCondition": "狀況：{label}",
+  "@fieldReport_helpCondition": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "fieldReport_fwUnknown": "未知",
+  "fieldReport_helpFirmwareDirect": "韌體 {fw} · 直連",
+  "@fieldReport_helpFirmwareDirect": {
+    "placeholders": {
+      "fw": {
+        "type": "String"
+      }
+    }
+  },
+  "fieldReport_helpFirmwareStar": "韌體 {fw} · 星狀 {count} 台",
+  "@fieldReport_helpFirmwareStar": {
+    "placeholders": {
+      "fw": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "fieldReport_helpCode": "狀況代碼：{code}",
+  "@fieldReport_helpCode": {
+    "placeholders": {
+      "code": {
+        "type": "String"
+      }
+    }
+  },
+  "fieldReport_backendSwitched": "已切換後台，報告沒有送出",
+  "@fieldReport_backendSwitched": {
+    "description": "Why the install report failed (screen only)."
+  },
+  "fieldReport_noNetwork": "沒有網路或後台沒有回應",
+  "fieldReport_notLoggedIn": "尚未登入後台",
+  "fieldReport_removedFromOutbox": "已從手機的待送清單移除",
+  "fieldReport_backendUnsupported": "後台尚未支援（請更新後台）",
+  "fieldReport_backendRefused": "後台拒收（HTTP {status}）",
+  "@fieldReport_backendRefused": {
+    "placeholders": {
+      "status": {
+        "type": "String"
+      }
+    }
+  }
+}

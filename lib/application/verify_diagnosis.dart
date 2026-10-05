@@ -4,6 +4,7 @@
 library;
 
 import '../core/mqtt_target.dart';
+import '../l10n/l10n.dart';
 
 /// Why the backend has no data (or no row) for this gateway, given what the
 /// APP knows about the gateway's upload target.
@@ -16,24 +17,22 @@ String missingGatewayCause({
   MqttTarget? wanted,
   Object? mqttConnected,
 }) {
+  final l10n = L10n.current;
   if (running != null && wanted != null && running.sameAs(wanted)) {
     final state = switch (mqttConnected) {
-      false => '閘道器最近回報 MQTT 未連線。',
-      true => '閘道器最近回報 MQTT 已連線，可能剛連上、心跳尚未送達，可稍候再驗證。',
+      false => l10n.verifyDiagnosis_mqttDisconnected,
+      true => l10n.verifyDiagnosis_mqttConnected,
       _ => '',
     };
     final hint = running.isLocal
-        ? '請確認：閘道器的 MQTT 已連線（按「重新讀取」查看）、電腦防火牆已開放 TCP '
-              '${running.port}、本地 MQTT broker 已啟動，且 broker 憑證包含電腦目前的 IP '
-              '${running.host}（電腦 IP 若因 DHCP 變更，需重新產生憑證並把閘道器切到新 IP）。'
-        : '請確認現場網路可連到正式站（TCP ${running.port}），並按「重新讀取」查看 MQTT 是否已連線。';
-    return '閘道器已確認上傳到${running.label}（與 APP 所連後端一致），'
-        '但後端尚未收到它的心跳，表示閘道器還沒連上該 MQTT broker。$state\n$hint';
+        ? l10n.verifyDiagnosis_localHint('${running.port}', running.host)
+        : l10n.verifyDiagnosis_productionHint('${running.port}');
+    return l10n.verifyDiagnosis_sameTarget(running.label, state, hint);
   }
   if (wanted != null && !wanted.isLocal && running == null) {
-    return '閘道器可能尚未連上正式站的 MQTT，或上傳到其他後端環境（例如本地測試站）。';
+    return l10n.verifyDiagnosis_causeProductionUnknown;
   }
-  return '閘道器可能上傳到其他後端環境（例如正式站）。';
+  return l10n.verifyDiagnosis_causeOtherBackend;
 }
 
 /// Step 9: a row whose back office `lag_seconds` is this or more is late
@@ -53,33 +52,36 @@ List<String> ptuVerifyReasons({
   DateTime? previous,
   int lagLimit = verifyLagLimit,
 }) {
+  final l10n = L10n.current;
   final reasons = <String>[];
   final noBackendData =
       install != null &&
       install['data_ok'] != true &&
       (install['last_seen'] == null || install['time_since_last'] == null);
   if (noBackendData) {
-    reasons.add('後端無資料');
+    reasons.add(l10n.verifyDiagnosis_reasonNoBackendData);
   } else if (install != null && install['data_ok'] != true) {
-    reasons.add('後端資料延遲 ${install['time_since_last']} 秒');
+    reasons.add(
+      l10n.verifyDiagnosis_reasonBackendLate('${install['time_since_last']}'),
+    );
   }
   if (latest == null) {
-    if (!noBackendData) reasons.add('最新資料（/api/latest）無此 PTU');
+    if (!noBackendData) reasons.add(l10n.verifyDiagnosis_reasonNotInLatest);
     return reasons;
   }
-  if (latest['online'] != true) reasons.add('離線');
+  if (latest['online'] != true) reasons.add(l10n.verifyDiagnosis_reasonOffline);
   final lag = latest['lag_seconds'] as num?;
   if (lag == null) {
-    reasons.add('延遲未知');
+    reasons.add(l10n.verifyDiagnosis_reasonLagUnknown);
   } else if (lag >= lagLimit) {
-    reasons.add('延遲 ${lag.round()} 秒');
+    reasons.add(l10n.verifyDiagnosis_reasonLag(lag.round()));
   }
   if (latest['error_num'] != 0) reasons.add('error_num=${latest['error_num']}');
   final stamp = DateTime.tryParse(latest['ts']?.toString() ?? '');
   if (stamp == null) {
-    reasons.add('資料時間無法解析');
+    reasons.add(l10n.verifyDiagnosis_reasonBadTime);
   } else if (previous != null && !stamp.isAfter(previous)) {
-    reasons.add('資料未更新（最後 ${latest['ts']}）');
+    reasons.add(l10n.verifyDiagnosis_reasonNotUpdated('${latest['ts']}'));
   }
   return reasons;
 }
@@ -99,24 +101,32 @@ String verifyDiagnosis({
   String? cause,
   int lagLimit = verifyLagLimit,
 }) {
+  final l10n = L10n.current;
   final lines = <String>[];
   if (fleet == null && rows.isEmpty) {
     lines.add(
-      '閘道器的資料沒有進入目前連線的$backend：fleet-status 沒有站 $site / '
-      '閘道器 $gateway 的心跳，/api/latest 也沒有任何資料。'
-      '${cause ?? missingGatewayCause()}',
+      l10n.verifyDiagnosis_noData(
+        backend,
+        site,
+        gateway,
+        cause ?? missingGatewayCause(),
+      ),
     );
   } else if (fleet == null) {
-    lines.add('fleet-status 沒有站 $site / 閘道器 $gateway 的心跳紀錄。');
+    lines.add(l10n.verifyDiagnosis_noFleet(site, gateway));
   } else {
     if (fleet['online'] != true) {
-      lines.add('閘道器在後端顯示離線（最後心跳 ${fleet['last_heartbeat'] ?? '無'}）。');
+      lines.add(
+        l10n.verifyDiagnosis_offline(
+          '${fleet['last_heartbeat'] ?? l10n.verifyDiagnosis_none}',
+        ),
+      );
     }
     if (fleet['upload_paused'] == true) {
-      lines.add('閘道器資料上傳為暫停狀態（已嘗試恢復）。');
+      lines.add(l10n.verifyDiagnosis_uploadPaused);
     }
   }
-  lines.add('連續通過 $consecutive / 3 次。');
+  lines.add(l10n.verifyDiagnosis_consecutive(consecutive));
   final installRows = <int, Map<String, dynamic>>{};
   for (final item in (install['devices'] as List? ?? [])) {
     if (item is! Map) continue;
@@ -134,9 +144,16 @@ String verifyDiagnosis({
     if (reasons.isEmpty &&
         install['all_ok'] != true &&
         !installRows.containsKey(id)) {
-      reasons.add('後端安裝驗證未通過（未回傳此 PTU 明細）');
+      reasons.add(l10n.verifyDiagnosis_installNoDetail);
     }
-    lines.add('PTU #$id：${reasons.isEmpty ? '本輪正常' : reasons.join('、')}');
+    lines.add(
+      l10n.verifyDiagnosis_ptuLine(
+        id,
+        reasons.isEmpty
+            ? l10n.verifyDiagnosis_roundOk
+            : reasons.join(l10n.verifyDiagnosis_reasonSeparator),
+      ),
+    );
   }
   return lines.join('\n');
 }

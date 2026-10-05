@@ -129,21 +129,29 @@ String assignStatusText(
   AssignPhase.waiting =>
     assignResultKindOf(result) == AssignResultKind.notAssigned
         ? result!
-        : '等待中',
-  AssignPhase.assigning => status.id == null ? '指派中' : '指派中 #${status.id}',
-  AssignPhase.linkRetry => '藍牙連線失敗，自動重試 ${status.retry}/${status.retries}',
-  AssignPhase.retry => '未完成，自動重試 ${status.retry}/${status.retries}',
-  AssignPhase.busy => '閘道器忙碌，稍後重試',
+        : L10n.current.assign_waiting,
+  AssignPhase.assigning =>
+    status.id == null
+        ? L10n.current.assign_assigning
+        : L10n.current.assign_assigningId(status.id!),
+  AssignPhase.linkRetry => L10n.current.assign_linkRetry(
+    status.retry,
+    status.retries,
+  ),
+  AssignPhase.retry => L10n.current.assign_retry(status.retry, status.retries),
+  AssignPhase.busy => L10n.current.assign_busy,
   AssignPhase.done =>
     result != null &&
             result.isNotEmpty &&
             assignResultKindOf(result) != AssignResultKind.assigning
-        ? '完成 · $result'
+        ? L10n.current.assign_doneResult(result)
         : status.id == null
-        ? '完成'
-        : '完成 · #${status.id}',
+        ? L10n.current.assign_done
+        : L10n.current.assign_doneId(status.id!),
   AssignPhase.failed =>
-    failure == null || failure.isEmpty ? '失敗需處理' : '失敗需處理：$failure',
+    failure == null || failure.isEmpty
+        ? L10n.current.assign_failed
+        : L10n.current.assign_failedReason(failure),
 };
 
 /// The whole run in one line: 「3/5 完成，1 台自動重試中」 (plus 「n 台
@@ -166,33 +174,38 @@ String? assignProgressText(
       if (e.value.retrying) e,
   ];
   final failed = all.where((s) => s.phase == AssignPhase.failed).length;
+  final l10n = L10n.current;
   return [
-    '$done/${statuses.length} 完成',
+    l10n.assign_progressDone(done, statuses.length),
     if (retrying.isNotEmpty)
       name == null
-          ? '${retrying.length} 台自動重試中'
+          ? l10n.assign_progressRetrying(retrying.length)
           : _retryingNamed(retrying, name),
-    if (failed > 0) '$failed 台失敗需處理',
-  ].join('，');
+    if (failed > 0) l10n.assign_progressFailed(failed),
+  ].join(l10n.assign_progressSeparator);
 }
 
 String _retryingNamed(
   List<MapEntry<String, AssignStatus>> retrying,
   String Function(String mac) name,
 ) {
+  final l10n = L10n.current;
   if (retrying.length == 1) {
     final status = retrying.single.value;
     // A busy gateway is sent again without counting a retry (its row says
     // 「閘道器忙碌，稍後重試」).
     final count = status.phase != AssignPhase.busy && status.retries > 0
-        ? '（${status.retry}/${status.retries}）'
+        ? l10n.assign_retryAttempt(status.retry, status.retries)
         : '';
-    return '${name(retrying.single.key)} 自動重試中$count';
+    return l10n.assign_retryingOne(name(retrying.single.key), count);
   }
-  final names = retrying.take(2).map((e) => name(e.key)).join('、');
+  final names = retrying
+      .take(2)
+      .map((e) => name(e.key))
+      .join(l10n.assign_nameSeparator);
   return retrying.length == 2
-      ? '$names 自動重試中'
-      : '$names 等 ${retrying.length} 台自動重試中';
+      ? l10n.assign_retryingTwo(names)
+      : l10n.assign_retryingMany(names, retrying.length);
 }
 
 /// Done share of [statuses] for a progress bar (0 when empty).
@@ -204,7 +217,7 @@ double assignProgressValue(Map<String, AssignStatus> statuses) {
 
 /// Round 21: under the progress while the run goes on — the installer has
 /// nothing to do, failed tries are retried by the APP itself.
-const assignAutoHint = '系統自動處理中，失敗會自動重試，不用動手';
+String get assignAutoHint => L10n.current.assign_autoHint;
 
 /// Round 21: under the progress once [failed] PTUs are out of retries.
-String assignFailedHint(int failed) => '請確認 PTU 電源與距離，再按下方「重試這 $failed 台」';
+String assignFailedHint(int failed) => L10n.current.assign_failedHint(failed);

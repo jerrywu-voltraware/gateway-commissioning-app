@@ -6,55 +6,56 @@
 /// Pure Dart (no application layer) so every rule can be unit-tested.
 library;
 
+import '../l10n/l10n.dart';
 import 'gateway_net.dart';
 import 'protocol.dart';
 
 enum RescueCode {
   // Phone and Bluetooth.
-  phoneBtOff('PHONE_BT_OFF', '手機藍牙沒開'),
-  phonePermission('PHONE_PERMISSION', 'APP 沒有藍牙／定位權限'),
-  gwNotFound('GW_NOT_FOUND', '手機找不到閘道器'),
-  bleConnectFail('BLE_CONNECT_FAIL', '手機連不上閘道器（藍牙錯誤）'),
-  bleLinkDrop('BLE_LINK_DROP', '手機和閘道器的藍牙斷了'),
-  bleReconnectFail('BLE_RECONNECT_FAIL', '重新連線失敗'),
+  phoneBtOff('PHONE_BT_OFF'),
+  phonePermission('PHONE_PERMISSION'),
+  gwNotFound('GW_NOT_FOUND'),
+  bleConnectFail('BLE_CONNECT_FAIL'),
+  bleLinkDrop('BLE_LINK_DROP'),
+  bleReconnectFail('BLE_RECONNECT_FAIL'),
   // Gateway.
-  gwRebooted('GW_REBOOTED', '閘道器剛重新啟動'),
-  gwBusy('GW_BUSY', '閘道器忙碌（已自動重試 20 秒）'),
-  gwLowMemory('GW_LOW_MEMORY', '閘道器記憶體不足'),
-  gwAuthRefused('GW_AUTH_REFUSED', '閘道器拒絕指令（一次性密碼或時間未同步）'),
-  gwRejected('GW_REJECTED', '閘道器回報失敗'),
-  gwFull('GW_FULL', '這台閘道器已滿'),
-  cmdTimeout('CMD_TIMEOUT', '閘道器沒有回應'),
-  fwTooOld('FW_TOO_OLD', '韌體太舊，不支援這個功能'),
+  gwRebooted('GW_REBOOTED'),
+  gwBusy('GW_BUSY'),
+  gwLowMemory('GW_LOW_MEMORY'),
+  gwAuthRefused('GW_AUTH_REFUSED'),
+  gwRejected('GW_REJECTED'),
+  gwFull('GW_FULL'),
+  cmdTimeout('CMD_TIMEOUT'),
+  fwTooOld('FW_TOO_OLD'),
   // Wi-Fi and upload.
-  wifiPassword('WIFI_PASSWORD', 'Wi-Fi 密碼可能錯'),
-  wifiNotFound('WIFI_NOT_FOUND', '閘道器找不到這個 Wi-Fi'),
-  wifiWeak('WIFI_WEAK', 'Wi-Fi 訊號弱或基地台拒絕'),
-  wifiUnknown('WIFI_UNKNOWN', 'Wi-Fi 沒連上（原因不明）'),
-  uploadNotStarted('UPLOAD_NOT_STARTED', 'Wi-Fi 已連上，但資料還沒送到後台'),
-  uploadTarget('UPLOAD_TARGET', '閘道器資料送錯地方（跟手機連的後台不同）'),
+  wifiPassword('WIFI_PASSWORD'),
+  wifiNotFound('WIFI_NOT_FOUND'),
+  wifiWeak('WIFI_WEAK'),
+  wifiUnknown('WIFI_UNKNOWN'),
+  uploadNotStarted('UPLOAD_NOT_STARTED'),
+  uploadTarget('UPLOAD_TARGET'),
   // Identity.
-  identityConflict('IDENTITY_CONFLICT', '站號已被別台使用'),
-  identityReplace('IDENTITY_REPLACE', '取代舊機沒完成'),
+  identityConflict('IDENTITY_CONFLICT'),
+  identityReplace('IDENTITY_REPLACE'),
   // PTU.
-  ptuNoneFound('PTU_NONE_FOUND', '掃不到 PTU'),
-  ptuConnectFail('PTU_CONNECT_FAIL', '閘道器連不上 PTU'),
-  ptuNoResponse('PTU_NO_RESPONSE', 'PTU 沒回應'),
-  ptuWrongDevice('PTU_WRONG_DEVICE', '編號寫到別台，或回讀不符'),
-  ptuResidual('PTU_RESIDUAL', '有 PTU 帶舊編號，或屬於其他閘道器'),
-  directPick('DIRECT_PICK', '直連選台失敗'),
+  ptuNoneFound('PTU_NONE_FOUND'),
+  ptuConnectFail('PTU_CONNECT_FAIL'),
+  ptuNoResponse('PTU_NO_RESPONSE'),
+  ptuWrongDevice('PTU_WRONG_DEVICE'),
+  ptuResidual('PTU_RESIDUAL'),
+  directPick('DIRECT_PICK'),
   // Monitoring, verification, backend.
-  monitorUnconfirmed('MONITOR_UNCONFIRMED', '還沒確認閘道器已恢復監控'),
-  verifyIncomplete('VERIFY_INCOMPLETE', '有 PTU 資料沒進來'),
-  backendDown('BACKEND_DOWN', 'APP 連不到後台'),
-  backendAuth('BACKEND_AUTH', '後台登入失效'),
-  gwNotInBackend('GW_NOT_IN_BACKEND', '後台沒有這台閘道器的資料'),
+  monitorUnconfirmed('MONITOR_UNCONFIRMED'),
+  verifyIncomplete('VERIFY_INCOMPLETE'),
+  backendDown('BACKEND_DOWN'),
+  backendAuth('BACKEND_AUTH'),
+  gwNotInBackend('GW_NOT_IN_BACKEND'),
   // Other.
-  appUnexpected('APP_UNEXPECTED', 'APP 發生未預期錯誤'),
-  stepStuck('STEP_STUCK', '同一步停太久'),
-  helpOnly('HELP_ONLY', '畫面沒有錯誤，現場主動求助');
+  appUnexpected('APP_UNEXPECTED'),
+  stepStuck('STEP_STUCK'),
+  helpOnly('HELP_ONLY');
 
-  const RescueCode(this.wire, this.label);
+  const RescueCode(this.wire);
 
   /// Upper-case name sent as `error_code` / `error.code`.
   final String wire;
@@ -62,8 +63,49 @@ enum RescueCode {
   /// Round 24: the code in words for the installer (the §3.2 card title) —
   /// the help sheet shows this, never [wire] (field round 24: 「狀況代碼：
   /// HELP_ONLY」). The wire name stays in the sheet's details and in what
-  /// goes to the back office.
-  final String label;
+  /// goes to the back office. Screen only, so it follows the APP language
+  /// (docs/i18n.md §6); strings in lib/l10n/parts/rescueCode_*.arb.
+  String get label {
+    final l10n = L10n.current;
+    return switch (this) {
+      RescueCode.phoneBtOff => l10n.rescueCode_phoneBtOff,
+      RescueCode.phonePermission => l10n.rescueCode_phonePermission,
+      RescueCode.gwNotFound => l10n.rescueCode_gwNotFound,
+      RescueCode.bleConnectFail => l10n.rescueCode_bleConnectFail,
+      RescueCode.bleLinkDrop => l10n.rescueCode_bleLinkDrop,
+      RescueCode.bleReconnectFail => l10n.rescueCode_bleReconnectFail,
+      RescueCode.gwRebooted => l10n.rescueCode_gwRebooted,
+      RescueCode.gwBusy => l10n.rescueCode_gwBusy,
+      RescueCode.gwLowMemory => l10n.rescueCode_gwLowMemory,
+      RescueCode.gwAuthRefused => l10n.rescueCode_gwAuthRefused,
+      RescueCode.gwRejected => l10n.rescueCode_gwRejected,
+      RescueCode.gwFull => l10n.rescueCode_gwFull,
+      RescueCode.cmdTimeout => l10n.rescueCode_cmdTimeout,
+      RescueCode.fwTooOld => l10n.rescueCode_fwTooOld,
+      RescueCode.wifiPassword => l10n.rescueCode_wifiPassword,
+      RescueCode.wifiNotFound => l10n.rescueCode_wifiNotFound,
+      RescueCode.wifiWeak => l10n.rescueCode_wifiWeak,
+      RescueCode.wifiUnknown => l10n.rescueCode_wifiUnknown,
+      RescueCode.uploadNotStarted => l10n.rescueCode_uploadNotStarted,
+      RescueCode.uploadTarget => l10n.rescueCode_uploadTarget,
+      RescueCode.identityConflict => l10n.rescueCode_identityConflict,
+      RescueCode.identityReplace => l10n.rescueCode_identityReplace,
+      RescueCode.ptuNoneFound => l10n.rescueCode_ptuNoneFound,
+      RescueCode.ptuConnectFail => l10n.rescueCode_ptuConnectFail,
+      RescueCode.ptuNoResponse => l10n.rescueCode_ptuNoResponse,
+      RescueCode.ptuWrongDevice => l10n.rescueCode_ptuWrongDevice,
+      RescueCode.ptuResidual => l10n.rescueCode_ptuResidual,
+      RescueCode.directPick => l10n.rescueCode_directPick,
+      RescueCode.monitorUnconfirmed => l10n.rescueCode_monitorUnconfirmed,
+      RescueCode.verifyIncomplete => l10n.rescueCode_verifyIncomplete,
+      RescueCode.backendDown => l10n.rescueCode_backendDown,
+      RescueCode.backendAuth => l10n.rescueCode_backendAuth,
+      RescueCode.gwNotInBackend => l10n.rescueCode_gwNotInBackend,
+      RescueCode.appUnexpected => l10n.rescueCode_appUnexpected,
+      RescueCode.stepStuck => l10n.rescueCode_stepStuck,
+      RescueCode.helpOnly => l10n.rescueCode_helpOnly,
+    };
+  }
 
   /// The code whose [wire] is [wire]; null for none (or an unknown one).
   static RescueCode? ofWire(String? wire) {

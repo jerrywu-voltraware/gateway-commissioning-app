@@ -1,3 +1,5 @@
+import '../l10n/l10n.dart';
+
 /// The backend credential of this build (09-28: field staff never type a
 /// backend password). `tools/build_apk.ps1` injects it from the git-ignored
 /// `.secrets/<env>.env` (`APP_BACKEND_KEY=...`, see README) through
@@ -10,4 +12,4 @@
 const buildBackendKey = String.fromEnvironment('APP_BACKEND_KEY');
 
 /// Shown where a password field used to be when the build has no key.
-const missingBackendKeyText = '此建置缺少後台憑證，請重新建置';
+String get missingBackendKeyText => L10n.current.backendKey_missing;

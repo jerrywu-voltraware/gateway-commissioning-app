@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../data/contracts.dart';
 import '../core/protocol.dart';
+import '../l10n/l10n.dart';
 
 /// A compact, phone-measured signal row. Scan and stale samples are explicit.
 class GatewaySignal extends StatefulWidget {
@@ -140,18 +141,25 @@ class _GatewaySignalState extends State<GatewaySignal>
 
   @override
   Widget build(BuildContext context) {
-    final value = _rssi == null ? '尚無讀值' : '$_rssi dBm';
+    final l10n = context.l10n;
+    final value = _rssi == null ? l10n.gatewaySignal_noReading : '$_rssi dBm';
     final status = _source == null
-        ? (widget.link.demo ? '模擬・掃描 $value' : '掃描 $value')
+        ? (widget.link.demo
+              ? l10n.gatewaySignal_demoScan(value)
+              : l10n.gatewaySignal_scan(value))
         : !_connected
-        ? '已斷線・${_measured ? '上次' : '掃描'} $value'
+        ? (_measured
+              ? l10n.gatewaySignal_disconnectedLast(value)
+              : l10n.gatewaySignal_disconnectedScan(value))
         : _live
         ? value
-        : '${_measured ? '上次' : '掃描'} $value';
+        : _measured
+        ? l10n.gatewaySignal_last(value)
+        : l10n.gatewaySignal_scan(value);
     return Padding(
       padding: const EdgeInsets.only(top: 4),
       child: Text(
-        '手機 ↔ 閘道器：$status',
+        l10n.gatewaySignal_line(status),
         key: const Key('gateway-signal'),
         style: Theme.of(context).textTheme.bodySmall,
       ),
@@ -172,7 +180,7 @@ class GatewayLinkAlert extends StatefulWidget {
 }
 
 /// [GatewayLinkAlert]'s words.
-const gatewayLinkLostText = '手機與閘道器的藍牙已斷線，請靠近閘道器；APP 會提示如何重新連線。';
+String get gatewayLinkLostText => L10n.current.gatewaySignal_linkLost;
 
 class _GatewayLinkAlertState extends State<GatewayLinkAlert> {
   StreamSubscription<bool>? _subscription;

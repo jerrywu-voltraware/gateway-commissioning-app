@@ -1,0 +1,11 @@
+{
+  "@@locale": "en",
+  "installReport_sending": "Sending the report to the back office…",
+  "installReport_sent": "Report sent to the back office",
+  "installReport_sentAt": "Report sent to the back office {time}",
+  "installReport_queued": "Queued; sent automatically when the network is back",
+  "installReport_queuedReason": "Queued; sent automatically when the network is back ({reason})",
+  "installReport_failed": "Report not sent to the back office",
+  "installReport_failedReason": "Report not sent to the back office: {reason}",
+  "installReport_demo": "Demo mode: report not sent to the back office"
+}

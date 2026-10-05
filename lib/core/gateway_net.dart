@@ -4,8 +4,11 @@
 /// `ip`, `rssi` and `uptime_sec`; firmware 1.7.32 adds why the Wi-Fi last
 /// dropped or failed (`wifi_last_disc_reason`, `wifi_last_disc_age_s`).
 ///
-/// Pure Dart so the wording can be unit-tested without widgets.
+/// Pure Dart so the wording can be unit-tested without widgets. 畫面文字在
+/// lib/l10n/parts/gatewayNet_*.arb（[L10n.current]）。
 library;
+
+import '../l10n/l10n.dart';
 
 enum WifiVerdict {
   /// Not read yet (or the firmware cannot report it).
@@ -56,42 +59,38 @@ WifiVerdict wifiVerdictOf(
   return settled || booted ? WifiVerdict.failed : WifiVerdict.connecting;
 }
 
-String _named(String? ssid) =>
-    ssid == null || ssid.isEmpty ? 'Wi-Fi' : 'Wi-Fi「$ssid」';
+String _named(String? ssid) => ssid == null || ssid.isEmpty
+    ? 'Wi-Fi'
+    : L10n.current.gatewayNet_ssidNamed(ssid);
 
-/// Chinese Wi-Fi state with the raw firmware value (technical details only).
+/// Wi-Fi state in words with the raw firmware value (technical details only).
 String wifiStateText(Object? raw) => switch (raw) {
-  'got_ip' => '已連線（got_ip）',
-  'connecting' => '連線中（connecting）',
-  'disconnected' => '未連線（disconnected）',
-  null => '未知',
-  _ => '未知（$raw）',
+  'got_ip' => L10n.current.gatewayNet_stateGotIp,
+  'connecting' => L10n.current.gatewayNet_stateConnecting,
+  'disconnected' => L10n.current.gatewayNet_stateDisconnected,
+  null => L10n.current.gatewayNet_stateUnknown,
+  _ => L10n.current.gatewayNet_stateUnknownRaw('$raw'),
 };
 
-String wifiOkText(String? ssid) => '閘道器已連上 ${_named(ssid)}';
+String wifiOkText(String? ssid) => L10n.current.gatewayNet_ok(_named(ssid));
 
-const wifiConnectingText = '閘道器正在連 Wi-Fi…';
+String get wifiConnectingText => L10n.current.gatewayNet_connecting;
 
 /// Why the gateway has no network, in plain words ([ssid] empty: none is
 /// configured; null: not reported). [reason]: `wifi_last_disc_reason`
 /// ([wifiDiscReasonOf]); without it (firmware before 1.7.32) the text names
 /// every likely cause.
 String wifiProblemText(String? ssid, {int? reason}) {
+  final l10n = L10n.current;
   if (ssid != null && ssid.isEmpty) {
-    return '閘道器還沒有設定 Wi-Fi，所以沒辦法上傳資料。';
+    return l10n.gatewayNet_problemNotConfigured;
   }
+  final wifi = _named(ssid);
   return switch (wifiFailKindOf(reason)) {
-    WifiFailKind.password =>
-      '閘道器連不上 ${_named(ssid)}：密碼可能錯誤，請確認密碼（含大小寫）後重新輸入。',
-    WifiFailKind.notFound =>
-      '閘道器找不到 ${_named(ssid)}。請確認名稱正確、是 2.4 GHz'
-          '（閘道器不支援 5 GHz），且基地台就在附近。',
-    WifiFailKind.weakOrOther =>
-      '閘道器連不上 ${_named(ssid)}，可能是訊號太弱或基地台暫時拒絕連線。'
-          '請把閘道器移近基地台、避開金屬遮蔽後再試。',
-    null =>
-      '閘道器連不上 ${_named(ssid)}。這個 Wi-Fi 可能不在附近、密碼不對，'
-          '或是 5 GHz（閘道器只能用 2.4 GHz）。',
+    WifiFailKind.password => l10n.gatewayNet_problemPassword(wifi),
+    WifiFailKind.notFound => l10n.gatewayNet_problemNotFound(wifi),
+    WifiFailKind.weakOrOther => l10n.gatewayNet_problemWeak(wifi),
+    null => l10n.gatewayNet_problemUnknown(wifi),
   };
 }
 
@@ -162,16 +161,18 @@ String? wifiDiscDetail(Map<String, dynamic> net) {
   final raw = net['wifi_last_disc_reason'];
   if (raw is! num || raw <= 0) return null;
   final reason = raw.toInt();
+  final l10n = L10n.current;
   final kind = wifiLeaveReasons.contains(reason)
-      ? '閘道器自行中斷'
+      ? l10n.gatewayNet_discLeave
       : switch (wifiFailKindOf(reason)!) {
-          WifiFailKind.password => '密碼可能錯誤',
-          WifiFailKind.notFound => '找不到這個 Wi-Fi',
-          WifiFailKind.weakOrOther => '訊號弱或其他',
+          WifiFailKind.password => l10n.gatewayNet_discPassword,
+          WifiFailKind.notFound => l10n.gatewayNet_discNotFound,
+          WifiFailKind.weakOrOther => l10n.gatewayNet_discWeak,
         };
   final age = net['wifi_last_disc_age_s'];
-  return 'Wi-Fi 最後斷線原因：$kind（代碼 $reason'
-      '${age is num ? '，${age.toInt()} 秒前' : ''}）';
+  return age is num
+      ? l10n.gatewayNet_discDetailAge(kind, reason, age.toInt())
+      : l10n.gatewayNet_discDetail(kind, reason);
 }
 
 // ---- Weak gateway Wi-Fi ----
@@ -192,8 +193,7 @@ bool isWeakWifiRssi(Object? rssi) =>
 
 /// The red warning with what to do about it.
 String weakWifiText(num rssi) =>
-    '⚠ Wi-Fi 訊號偏弱（${rssi.toInt()} dBm，低於 $weakWifiRssiDbm dBm），'
-    '資料可能時斷時續。建議把閘道器移近基地台、避開金屬遮蔽，或在附近加裝 Wi-Fi 延伸器。';
+    L10n.current.gatewayNet_weak(rssi.toInt(), weakWifiRssiDbm);
 
 /// [weakWifiText] when the gateway is joined and its signal is weak.
 String? weakWifiWarning(Map<String, dynamic> net) {
@@ -205,13 +205,10 @@ String? weakWifiWarning(Map<String, dynamic> net) {
 
 /// set_wifi did not join the new network ([reason]: see [wifiDiscReasonOf]).
 String wifiSetFailedText(int? reason) => switch (wifiFailKindOf(reason)) {
-  WifiFailKind.password => '新 Wi-Fi 連線未成功：密碼可能錯誤，請確認密碼（含大小寫）後重試。',
-  WifiFailKind.notFound =>
-    '新 Wi-Fi 連線未成功：閘道器找不到這個 Wi-Fi。請確認名稱正確、是 2.4 GHz'
-        '（不支援 5 GHz），且基地台就在附近。',
-  WifiFailKind.weakOrOther =>
-    '新 Wi-Fi 連線未成功：可能是訊號太弱或基地台暫時拒絕連線，請把閘道器移近基地台後重試。',
-  null => '新 WiFi 連線未成功，請檢查密碼與訊號後重試。',
+  WifiFailKind.password => L10n.current.gatewayNet_setFailedPassword,
+  WifiFailKind.notFound => L10n.current.gatewayNet_setFailedNotFound,
+  WifiFailKind.weakOrOther => L10n.current.gatewayNet_setFailedWeak,
+  null => L10n.current.gatewayNet_setFailedUnknown,
 };
 
 /// Detail of a 'wifi_failed' failure that carries the firmware reason.

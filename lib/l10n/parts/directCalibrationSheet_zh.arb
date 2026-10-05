@@ -1,0 +1,123 @@
+{
+  "@@locale": "zh",
+  "directCalibrationSheet_intro": "本樁與鄰近樁請維持實際擺放與電源。取樣 {seconds} 秒後建議門檻，確認後才寫入閘道器。",
+  "@directCalibrationSheet_intro": {
+    "placeholders": {
+      "seconds": {"type": "int"}
+    }
+  },
+  "directCalibrationSheet_ownPtu": "本樁 PTU：{mac}",
+  "@directCalibrationSheet_ownPtu": {
+    "placeholders": {
+      "mac": {"type": "String", "example": "90:5F:E8:9A:96:00"}
+    }
+  },
+  "directCalibrationSheet_sampleDone": "{reads, plural, other{取樣完成（讀取 {reads} 次）}}",
+  "@directCalibrationSheet_sampleDone": {
+    "placeholders": {
+      "reads": {"type": "int"}
+    }
+  },
+  "directCalibrationSheet_sampling": "取樣中… 剩 {left} 秒（已讀取 {reads} 次）",
+  "@directCalibrationSheet_sampling": {
+    "placeholders": {
+      "left": {"type": "int"},
+      "reads": {"type": "int"}
+    }
+  },
+  "directCalibrationSheet_ownLink": "本樁連線訊號",
+  "directCalibrationSheet_notRead": "尚未讀到",
+  "directCalibrationSheet_ownLinkValue": "中位數 {median} · 最弱 {weakest}（{count} 筆）",
+  "@directCalibrationSheet_ownLinkValue": {
+    "description": "median and weakest are already formatted with dBm.",
+    "placeholders": {
+      "median": {"type": "String", "example": "-55 dBm"},
+      "weakest": {"type": "String", "example": "-60 dBm"},
+      "count": {"type": "int"}
+    }
+  },
+  "directCalibrationSheet_ownAdv": "本樁廣播訊號",
+  "directCalibrationSheet_legacyFirmware": "閘道器韌體較舊，未回報",
+  "directCalibrationSheet_notReported": "閘道器未回報",
+  "directCalibrationSheet_median": "中位數 {value}",
+  "@directCalibrationSheet_median": {
+    "placeholders": {
+      "value": {"type": "String", "example": "-55 dBm"}
+    }
+  },
+  "directCalibrationSheet_medianSkipped": "中位數 {value}（未列入上限）",
+  "@directCalibrationSheet_medianSkipped": {
+    "placeholders": {
+      "value": {"type": "String", "example": "-55 dBm"}
+    }
+  },
+  "directCalibrationSheet_strongestNeighbor": "最強鄰近訊號",
+  "directCalibrationSheet_noNeighbor": "未聽到鄰近 PTU",
+  "directCalibrationSheet_peak": "峰值 {value}",
+  "@directCalibrationSheet_peak": {
+    "placeholders": {
+      "value": {"type": "String", "example": "-70 dBm"}
+    }
+  },
+  "directCalibrationSheet_tiesListed": "{ties} 台相差 {db} dB 內，列出 {listed} 台",
+  "@directCalibrationSheet_tiesListed": {
+    "placeholders": {
+      "ties": {"type": "int"},
+      "db": {"type": "int"},
+      "listed": {"type": "int"}
+    }
+  },
+  "directCalibrationSheet_tiesAll": "{count} 台相差 {db} dB 內，一併列出",
+  "@directCalibrationSheet_tiesAll": {
+    "placeholders": {
+      "count": {"type": "int"},
+      "db": {"type": "int"}
+    }
+  },
+  "directCalibrationSheet_neighborLegacy": "鄰近訊號取自閘道器最近一次選台聽到的其他 PTU（峰值），連線後不再更新。",
+  "directCalibrationSheet_neighborLive": "鄰近訊號為閘道器連線中持續聽到的其他 PTU（峰值；{maxAge} 秒內都列入計算）。",
+  "@directCalibrationSheet_neighborLive": {
+    "placeholders": {
+      "maxAge": {"type": "int"}
+    }
+  },
+  "directCalibrationSheet_tooClose": "{reason}。{advice}。",
+  "@directCalibrationSheet_tooClose": {
+    "description": "Two sentences joined: why the signals are too close, and what to do.",
+    "placeholders": {
+      "reason": {"type": "String", "example": "本樁與鄰近樁訊號太接近"},
+      "advice": {"type": "String", "example": "請調整擺放後重新取樣"}
+    }
+  },
+  "directCalibrationSheet_suggestion": "建議門檻：{threshold} dBm（目前 {current} dBm）",
+  "@directCalibrationSheet_suggestion": {
+    "placeholders": {
+      "threshold": {"type": "int"},
+      "current": {"type": "int"}
+    }
+  },
+  "directCalibrationSheet_range": "可用範圍 {lower} ～ {upper}：本樁選得到、連上後不會被踢，本樁關機時也不會連到鄰近樁。",
+  "@directCalibrationSheet_range": {
+    "placeholders": {
+      "lower": {"type": "String", "example": "-75 dBm"},
+      "upper": {"type": "String", "example": "-62 dBm"}
+    }
+  },
+  "directCalibrationSheet_saved": "{label}：{value} dBm",
+  "@directCalibrationSheet_saved": {
+    "placeholders": {
+      "label": {"type": "String", "example": "已寫入閘道器"},
+      "value": {"type": "int"}
+    }
+  },
+  "directCalibrationSheet_saveFailed": "門檻未寫入閘道器，請重試。",
+  "directCalibrationSheet_writing": "寫入中…",
+  "directCalibrationSheet_write": "寫入閘道器",
+  "directCalibrationSheet_writeValue": "寫入閘道器（{threshold} dBm）",
+  "@directCalibrationSheet_writeValue": {
+    "placeholders": {
+      "threshold": {"type": "int"}
+    }
+  },
+  "directCalibrationSheet_resample": "重新取樣"
+}

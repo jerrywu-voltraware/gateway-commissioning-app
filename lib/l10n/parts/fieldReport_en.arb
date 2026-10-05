@@ -1,0 +1,22 @@
+{
+  "@@locale": "en",
+  "fieldReport_gatewayNotFoundPrefix": "No gateway found",
+  "fieldReport_helpStationGateway": "Station {site} / gateway {gateway}",
+  "fieldReport_helpStationGatewayMac": "Station {site} / gateway {gateway} (MAC ends {tail})",
+  "fieldReport_helpGatewayName": "Gateway {name}",
+  "fieldReport_helpGatewayNameMac": "Gateway {name} (MAC ends {tail})",
+  "fieldReport_helpNoGateway": "Not connected to a gateway yet",
+  "fieldReport_helpStep": "Now at step {step}: {label}",
+  "fieldReport_helpError": "Error: {error}",
+  "fieldReport_helpCondition": "Situation: {label}",
+  "fieldReport_fwUnknown": "unknown",
+  "fieldReport_helpFirmwareDirect": "Firmware {fw} · one-to-one",
+  "fieldReport_helpFirmwareStar": "Firmware {fw} · star, {count} PTUs",
+  "fieldReport_helpCode": "Situation code: {code}",
+  "fieldReport_backendSwitched": "Backend switched; the report was not sent",
+  "fieldReport_noNetwork": "No network, or the back office did not answer",
+  "fieldReport_notLoggedIn": "Not logged in to the back office",
+  "fieldReport_removedFromOutbox": "Removed from the phone's outbox",
+  "fieldReport_backendUnsupported": "Back office does not support it yet (update the back office)",
+  "fieldReport_backendRefused": "Back office refused it (HTTP {status})"
+}

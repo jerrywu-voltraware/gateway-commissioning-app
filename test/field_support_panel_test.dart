@@ -10,6 +10,8 @@ import 'package:gateway_commissioning/core/protocol.dart';
 import 'package:gateway_commissioning/data/contracts.dart';
 import 'package:gateway_commissioning/data/demo_system.dart';
 import 'package:gateway_commissioning/presentation/field_support_panel.dart';
+import 'support/l10n.dart';
+import 'package:gateway_commissioning/l10n/l10n.dart';
 
 class SupportFake extends DemoSystem implements SessionInfo {
   @override
@@ -207,4 +209,13 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('English (i18n B2): support state and buttons', (tester) async {
+    useLanguage(AppLanguage.en);
+    final fake = SupportFake();
+    await showPanel(tester, fake);
+    expect(find.text('Waiting for the back office'), findsOneWidget);
+    expect(find.text('Refresh reply'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
 }

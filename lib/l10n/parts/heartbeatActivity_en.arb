@@ -1,0 +1,14 @@
+{
+  "@@locale": "en",
+  "heartbeatActivity_paused": "Check paused. Follow the hint to retry.",
+  "heartbeatActivity_confirmed": "Gateway confirmed online",
+  "heartbeatActivity_waitingStart": "Waiting to start the check",
+  "heartbeatActivity_notDone": "Heartbeat check not finished",
+  "heartbeatActivity_connectingBackend": "Connecting to the back office",
+  "heartbeatActivity_waitingFirst": "Waiting for heartbeat 1",
+  "heartbeatActivity_gotOne": "Got 1, waiting for the next heartbeat",
+  "heartbeatActivity_gotTwo": "Got 2, checking the upload target",
+  "heartbeatActivity_backOffice": "Back office",
+  "heartbeatActivity_count": "Heartbeat {received}/2",
+  "heartbeatActivity_announcement": "{received, plural, =1{Received 1 heartbeat.} other{Received {received} heartbeats.}} {message}"
+}

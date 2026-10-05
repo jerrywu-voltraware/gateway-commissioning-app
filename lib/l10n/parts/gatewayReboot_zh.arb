@@ -1,0 +1,37 @@
+{
+  "@@locale": "zh",
+  "gatewayReboot_reasonBleStackStuck": "藍牙功能卡住，閘道器自動重新啟動修復",
+  "gatewayReboot_reasonPanic": "閘道器程式發生錯誤，自動重新啟動",
+  "gatewayReboot_reasonWatchdog": "閘道器程式卡住，看門狗保護機制自動重新啟動",
+  "gatewayReboot_reasonCpuLockup": "閘道器處理器卡住，自動重新啟動",
+  "gatewayReboot_reasonBrownout": "供電電壓不足（電源不穩或變壓器太弱）",
+  "gatewayReboot_reasonPowerGlitch": "電源瞬間不穩",
+  "gatewayReboot_reasonPowerOn": "曾經斷電後重新上電",
+  "gatewayReboot_reasonResetButton": "有人按了重置鍵",
+  "gatewayReboot_reasonSoftware": "收到重新啟動指令或設定變更",
+  "gatewayReboot_reasonDeepSleep": "從省電休眠中醒來",
+  "gatewayReboot_reasonUsb": "接上電腦時被重置",
+  "gatewayReboot_reasonUnknown": "原因不明",
+  "gatewayReboot_notice": "閘道器剛重新啟動（原因：{reason}）。這不是 PTU 故障，閘道器上已完成的設定都會保留。APP 已重新連上，請從目前的步驟繼續，不用從頭開始，也不要拔電或重複按。",
+  "@gatewayReboot_notice": {
+    "description": "Shown after an unrequested gateway restart; also uploaded (in Chinese) as the field report error_message.",
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "gatewayReboot_noticeMany": "閘道器剛重新啟動（原因：{reason}；期間共重新啟動 {times} 次）。這不是 PTU 故障，閘道器上已完成的設定都會保留。APP 已重新連上，請從目前的步驟繼續，不用從頭開始，也不要拔電或重複按。若短時間內一再重新啟動，請拍下這個畫面回報。",
+  "@gatewayReboot_noticeMany": {
+    "description": "Same as gatewayReboot_notice when the gateway restarted more than once.",
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      },
+      "times": {
+        "type": "int"
+      }
+    }
+  },
+  "gatewayReboot_retry": "剛才的操作因閘道器重新啟動而中斷（不是 PTU 故障），請再按一次剛才的按鈕繼續。"
+}

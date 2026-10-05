@@ -6,7 +6,12 @@
 /// Bluetooth link dropped, that is the real cause, not the PTU.
 ///
 /// Pure Dart so every wording can be unit-tested without widgets.
+///
+/// i18n：[resetReasonText]／[gatewayRebootText] 也上傳後台（field 報告的
+/// `error_message`），上傳端傳 `l10n: L10n.zh`；畫面用預設的 [L10n.current]。
 library;
+
+import '../l10n/l10n.dart';
 
 /// `boot_count` of a get_config / get_net_status result; null when the
 /// firmware does not report it (before 1.7.6) or it is not a count.
@@ -18,20 +23,25 @@ int? bootCountOf(Map<String, dynamic> source) {
 /// `reset_reason` (firmware `boot_info.c`: the `esp_reset_reason()` name, or
 /// `ble_stack_stuck` since 1.7.27) in plain words for the installer — the
 /// raw code is never shown.
-String resetReasonText(Object? raw) => switch (raw) {
-  'ble_stack_stuck' => '藍牙功能卡住，閘道器自動重新啟動修復',
-  'panic' => '閘道器程式發生錯誤，自動重新啟動',
-  'task_wdt' || 'int_wdt' || 'wdt' => '閘道器程式卡住，看門狗保護機制自動重新啟動',
-  'cpu_lockup' => '閘道器處理器卡住，自動重新啟動',
-  'brownout' => '供電電壓不足（電源不穩或變壓器太弱）',
-  'pwr_glitch' => '電源瞬間不穩',
-  'poweron' => '曾經斷電後重新上電',
-  'ext' => '有人按了重置鍵',
-  'sw' => '收到重新啟動指令或設定變更',
-  'deepsleep' => '從省電休眠中醒來',
-  'usb' || 'jtag' => '接上電腦時被重置',
-  _ => '原因不明',
-};
+///
+/// [l10n]: 預設畫面語言；上傳後台用 [L10n.zh]。
+String resetReasonText(Object? raw, {AppLocalizations? l10n}) {
+  final t = l10n ?? L10n.current;
+  return switch (raw) {
+    'ble_stack_stuck' => t.gatewayReboot_reasonBleStackStuck,
+    'panic' => t.gatewayReboot_reasonPanic,
+    'task_wdt' || 'int_wdt' || 'wdt' => t.gatewayReboot_reasonWatchdog,
+    'cpu_lockup' => t.gatewayReboot_reasonCpuLockup,
+    'brownout' => t.gatewayReboot_reasonBrownout,
+    'pwr_glitch' => t.gatewayReboot_reasonPowerGlitch,
+    'poweron' => t.gatewayReboot_reasonPowerOn,
+    'ext' => t.gatewayReboot_reasonResetButton,
+    'sw' => t.gatewayReboot_reasonSoftware,
+    'deepsleep' => t.gatewayReboot_reasonDeepSleep,
+    'usb' || 'jtag' => t.gatewayReboot_reasonUsb,
+    _ => t.gatewayReboot_reasonUnknown,
+  };
+}
 
 /// The gateway restarted between two reads: boot_count went [from] → [to].
 class GatewayReboot {
@@ -51,15 +61,16 @@ class GatewayReboot {
 
 /// The notice after a restart: the cause in plain words, that it is not a
 /// PTU fault, and to carry on from the current step.
-String gatewayRebootText(GatewayReboot reboot) {
-  final many = reboot.times > 1;
-  return '閘道器剛重新啟動（原因：${resetReasonText(reboot.reason)}'
-      '${many ? '；期間共重新啟動 ${reboot.times} 次' : ''}）。'
-      '這不是 PTU 故障，閘道器上已完成的設定都會保留。'
-      'APP 已重新連上，請從目前的步驟繼續，不用從頭開始，也不要拔電或重複按。'
-      '${many ? '若短時間內一再重新啟動，請拍下這個畫面回報。' : ''}';
+///
+/// [l10n]: 預設畫面語言；上傳後台（`onGatewayReboot`）用 [L10n.zh]。
+String gatewayRebootText(GatewayReboot reboot, {AppLocalizations? l10n}) {
+  final t = l10n ?? L10n.current;
+  final reason = resetReasonText(reboot.reason, l10n: t);
+  return reboot.times > 1
+      ? t.gatewayReboot_noticeMany(reason, reboot.times)
+      : t.gatewayReboot_notice(reason);
 }
 
 /// A command timed out because the gateway restarted meanwhile (the notice
 /// above explains why).
-const gatewayRebootRetryText = '剛才的操作因閘道器重新啟動而中斷（不是 PTU 故障），請再按一次剛才的按鈕繼續。';
+String get gatewayRebootRetryText => L10n.current.gatewayReboot_retry;

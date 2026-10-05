@@ -1,0 +1,71 @@
+{
+  "@@locale": "zh",
+  "gatewayNet_ssidNamed": "Wi-Fi「{ssid}」",
+  "@gatewayNet_ssidNamed": {
+    "description": "A named Wi-Fi network inside a sentence.",
+    "placeholders": {"ssid": {"type": "String", "example": "Office"}}
+  },
+  "gatewayNet_stateGotIp": "已連線（got_ip）",
+  "@gatewayNet_stateGotIp": {
+    "description": "Technical detail: Wi-Fi state with the raw firmware value (keep got_ip)."
+  },
+  "gatewayNet_stateConnecting": "連線中（connecting）",
+  "gatewayNet_stateDisconnected": "未連線（disconnected）",
+  "gatewayNet_stateUnknown": "未知",
+  "gatewayNet_stateUnknownRaw": "未知（{raw}）",
+  "@gatewayNet_stateUnknownRaw": {
+    "placeholders": {"raw": {"type": "String", "example": "idle"}}
+  },
+  "gatewayNet_ok": "閘道器已連上 {wifi}",
+  "@gatewayNet_ok": {
+    "placeholders": {"wifi": {"type": "String", "example": "Wi-Fi「Office」"}}
+  },
+  "gatewayNet_connecting": "閘道器正在連 Wi-Fi…",
+  "gatewayNet_problemNotConfigured": "閘道器還沒有設定 Wi-Fi，所以沒辦法上傳資料。",
+  "gatewayNet_problemPassword": "閘道器連不上 {wifi}：密碼可能錯誤，請確認密碼（含大小寫）後重新輸入。",
+  "@gatewayNet_problemPassword": {
+    "placeholders": {"wifi": {"type": "String", "example": "Wi-Fi「Office」"}}
+  },
+  "gatewayNet_problemNotFound": "閘道器找不到 {wifi}。請確認名稱正確、是 2.4 GHz（閘道器不支援 5 GHz），且基地台就在附近。",
+  "@gatewayNet_problemNotFound": {
+    "placeholders": {"wifi": {"type": "String", "example": "Wi-Fi「Office」"}}
+  },
+  "gatewayNet_problemWeak": "閘道器連不上 {wifi}，可能是訊號太弱或基地台暫時拒絕連線。請把閘道器移近基地台、避開金屬遮蔽後再試。",
+  "@gatewayNet_problemWeak": {
+    "placeholders": {"wifi": {"type": "String", "example": "Wi-Fi「Office」"}}
+  },
+  "gatewayNet_problemUnknown": "閘道器連不上 {wifi}。這個 Wi-Fi 可能不在附近、密碼不對，或是 5 GHz（閘道器只能用 2.4 GHz）。",
+  "@gatewayNet_problemUnknown": {
+    "placeholders": {"wifi": {"type": "String", "example": "Wi-Fi「Office」"}}
+  },
+  "gatewayNet_discLeave": "閘道器自行中斷",
+  "gatewayNet_discPassword": "密碼可能錯誤",
+  "gatewayNet_discNotFound": "找不到這個 Wi-Fi",
+  "gatewayNet_discWeak": "訊號弱或其他",
+  "gatewayNet_discDetail": "Wi-Fi 最後斷線原因：{kind}（代碼 {code}）",
+  "@gatewayNet_discDetail": {
+    "placeholders": {
+      "kind": {"type": "String", "example": "密碼可能錯誤"},
+      "code": {"type": "int", "example": "15"}
+    }
+  },
+  "gatewayNet_discDetailAge": "Wi-Fi 最後斷線原因：{kind}（代碼 {code}，{age} 秒前）",
+  "@gatewayNet_discDetailAge": {
+    "placeholders": {
+      "kind": {"type": "String", "example": "密碼可能錯誤"},
+      "code": {"type": "int", "example": "15"},
+      "age": {"type": "int", "example": "12"}
+    }
+  },
+  "gatewayNet_weak": "⚠ Wi-Fi 訊號偏弱（{rssi} dBm，低於 {limit} dBm），資料可能時斷時續。建議把閘道器移近基地台、避開金屬遮蔽，或在附近加裝 Wi-Fi 延伸器。",
+  "@gatewayNet_weak": {
+    "placeholders": {
+      "rssi": {"type": "int", "example": "-80"},
+      "limit": {"type": "int", "example": "-75"}
+    }
+  },
+  "gatewayNet_setFailedPassword": "新 Wi-Fi 連線未成功：密碼可能錯誤，請確認密碼（含大小寫）後重試。",
+  "gatewayNet_setFailedNotFound": "新 Wi-Fi 連線未成功：閘道器找不到這個 Wi-Fi。請確認名稱正確、是 2.4 GHz（不支援 5 GHz），且基地台就在附近。",
+  "gatewayNet_setFailedWeak": "新 Wi-Fi 連線未成功：可能是訊號太弱或基地台暫時拒絕連線，請把閘道器移近基地台後重試。",
+  "gatewayNet_setFailedUnknown": "新 WiFi 連線未成功，請檢查密碼與訊號後重試。"
+}

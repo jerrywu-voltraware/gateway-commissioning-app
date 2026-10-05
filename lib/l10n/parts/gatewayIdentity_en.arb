@@ -1,0 +1,23 @@
+{
+  "@@locale": "en",
+  "gatewayIdentity_idText": "Site {site} · Gateway {gateway}",
+  "gatewayIdentity_unconfigured": "Unconfigured gateway",
+  "gatewayIdentity_macTail": "MAC last 4: {tail}",
+  "gatewayIdentity_macTailWithBle": "MAC last 4: {tail} (Bluetooth {ble})",
+  "gatewayIdentity_directGatewayPick": "The gateway connected to another gateway nearby ({mac}), not a PTU; the APP will not treat it as a PTU. Tap [Not this one?] to pick this charger's PTU, or move closer to it and tap [Search again].",
+  "gatewayIdentity_uploadHeld": "Back office link OK. PTU data starts uploading once setup is done (paused for now, which is normal); the APP continues by itself",
+  "gatewayIdentity_confirmOnlineLabel": "Confirm gateway online",
+  "gatewayIdentity_uploadHeldStatus": "✓ Connected (uploads after setup)",
+  "gatewayIdentity_testMode": "This gateway is in test mode (test data only, no PTU links). Switch it back to normal mode before setup.",
+  "gatewayIdentity_testModeActionHint": "The gateway reboots after the switch (about 1 min); the APP reconnects and continues by itself.",
+  "gatewayIdentity_leaveTestModeLabel": "Back to normal mode",
+  "gatewayIdentity_leavingTestMode": "Switching the gateway back to normal mode (it reboots, about 1 min)",
+  "gatewayIdentity_leftTestMode": "Gateway is back in normal mode and reconnected. Continue setup.",
+  "gatewayIdentity_testModeUpload": "Gateway in test mode: it uploads test data only, no PTU data.",
+  "gatewayIdentity_uploadPaused": "Gateway is online but data upload is paused: no PTU data is sent. Tap [{resume}].",
+  "gatewayIdentity_testModeStatusHint": "Gateway in test mode (test data only). Tap [{leave}].",
+  "gatewayIdentity_uploadPausedStatusHint": "Gateway data upload is paused; no PTU data is sent. Tap [{resume}].",
+  "gatewayIdentity_resumeUploadLabel": "Resume upload",
+  "gatewayIdentity_resumingUpload": "Resuming data upload",
+  "gatewayIdentity_uploadResumed": "Data upload resumed; the gateway is sending PTU data."
+}

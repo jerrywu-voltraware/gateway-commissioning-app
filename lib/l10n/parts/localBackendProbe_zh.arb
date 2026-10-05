@@ -1,0 +1,46 @@
+{
+  "@@locale": "zh",
+  "localBackendProbe_hint": "請確認：手機與電腦在同一個 Wi-Fi、電腦已啟動 Docker 本地後端、電腦防火牆已執行 allow_local_api_lan.ps1。",
+  "localBackendProbe_healthy": "✓ 已連上本地後端",
+  "localBackendProbe_healthyVersion": "✓ 已連上本地後端（版本 {version}）",
+  "@localBackendProbe_healthyVersion": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "localBackendProbe_degraded": "✗ 已連到本地後端，但資料庫尚未就緒（HTTP 503）。請等 Docker 本地後端完全啟動後重試。",
+  "localBackendProbe_notBackend": "✗ 回應不是本地後端（HTTP {status}）。這個 IP／連接埠上是其他服務，請確認電腦 IP。",
+  "@localBackendProbe_notBackend": {
+    "placeholders": {
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "localBackendProbe_httpError": "✗ 回應不是本地後端（HTTP {status}）。請確認電腦 IP 與連接埠。",
+  "@localBackendProbe_httpError": {
+    "placeholders": {
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "localBackendProbe_timeout": "✗ 逾時：{message}",
+  "@localBackendProbe_timeout": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "localBackendProbe_unreachable": "✗ 無法連線：{message}",
+  "@localBackendProbe_unreachable": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  }
+}

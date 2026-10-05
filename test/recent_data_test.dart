@@ -19,6 +19,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gateway_commissioning/l10n/l10n.dart';
+import 'support/l10n.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:gateway_commissioning/application/backend_environment.dart';
 import 'package:gateway_commissioning/application/commissioning_controller.dart';
@@ -419,7 +421,7 @@ void main() {
           recentBanner(RecentData.fromJson(_rowsAt(now, [age])), now);
       expect(
         at(const Duration(seconds: 0)),
-        const RecentBanner(RecentBannerKind.ok, recentDataOkText),
+        RecentBanner(RecentBannerKind.ok, recentDataOkText),
       );
       expect(at(const Duration(seconds: 29)).kind, RecentBannerKind.ok);
       expect(
@@ -440,7 +442,7 @@ void main() {
       );
       expect(
         recentBanner(RecentData.fromJson({'count': 0, 'items': []}), now),
-        const RecentBanner(RecentBannerKind.empty, recentDataEmptyText),
+        RecentBanner(RecentBannerKind.empty, recentDataEmptyText),
       );
       expect(
         recentBanner(
@@ -643,6 +645,19 @@ void main() {
       expect(find.byKey(const Key('recent-banner-stale')), findsOneWidget);
       expect(find.text('最近 3 分鐘沒有新資料'), findsOneWidget);
       expect(find.byKey(const Key('recent-latest')), findsOneWidget);
+    });
+
+    testWidgets('English: stale banner, title and card labels', (tester) async {
+      useLanguage(AppLanguage.en);
+      final now = DateTime(2026, 9, 28, 13, 0, 10);
+      final api = _Api('data')
+        ..answer = _rowsAt(now, const [Duration(minutes: 3)]);
+      await _pumpPage(tester, api, now);
+      expect(find.text('Recent data'), findsOneWidget);
+      expect(find.text('No new data for 3 min'), findsOneWidget);
+      expect(find.text('Voltage'), findsOneWidget);
+      expect(recentAgeText(const Duration(days: 1)), '1 day');
+      expect(ptuStateShort('POWER_TRANSFER'), 'Charging');
     });
 
     testWidgets('fault state: red border and 「PTU 回報故障」', (tester) async {

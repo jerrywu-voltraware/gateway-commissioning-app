@@ -6,6 +6,9 @@ import '../application/commissioning_controller.dart';
 import '../core/direct_calibration.dart';
 import '../core/direct_mode.dart';
 import 'direct_mode_panel.dart';
+import '../l10n/l10n.dart';
+
+// i18n（docs/i18n.md）：字串在 lib/l10n/parts/directCalibrationSheet_*.arb。
 
 /// Round 18: opens 「校正門檻」 ([DirectCalibrationSheet]).
 Future<void> openDirectCalibration(BuildContext context) =>
@@ -130,6 +133,7 @@ class _DirectCalibrationSheetState
         ? basis?.referenceText
         : null;
     const bold = TextStyle(fontWeight: FontWeight.w600);
+    final l10n = context.l10n;
 
     Widget figure(String label, String value, Key key) => Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
@@ -160,8 +164,7 @@ class _DirectCalibrationSheetState
             Text(calibrationTitle, style: text.titleLarge),
             const SizedBox(height: 4),
             Text(
-              '本樁與鄰近樁請維持實際擺放與電源。取樣 $seconds 秒後建議門檻，'
-              '確認後才寫入閘道器。',
+              l10n.directCalibrationSheet_intro(seconds),
               style: text.bodySmall,
             ),
             const SizedBox(height: 8),
@@ -172,7 +175,7 @@ class _DirectCalibrationSheetState
                 style: TextStyle(color: colors.error),
               )
             else ...[
-              macRichText('本樁 PTU：${formatMac(own)}'),
+              macRichText(l10n.directCalibrationSheet_ownPtu(formatMac(own))),
               const SizedBox(height: 8),
               LinearProgressIndicator(
                 key: const Key('calibration-progress'),
@@ -181,34 +184,49 @@ class _DirectCalibrationSheetState
               const SizedBox(height: 4),
               Text(
                 done
-                    ? '取樣完成（讀取 ${samples!.reads} 次）'
-                    : '取樣中… 剩 $left 秒（已讀取 ${samples?.reads ?? 0} 次）',
+                    ? l10n.directCalibrationSheet_sampleDone(samples!.reads)
+                    : l10n.directCalibrationSheet_sampling(
+                        left,
+                        samples?.reads ?? 0,
+                      ),
                 key: const Key('calibration-status'),
                 style: text.bodySmall,
               ),
               const SizedBox(height: 8),
               figure(
-                '本樁連線訊號',
+                l10n.directCalibrationSheet_ownLink,
                 suggestion?.ownLinkWeakest == null
-                    ? '尚未讀到'
-                    : '中位數 ${dbm(suggestion!.ownLinkMedian!)} · '
-                          '最弱 ${dbm(suggestion.ownLinkWeakest!)}'
-                          '（${suggestion.ownLinkCount} 筆）',
+                    ? l10n.directCalibrationSheet_notRead
+                    : l10n.directCalibrationSheet_ownLinkValue(
+                        dbm(suggestion!.ownLinkMedian!),
+                        dbm(suggestion.ownLinkWeakest!),
+                        suggestion.ownLinkCount,
+                      ),
                 const Key('calibration-own'),
               ),
               // Round 19: firmware 1.7.27's advertising median (the gateway
               // picks by advertising).
-              figure('本樁廣播訊號', switch (basis) {
-                null => '尚未讀到',
-                CalibrationBasis.legacy => '閘道器韌體較舊，未回報',
-                CalibrationBasis.noOwnAdvertising => '閘道器未回報',
-                CalibrationBasis.current =>
-                  '中位數 ${dbm(samples!.ownAdvertising!)}',
-                // Round 20: shown, but not used for the upper bound.
-                CalibrationBasis.staleOwnAdvertising ||
-                CalibrationBasis.undatedOwnAdvertising =>
-                  '中位數 ${dbm(samples!.ownAdvertising!)}（未列入上限）',
-              }, const Key('calibration-own-adv')),
+              figure(
+                l10n.directCalibrationSheet_ownAdv,
+                switch (basis) {
+                  null => l10n.directCalibrationSheet_notRead,
+                  CalibrationBasis.legacy =>
+                    l10n.directCalibrationSheet_legacyFirmware,
+                  CalibrationBasis.noOwnAdvertising =>
+                    l10n.directCalibrationSheet_notReported,
+                  CalibrationBasis.current =>
+                    l10n.directCalibrationSheet_median(
+                      dbm(samples!.ownAdvertising!),
+                    ),
+                  // Round 20: shown, but not used for the upper bound.
+                  CalibrationBasis.staleOwnAdvertising ||
+                  CalibrationBasis.undatedOwnAdvertising =>
+                    l10n.directCalibrationSheet_medianSkipped(
+                      dbm(samples!.ownAdvertising!),
+                    ),
+                },
+                const Key('calibration-own-adv'),
+              ),
               // Round 20: firmware measures it while selecting and freezes
               // it once connected (field round 20: 249–274 s old).
               if (basis == CalibrationBasis.current ||
@@ -232,15 +250,22 @@ class _DirectCalibrationSheetState
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const SizedBox(width: 104, child: Text('最強鄰近訊號')),
+                    SizedBox(
+                      width: 104,
+                      child: Text(
+                        l10n.directCalibrationSheet_strongestNeighbor,
+                      ),
+                    ),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
                             neighborMac == null
-                                ? '未聽到鄰近 PTU'
-                                : '峰值 ${dbm(suggestion!.neighborStrongest!)}',
+                                ? l10n.directCalibrationSheet_noNeighbor
+                                : l10n.directCalibrationSheet_peak(
+                                    dbm(suggestion!.neighborStrongest!),
+                                  ),
                             key: const Key('calibration-neighbor'),
                             style: bold,
                           ),
@@ -248,10 +273,15 @@ class _DirectCalibrationSheetState
                           if (neighborMacs.length > 1)
                             Text(
                               neighborTies > neighborMacs.length
-                                  ? '$neighborTies 台相差 $calibrationNeighborTieDb dB 內，'
-                                        '列出 ${neighborMacs.length} 台'
-                                  : '${neighborMacs.length} 台相差 '
-                                        '$calibrationNeighborTieDb dB 內，一併列出',
+                                  ? l10n.directCalibrationSheet_tiesListed(
+                                      neighborTies,
+                                      calibrationNeighborTieDb,
+                                      neighborMacs.length,
+                                    )
+                                  : l10n.directCalibrationSheet_tiesAll(
+                                      neighborMacs.length,
+                                      calibrationNeighborTieDb,
+                                    ),
                               key: const Key('calibration-neighbor-ties'),
                               style: text.bodySmall,
                             ),
@@ -274,10 +304,10 @@ class _DirectCalibrationSheetState
               ),
               Text(
                 basis == CalibrationBasis.legacy
-                    ? '鄰近訊號取自閘道器最近一次選台聽到的其他 PTU（峰值），'
-                          '連線後不再更新。'
-                    : '鄰近訊號為閘道器連線中持續聽到的其他 PTU（峰值；'
-                          '$calibrationNeighborMaxAge 秒內都列入計算）。',
+                    ? l10n.directCalibrationSheet_neighborLegacy
+                    : l10n.directCalibrationSheet_neighborLive(
+                        calibrationNeighborMaxAge,
+                      ),
                 style: text.bodySmall?.copyWith(color: colors.onSurfaceVariant),
               ),
               if (samples?.staleNeighborAge case final age?)
@@ -331,9 +361,19 @@ class _DirectCalibrationSheetState
                           // calibrationTooCloseReason picks
                           // non-contradictory wording then.
                           // Round 20: the tied neighbours named together.
-                          '${calibrationTooCloseReason(suggestion, calibrationNeighborLabel([
-                            for (final mac in neighborMacs) distinguishingMacSegment(mac, [own, ...samples!.neighborMacs]),
-                          ], total: neighborTies))}。$calibrationTooCloseText。',
+                          l10n.directCalibrationSheet_tooClose(
+                            calibrationTooCloseReason(
+                              suggestion,
+                              calibrationNeighborLabel([
+                                for (final mac in neighborMacs)
+                                  distinguishingMacSegment(mac, [
+                                    own,
+                                    ...samples!.neighborMacs,
+                                  ]),
+                              ], total: neighborTies),
+                            ),
+                            calibrationTooCloseText,
+                          ),
                           style: TextStyle(color: warnFg),
                         ),
                       ),
@@ -349,15 +389,16 @@ class _DirectCalibrationSheetState
                 ),
               if (threshold != null) ...[
                 Text(
-                  '建議門檻：$threshold dBm（目前 $current dBm）',
+                  l10n.directCalibrationSheet_suggestion(threshold, current),
                   key: const Key('calibration-suggestion'),
                   style: text.titleMedium,
                 ),
                 if (suggestion!.lower != null)
                   Text(
-                    '可用範圍 ${dbm(suggestion.lower!)} ～ '
-                    '${dbm(suggestion.upper!)}：本樁選得到、連上後不會被踢，'
-                    '本樁關機時也不會連到鄰近樁。',
+                    l10n.directCalibrationSheet_range(
+                      dbm(suggestion.lower!),
+                      dbm(suggestion.upper!),
+                    ),
                     key: const Key('calibration-range'),
                     style: text.bodySmall,
                   ),
@@ -396,7 +437,10 @@ class _DirectCalibrationSheetState
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
-                          '$calibrationSavedText：$_saved dBm',
+                          l10n.directCalibrationSheet_saved(
+                            calibrationSavedText,
+                            _saved!,
+                          ),
                           key: const Key('calibration-saved'),
                           style: TextStyle(color: okFg),
                         ),
@@ -408,7 +452,7 @@ class _DirectCalibrationSheetState
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
                   child: Text(
-                    state.error ?? '門檻未寫入閘道器，請重試。',
+                    state.error ?? l10n.directCalibrationSheet_saveFailed,
                     key: const Key('calibration-save-failed'),
                     style: TextStyle(color: colors.error),
                   ),
@@ -429,12 +473,12 @@ class _DirectCalibrationSheetState
                   : null,
               child: Text(
                 _saving
-                    ? '寫入中…'
+                    ? l10n.directCalibrationSheet_writing
                     : threshold == null
-                    ? '寫入閘道器'
+                    ? l10n.directCalibrationSheet_write
                     : threshold == current && _saved == null
                     ? calibrationHoldLabel(threshold)
-                    : '寫入閘道器（$threshold dBm）',
+                    : l10n.directCalibrationSheet_writeValue(threshold),
               ),
             ),
             Row(
@@ -448,14 +492,16 @@ class _DirectCalibrationSheetState
                   label: Text(
                     samples?.staleNeighborAge != null
                         ? calibrationRescanLabel
-                        : '重新取樣',
+                        : l10n.directCalibrationSheet_resample,
                   ),
                 ),
                 const Spacer(),
                 TextButton(
                   key: const Key('calibration-cancel'),
                   onPressed: _saving ? null : () => Navigator.of(context).pop(),
-                  child: Text(_saved == null ? '取消' : '完成'),
+                  child: Text(
+                    _saved == null ? l10n.common_cancel : l10n.common_done,
+                  ),
                 ),
               ],
             ),

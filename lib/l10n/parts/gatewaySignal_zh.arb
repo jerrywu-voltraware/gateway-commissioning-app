@@ -1,0 +1,53 @@
+{
+  "@@locale": "zh",
+  "gatewaySignal_noReading": "尚無讀值",
+  "gatewaySignal_demoScan": "模擬・掃描 {value}",
+  "@gatewaySignal_demoScan": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "gatewaySignal_scan": "掃描 {value}",
+  "@gatewaySignal_scan": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "gatewaySignal_disconnectedLast": "已斷線・上次 {value}",
+  "@gatewaySignal_disconnectedLast": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "gatewaySignal_disconnectedScan": "已斷線・掃描 {value}",
+  "@gatewaySignal_disconnectedScan": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "gatewaySignal_last": "上次 {value}",
+  "@gatewaySignal_last": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "gatewaySignal_line": "手機 ↔ 閘道器：{status}",
+  "@gatewaySignal_line": {
+    "placeholders": {
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "gatewaySignal_linkLost": "手機與閘道器的藍牙已斷線，請靠近閘道器；APP 會提示如何重新連線。"
+}

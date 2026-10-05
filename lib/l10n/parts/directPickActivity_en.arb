@@ -1,0 +1,16 @@
+{
+  "@@locale": "en",
+  "directPickActivity_unavailable": "Link not confirmed. Follow the hint to retry.",
+  "directPickActivity_foundConfirm": "PTU found. Make sure it is this charger.",
+  "directPickActivity_identifySent": "Identify sent. Check the light.",
+  "directPickActivity_ambiguousIdentify": "Signals are close. Identify this charger.",
+  "directPickActivity_foundIdentify": "PTU found. Identify this charger.",
+  "directPickActivity_scanning": "Gateway is searching for PTUs",
+  "directPickActivity_connecting": "Gateway is connecting to the PTU",
+  "directPickActivity_noCandidate": "No PTU found yet. Check its power.",
+  "directPickActivity_boundMissing": "The bound PTU is not here",
+  "directPickActivity_connected": "Waiting for the gateway to report its PTU",
+  "directPickActivity_reading": "Reading PTU status",
+  "directPickActivity_noStatus": "No PTU status yet",
+  "directPickActivity_gatewayEndpoint": "Gateway"
+}

@@ -1,0 +1,20 @@
+{
+  "@@locale": "zh",
+  "autoChecklist_oldFirmwareLater": "這台韌體無法回報，最後驗證資料時會確認",
+  "@autoChecklist_oldFirmwareLater": {
+    "description": "Checklist item note (Wi-Fi / back office) for firmware that cannot report its network state."
+  },
+  "autoChecklist_linkLost": "藍牙斷線，無法確認",
+  "autoChecklist_wifiConnected": "已連上",
+  "@autoChecklist_wifiConnected": {
+    "description": "Wi-Fi item note when the SSID is unknown."
+  },
+  "autoChecklist_wifiNotSet": "還沒設定 Wi-Fi，請按下方設定 Wi-Fi",
+  "autoChecklist_wifiFailed": "連不上 Wi-Fi，請按下方重設 Wi-Fi",
+  "autoChecklist_testMode": "閘道器在測試模式，請先切回正常模式",
+  "autoChecklist_targetElsewhere": "資料送到別的後台，請依下方提示處理",
+  "autoChecklist_uploadPaused": "資料上傳已暫停，請按下方恢復上傳",
+  "autoChecklist_uploadHeld": "已連上，完成配置後開始上傳資料",
+  "autoChecklist_uploading": "資料上傳中",
+  "autoChecklist_uploadNotStarted": "還沒開始上傳資料，請依下方提示處理"
+}

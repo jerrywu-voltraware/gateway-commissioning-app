@@ -1,0 +1,59 @@
+{
+  "@@locale": "zh",
+  "coreProgressChecklist_notDone": "沒有完成",
+  "@coreProgressChecklist_notDone": {
+    "description": "Failed checklist item without a usable reason."
+  },
+  "coreProgressChecklist_connectBle": "藍牙連線",
+  "@coreProgressChecklist_connectBle": {
+    "description": "Checklist items of the automatic pages (plain words)."
+  },
+  "coreProgressChecklist_connectStatus": "讀取閘道器狀態",
+  "coreProgressChecklist_connectWifi": "Wi-Fi 已連線",
+  "coreProgressChecklist_connectBackend": "後台連線正常",
+  "coreProgressChecklist_onlineBackend": "連上後台",
+  "coreProgressChecklist_onlineBeat1": "收到第 1 次心跳",
+  "coreProgressChecklist_onlineBeat2": "收到第 2 次心跳（持續上線）",
+  "coreProgressChecklist_onlineTarget": "上傳目標確認",
+  "coreProgressChecklist_targetCurrent": "送到目前的後台",
+  "coreProgressChecklist_targetLocal": "本地測試",
+  "coreProgressChecklist_finishBind": "寫入 PTU 綁定",
+  "coreProgressChecklist_finishSettings": "寫入 PTU 設定",
+  "coreProgressChecklist_finishList": "寫入 PTU 名單",
+  "coreProgressChecklist_finishAssign": "指派 PTU",
+  "coreProgressChecklist_finishAssignTotal": "{total, plural, other{指派 PTU（共 {total} 台）}}",
+  "@coreProgressChecklist_finishAssignTotal": {
+    "placeholders": {
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "coreProgressChecklist_finishJoin": "加入監控",
+  "coreProgressChecklist_finishJoined": "核對已加入監控",
+  "coreProgressChecklist_finishData": "驗證資料上傳",
+  "coreProgressChecklist_dataEach": "每台 {count}/{need} 筆",
+  "@coreProgressChecklist_dataEach": {
+    "description": "Data verification progress, several PTUs.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "need": {
+        "type": "int"
+      }
+    }
+  },
+  "coreProgressChecklist_dataReceived": "收到 {count}/{need} 筆",
+  "@coreProgressChecklist_dataReceived": {
+    "description": "Data verification progress, one PTU.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "need": {
+        "type": "int"
+      }
+    }
+  }
+}

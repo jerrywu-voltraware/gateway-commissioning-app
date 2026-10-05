@@ -12,20 +12,22 @@
 /// Pure Dart so every rule can be unit-tested without widgets.
 library;
 
+import '../l10n/l10n.dart';
+
 /// Two gateways heard within this many dB: too close to tell by signal.
 const gatewayCloseDb = 6;
 
 /// The strongest gateway's mark in the list.
 /// 1.0.0+9: 「最近」 — the filled chip beside the strongest row's dBm.
-const gatewayNearestLabel = '最近';
+String get gatewayNearestLabel => L10n.current.gatewayProximity_nearest;
 
 /// Above the list once two or more gateways are heard. 1.0.0+22: the bulb
 /// is on the selected card once its link is up — the advice says so.
-const gatewayNearestHint = '本樁的閘道器通常是訊號最強的那台；不確定就點選它，連線後按燈泡看哪台閃燈';
+String get gatewayNearestHint => L10n.current.gatewayProximity_nearestHint;
 
 /// With [gatewayNearestHint] when the two strongest are within
 /// [gatewayCloseDb].
-const gatewayCloseHint = '兩台距離相近，請連線後按燈泡辨識確認';
+String get gatewayCloseHint => L10n.current.gatewayProximity_closeHint;
 
 /// A phone RSSI reading that means something (−127 / 0: unknown).
 bool validGatewayRssi(int rssi) => rssi > -127 && rssi < 0;

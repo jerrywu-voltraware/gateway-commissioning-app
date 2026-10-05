@@ -1,0 +1,12 @@
+{
+  "@@locale": "zh",
+  "stationChange_titleApplying": "正在套用站號，請稍候",
+  "stationChange_titleRestarting": "閘道器重新啟動中，請稍候",
+  "stationChange_titleReconnecting": "正在重新連線閘道器",
+  "stationChange_titleConfirming": "正在確認站號與 Wi-Fi",
+  "stationChange_itemApply": "套用站點設定",
+  "stationChange_itemRestart": "重新啟動並連線",
+  "stationChange_noteWaitBoot": "等待閘道器啟動",
+  "stationChange_noteReconnecting": "正在自動重新連線",
+  "stationChange_itemConfirm": "確認站號與 Wi-Fi"
+}

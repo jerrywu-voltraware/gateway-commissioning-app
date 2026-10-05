@@ -1,0 +1,63 @@
+{
+  "@@locale": "zh",
+  "recentDataApi_minutes": "{minutes, plural, other{{minutes} 分鐘}}",
+  "@recentDataApi_minutes": {
+    "description": "Upload interval in whole minutes.",
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "recentDataApi_seconds": "{seconds, plural, other{{seconds} 秒}}",
+  "@recentDataApi_seconds": {
+    "description": "Upload interval in whole seconds.",
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "recentDataApi_secondsDecimal": "{seconds} 秒",
+  "@recentDataApi_secondsDecimal": {
+    "description": "Upload interval with one decimal (e.g. 1.5).",
+    "placeholders": {
+      "seconds": {
+        "type": "String"
+      }
+    }
+  },
+  "recentDataApi_timeUnknown": "時間不明",
+  "@recentDataApi_timeUnknown": {
+    "description": "Used as {ago} in recentDataApi_summary."
+  },
+  "recentDataApi_secondsAgo": "{seconds, plural, other{{seconds} 秒前}}",
+  "@recentDataApi_secondsAgo": {
+    "description": "Used as {ago} in recentDataApi_summary.",
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "recentDataApi_summary": "{count, plural, other{最近一筆 {ago}・共 {count} 筆}}",
+  "@recentDataApi_summary": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "ago": {
+        "type": "String"
+      }
+    }
+  },
+  "recentDataApi_errorText": "連不上後台（{reason}）",
+  "@recentDataApi_errorText": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "recentDataApi_authRefused": "後台拒絕此 APP 的登入憑證，請聯絡管理員更新 APP"
+}

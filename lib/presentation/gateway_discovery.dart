@@ -13,6 +13,10 @@ import '../core/protocol.dart';
 import '../data/contracts.dart';
 import '../data/nearby_gateway_scan.dart';
 import '../data/recent_gateways.dart';
+import '../l10n/l10n.dart';
+
+// i18n（docs/i18n.md）：其他檔與測試引用的 top-level 文字維持同名，由 const
+// 改成讀 [L10n.current] 的 getter；字串在 lib/l10n/parts/gatewayDiscovery_*.arb。
 
 /// 1.0.0+17 (user on the phone: the list's scan showed no progress, only
 /// 「搜尋已停止・未發現附近閘道器」 at the end): the live scan runs until it
@@ -27,32 +31,35 @@ const gatewaySearchWindow = nearbyScanWindow;
 const gatewayRescanDelay = Duration(seconds: 1);
 
 /// 1.0.0+17: the progress area's head while the search runs.
-const gatewaySearchingText = '正在搜尋附近的閘道器…';
+String get gatewaySearchingText => L10n.current.gatewayDiscovery_searching;
 
 /// 1.0.0+17: the head while the one automatic second search waits / runs.
-const gatewayRetryingText = '沒找到，再搜尋一次…';
+String get gatewayRetryingText => L10n.current.gatewayDiscovery_retrying;
 
 /// 1.0.0+17: the head while 〔辨識〕 pauses the search.
-const gatewayBusyText = '正在連線並讀取設定…';
+String get gatewayBusyText => L10n.current.gatewayDiscovery_busy;
 
 /// 1.0.0+22: the head once a gateway is selected — its link is kept, so the
 /// scan stopped (〔重新搜尋〕 lets it go and searches again).
-const gatewaySearchPausedText = '已選取閘道器，搜尋已暫停';
+String get gatewaySearchPausedText =>
+    L10n.current.gatewayDiscovery_searchPaused;
 
 /// 1.0.0+17: the second search found nothing either.
-const gatewayNotFoundText = '未發現附近閘道器。請確認電源、靠近裝置，並確認沒有被其他手機連線。';
+String get gatewayNotFoundText => L10n.current.gatewayDiscovery_notFound;
 
 /// 1.0.0+17: the installer stopped the scan with nothing heard.
-const gatewayStoppedText = '已停止搜尋，按〔重新搜尋〕再找一次';
+String get gatewayStoppedText => L10n.current.gatewayDiscovery_stopped;
 
 /// 1.0.0+17: counted live under the progress bar.
-String gatewayFoundCountText(int count) => '已找到 $count 台';
+String gatewayFoundCountText(int count) =>
+    L10n.current.gatewayDiscovery_foundCount(count);
 
 /// 1.0.0+17: the line after the search. [withHint]: the nearest hint
 /// (「本樁的閘道器通常是訊號最強的那台…」) is shown under it — then the
 /// line only counts, the hint says which to pick.
-String gatewayFoundText(int count, {bool withHint = false}) =>
-    withHint ? '找到 $count 台' : '找到 $count 台，請點選本樁的那台';
+String gatewayFoundText(int count, {bool withHint = false}) => withHint
+    ? L10n.current.gatewayDiscovery_found(count)
+    : L10n.current.gatewayDiscovery_foundPick(count);
 
 /// 1.0.0+17: where the list's search is.
 enum _Search {
@@ -70,59 +77,78 @@ enum _Search {
 }
 
 /// 1.0.0+8: the tile's badge for a gateway not yet configured.
-const gatewayUnconfiguredLabel = '未配置';
+String get gatewayUnconfiguredLabel =>
+    L10n.current.gatewayDiscovery_unconfigured;
 
 /// No verified identity yet; absence of phone history is not unconfigured.
-const gatewayPendingLabel = '待核對';
+String get gatewayPendingLabel => L10n.current.gatewayDiscovery_pending;
 
 /// Guidance follows only the backend state already resolved for this card.
-const gatewayBackendOfflineNote =
-    '後台目前未收到此設備的連線訊號。請確認電源與 Wi-Fi；若已更換網路環境，請重新設定 Wi-Fi。';
-const gatewayBackendNoRecordNote =
-    '目前後台查無此設備紀錄。若尚未開通，請點選『開始開通』；若已開通，請確認連線狀態與所選站點。';
+String get gatewayBackendOfflineNote =>
+    L10n.current.gatewayDiscovery_backendOfflineNote;
+String get gatewayBackendNoRecordNote =>
+    L10n.current.gatewayDiscovery_backendNoRecordNote;
 
-String? gatewayBackendNoteFor(String presence) => switch (presence) {
-  '後端離線' => gatewayBackendOfflineNote,
-  '後端無紀錄' => gatewayBackendNoRecordNote,
-  _ => null,
-};
+/// [presence] 是 [backendPresenceShort] 的結果。不比對中文字面量：以同一個
+/// 函式對固定輸入算出「離線」「無紀錄」的短語再比（同源，哪個語言都對）。
+// TODO(i18n Phase C): switch to B3 enum (backendPresenceShort 的結構化結果)
+String? gatewayBackendNoteFor(String presence) {
+  if (presence == _backendOfflineShort) return gatewayBackendOfflineNote;
+  if (presence == _backendNoRecordShort) return gatewayBackendNoRecordNote;
+  return null;
+}
+
+const _probeUid = 'AABBCCDDEEFF';
+
+/// [backendPresenceShort] 對「後台有這台、回報離線」的短語。
+String get _backendOfflineShort => backendPresenceShort(_probeUid, const [
+  {'last_seen_mac': _probeUid, 'online': false},
+]);
+
+/// [backendPresenceShort] 對「後台沒有這台」的短語。
+String get _backendNoRecordShort => backendPresenceShort(_probeUid, const []);
 
 /// The identify button's tooltip (an icon since 1.0.0+8).
-const identifyGatewayLabel = '閃燈辨識';
+String get identifyGatewayLabel => L10n.current.gatewayDiscovery_identifyLabel;
 
 /// 1.0.0+9: on the row for 3 s after 〔辨識〕 blinked it.
-const identifiedHint = '已送出';
+String get identifiedHint => L10n.current.gatewayDiscovery_identifiedHint;
 
 /// 1.0.0+9: how long [identifiedHint] stays.
 const identifiedHintFor = Duration(seconds: 3);
 
 /// On the row, instead of [identifiedHint], when 〔辨識〕 blinked the gateway
 /// only: it has no PTU connected, so no PTU blinks.
-const identifiedGatewayOnlyHint = '閘道器已閃・PTU 不會閃';
+String get identifiedGatewayOnlyHint =>
+    L10n.current.gatewayDiscovery_gatewayOnlyHint;
 
 /// The SnackBar's sentence for the same ([identifiedGatewayOnlySnackText])
 /// when nothing more is known (get_status not read, or no `direct` in it).
-const identifiedGatewayOnlyNote = '閘道器已閃燈；它目前沒連到 PTU，PTU 不會閃';
+String get identifiedGatewayOnlyNote =>
+    L10n.current.gatewayDiscovery_gatewayOnlyNote;
 
 /// 1.0.0+22: the SnackBar's sentence when the APP had just switched the
 /// gateway to one-to-one on this link ([IdentifyGatewayOnlyKind.switchedToDirect]).
-const identifiedGatewayOnlySwitchedNote = '閘道器已閃燈；已切換為一對一，閘道器正在重新尋找 PTU，請稍後再按';
+String get identifiedGatewayOnlySwitchedNote =>
+    L10n.current.gatewayDiscovery_gatewayOnlySwitchedNote;
 
 /// The bound PTU is absent; hearing another PTU does not mean it can be selected.
-const identifiedGatewayOnlyBoundMissingNote =
-    '閘道器已閃燈；找不到已綁定的 PTU，請確認原 PTU 已開機並在附近';
+String get identifiedGatewayOnlyBoundMissingNote =>
+    L10n.current.gatewayDiscovery_gatewayOnlyBoundMissingNote;
 
 /// 1.0.0+22: … when the gateway heard no PTU ([IdentifyGatewayOnlyKind.noCandidate]).
-const identifiedGatewayOnlyNoPtuNote = '閘道器已閃燈；閘道器附近沒聽到 PTU，請確認 PTU 已上電';
+String get identifiedGatewayOnlyNoPtuNote =>
+    L10n.current.gatewayDiscovery_gatewayOnlyNoPtuNote;
 
 /// 1.0.0+22: … when every PTU heard is below the threshold
 /// ([IdentifyGatewayOnlyKind.weakSignal]; [best] / [min] in dBm).
 String identifiedGatewayOnlyWeakNote(int best, int min) =>
-    '閘道器已閃燈；PTU 訊號太弱（最強 $best dBm，需 ≥ $min），請靠近或檢查天線';
+    L10n.current.gatewayDiscovery_gatewayOnlyWeakNote(best, min);
 
 /// 1.0.0+22: … while the gateway is still picking among the PTUs heard
 /// ([IdentifyGatewayOnlyKind.picking]).
-const identifiedGatewayOnlyPickingNote = '閘道器已閃燈；閘道器正在選擇 PTU，請 3 秒後再按';
+String get identifiedGatewayOnlyPickingNote =>
+    L10n.current.gatewayDiscovery_gatewayOnlyPickingNote;
 
 /// 1.0.0+22: the SnackBar's sentence for [reason]; the plain
 /// [identifiedGatewayOnlyNote] when there is none.
@@ -154,33 +180,36 @@ const gatewayNearestColor = Color(0xFF2E7D32);
 /// in the primary colour, tinted, 「✓ 已選取」 on it — and the page's fixed
 /// bottom button ([GatewayConnectBar]) connects to it. Picking the
 /// neighbour's gateway (the wrong pile) is one of the worst field errors.
-const gatewaySelectedLabel = '已選取';
+String get gatewaySelectedLabel => L10n.current.gatewayDiscovery_selected;
 
 /// 1.0.0+14: on the selected card and the bottom button while it connects.
-const gatewayConnectingLabel = '連線中…';
+String get gatewayConnectingLabel => L10n.current.gatewayDiscovery_connecting;
 
 /// 1.0.0+14: the bottom button while nothing is selected (disabled).
-const gatewayPickFirstLabel = '請先選擇閘道器';
+String get gatewayPickFirstLabel => L10n.current.gatewayDiscovery_pickFirst;
 
 /// 1.0.0+22 (select_then_identify, docs/select_then_identify.md): on the
 /// selected card once its explicit connection is ready ([GatewayDiscovery.onHold]) —
 /// the bulb then blinks at once.
-const gatewayHeldLabel = '已連線';
+String get gatewayHeldLabel => L10n.current.gatewayDiscovery_held;
 
 /// 1.0.0+22: on the selected card when its connect failed (use the explicit retry button).
-const gatewayHoldFailedLabel = '連線失敗';
+String get gatewayHoldFailedLabel => L10n.current.gatewayDiscovery_holdFailed;
 
 /// 1.0.0+22: on the selected card when its kept link dropped (tap it to
 /// connect again).
-const gatewayHoldLostLabel = '已斷線';
+String get gatewayHoldLostLabel => L10n.current.gatewayDiscovery_holdLost;
 
-const gatewayCleanupFailedText = '藍牙清理未完成，請重試斷開。';
+String get gatewayCleanupFailedText =>
+    L10n.current.gatewayDiscovery_cleanupFailed;
 
 /// 1.0.0+22: the SnackBar when the selected gateway's connect failed.
-String gatewayHoldFailedText(String title) => '無法連線 $title，請按「藍牙連線」重試';
+String gatewayHoldFailedText(String title) =>
+    L10n.current.gatewayDiscovery_holdFailedText(title);
 
 /// 1.0.0+22: the SnackBar when the selected gateway's kept link dropped.
-String gatewayHoldLostText(String title) => '$title 的藍牙連線已中斷，請按「藍牙連線」重新連線';
+String gatewayHoldLostText(String title) =>
+    L10n.current.gatewayDiscovery_holdLostText(title);
 
 /// 1.0.0+22 (the phone trial): the bulb is on the selected card only once
 /// its link is up ([_Hold.held]); every other card — and the selected one
@@ -213,7 +242,8 @@ enum _Hold {
 /// 1.0.0+14: the bottom button for the gateway selected — [title] from the
 /// same source as the card's title (「站 80 · 閘道器 2」, 「未配置閘道器
 /// …70F0」).
-String gatewayConnectLabel(String title) => '開始開通：$title';
+String gatewayConnectLabel(String title) =>
+    L10n.current.gatewayDiscovery_connectLabel(title);
 
 /// 1.0.0+14: the gateway selected on [GatewayDiscovery] (not connected
 /// yet), shared with the page's fixed [GatewayConnectBar]: the list writes
@@ -334,7 +364,11 @@ class GatewayScanBar extends StatelessWidget {
             ),
             onPressed: enabled && choice.scanAllowed ? choice.scan : null,
             icon: Icon(choice.scanStoppable ? Icons.stop : Icons.search),
-            label: Text(choice.scanStoppable ? '停止搜尋' : '重新搜尋'),
+            label: Text(
+              choice.scanStoppable
+                  ? context.l10n.gatewayDiscovery_stopSearch
+                  : context.l10n.gatewayDiscovery_searchAgain,
+            ),
           ),
         ),
       ),
@@ -385,18 +419,18 @@ class GatewayConnectBar extends StatelessWidget {
                   ? choice.connect
                   : null,
               child: connecting
-                  ? const Row(
+                  ? Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        SizedBox.square(
+                        const SizedBox.square(
                           dimension: 18,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         ),
-                        SizedBox(width: 10),
+                        const SizedBox(width: 10),
                         Flexible(
                           child: Text(
                             gatewayConnectingLabel,
-                            key: Key('gateway-connect-text'),
+                            key: const Key('gateway-connect-text'),
                             maxLines: 1,
                             softWrap: false,
                           ),
@@ -437,6 +471,7 @@ class _SelectedMark extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final colors = Theme.of(context).colorScheme;
     final spinning =
         connecting || phase == _Hold.connecting || phase == _Hold.disconnecting;
@@ -461,14 +496,22 @@ class _SelectedMark extends StatelessWidget {
       height: 1.2,
     );
     final (icon, text) = !selected
-        ? (Icons.bluetooth_disabled, '未連線')
+        ? (Icons.bluetooth_disabled, l10n.gatewayDiscovery_notConnected)
         : spinning
-        ? (null, phase == _Hold.disconnecting ? '斷開中…' : gatewayConnectingLabel)
+        ? (
+            null,
+            phase == _Hold.disconnecting
+                ? l10n.gatewayDiscovery_disconnecting
+                : gatewayConnectingLabel,
+          )
         : switch (phase) {
             _Hold.held => (Icons.bluetooth_connected, gatewayHeldLabel),
             _Hold.failed => (Icons.error_outline, gatewayHoldFailedLabel),
             _Hold.lost => (Icons.bluetooth_disabled, gatewayHoldLostLabel),
-            _Hold.cleanupFailed => (Icons.error_outline, '清理未完成'),
+            _Hold.cleanupFailed => (
+              Icons.error_outline,
+              l10n.gatewayDiscovery_cleanupIncomplete,
+            ),
             _ => (Icons.check, gatewaySelectedLabel),
           };
     return Container(
@@ -515,7 +558,7 @@ class _SelectedMark extends StatelessWidget {
 const gatewayHeardFor = Duration(seconds: 30);
 
 /// 1.0.0+11: a remembered gateway not heard for [gatewayHeardFor].
-const gatewaySignalLostLabel = '訊號中斷';
+String get gatewaySignalLostLabel => L10n.current.gatewayDiscovery_signalLost;
 
 /// 1.0.0+11: a remembered gateway never heard by this list.
 const gatewayNeverHeardLabel = '—';
@@ -524,15 +567,18 @@ const gatewayNeverHeardLabel = '—';
 /// row is off screen. 1.0.0+12: [title], the row's title when given (e.g.
 /// 「未配置閘道器 …70F0」).
 String identifiedSnackText(String name, {String? title}) =>
-    '${title ?? gatewayTitle(name)} $identifiedHint';
+    L10n.current.gatewayDiscovery_identifiedSnack(title ?? gatewayTitle(name));
 
 /// The SnackBar after 〔辨識〕 blinked the gateway only (no PTU connected);
 /// 1.0.0+22: [note] says why when known ([identifiedGatewayOnlyNoteFor]).
 String identifiedGatewayOnlySnackText(
   String name, {
   String? title,
-  String note = identifiedGatewayOnlyNote,
-}) => '${title ?? gatewayTitle(name)}：$note';
+  String? note,
+}) => L10n.current.gatewayDiscovery_gatewayOnlySnack(
+  title ?? gatewayTitle(name),
+  note ?? identifiedGatewayOnlyNote,
+);
 
 /// 1.0.0+10: a small mark on a gateway row (labelMedium): outlined, or
 /// [filled] (white text on [color]).
@@ -1354,7 +1400,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
       setState(() {
         _error = error is GatewayFailure
             ? error.message
-            : '搜尋失敗，請確認藍牙、定位與附近裝置權限後重試。';
+            : L10n.current.gatewayDiscovery_scanFailed;
         _needsSettings =
             error is! GatewayFailure ||
             error.code == 'permission' ||
@@ -1556,7 +1602,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
       _holdSnack(
         _holdPhase == _Hold.cleanupFailed
             ? gatewayCleanupFailedText
-            : '辨識未完成，請重新連線後再試。',
+            : L10n.current.gatewayDiscovery_identifyIncomplete,
       );
     } finally {
       if (mounted && _identifyingId == peer.id) {
@@ -1648,7 +1694,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
         : lost
         ? gatewaySignalLostLabel
         : heard.peer.rssi <= -127
-        ? '訊號未知'
+        ? context.l10n.gatewayDiscovery_signalUnknown
         : '${heard.peer.rssi} dBm';
     // Round 26 (field: two gateways both read 「GIOS-S80-G…」): 「站 80 ·
     // 閘道器 2」 as the title. 1.0.0+10: the advertised name (the live one:
@@ -2010,15 +2056,16 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
         (selected || (_selectedId == null && _shown.length == 1));
     final guideStart = _canStartPeer(peer, holdEpoch);
     const padding = EdgeInsets.symmetric(horizontal: 10);
+    final l10n = context.l10n;
     final bluetoothLabel = !release
-        ? '藍牙連線'
+        ? l10n.gatewayDiscovery_bluetoothConnect
         : hold == _Hold.disconnecting
-        ? '斷開中…'
+        ? l10n.gatewayDiscovery_disconnecting
         : hold == _Hold.connecting
-        ? '取消連線'
+        ? l10n.gatewayDiscovery_cancelConnect
         : hold == _Hold.cleanupFailed
-        ? '重試斷開'
-        : '斷開';
+        ? l10n.gatewayDiscovery_retryDisconnect
+        : l10n.gatewayDiscovery_disconnect;
     final bluetooth = release
         ? OutlinedButton.icon(
             key: const Key('gateway-disconnect'),
@@ -2081,7 +2128,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
         onPressed: _canStartPeer(peer, holdEpoch)
             ? () => _connect(peer, expectedHoldEpoch: holdEpoch)
             : null,
-        child: const Text('開始開通'),
+        child: Text(l10n.gatewayDiscovery_startCommissioning),
       ),
     );
     double widthOf(String label) {
@@ -2099,7 +2146,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     // Measure the visible label: reserving every possible connection state
     // needlessly splits the shorter Disconnect action from Start.
     final bluetoothWidth = widthOf(bluetoothLabel) + 20 + 8 + 20;
-    final startWidth = widthOf('開始開通') + 20;
+    final startWidth = widthOf(l10n.gatewayDiscovery_startCommissioning) + 20;
     final requiredWidth =
         bluetoothWidth +
         startWidth +
@@ -2116,7 +2163,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
             maintainState: true,
             maintainAnimation: true,
             child: NextActionHint(
-              guideStart ? '確認目標閘道器，再點「開始開通」' : '確認目標閘道器，再點「藍牙連線」',
+              guideStart ? nextActionBeginCaption : nextActionConnectCaption,
               alignEnd: guideStart,
               active: guideConnect || guideStart,
             ),
@@ -2170,7 +2217,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
       context,
     ).style.merge(Theme.of(context).textTheme.bodyMedium);
     var width = 0.0;
-    for (final sample in const ['-88 dBm', gatewaySignalLostLabel]) {
+    for (final sample in ['-88 dBm', gatewaySignalLostLabel]) {
       final painter = TextPainter(
         text: TextSpan(text: sample, style: style),
         textDirection: TextDirection.ltr,
@@ -2280,7 +2327,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
               ? _toggleScan
               : null,
           icon: const Icon(Icons.search),
-          label: const Text('重新搜尋'),
+          label: Text(context.l10n.gatewayDiscovery_searchAgain),
         ),
       ],
     ],
@@ -2288,6 +2335,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     ref.listen(backendEnvProvider, (_, next) {
       _backendEpoch++;
       setState(() {
@@ -2381,7 +2429,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             Text(
-              '選擇附近的閘道器',
+              l10n.gatewayDiscovery_selectNearby,
               style: Theme.of(
                 context,
               ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
@@ -2395,7 +2443,11 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
                     ? _toggleScan
                     : null,
                 icon: Icon(stoppable ? Icons.stop : Icons.search),
-                label: Text(stoppable ? '停止搜尋' : '重新搜尋'),
+                label: Text(
+                  stoppable
+                      ? l10n.gatewayDiscovery_stopSearch
+                      : l10n.gatewayDiscovery_searchAgain,
+                ),
               ),
             // 1.0.0+10 (phone: always there): only when the scan failed for
             // want of a permission.
@@ -2403,7 +2455,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
               TextButton(
                 key: const Key('gateway-open-settings'),
                 onPressed: widget.enabled ? openAppSettings : null,
-                child: const Text('開啟權限設定'),
+                child: Text(l10n.gatewayStatus_openSettings),
               ),
           ],
         ),
@@ -2433,7 +2485,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
             _canSelect &&
             selectedId == null &&
             _shown.length > 1)
-          const NextActionHint('先選擇要配置的閘道器卡片，再點「藍牙連線」'),
+          NextActionHint(l10n.gatewayDiscovery_pickCardHint),
         if (_error != null)
           Text(
             _error!,
@@ -2452,15 +2504,15 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
             ),
           ),
         if (recent.isNotEmpty) ...[
-          _groupTitle('最近使用'),
+          _groupTitle(l10n.gatewayDiscovery_recentGroup),
           ...recent.map((r) => tile(r.$2.peer, recent: r.$2)),
         ],
         if (nearby.isNotEmpty) ...[
-          _groupTitle('附近裝置（${nearby.length}）'),
+          _groupTitle(l10n.gatewayDiscovery_nearbyGroup(nearby.length)),
           ...nearby.map(tile),
         ],
         const SizedBox(height: 8),
-        const Text('RSSI 為手機收到的藍牙訊號，與後端在線狀態不同。'),
+        Text(l10n.gatewayDiscovery_rssiNote),
         if (nearest != null)
           Container(
             key: const Key('gateway-nearest-hint'),
@@ -2479,11 +2531,11 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
               ],
             ),
           ),
-        if (_backendAt != null) const Text('後端狀態每 15 秒更新，僅代表目前選擇的後端環境。'),
+        if (_backendAt != null) Text(l10n.gatewayDiscovery_backendRefreshNote),
         if (_backendCurrent)
-          const Text(
-            '沒有本機身分核對紀錄時，後端狀態只參考相同站號及閘道器編號；連線後再確認裝置身分。',
-            key: Key('gateway-backend-reference-note'),
+          Text(
+            l10n.gatewayDiscovery_backendReferenceNote,
+            key: const Key('gateway-backend-reference-note'),
           ),
         // 1.0.0+9: the rows say 「後端未知」 only; the reason is this line.
         if (_backendAt == null && _backendError != null)

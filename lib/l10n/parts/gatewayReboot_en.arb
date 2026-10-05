@@ -1,0 +1,18 @@
+{
+  "@@locale": "en",
+  "gatewayReboot_reasonBleStackStuck": "Bluetooth got stuck; the gateway restarted itself to recover",
+  "gatewayReboot_reasonPanic": "Gateway software error; it restarted itself",
+  "gatewayReboot_reasonWatchdog": "Gateway software hung; the watchdog restarted it",
+  "gatewayReboot_reasonCpuLockup": "Gateway processor hung; it restarted itself",
+  "gatewayReboot_reasonBrownout": "Supply voltage too low (unstable power or weak adapter)",
+  "gatewayReboot_reasonPowerGlitch": "Brief power glitch",
+  "gatewayReboot_reasonPowerOn": "Power was cut and restored",
+  "gatewayReboot_reasonResetButton": "Someone pressed the reset button",
+  "gatewayReboot_reasonSoftware": "Restart command or settings change",
+  "gatewayReboot_reasonDeepSleep": "Woke from power-saving sleep",
+  "gatewayReboot_reasonUsb": "Reset while connected to a computer",
+  "gatewayReboot_reasonUnknown": "Unknown reason",
+  "gatewayReboot_notice": "The gateway just restarted (reason: {reason}). This is not a PTU fault; settings already done on the gateway are kept. The APP has reconnected: continue from the current step. No need to start over; do not unplug it or tap repeatedly.",
+  "gatewayReboot_noticeMany": "The gateway just restarted (reason: {reason}; {times} restarts in total). This is not a PTU fault; settings already done on the gateway are kept. The APP has reconnected: continue from the current step. No need to start over; do not unplug it or tap repeatedly. If it keeps restarting, take a screenshot and report it.",
+  "gatewayReboot_retry": "The last action was interrupted by a gateway restart (not a PTU fault). Tap the same button again to continue."
+}

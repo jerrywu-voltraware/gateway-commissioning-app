@@ -1,0 +1,97 @@
+{
+  "@@locale": "zh",
+  "networkCheck_stepPrepare": "準備",
+  "@networkCheck_stepPrepare": {
+    "description": "Step names (stepLabels), in order; shown on screen and uploaded (in Chinese) as field step_label."
+  },
+  "networkCheck_stepFindGateway": "找到閘道器",
+  "networkCheck_stepNetworkCheck": "閘道器網路體檢",
+  "networkCheck_stepAlignTarget": "對準上傳目標",
+  "networkCheck_stepConfirmUpload": "確認資料上傳",
+  "networkCheck_stepChooseSite": "站點選擇",
+  "networkCheck_stepChoosePtu": "選擇 PTU",
+  "networkCheck_stepStartMonitoring": "開始監控",
+  "networkCheck_stepVerifyData": "驗證資料",
+  "networkCheck_stepDone": "完成",
+  "networkCheck_reuseTestMode": "閘道器在測試模式",
+  "@networkCheck_reuseTestMode": {
+    "description": "Why 'keep the current station' cannot be used now."
+  },
+  "networkCheck_reuseUploadPaused": "閘道器的資料上傳已暫停",
+  "networkCheck_reuseNoWifi": "閘道器還沒連上 Wi-Fi",
+  "networkCheck_reuseTargetMismatch": "閘道器的資料還沒送到手機連的地方",
+  "networkCheck_reuseNotUploading": "閘道器還沒開始上傳資料",
+  "networkCheck_fwUnknown": "未知",
+  "@networkCheck_fwUnknown": {
+    "description": "Firmware version not read."
+  },
+  "networkCheck_wifiUnsupported": "APP 無法讀取這台閘道器的 Wi-Fi（韌體 {fw} 較舊），最後的資料驗證會再確認。",
+  "@networkCheck_wifiUnsupported": {
+    "placeholders": {
+      "fw": {
+        "type": "String"
+      }
+    }
+  },
+  "networkCheck_wifiReading": "正在讀取閘道器的網路狀態…",
+  "networkCheck_wifiNotRead": "還沒讀到閘道器的網路狀態，請按「重新檢查」。",
+  "networkCheck_targetUnknownSync": "還不確定閘道器把資料送到哪裡，要讓它改送到{place}。",
+  "@networkCheck_targetUnknownSync": {
+    "placeholders": {
+      "place": {
+        "type": "String"
+      }
+    }
+  },
+  "networkCheck_targetMismatch": "閘道器把資料送到{current}，但手機連的是{phone}。",
+  "@networkCheck_targetMismatch": {
+    "placeholders": {
+      "current": {
+        "type": "String"
+      },
+      "phone": {
+        "type": "String"
+      }
+    }
+  },
+  "networkCheck_targetInvalid": "{error}請點右上角的環境按鈕修正。",
+  "@networkCheck_targetInvalid": {
+    "description": "error is a full sentence about the local backend URL.",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "networkCheck_targetProductionFixed": "閘道器的資料送到正式站",
+  "networkCheck_targetUnknown": "還不確定閘道器把資料送到哪裡。",
+  "networkCheck_targetUndecidable": "閘道器的資料送到{current}；APP 無法從這個網址判斷是否一致。",
+  "@networkCheck_targetUndecidable": {
+    "placeholders": {
+      "current": {
+        "type": "String"
+      }
+    }
+  },
+  "networkCheck_targetMatch": "閘道器的資料送到{current}，和手機一致",
+  "@networkCheck_targetMatch": {
+    "placeholders": {
+      "current": {
+        "type": "String"
+      }
+    }
+  },
+  "networkCheck_uploadLinkLost": "手機和閘道器的藍牙斷了，無法確認。",
+  "networkCheck_uploadLinkLostHint": "請靠近閘道器，按「結束並重新選擇閘道器」重新連線。",
+  "networkCheck_uploadUnsupported": "無法確認，最後的資料驗證會再確認。",
+  "networkCheck_uploading": "資料上傳中",
+  "networkCheck_uploadAfterWifi": "等閘道器連上 Wi-Fi 後再確認",
+  "networkCheck_uploadAfterTarget": "對準上傳目標後再確認",
+  "networkCheck_uploadNotStarted": "閘道器還沒開始上傳資料。",
+  "networkCheck_wifiResetAction": "重設 Wi-Fi",
+  "@networkCheck_wifiResetAction": {
+    "description": "Name of the Reset Wi-Fi button, inserted into the subnet hint."
+  },
+  "networkCheck_uploadWaiting": "等待閘道器開始上傳資料…（最多約 1 分鐘）",
+  "networkCheck_uploadNotConfirmed": "還沒確認資料上傳，請按「重新檢查」。"
+}

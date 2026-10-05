@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../application/commissioning_controller.dart';
 import '../application/topology_settings.dart';
 import '../core/identify.dart';
+import '../l10n/l10n.dart';
 
 /// Inline in the existing connection settings dialog; no second settings page.
 class IdentifyDurationSetting extends ConsumerStatefulWidget {
@@ -43,12 +44,18 @@ class _IdentifyDurationState extends ConsumerState<IdentifyDurationSetting> {
       final seconds = parseIdentifySeconds(_seconds.text)!;
       await ref.read(topologyProvider.notifier).setIdentifySeconds(seconds);
       if (mounted) {
+        final l10n = context.l10n;
         setState(
-          () => _notice = seconds == 0 ? '已儲存：0 秒（關閉辨識燈）' : '已儲存：$seconds 秒',
+          () => _notice = seconds == 0
+              ? l10n.identifyDurationSetting_savedOff
+              : l10n.identifyDurationSetting_saved(seconds),
         );
       }
     } catch (_) {
-      if (mounted) setState(() => _notice = '無法儲存，請重試');
+      if (mounted) {
+        final failed = context.l10n.identifyDurationSetting_saveFailed;
+        setState(() => _notice = failed);
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -64,35 +71,40 @@ class _IdentifyDurationState extends ConsumerState<IdentifyDurationSetting> {
         _seconds.text = '${after.identifySeconds}';
       }
     });
+    final l10n = context.l10n;
     return Form(
       key: _form,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text('辨識秒數', style: TextStyle(fontWeight: FontWeight.bold)),
+          Text(
+            l10n.identifyDurationSetting_title,
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 8),
           TextFormField(
             key: const Key('identify-seconds-input'),
             controller: _seconds,
             enabled: enabled,
             keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-              labelText: '秒數（0 或 2–10）',
-              suffixText: '秒',
+            decoration: InputDecoration(
+              labelText: l10n.identifyDurationSetting_fieldLabel,
+              suffixText: l10n.identifyDurationSetting_suffix,
             ),
             validator: (value) => parseIdentifySeconds(value ?? '') == null
                 ? identifySecondsError
                 : null,
           ),
           const SizedBox(height: 8),
-          const Text(
-            '預設 4 秒。閘道器與 PTU 使用相同秒數。可填 2–10 秒；0＝關燈，閘道器會停止辨識並恢復正常狀態燈。'
-            '不提供 1 秒（PTU 的 1 秒封包會讓燈恆亮）。',
-          ),
+          Text(l10n.identifyDurationSetting_help),
           TextButton(
             key: const Key('identify-seconds-save'),
             onPressed: enabled ? _save : null,
-            child: Text(_saving ? '儲存中…' : '儲存秒數'),
+            child: Text(
+              _saving
+                  ? l10n.identifyDurationSetting_saving
+                  : l10n.identifyDurationSetting_save,
+            ),
           ),
           if (_notice != null)
             Text(_notice!, key: const Key('identify-seconds-notice')),

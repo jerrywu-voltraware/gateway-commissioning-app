@@ -4,6 +4,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:gateway_commissioning/application/backend_environment.dart';
 import 'package:gateway_commissioning/gateway_app.dart';
+import 'package:gateway_commissioning/presentation/next_action_guide.dart'
+    show nextActionStartCaption;
+
+import 'support/l10n.dart';
 
 void main() {
   testWidgets('saved USB URL migrates to LAN backend', (tester) async {
@@ -39,5 +43,31 @@ void main() {
     );
     expect(find.byType(CheckboxListTile), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+  // i18n Phase B2 (commissioning_page): the start page and the 更多 menu
+  // follow the APP language; the hint row above 〔檢查並開始〕 shows its own
+  // caption (not the button name a second time).
+  testWidgets('start page and 更多 menu in English; one start button', (
+    tester,
+  ) async {
+    await pumpApp(tester, prefs: {'app_locale': 'en'});
+    expect(find.text('Check and start'), findsOneWidget);
+    expect(find.text(nextActionStartCaption), findsOneWidget);
+    expect(find.text('Log in to the back office to start'), findsOneWidget);
+    expect(find.text('檢查並開始'), findsNothing);
+    await tester.tap(find.byKey(const Key('topology-menu')));
+    await pumpFrames(tester);
+    expect(find.text('Connection mode'), findsOneWidget);
+    expect(find.text('Appearance'), findsOneWidget);
+    expect(find.text('Light'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('繁中 start page: 〔檢查並開始〕 once, its caption above it', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+    expect(find.text('檢查並開始'), findsOneWidget);
+    expect(find.text(nextActionStartCaption), findsOneWidget);
+    expect(find.text('登入後台，開始配置'), findsOneWidget);
   });
 }

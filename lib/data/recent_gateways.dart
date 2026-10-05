@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/gateway_identity.dart'
     show isFactoryGatewayName, parseGatewayName;
+import '../l10n/l10n.dart';
 import 'contracts.dart';
 
 String gatewayUid(Object? value) =>
@@ -59,6 +60,55 @@ class RecentGateways {
   }
 }
 
+/// The back office's view of a gateway, as the gateway list shows it
+/// ([backendPresenceShort]).
+///
+/// 2026-10-05 (i18n): logic switches on this instead of comparing the
+/// (now translated) texts 「後端在線」／「後端離線」／「後端無紀錄」／
+/// 「後端已封存」／「後端未知」.
+enum BackendPresence {
+  /// 後端在線: one fleet row, online.
+  online,
+
+  /// 後端離線: one fleet row, offline.
+  offline,
+
+  /// 後端無紀錄: no fleet row (no heartbeat from this MAC / station).
+  noRecord,
+
+  /// 後端已封存: only an archived row.
+  archived,
+
+  /// 後端未知: not verified, several rows, a conflict, or no online flag.
+  unknown;
+
+  /// The list's short text (「後端在線」…) in the screen language.
+  String get shortText => shortTextIn(L10n.current);
+
+  /// [shortText] in [l10n].
+  String shortTextIn(AppLocalizations l10n) => switch (this) {
+    BackendPresence.online => l10n.recentGateways_shortOnline,
+    BackendPresence.offline => l10n.recentGateways_shortOffline,
+    BackendPresence.noRecord => l10n.recentGateways_shortNoRecord,
+    BackendPresence.archived => l10n.recentGateways_shortArchived,
+    BackendPresence.unknown => l10n.recentGateways_shortUnknown,
+  };
+
+  /// The kind of a short text ([backendPresenceShort]) in any supported
+  /// language (a text made before a language switch is still recognised);
+  /// null for any other text. For callers that only kept the text.
+  static BackendPresence? ofShortText(String? text) {
+    if (text == null || text.isEmpty) return null;
+    for (final language in AppLanguage.values) {
+      final l10n = lookupAppLocalizations(language.locale);
+      for (final kind in BackendPresence.values) {
+        if (kind.shortTextIn(l10n) == text) return kind;
+      }
+    }
+    return null;
+  }
+}
+
 /// Only a previously BLE-verified UID can associate a row with backend status.
 /// Never infer hardware identity from the advertising name or Android BLE MAC.
 ///
@@ -69,22 +119,55 @@ String backendPresence(
   String? uid,
   List<dynamic> fleet, {
   List<dynamic> archived = const [],
-}) {
+}) => _presence(uid, fleet, archived).text;
+
+/// [backendPresence]'s text with its [BackendPresence] (the list's short
+/// kind), computed together so the short form never parses the text.
+({BackendPresence kind, String text}) _presence(
+  String? uid,
+  List<dynamic> fleet,
+  List<dynamic> archived,
+) {
+  final l10n = L10n.current;
   final normalized = gatewayUid(uid);
-  if (normalized.length != 12) return '後端狀態未知・連線後確認身分';
+  if (normalized.length != 12) {
+    return (
+      kind: BackendPresence.unknown,
+      text: l10n.recentGateways_unknownUnverified,
+    );
+  }
   final matches = _matching(normalized, fleet);
   if (matches.isEmpty && _matching(normalized, archived).isNotEmpty) {
-    return gatewayArchivedLabel;
+    return (kind: BackendPresence.archived, text: gatewayArchivedLabel);
   }
-  if (matches.isEmpty) return '後端狀態未知・後台沒有這個 MAC 的心跳紀錄';
+  if (matches.isEmpty) {
+    return (
+      kind: BackendPresence.noRecord,
+      text: l10n.recentGateways_unknownNoHeartbeat,
+    );
+  }
   if (matches.length > 1) {
-    return '後端狀態未知・後台有 ${matches.length} 筆相同 MAC 的紀錄';
+    return (
+      kind: BackendPresence.unknown,
+      text: l10n.recentGateways_unknownDuplicates(matches.length),
+    );
   }
-  if (_conflict(matches.single)) return '後端狀態未知・後台標示身分衝突';
+  if (_conflict(matches.single)) {
+    return (
+      kind: BackendPresence.unknown,
+      text: l10n.recentGateways_unknownConflict,
+    );
+  }
   return switch (matches.single['online']) {
-    true => '後端回報在線上',
-    false => '後端回報離線',
-    _ => '後端狀態未知',
+    true => (
+      kind: BackendPresence.online,
+      text: l10n.recentGateways_reportedOnline,
+    ),
+    false => (
+      kind: BackendPresence.offline,
+      text: l10n.recentGateways_reportedOffline,
+    ),
+    _ => (kind: BackendPresence.unknown, text: l10n.recentGateways_unknown),
   };
 }
 
@@ -100,48 +183,58 @@ String backendPresenceShort(
   List<dynamic> fleet, {
   List<dynamic> archived = const [],
   String? advertisedName,
+}) => backendPresenceKind(
+  uid,
+  fleet,
+  archived: archived,
+  advertisedName: advertisedName,
+).shortText;
+
+/// The [BackendPresence] behind [backendPresenceShort] (same arguments,
+/// same rules); switch on this instead of on the text.
+BackendPresence backendPresenceKind(
+  String? uid,
+  List<dynamic> fleet, {
+  List<dynamic> archived = const [],
+  String? advertisedName,
 }) {
   if (gatewayUid(uid).length != 12 && advertisedName != null) {
     final id = parseGatewayName(advertisedName);
     // The shared factory name cannot identify a backend record.
     if (id == null || isFactoryGatewayName(advertisedName)) {
-      return backendUnknownShort;
+      return BackendPresence.unknown;
     }
     bool at(Map row) =>
         row['site_id'] == id.site && row['gateway_id'] == id.gateway;
     final matches = fleet.whereType<Map>().where(at).toList();
     final removed = archived.whereType<Map>().where(at).toList();
-    if (matches.isEmpty && removed.isEmpty) return '後端無紀錄';
+    if (matches.isEmpty && removed.isEmpty) return BackendPresence.noRecord;
     if (matches.isEmpty && removed.length == 1 && !_conflict(removed.single)) {
-      return '後端已封存';
+      return BackendPresence.archived;
     }
     if (matches.length != 1 ||
         removed.isNotEmpty ||
         _conflict(matches.single)) {
-      return backendUnknownShort;
+      return BackendPresence.unknown;
     }
     return switch (matches.single['online']) {
-      true => '後端在線',
-      false => '後端離線',
-      _ => backendUnknownShort,
+      true => BackendPresence.online,
+      false => BackendPresence.offline,
+      _ => BackendPresence.unknown,
     };
   }
-  final full = backendPresence(uid, fleet, archived: archived);
-  if (full == '後端回報在線上') return '後端在線';
-  if (full == '後端回報離線') return '後端離線';
-  if (full == gatewayArchivedLabel) return '後端已封存';
-  if (full.contains('沒有這個 MAC')) return '後端無紀錄';
-  return backendUnknownShort;
+  return _presence(uid, fleet, archived).kind;
 }
 
 /// 1.0.0+9: the list's short 「後端狀態未知」.
-const backendUnknownShort = '後端未知';
+String get backendUnknownShort => BackendPresence.unknown.shortText;
 
 /// r31: the mark of a station archived in the back office.
-const gatewayArchivedLabel = '已封存（後台已移除）';
+String get gatewayArchivedLabel => L10n.current.recentGateways_archivedLabel;
 
 /// r31: the mark of a gateway already configured (known to the back office).
-const gatewayConfiguredLabel = '已配置';
+String get gatewayConfiguredLabel =>
+    L10n.current.recentGateways_configuredLabel;
 
 /// r31: a gateway already configured — its verified [uid] is exactly one
 /// fleet row without a conflict. Such a gateway is listed with
@@ -189,10 +282,10 @@ bool gatewayKnownUnconfigured({
 String backendQueryFailedText(Object error) {
   final text = error.toString();
   if (error is TimeoutException || text.contains('Timeout')) {
-    return '後端狀態未知・查詢逾時（8 秒）';
+    return L10n.current.recentGateways_queryTimeout;
   }
   final short = text.length > 40 ? '${text.substring(0, 40)}…' : text;
-  return '後端狀態未知・查詢失敗（$short）';
+  return L10n.current.recentGateways_queryFailed(short);
 }
 
 List<Map> _matching(String uid, List<dynamic> rows) => rows

@@ -32,6 +32,8 @@ import 'package:gateway_commissioning/presentation/recent_data_page.dart';
 import 'package:gateway_commissioning/presentation/verify_live_panel.dart';
 
 import 'round15_direct_flow_test.dart' show PickGateway;
+import 'support/l10n.dart';
+import 'package:gateway_commissioning/l10n/l10n.dart';
 
 const _fallbackPrefix = '/api/app/build-mode/';
 
@@ -1262,6 +1264,24 @@ void main() {
         expect(read().message, '資料有異常，請檢查 PTU 與網路。');
       },
     );
+  });
+  testWidgets('English (i18n B2): data check texts and live header', (
+    tester,
+  ) async {
+    useLanguage(AppLanguage.en);
+    expect(verifyGoalText, 'Done after 3 normal rows');
+    expect(verifyFooterText(12), '$verifyPaceText・12 s left');
+    await tester.pumpWidget(
+      wrapWithL10n(
+        const Scaffold(
+          body: VerifyLiveHeader(feed: [], busy: true, passed: false, ptus: 1),
+        ),
+        language: AppLanguage.en,
+      ),
+    );
+    expect(find.text('Gateway'), findsOneWidget);
+    expect(find.text('Back office'), findsOneWidget);
+    expect(find.text('Waiting for the first row…'), findsOneWidget);
   });
 }
 

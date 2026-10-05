@@ -8,6 +8,7 @@ library;
 import '../core/gateway_identity.dart';
 import '../core/gateway_net.dart';
 import '../core/progress_checklist.dart';
+import '../l10n/l10n.dart';
 import 'commissioning_controller.dart';
 import 'connection_status.dart';
 import 'network_check.dart';
@@ -73,47 +74,59 @@ Checklist connectChecklistView(
   if (!list.isDone(connectItemBle) || !list.isDone(connectItemStatus)) {
     return list;
   }
+  final l10n = L10n.current;
   var view = list;
   // Old firmware cannot say; the data verification checks it later.
   if (!s.netCheckSupported) {
-    const later = '這台韌體無法回報，最後驗證資料時會確認';
+    final later = l10n.autoChecklist_oldFirmwareLater;
     return view
         .done(connectItemWifi, note: later)
         .done(connectItemBackend, note: later);
   }
   if (s.uploadWatch == UploadWatch.linkLost) {
-    return view.fail('藍牙斷線，無法確認', id: connectItemWifi);
+    return view.fail(l10n.autoChecklist_linkLost, id: connectItemWifi);
   }
   if (check.wifiOk) {
     final ssid = gatewaySsid(s.net, s.config['wifi_ssid']) ?? '';
-    view = view.done(connectItemWifi, note: ssid.isEmpty ? '已連上' : ssid);
+    view = view.done(
+      connectItemWifi,
+      note: ssid.isEmpty ? l10n.autoChecklist_wifiConnected : ssid,
+    );
   } else if (check.wifiProblem) {
     return view.fail(
       check.wifiVerdict == WifiVerdict.notConfigured
-          ? '還沒設定 Wi-Fi，請按下方設定 Wi-Fi'
-          : '連不上 Wi-Fi，請按下方重設 Wi-Fi',
+          ? l10n.autoChecklist_wifiNotSet
+          : l10n.autoChecklist_wifiFailed,
       id: connectItemWifi,
     );
   } else {
     return view.start(connectItemWifi);
   }
   if (check.testMode) {
-    return view.fail('閘道器在測試模式，請先切回正常模式', id: connectItemBackend);
+    return view.fail(l10n.autoChecklist_testMode, id: connectItemBackend);
   }
   if (!check.targetOk) {
-    return view.fail('資料送到別的後台，請依下方提示處理', id: connectItemBackend);
+    return view.fail(
+      l10n.autoChecklist_targetElsewhere,
+      id: connectItemBackend,
+    );
   }
   if (check.uploadPaused) {
-    return view.fail('資料上傳已暫停，請按下方恢復上傳', id: connectItemBackend);
+    return view.fail(l10n.autoChecklist_uploadPaused, id: connectItemBackend);
   }
   if (check.uploadOk) {
     return view.done(
       connectItemBackend,
-      note: uploadHeldUntilJoin(s.config) ? '已連上，完成配置後開始上傳資料' : '資料上傳中',
+      note: uploadHeldUntilJoin(s.config)
+          ? l10n.autoChecklist_uploadHeld
+          : l10n.autoChecklist_uploading,
     );
   }
   if (check.upload.tone == StatusTone.bad) {
-    return view.fail('還沒開始上傳資料，請依下方提示處理', id: connectItemBackend);
+    return view.fail(
+      l10n.autoChecklist_uploadNotStarted,
+      id: connectItemBackend,
+    );
   }
   return view.start(connectItemBackend);
 }

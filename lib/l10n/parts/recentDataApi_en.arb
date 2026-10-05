@@ -1,0 +1,11 @@
+{
+  "@@locale": "en",
+  "recentDataApi_minutes": "{minutes, plural, =1{1 minute} other{{minutes} minutes}}",
+  "recentDataApi_seconds": "{seconds, plural, =1{1 second} other{{seconds} seconds}}",
+  "recentDataApi_secondsDecimal": "{seconds} seconds",
+  "recentDataApi_timeUnknown": "time unknown",
+  "recentDataApi_secondsAgo": "{seconds, plural, =1{1 second ago} other{{seconds} seconds ago}}",
+  "recentDataApi_summary": "{count, plural, =1{Latest {ago} · 1 record} other{Latest {ago} · {count} records}}",
+  "recentDataApi_errorText": "Cannot reach the back office ({reason})",
+  "recentDataApi_authRefused": "The back office refused this APP's credential. Contact the administrator to update the APP"
+}

@@ -1,0 +1,7 @@
+{
+  "@@locale": "zh",
+  "gatewayTopology_directShort": "直連模式",
+  "gatewayTopology_starShort": "星狀模式",
+  "gatewayTopology_directLabel": "直連模式（一對一）",
+  "gatewayTopology_starLabel": "星狀模式（一對多）"
+}

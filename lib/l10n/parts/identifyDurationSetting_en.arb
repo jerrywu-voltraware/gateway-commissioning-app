@@ -1,0 +1,12 @@
+{
+  "@@locale": "en",
+  "identifyDurationSetting_savedOff": "Saved: 0 s (identify light off)",
+  "identifyDurationSetting_saved": "Saved: {seconds} s",
+  "identifyDurationSetting_saveFailed": "Could not save. Try again.",
+  "identifyDurationSetting_title": "Identify duration",
+  "identifyDurationSetting_fieldLabel": "Seconds (0 or 2–10)",
+  "identifyDurationSetting_suffix": "s",
+  "identifyDurationSetting_help": "Default 4 s. The gateway and PTU use the same duration. Enter 2–10 s; 0 = light off: the gateway stops identifying and goes back to its normal status light. 1 s is not offered (the PTU's 1 s packet keeps the light on).",
+  "identifyDurationSetting_saving": "Saving…",
+  "identifyDurationSetting_save": "Save duration"
+}

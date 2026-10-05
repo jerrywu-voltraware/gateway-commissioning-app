@@ -10,5 +10,117 @@
     "placeholders": {
       "id": {"type": "int"}
     }
+  },
+  "assign_waiting": "等待中",
+  "@assign_waiting": {
+    "description": "Step 8 PTU row status: queued, not started yet."
+  },
+  "assign_assigning": "指派中",
+  "assign_assigningId": "指派中 #{id}",
+  "@assign_assigningId": {
+    "placeholders": {
+      "id": {"type": "int"}
+    }
+  },
+  "assign_linkRetry": "藍牙連線失敗，自動重試 {retry}/{retries}",
+  "@assign_linkRetry": {
+    "placeholders": {
+      "retry": {"type": "int"},
+      "retries": {"type": "int"}
+    }
+  },
+  "assign_retry": "未完成，自動重試 {retry}/{retries}",
+  "@assign_retry": {
+    "placeholders": {
+      "retry": {"type": "int"},
+      "retries": {"type": "int"}
+    }
+  },
+  "assign_busy": "閘道器忙碌，稍後重試",
+  "assign_done": "完成",
+  "assign_doneResult": "完成 · {result}",
+  "@assign_doneResult": {
+    "description": "Done, followed by the row's own result text (e.g. 'Connected #3').",
+    "placeholders": {
+      "result": {"type": "String"}
+    }
+  },
+  "assign_doneId": "完成 · #{id}",
+  "@assign_doneId": {
+    "placeholders": {
+      "id": {"type": "int"}
+    }
+  },
+  "assign_failed": "失敗需處理",
+  "assign_failedReason": "失敗需處理：{reason}",
+  "@assign_failedReason": {
+    "placeholders": {
+      "reason": {"type": "String"}
+    }
+  },
+  "assign_progressDone": "{done}/{total} 完成",
+  "@assign_progressDone": {
+    "description": "First part of the one-line run summary.",
+    "placeholders": {
+      "done": {"type": "int"},
+      "total": {"type": "int"}
+    }
+  },
+  "assign_progressRetrying": "{count} 台自動重試中",
+  "@assign_progressRetrying": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "assign_progressFailed": "{count} 台失敗需處理",
+  "@assign_progressFailed": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "assign_progressSeparator": "，",
+  "@assign_progressSeparator": {
+    "description": "Joins the parts of the run summary ('3/5 done, 1 retrying')."
+  },
+  "assign_retryAttempt": "（{retry}/{retries}）",
+  "@assign_retryAttempt": {
+    "description": "Appended to a named retrying PTU; keep the leading space in English.",
+    "placeholders": {
+      "retry": {"type": "int"},
+      "retries": {"type": "int"}
+    }
+  },
+  "assign_retryingOne": "{name} 自動重試中{attempt}",
+  "@assign_retryingOne": {
+    "placeholders": {
+      "name": {"type": "String", "example": "PTU #5"},
+      "attempt": {"type": "String", "example": "（1/2）"}
+    }
+  },
+  "assign_nameSeparator": "、",
+  "@assign_nameSeparator": {
+    "description": "Joins two PTU names."
+  },
+  "assign_retryingTwo": "{names} 自動重試中",
+  "@assign_retryingTwo": {
+    "placeholders": {
+      "names": {"type": "String"}
+    }
+  },
+  "assign_retryingMany": "{names} 等 {count} 台自動重試中",
+  "@assign_retryingMany": {
+    "description": "Two PTU names shown, count is the total retrying (3 or more).",
+    "placeholders": {
+      "names": {"type": "String"},
+      "count": {"type": "int"}
+    }
+  },
+  "assign_autoHint": "系統自動處理中，失敗會自動重試，不用動手",
+  "assign_failedHint": "{count, plural, other{請確認 PTU 電源與距離，再按下方「重試這 {count} 台」}}",
+  "@assign_failedHint": {
+    "description": "Names the retry button below (controller_retryCount).",
+    "placeholders": {
+      "count": {"type": "int"}
+    }
   }
 }

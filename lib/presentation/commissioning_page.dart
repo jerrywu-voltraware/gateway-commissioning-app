@@ -141,7 +141,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       final check = await ref.read(androidUpdateServiceProvider).check();
       if (!mounted || !_updateHomeSafe) return;
       if (check.release == null) {
-        if (manual) _snack('目前已是最新版本');
+        if (manual) _snack(context.l10n.commissioning_updateLatest);
         return;
       }
       _updateDialogOpen = true;
@@ -154,7 +154,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         ),
       );
     } catch (_) {
-      if (manual && _updateHomeSafe) _snack('暫時無法檢查更新，請確認網路後重試');
+      if (manual && mounted && _updateHomeSafe) {
+        _snack(context.l10n.commissioning_updateCheckFailed);
+      }
     } finally {
       _updateDialogOpen = false;
       if (mounted) setState(() => _updateChecking = false);
@@ -465,10 +467,13 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       case SyncNeed.none:
         if (announce) {
           final connected = state.peer != null && state.step >= 2;
+          final l10n = context.l10n;
           _snack(
             connected
-                ? '已切換到${env.label}。'
-                : '已切換到${env.label}。${env.autoSync ? '連上閘道器後會自動讓它一起切換。' : '連上閘道器後可在「連線狀態」按「同步」。'}',
+                ? l10n.commissioning_envSwitched(env.label)
+                : env.autoSync
+                ? l10n.commissioning_envSwitchedAutoSync(env.label)
+                : l10n.commissioning_envSwitchedManualSync(env.label),
           );
         }
       case SyncNeed.legacy:
@@ -484,7 +489,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           final ok = await confirmUploadTargetSwitch(context, wanted: target!);
           if (!ok || !mounted) return;
         } else {
-          _snack('正在把閘道器切到${target!.plainLabel}，約 1 分鐘，請留在閘道器旁。');
+          _snack(
+            context.l10n.commissioning_gatewaySwitching(target!.plainLabel),
+          );
         }
         // Without Wi-Fi the upload cannot start: do not wait for it.
         final wifi = ref.read(commissionProvider).wifi;
@@ -554,16 +561,16 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('全部重新配置？'),
-        content: const Text('已成功指派的台也會重新指派一次，確定要繼續嗎？'),
+        title: Text(context.l10n.commissioning_reconfigureAllTitle),
+        content: Text(context.l10n.commissioning_reconfigureAllText),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
+            child: Text(context.l10n.common_cancel),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('全部重新配置'),
+            child: Text(context.l10n.commissioning_reconfigureAll),
           ),
         ],
       ),
@@ -654,26 +661,26 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           context: context,
           builder: (context) => AlertDialog(
             key: const Key('save-number-taken'),
-            title: const Text('編號已被使用'),
+            title: Text(context.l10n.commissioning_saveNumberTakenTitle),
             content: Text(
-              '站點 $site / 閘道器 $gw 目前登記給另一台裝置（MAC $conflictMac）。\n'
+              '${context.l10n.commissioning_saveNumberTakenText(site, gw, conflictMac)}\n'
               '${conflict == null ? '' : '$conflict\n'}'
-              '${online == true ? numberTakenOnlineText(gw) : '請先確認舊機已斷電，否則後台會再次標記衝突。'}',
+              '${online == true ? numberTakenOnlineText(gw) : context.l10n.commissioning_powerOffOldFirst}',
             ),
             actions: [
               if (online != true)
                 TextButton(
                   key: const Key('save-number-taken-replace'),
                   onPressed: () => Navigator.pop(context, 'replace'),
-                  child: const Text('取代舊機（沿用此編號）'),
+                  child: Text(context.l10n.commissioning_replaceOldKeepNumber),
                 ),
               TextButton(
                 onPressed: () => Navigator.pop(context, 'next'),
-                child: const Text('改用下一個可用編號'),
+                child: Text(context.l10n.commissioning_useNextFreeNumber),
               ),
               TextButton(
                 onPressed: () => Navigator.pop(context),
-                child: const Text('取消'),
+                child: Text(context.l10n.common_cancel),
               ),
             ],
           ),
@@ -683,8 +690,11 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           for (gw = gw + 1; gw <= kMaxGatewayId; gw++) {
             if (await c.conflictingMac(site, gw) == null) break;
           }
+          if (!mounted) return false;
           if (gw > kMaxGatewayId) {
-            _snack('站點 $site 的 1–$kMaxGatewayId 號閘道器都已被使用，請確認站點 ID 是否正確。');
+            _snack(
+              context.l10n.commissioning_siteNumbersFull(site, kMaxGatewayId),
+            );
             return false;
           }
           if (mounted) setState(() => _gateway.text = '$gw');
@@ -814,21 +824,21 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       builder: (context) => AlertDialog(
         key: const Key('wifi-reset-prompt'),
         scrollable: true,
-        title: const Text('是否重設 Wi-Fi？'),
+        title: Text(context.l10n.commissioning_wifiResetTitle),
         content: Text(
           '${networkCheck(state: s, env: env).wifi.text}\n\n'
-          '按「是」將前往 Wi-Fi 設定。',
+          '${context.l10n.commissioning_wifiResetGoHint}',
         ),
         actions: [
           TextButton(
             key: const Key('wifi-reset-later'),
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('暫不重設'),
+            child: Text(context.l10n.commissioning_wifiResetLater),
           ),
           FilledButton(
             key: const Key('wifi-reset-confirm'),
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('是，重設 Wi-Fi'),
+            child: Text(context.l10n.commissioning_wifiResetConfirm),
           ),
         ],
       ),
@@ -978,7 +988,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           return wifiTaskTitle;
         }
         if (_waitingForWifiUpload(s, networkCheck(state: s, env: env))) {
-          return 'Wi-Fi 已連線，正在確認資料上傳';
+          return context.l10n.commissioning_wifiUploadWaitTitle;
         }
         final current = _stationCurrent(s);
         return current != null && !_stationInput(s)
@@ -1061,6 +1071,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     VoidCallback action,
     bool enabled, {
     bool guide = true,
+    String? caption,
   }) => Padding(
     padding: const EdgeInsets.only(top: 16),
     child: SizedBox(
@@ -1068,6 +1079,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       child: NextActionGuide.button(
         active: guide,
         hint: label,
+        caption: caption,
         child: FilledButton(
           onPressed: enabled ? action : null,
           child: Text(label),
@@ -1102,16 +1114,16 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   Widget _gatewayAssignment({bool enabled = true, bool swap = false}) {
     final colors = Theme.of(context).colorScheme;
     if (_suggestingGateway) {
-      return const Padding(
-        padding: EdgeInsets.only(bottom: 14),
-        child: Text('正在計算閘道器編號…'),
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 14),
+        child: Text(context.l10n.commissioning_gatewayNumberComputing),
       );
     }
     final chosen = _swap;
     final Widget line;
     if (_gatewayKind == GatewaySuggestKind.full && chosen == null) {
       line = Text(
-        '本站閘道器已滿（1–$kMaxGatewayId 皆已使用），請確認站點 ID 或改用「$swapLabel」。',
+        context.l10n.commissioning_stationFull(kMaxGatewayId, swapLabel),
         style: TextStyle(color: colors.error),
       );
     } else {
@@ -1121,12 +1133,16 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       } else {
         hint = _gatewayKind == GatewaySuggestKind.offline
             ? ref.read(commissionProvider).peers.isEmpty
-                  ? '（無法取得同站閘道器清單，暫配 1 號，請上線核對）'
-                  : '（離線配號，上線後會再核對）'
+                  ? context.l10n.commissioning_offlineNumberNoList
+                  : context.l10n.commissioning_offlineNumber
             : '';
       }
       line = Text(
-        '將配置為 站點 ${_site.text} / 閘道器 ${_gateway.text}$hint',
+        context.l10n.commissioning_assignmentLine(
+          _site.text,
+          _gateway.text,
+          hint,
+        ),
         key: const Key('gateway-assignment'),
         style: TextStyle(color: colors.primary),
       );
@@ -1242,7 +1258,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       context: context,
       builder: (context) => AlertDialog(
         key: const Key('swap-confirm'),
-        title: const Text(swapConfirmTitle),
+        title: Text(swapConfirmTitle),
         content: Text(
           swapConfirmText(site, old.gateway, old.tail),
           key: const Key('swap-confirm-text'),
@@ -1251,12 +1267,12 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           TextButton(
             key: const Key('swap-confirm-cancel'),
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
+            child: Text(context.l10n.common_cancel),
           ),
           FilledButton(
             key: const Key('swap-confirm-ok'),
             onPressed: () => Navigator.pop(context, true),
-            child: const Text(swapConfirmOkLabel),
+            child: Text(swapConfirmOkLabel),
           ),
         ],
       ),
@@ -1288,7 +1304,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           FilledButton(
             key: const Key('swap-online-ok'),
             onPressed: () => Navigator.pop(context),
-            child: const Text(swapOnlineOkLabel),
+            child: Text(swapOnlineOkLabel),
           ),
         ],
       ),
@@ -1309,7 +1325,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       context: context,
       builder: (context) => SimpleDialog(
         key: const Key('star-count-dialog'),
-        title: const Text('星狀模式：每台 PTU 數'),
+        title: Text(context.l10n.commissioning_starCountTitle),
         children: [
           for (var n = minStarPtuCount; n <= maxStarPtuCount; n++)
             SimpleDialogOption(
@@ -1324,7 +1340,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                     size: 20,
                   ),
                   const SizedBox(width: 12),
-                  Text('$n 台'),
+                  Text(context.l10n.commissioning_ptuCount(n)),
                 ],
               ),
             ),
@@ -1339,7 +1355,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       return;
     }
     await ref.read(topologyProvider.notifier).setStarCount(picked);
-    if (mounted) _snack('星狀模式每台 PTU 數已改為 $picked 台');
+    if (mounted) _snack(context.l10n.commissioning_starCountChanged(picked));
   }
 
   Future<void> _openTopologyOptions() async {
@@ -1358,7 +1374,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
 
           return AlertDialog(
             key: const Key('topology-options'),
-            title: const Text('連接模式'),
+            title: Text(context.l10n.commissioning_topologyTitle),
             scrollable: true,
             content: SizedBox(
               width: double.maxFinite,
@@ -1371,7 +1387,11 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                       contentPadding: EdgeInsets.zero,
                       enabled: !state.busy,
                       title: Text(topology.shortLabel),
-                      subtitle: Text(topology.isDirect ? '一對一' : '一對多'),
+                      subtitle: Text(
+                        topology.isDirect
+                            ? context.l10n.commissioning_oneToOne
+                            : context.l10n.commissioning_oneToMany,
+                      ),
                       selected: settings.topology == topology,
                       trailing: settings.topology == topology
                           ? const Icon(Icons.check)
@@ -1381,14 +1401,16 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                           : () => select('topology:${topology.name}'),
                     ),
                   if (state.busy)
-                    const Text('操作進行中，完成後才能切換。')
+                    Text(context.l10n.commissioning_topologyBusy)
                   else if (settings.topology.isStar) ...[
                     const Divider(),
                     ListTile(
                       key: const Key('star-count'),
                       contentPadding: EdgeInsets.zero,
-                      title: const Text('每台 PTU 數'),
-                      subtitle: Text('${settings.starCount} 台'),
+                      title: Text(context.l10n.commissioning_ptusPerGateway),
+                      subtitle: Text(
+                        context.l10n.commissioning_ptuCount(settings.starCount),
+                      ),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: () => select('starcount'),
                     ),
@@ -1398,7 +1420,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                     ListTile(
                       key: const Key('direct-settings'),
                       contentPadding: EdgeInsets.zero,
-                      title: const Text('直連進階設定'),
+                      title: Text(context.l10n.commissioning_directSettings),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: () => select('direct:settings'),
                     ),
@@ -1411,7 +1433,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(dialogContext),
-                child: const Text('關閉'),
+                child: Text(dialogContext.l10n.common_close),
               ),
             ],
           );
@@ -1445,9 +1467,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   }
 
   String _themeLabel(ThemeMode mode) => switch (mode) {
-    ThemeMode.system => '跟隨系統',
-    ThemeMode.light => '淺色',
-    ThemeMode.dark => '深色',
+    ThemeMode.system => context.l10n.settings_themeSystem,
+    ThemeMode.light => context.l10n.settings_themeLight,
+    ThemeMode.dark => context.l10n.settings_themeDark,
   };
 
   Future<void> _openThemeOptions() async {
@@ -1455,7 +1477,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       context: context,
       builder: (dialogContext) => AlertDialog(
         key: const Key('theme-options'),
-        title: const Text('外觀'),
+        title: Text(dialogContext.l10n.settings_appearance),
         scrollable: true,
         content: SizedBox(
           width: double.maxFinite,
@@ -1479,7 +1501,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('關閉'),
+            child: Text(dialogContext.l10n.common_close),
           ),
         ],
       ),
@@ -1661,7 +1683,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             // separately so they do not cover the gateway list together.
             PopupMenuButton<String>(
               key: const Key('topology-menu'),
-              tooltip: '更多',
+              tooltip: context.l10n.settings_more,
               constraints: const BoxConstraints(minWidth: 280, maxWidth: 300),
               onSelected: (value) {
                 if (value == 'topology-settings') {
@@ -1688,12 +1710,12 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                     enabled: !state.busy,
                     child: _moreMenuRow(
                       icon: Icons.hub_outlined,
-                      title: '連接模式',
+                      title: context.l10n.commissioning_topologyTitle,
                       subtitle: state.busy
-                          ? '操作完成後可切換'
+                          ? context.l10n.commissioning_topologyMenuBusy
                           : topology.isDirect
-                          ? '直連 · 一對一'
-                          : '星狀 · 一對多',
+                          ? context.l10n.commissioning_topologyMenuDirect
+                          : context.l10n.commissioning_topologyMenuStar,
                       enabled: !state.busy,
                       opensOptions: true,
                     ),
@@ -1704,7 +1726,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                     enabled: statusEnabled,
                     child: _moreMenuRow(
                       icon: Icons.bar_chart_outlined,
-                      title: '查看上傳資料…',
+                      title: context.l10n.commissioning_viewUploadData,
                       subtitle: statusEnabled ? null : gatewayStatusBusyText,
                       enabled: statusEnabled,
                     ),
@@ -1724,7 +1746,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                               !updateEnabled && !_updateChecking;
                           return _moreMenuRow(
                             icon: Icons.system_update,
-                            title: _updateChecking ? '正在檢查更新…' : '檢查更新',
+                            title: _updateChecking
+                                ? context.l10n.commissioning_checkingUpdate
+                                : context.l10n.commissioning_checkUpdate,
                             subtitleWidget: installed == null && !unavailable
                                 ? null
                                 : Column(
@@ -1733,7 +1757,11 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                                     children: [
                                       if (installed != null)
                                         Text(
-                                          '版本 ${installed.versionName.trim()} · Build ${installed.versionCode}',
+                                          context.l10n
+                                              .commissioning_versionBuild(
+                                                installed.versionName.trim(),
+                                                '${installed.versionCode}',
+                                              ),
                                           key: const Key(
                                             'app-installed-version',
                                           ),
@@ -1747,7 +1775,11 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                                               ),
                                         ),
                                       if (unavailable)
-                                        const Text('返回首頁且結束配置後可用'),
+                                        Text(
+                                          context
+                                              .l10n
+                                              .commissioning_updateAfterHome,
+                                        ),
                                     ],
                                   ),
                             enabled: updateEnabled,
@@ -1767,13 +1799,18 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                           final installed = version.asData?.value;
                           return _moreMenuRow(
                             icon: Icons.info_outline,
-                            title: 'App 版本',
+                            title: context.l10n.commissioning_appVersion,
                             subtitleWidget: Text(
                               installed != null
-                                  ? '版本 ${installed.versionName} · Build ${installed.buildNumber}'
+                                  ? context.l10n.commissioning_versionBuild(
+                                      installed.versionName,
+                                      installed.buildNumber,
+                                    )
                                   : version.isLoading
-                                  ? '讀取中…'
-                                  : '暫時無法讀取版本',
+                                  ? context.l10n.common_loading
+                                  : context
+                                        .l10n
+                                        .commissioning_versionUnavailable,
                               key: installed == null
                                   ? null
                                   : const Key('app-installed-version'),
@@ -1793,7 +1830,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                     value: 'theme-settings',
                     child: _moreMenuRow(
                       icon: Icons.palette_outlined,
-                      title: '外觀',
+                      title: context.l10n.settings_appearance,
                       subtitle: _themeLabel(widget.themeMode),
                       opensOptions: true,
                     ),
@@ -1884,14 +1921,20 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                             FilledButton.tonal(
                               key: const Key('ptu-retry-failed'),
                               onPressed: controller.retryFailedAssign,
-                              child: Text('重試這 ${state.assignFailed.length} 台'),
+                              child: Text(
+                                context.l10n.commissioning_retryFailed(
+                                  state.assignFailed.length,
+                                ),
+                              ),
                             ),
                             Align(
                               alignment: Alignment.centerLeft,
                               child: TextButton(
                                 key: const Key('ptu-reconfigure-all'),
                                 onPressed: () => _reconfigureAll(controller),
-                                child: const Text('全部重新配置'),
+                                child: Text(
+                                  context.l10n.commissioning_reconfigureAll,
+                                ),
                               ),
                             ),
                             const SizedBox(height: 6),
@@ -1955,7 +1998,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                               // Step 8: stop but keep the progress (round 7b:
                               // a cancel here dropped back to step 2).
                               onPressed: controller.stopStep8,
-                              child: const Text('取消操作'),
+                              child: Text(
+                                context.l10n.commissioning_cancelAction,
+                              ),
                             ),
                         ],
                       ],
@@ -1985,7 +2030,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                     Container(
                       padding: const EdgeInsets.all(12),
                       color: colors.secondaryContainer,
-                      child: const Text('模擬模式 · 不會設定真實設備或驗證正式資料'),
+                      child: Text(context.l10n.commissioning_demoBanner),
                     ),
                   // Round 29: the done page starts with its summary.
                   if (done) _doneSummary(state, controller, demo, env),
@@ -2084,7 +2129,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                             child: TextButton(
                               key: const Key('gateway-reboot-ok'),
                               onPressed: controller.dismissGatewayReboot,
-                              child: const Text('知道了'),
+                              child: Text(context.l10n.commissioning_gotIt),
                             ),
                           ),
                         ],
@@ -2119,7 +2164,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                               state.seconds,
                               intervalMs: state.verifyIntervalMs,
                             )
-                          : '最多等待 ${state.seconds} 秒',
+                          : context.l10n.commissioning_waitUpTo(state.seconds),
                     ),
                   if (state.error != null)
                     Material(
@@ -2160,7 +2205,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                                     ),
                                     onPressed: () =>
                                         openFieldHelp(context, ref),
-                                    label: const Text(fieldHelpLabel),
+                                    label: Text(fieldHelpLabel),
                                   ),
                                 ),
                               if (_resumeAction(state, controller) != null)
@@ -2175,8 +2220,12 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                                     onPressed: _resumeAction(state, controller),
                                     label: Text(
                                       state.step == 4 || state.step == 5
-                                          ? '重新連線並繼續'
-                                          : '重新連線',
+                                          ? context
+                                                .l10n
+                                                .commissioning_reconnectContinue
+                                          : context
+                                                .l10n
+                                                .commissioning_reconnect,
                                     ),
                                   ),
                                 ),
@@ -2189,7 +2238,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                                     key: const Key('verify-retry'),
                                     icon: const Icon(Icons.refresh, size: 20),
                                     onPressed: _startVerify,
-                                    label: const Text('重試'),
+                                    label: Text(context.l10n.common_retry),
                                   ),
                                 ),
                               if (state.monitorUnconfirmed && !state.busy)
@@ -2198,7 +2247,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                                   child: OutlinedButton(
                                     key: const Key('monitor-skip'),
                                     onPressed: controller.skipMonitorConfirm,
-                                    child: const Text('略過'),
+                                    child: Text(
+                                      context.l10n.commissioning_skip,
+                                    ),
                                   ),
                                 ),
                               if (state.errorDetail != null)
@@ -2210,7 +2261,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                                     key: const Key('error-detail'),
                                     tilePadding: EdgeInsets.zero,
                                     title: Text(
-                                      '詳細資訊',
+                                      context.l10n.commissioning_details,
                                       style: Theme.of(context)
                                           .textTheme
                                           .bodyMedium
@@ -2248,7 +2299,11 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                           ),
                           const SizedBox(width: 12),
                           Expanded(
-                            child: Text('處理中 · 最多等待 ${state.seconds} 秒'),
+                            child: Text(
+                              context.l10n.commissioning_busyWaitUpTo(
+                                state.seconds,
+                              ),
+                            ),
                           ),
                         ],
                       ),
@@ -2271,7 +2326,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                     Padding(
                       padding: const EdgeInsets.only(bottom: 12),
                       child: Text(
-                        '尚未登入${env.label}：站號衝突檢查會先略過，之後需要時會自動登入。',
+                        context.l10n.commissioning_notLoggedIn(env.label),
                         style: TextStyle(color: colors.onSurfaceVariant),
                       ),
                     ),
@@ -2357,7 +2412,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                           : () => _endFlow(controller),
                       child: Text(
                         state.busy
-                            ? '取消操作'
+                            ? context.l10n.commissioning_cancelAction
                             : state.step == 1
                             ? leaveListLabel
                             : endFlowLabel,
@@ -2372,19 +2427,28 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                       key: const Key('demo-wifi'),
                       initialValue: ref.read(demoSystemProvider).wifiState,
                       isExpanded: true,
-                      decoration: const InputDecoration(
-                        labelText: '模擬閘道器的 Wi-Fi',
-                        border: OutlineInputBorder(),
+                      decoration: InputDecoration(
+                        labelText: context.l10n.commissioning_demoWifiLabel,
+                        border: const OutlineInputBorder(),
                       ),
-                      items: const [
-                        DropdownMenuItem(value: 'got_ip', child: Text('已連上')),
+                      items: [
+                        DropdownMenuItem(
+                          value: 'got_ip',
+                          child: Text(
+                            context.l10n.commissioning_demoWifiConnected,
+                          ),
+                        ),
                         DropdownMenuItem(
                           value: 'connecting',
-                          child: Text('剛開機，正在連'),
+                          child: Text(
+                            context.l10n.commissioning_demoWifiConnecting,
+                          ),
                         ),
                         DropdownMenuItem(
                           value: 'disconnected',
-                          child: Text('連不上（Wi-Fi 不在附近）'),
+                          child: Text(
+                            context.l10n.commissioning_demoWifiDisconnected,
+                          ),
                         ),
                       ],
                       onChanged: state.busy
@@ -2425,13 +2489,13 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     if (_waitingForWifiUpload(s, check)) {
       return [
         const LinearProgressIndicator(key: Key('wifi-upload-wait')),
-        const Padding(
-          padding: EdgeInsets.symmetric(vertical: 16),
-          child: Text('Wi-Fi 已儲存，正在等待閘道器恢復資料上傳。確認完成後會自動顯示下一步，請稍候。'),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Text(context.l10n.commissioning_wifiSavedWaiting),
         ),
         TextButton(
           onPressed: enabled ? _reviewNetworkCheck : null,
-          child: const Text('查看網路狀態'),
+          child: Text(context.l10n.commissioning_viewNetworkStatus),
         ),
       ];
     }
@@ -2466,14 +2530,17 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         Padding(
           padding: const EdgeInsets.only(bottom: 12),
           child: _markedText(
-            const CheckLine('✓', wifiFirstDoneText, StatusTone.ok),
+            CheckLine('✓', wifiFirstDoneText, StatusTone.ok),
             key: const Key('wifi-first-done'),
           ),
         ),
       if (!input)
         inService
             ? Text(
-                '沿用站點 $current／閘道器 ${s.config['gateway_id']}，原站資料不變。',
+                context.l10n.commissioning_stationKeep(
+                  '$current',
+                  '${s.config['gateway_id']}',
+                ),
                 key: const Key('station-current'),
                 style: muted,
               )
@@ -2506,11 +2573,20 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             // Round 26: test mode / a paused upload have their own button
             // in the card above, not a Wi-Fi reset.
             check.testMode
-                ? '要使用此站點，請先按上方「$leaveTestModeLabel」（目前：$reason）。'
+                ? context.l10n.commissioning_reuseBlockedTapAbove(
+                    leaveTestModeLabel,
+                    reason,
+                  )
                 : check.uploadPaused && check.wifiOk && check.targetOk
-                ? '要使用此站點，請先按上方「$resumeUploadLabel」（目前：$reason）。'
-                : '要使用此站點，閘道器必須先連上 Wi-Fi 並開始上傳資料（目前：$reason）。'
-                      '請按「$otherWifiLabel」，或按「回到網路體檢」。',
+                ? context.l10n.commissioning_reuseBlockedTapAbove(
+                    resumeUploadLabel,
+                    reason,
+                  )
+                : context.l10n.commissioning_reuseBlockedWifi(
+                    reason,
+                    otherWifiLabel,
+                    context.l10n.commissioning_backToNetworkCheck,
+                  ),
             key: const Key('reuse-blocked'),
             style: TextStyle(color: theme.colorScheme.error),
           ),
@@ -2524,7 +2600,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             maintainState: true,
             maintainAnimation: true,
             child: NextActionHint(
-              canUse ? '請選擇：使用此站點，或改用其他站號' : '改用其他站號，或先處理上方提示再沿用此站',
+              canUse
+                  ? context.l10n.commissioning_stationHintCanUse
+                  : context.l10n.commissioning_stationHintBlocked,
               active: enabled && !_stationWorking,
             ),
           ),
@@ -2559,7 +2637,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                       _site.clear();
                     })
                   : null,
-              child: const Text(otherSiteLabel),
+              child: Text(otherSiteLabel),
             ),
           ),
         )
@@ -2569,19 +2647,19 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           onPressed: enabled && !_stationWorking
               ? () => _cancelOtherSite(c)
               : null,
-          child: Text('改回站號 $current'),
+          child: Text(context.l10n.commissioning_backToSite(current)),
         ),
       if ((inService && !input) || kept != null)
         TextButton(
           key: const Key('wifi-change'),
           onPressed: enabled && !_stationWorking ? () => _otherWifi(c) : null,
-          child: const Text(otherWifiLabel),
+          child: Text(otherWifiLabel),
         ),
       if (reason != null)
         TextButton(
           key: const Key('station-review-check'),
           onPressed: enabled ? _reviewNetworkCheck : null,
-          child: const Text('回到網路體檢'),
+          child: Text(context.l10n.commissioning_backToNetworkCheck),
         ),
     ];
   }
@@ -2598,16 +2676,19 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     required bool wifiOnly,
   }) => [
     if (s.config[wifiFirstKey] == true)
-      const Text(wifiFirstPageText, key: Key('wifi-first-intro'))
+      Text(wifiFirstPageText, key: const Key('wifi-first-intro'))
     else if (wifiOnly)
       Text(
-        '保留站點 ${s.config['site_id']}／閘道器 ${s.config['gateway_id']}，只更新 Wi-Fi。',
+        context.l10n.commissioning_wifiOnlyKeep(
+          '${s.config['site_id']}',
+          '${s.config['gateway_id']}',
+        ),
       )
     else
       _gatewayAssignment(enabled: enabled),
-    const Padding(
-      padding: EdgeInsets.only(top: 4, bottom: 12),
-      child: Text('閘道器只能用 2.4 GHz 的 Wi-Fi，5 GHz 的網路連不上。'),
+    Padding(
+      padding: const EdgeInsets.only(top: 4, bottom: 12),
+      child: Text(context.l10n.commissioning_wifi24Only),
     ),
     WifiCredentialsForm(
       key: ValueKey(s.peer),
@@ -2621,7 +2702,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         return verified;
       },
       onStorageError: () {
-        if (mounted) _snack('Wi-Fi 已連線，但無法記住密碼；下次請重新輸入。');
+        if (mounted) _snack(context.l10n.commissioning_wifiPasswordNotSaved);
       },
       onNetworkEdited: () => _customWifi = true,
       saveLabel: saveWifiLabel,
@@ -2640,7 +2721,11 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                     _toTop();
                   }
           : null,
-      child: Text(wifiOnly ? '不改 Wi-Fi，返回' : '返回修改站號'),
+      child: Text(
+        wifiOnly
+            ? context.l10n.commissioning_wifiBackKeep
+            : context.l10n.commissioning_wifiBackSite,
+      ),
     ),
   ];
 
@@ -2842,10 +2927,10 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       context: context,
       builder: (context) => AlertDialog(
         key: const Key('number-taken'),
-        title: const Text(numberTakenTitle),
+        title: Text(numberTakenTitle),
         content: Text(
           '${gw == null ? numberTakenOnlyText(site, taken) : numberTakenText(site, taken, gw)}\n'
-          '（閘道器 $taken 目前登記的 MAC：$mac）\n'
+          '${context.l10n.commissioning_numberTakenMac(taken, mac)}\n'
           '${conflict == null ? '' : '$conflict\n'}\n'
           '${online == true ? numberTakenOnlineText(taken) : numberTakenReplaceHint(taken)}',
         ),
@@ -2853,7 +2938,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           TextButton(
             key: const Key('number-taken-cancel'),
             onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
+            child: Text(context.l10n.common_cancel),
           ),
           if (online != true)
             TextButton(
@@ -2897,7 +2982,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       context: context,
       builder: (context) => AlertDialog(
         key: const Key('identity-conflict'),
-        title: const Text(identityConflictTitle),
+        title: Text(identityConflictTitle),
         content: Text(
           '$conflict\n\n'
           '${online == true ? numberTakenOnlineText(gw) : identityConflictHint(site, gw)}',
@@ -2906,13 +2991,13 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           TextButton(
             key: const Key('identity-conflict-other-site'),
             onPressed: () => Navigator.pop(context, 'other'),
-            child: const Text(otherSiteLabel),
+            child: Text(otherSiteLabel),
           ),
           if (online != true)
             FilledButton(
               key: const Key('identity-conflict-replace'),
               onPressed: () => Navigator.pop(context, 'replace'),
-              child: const Text(replaceOldLabel),
+              child: Text(replaceOldLabel),
             ),
         ],
       ),
@@ -2949,18 +3034,18 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       context: context,
       builder: (context) => AlertDialog(
         key: const Key('archived-confirm'),
-        title: const Text(archivedConfirmTitle),
+        title: Text(archivedConfirmTitle),
         content: Text(archivedConfirmText(site, gw)),
         actions: [
           TextButton(
             key: const Key('archived-other-site'),
             onPressed: () => Navigator.pop(context, 'other'),
-            child: const Text(otherSiteLabel),
+            child: Text(otherSiteLabel),
           ),
           FilledButton(
             key: const Key('archived-rejoin'),
             onPressed: () => Navigator.pop(context, 'rejoin'),
-            child: const Text(archivedRejoinLabel),
+            child: Text(archivedRejoinLabel),
           ),
         ],
       ),
@@ -2988,18 +3073,18 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       context: context,
       builder: (context) => AlertDialog(
         key: const Key('new-site-confirm'),
-        title: const Text(newSiteConfirmTitle),
+        title: Text(newSiteConfirmTitle),
         content: Text(newSiteConfirmText(site)),
         actions: [
           TextButton(
             key: const Key('new-site-cancel'),
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('重新輸入'),
+            child: Text(context.l10n.commissioning_reenter),
           ),
           FilledButton(
             key: const Key('new-site-ok'),
             onPressed: () => Navigator.pop(context, true),
-            child: Text('是新站，使用站號 $site'),
+            child: Text(context.l10n.commissioning_newSiteOk(site)),
           ),
         ],
       ),
@@ -3018,12 +3103,14 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           icon: const Icon(Icons.lightbulb_outline),
           label: Text(
             identifyPtuSupported(state.config)
-                ? '辨識此樁（PTU 與閘道器閃燈）'
-                : '辨識這台・${ref.watch(topologyProvider).identifySeconds} 秒',
+                ? context.l10n.commissioning_identifyPile
+                : context.l10n.commissioning_identifyGateway(
+                    ref.watch(topologyProvider).identifySeconds,
+                  ),
             key: const Key('identify-label'),
           ),
         )
-      : const Text('連線時藍燈呼吸；更新韌體後可使用雙閃辨識。');
+      : Text(context.l10n.commissioning_identifyUnsupported);
 
   /// 1.0.0+16: the start page's 〔查看上傳資料〕 row (opens
   /// [GatewayStatusPage]); a ListTile so the touch target is >= 48 dp and
@@ -3095,7 +3182,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             const SizedBox(height: 6),
           ],
           Text(
-            '目前模式：$topologyLabel',
+            context.l10n.commissioning_currentMode(topologyLabel),
             key: const Key('topology-banner'),
             style: muted,
           ),
@@ -3130,7 +3217,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               child: TextButton(
                 key: const Key('details-review-check'),
                 onPressed: s.busy ? null : _reviewNetworkCheck,
-                child: const Text('回到網路體檢'),
+                child: Text(context.l10n.commissioning_backToNetworkCheck),
               ),
             ),
           if (panel)
@@ -3169,7 +3256,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         context: context,
         builder: (context) => AlertDialog(
           key: const Key('end-confirm'),
-          title: const Text(endFlowConfirmTitle),
+          title: Text(endFlowConfirmTitle),
           content: Text(
             [
               endFlowConfirmText(
@@ -3186,12 +3273,12 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             TextButton(
               key: const Key('end-confirm-continue'),
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('繼續配置'),
+              child: Text(context.l10n.commissioning_continueCommissioning),
             ),
             FilledButton(
               key: const Key('end-confirm-end'),
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('結束'),
+              child: Text(context.l10n.commissioning_end),
             ),
           ],
         ),
@@ -3209,17 +3296,17 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       context: context,
       builder: (context) => AlertDialog(
         key: const Key('leave-confirm'),
-        title: const Text(leaveListConfirmTitle),
+        title: Text(leaveListConfirmTitle),
         actions: [
           TextButton(
             key: const Key('leave-confirm-stay'),
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('留在清單'),
+            child: Text(context.l10n.commissioning_stayOnList),
           ),
           FilledButton(
             key: const Key('leave-confirm-end'),
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('結束'),
+            child: Text(context.l10n.commissioning_end),
           ),
         ],
       ),
@@ -3282,9 +3369,14 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       }
       if (!ref.read(demoProvider) && ref.read(backendKeyProvider).isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            key: Key('resume-missing-key'),
-            content: Text('$missingBackendKeyText。\n$resumeWithoutLoginText'),
+          SnackBar(
+            key: const Key('resume-missing-key'),
+            content: Text(
+              context.l10n.commissioning_resumeMissingKey(
+                missingBackendKeyText,
+                resumeWithoutLoginText,
+              ),
+            ),
           ),
         );
       } else {
@@ -3351,7 +3443,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       Padding(
         padding: const EdgeInsets.only(bottom: 12),
         child: Text(
-          '上次配置的閘道器：${s.savedGateway}',
+          context.l10n.commissioning_savedGateway(s.savedGateway),
           key: const Key('saved-gateway'),
         ),
       ),
@@ -3361,18 +3453,18 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         key: const Key('restart-after-done'),
         icon: const Icon(Icons.restart_alt, size: 20),
         onPressed: enabled ? c.clearCompleted : null,
-        label: const Text('重新開始'),
+        label: Text(context.l10n.commissioning_restart),
       ),
     if (s.savedResume || s.savedProgress) const SizedBox(height: 16),
     if (s.savedResume) ...[
       NextActionGuide.button(
         active: s.step == 0,
-        hint: '重新連線並繼續',
+        hint: context.l10n.commissioning_reconnectContinue,
         child: FilledButton.icon(
           key: const Key('saved-resume'),
           icon: const Icon(Icons.bluetooth_searching, size: 20),
           onPressed: enabled ? () => _resumeSaved(c) : null,
-          label: const Text('重新連線並繼續'),
+          label: Text(context.l10n.commissioning_reconnectContinue),
         ),
       ),
       const SizedBox(height: 16),
@@ -3394,7 +3486,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         final localBlocked = environment == BackendEnv.local && !localAllowed;
         return [
           ..._savedResume(s, c, enabled),
-          const Text('先確認現場 WiFi 路由器與裝置電源已開啟。'),
+          Text(context.l10n.commissioning_startPowerHint),
           const SizedBox(height: 20),
           // 1.0.0+8: no 「連線環境」 dropdown here — the AppBar chip
           // (「● 正式站」) is the only switch. The local / custom address
@@ -3410,7 +3502,11 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               onHostPicked: () {},
             )
           else if (environment == BackendEnv.custom)
-            BackendUrlField(controller: _base, label: '後端網址', enabled: enabled)
+            BackendUrlField(
+              controller: _base,
+              label: context.l10n.commissioning_backendUrl,
+              enabled: enabled,
+            )
           else
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
@@ -3421,9 +3517,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               ),
             ),
           if (environment == BackendEnv.local && !localBlocked)
-            const Text('手機與電腦需連同一個 Wi-Fi；電腦 IP 若變更，可在上方修改或按「自動尋找」。')
+            Text(context.l10n.commissioning_localHint)
           else if (environment == BackendEnv.production)
-            const Text(productionHintText),
+            Text(productionHintText),
           // 09-28: no password field; the build carries the credential.
           if (!demo && ref.read(backendKeyProvider).isEmpty)
             Padding(
@@ -3443,7 +3539,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             // 1.0.0+10 (phone: larger than the notes around it — the
             // ListTile's own title style): the notes' size (bodyMedium).
             title: Text(
-              '先離線配置，稍後驗證資料',
+              context.l10n.commissioning_offlineFirst,
               key: const Key('offline-checkbox-title'),
               style: Theme.of(context).textTheme.bodyMedium,
             ),
@@ -3466,7 +3562,8 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               ),
             ),
           button(
-            '檢查並開始',
+            context.l10n.commissioning_checkAndStart,
+            caption: nextActionStartCaption,
             () async {
               _flushBase();
               final current = ref.read(backendEnvProvider);
@@ -3536,25 +3633,25 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             checklist: s.checklist,
           ),
           const SizedBox(height: 12),
-          const Text('確認閘道器不只連上 WiFi，後端也持續收到心跳。'),
+          Text(context.l10n.commissioning_onlineIntro),
           const SizedBox(height: 8),
-          Text('閘道器自己回報：${check.upload.line}'),
+          Text(context.l10n.commissioning_gatewayReports(check.upload.line)),
           // Round 30: its retry is in the bottom bar ([_checkNext]).
           const SizedBox(height: 8),
           Text(
             s.busy
-                ? '正在確認後台收到心跳，成功後會自動尋找 PTU，請稍候。'
+                ? context.l10n.commissioning_onlineRunning
                 : s.identityArchived
                 ? rejoinHintText
                 : s.error != null
-                ? '檢查尚未通過。請依提示修正後，按下方按鈕重新檢查。'
+                ? context.l10n.commissioning_onlineFailed
                 : !s.loggedIn && !demo && ref.read(backendKeyProvider).isEmpty
                 ? missingBackendKeyText
                 : !s.loggedIn
-                ? '請按下方按鈕開始檢查。'
+                ? context.l10n.commissioning_onlineTapStart
                 : s.offline
-                ? '目前為離線配置，請選擇確認上線或稍後驗證。'
-                : '即將自動確認上線，請稍候。',
+                ? context.l10n.commissioning_onlineOffline
+                : context.l10n.commissioning_onlineAuto,
             key: const Key('online-next-hint'),
             style: const TextStyle(fontWeight: FontWeight.w700),
           ),
@@ -3562,10 +3659,10 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           if (!s.busy) ...[
             TextButton(
               onPressed: enabled ? () => c.online(skip: true) : null,
-              child: const Text('暫未確認，先配置 PTU'),
+              child: Text(context.l10n.commissioning_skipOnline),
             ),
             Text(
-              '略過的話，最後「驗證資料」仍會確認資料有沒有上傳。',
+              context.l10n.commissioning_skipOnlineHint,
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
@@ -3591,12 +3688,12 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                     key: const Key('reconnect-retry'),
                     icon: const Icon(Icons.refresh, size: 20),
                     onPressed: s.resumePending ? c.resumeAssign : c.discover,
-                    label: const Text('重試重新連線'),
+                    label: Text(context.l10n.commissioning_retryReconnect),
                   ),
                   TextButton(
                     key: const Key('back-to-gateway'),
                     onPressed: c.cancel,
-                    child: const Text('回到找閘道器'),
+                    child: Text(context.l10n.commissioning_backToGatewaySearch),
                   ),
                 ],
               ),
@@ -3624,7 +3721,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                       ? autoRelinkingText
                       : s.uploadWatch == UploadWatch.linkLost || s.resumePending
                       ? rescanAfterLossLabel
-                      : '由閘道器重新掃描 PTU',
+                      : context.l10n.commissioning_rescanPtus,
                 ),
               ),
             Padding(
@@ -3664,7 +3761,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               key: const Key('direct-no-ptu-hint'),
               padding: const EdgeInsets.only(bottom: 8),
               child: Text(
-                '未掃到 PTU，請確認 PTU 已上電後重新掃描',
+                context.l10n.commissioning_noPtuFound,
                 style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
             ),
@@ -3685,13 +3782,20 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '${s.assignFailed.length} 台指派失敗：',
+                    context.l10n.commissioning_assignFailedCount(
+                      s.assignFailed.length,
+                    ),
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.error,
                     ),
                   ),
                   for (final e in s.assignFailed.entries)
-                    Text('PTU ${e.key}：${e.value}'),
+                    Text(
+                      context.l10n.commissioning_assignFailedRow(
+                        e.key,
+                        e.value,
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -3749,9 +3853,11 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                 blockedText: resetFailed
                     ? resetFailedText
                     : c.ptuOwnerConfirmed(ptu)
-                    ? '已屬於其他閘道器'
-                    : '編號不在本機範圍，所屬閘道器未確認',
-                resetLabel: resetFailed ? '重試' : '重置並納入',
+                    ? context.l10n.commissioning_ptuOtherGateway
+                    : context.l10n.commissioning_ptuOutOfRange,
+                resetLabel: resetFailed
+                    ? context.l10n.common_retry
+                    : context.l10n.commissioning_resetInclude,
                 key: ValueKey('ptu-${ptu['mac']}'),
                 ptu: ptu,
                 selected: s.selected.contains(ptu['mac']),
@@ -3784,7 +3890,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                 key: const Key('ptu-resort'),
                 icon: const Icon(Icons.sort, size: 18),
                 onPressed: enabled ? c.sortPtusBySignal : null,
-                label: const Text('依訊號重新排序'),
+                label: Text(context.l10n.commissioning_sortBySignal),
               ),
             ),
           if (!directStep7 && !directRunning)
@@ -3793,27 +3899,32 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               dense: true,
               // Values update in place; the order changes only on a rescan or
               // 「依訊號重新排序」, so a tap never lands on a row that moved.
-              title: const Text('動態 RSSI · 每 5 秒更新（順序不變）'),
+              title: Text(context.l10n.commissioning_liveRssi),
               value: s.autoRssi,
               onChanged: enabled ? c.setAutoRssi : null,
             ),
-          if (s.missing.isNotEmpty) Text('尚未連線：${s.missing.join('、')}'),
+          if (s.missing.isNotEmpty)
+            Text(
+              context.l10n.commissioning_notConnectedList(
+                s.missing.join(context.l10n.commissioning_listSeparator),
+              ),
+            ),
           if (!directRunning)
             ExpansionTile(
               tilePadding: EdgeInsets.zero,
               title: Text(
-                '掃描說明與完整流程',
+                context.l10n.commissioning_scanHelpTitle,
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
               children: [
                 Text(
-                  '由閘道器掃描附近的 PTU，再透過藍牙把清單傳回手機。'
-                  '${c.directFlow
-                      ? "直連模式：由閘道器自己選最近的 PTU（門檻內最強，或已綁定的那台），這裡只顯示它的選擇；請用「辨識此樁」確認是眼前這台，不是的話按「不是這台？」改選。"
+                  c.directFlow
+                      ? context.l10n.commissioning_scanHelpDirectFlow
                       : topology.isDirect
-                      ? "直連模式：已自動選定訊號最強的一台。"
-                      : "最多可選 ${ref.read(topologyProvider).starCount} 台。"}'
-                  'RSSI 是閘道器與 PTU 之間的訊號；未連線裝置顯示掃描值。「上次」表示暫停或過期，「快取」表示韌體未提供讀值時間。韌體 1.7.5 起可在配置期間量測；RSSI — 表示尚無有效讀值。',
+                      ? context.l10n.commissioning_scanHelpDirect
+                      : context.l10n.commissioning_scanHelpStar(
+                          ref.read(topologyProvider).starCount,
+                        ),
                 ),
                 // The step list is in 「設備與連線資訊」 (09-28).
               ],
@@ -3833,19 +3944,24 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             ptus: s.verifyCounts.length,
           ),
           const SizedBox(height: 12),
-          const Text(verifyGoalText, key: Key('verify-goal')),
+          Text(verifyGoalText, key: const Key('verify-goal')),
           const SizedBox(height: 16),
           if (autoRunning)
             const SizedBox.shrink()
           else if (environment == BackendEnv.custom)
-            BackendUrlField(controller: _base, label: '後端網址', enabled: enabled)
+            BackendUrlField(
+              controller: _base,
+              label: context.l10n.commissioning_backendUrl,
+              enabled: enabled,
+            )
           else
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
               // The URL is in 「連線狀態」 → 技術細節.
               child: Text(
-                '驗證後端：${env.label}'
-                '${environment == BackendEnv.local ? '（這台電腦上的測試主機）' : ''}',
+                environment == BackendEnv.local
+                    ? context.l10n.commissioning_verifyBackendLocal(env.label)
+                    : context.l10n.commissioning_verifyBackend(env.label),
               ),
             ),
           // Round 8: listed in scan order (#1, #2, #4, #3); by number now.
@@ -3879,7 +3995,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                         visualDensity: VisualDensity.compact,
                       ),
                       onPressed: () => c.skipVerifyPtu(id),
-                      child: const Text('略過此台'),
+                      child: Text(context.l10n.commissioning_skipThisPtu),
                     ),
                 ],
               ),
@@ -3887,9 +4003,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                   ? null
                   : Text(
                       s.verifySkipped.contains(id)
-                          ? '未驗證（已略過）'
+                          ? context.l10n.commissioning_notVerifiedSkipped
                           : s.verifyWaiting.contains(id)
-                          ? '尚無資料'
+                          ? context.l10n.commissioning_noDataYet
                           : '$count/3',
                       key: Key('verify-count-$id'),
                     ),
@@ -3908,14 +4024,14 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               key: const Key('verify-back'),
               // Keeps the selection and what was assigned; no cancel.
               onPressed: c.backToSelection,
-              child: const Text('返回選擇 PTU'),
+              child: Text(context.l10n.commissioning_backToPtuSelect),
             ),
             TextButton(
               onPressed: enabled ? c.rescanPtus : null,
-              child: const Text('返回選擇 PTU，由閘道器重新掃描'),
+              child: Text(context.l10n.commissioning_backToPtuRescan),
             ),
             button(
-              '開始資料驗證',
+              context.l10n.commissioning_startVerify,
               _startVerify,
               enabled && s.ptus.any((p) => s.selected.contains(p['mac'])),
             ),
@@ -3935,7 +4051,14 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                           child: CircularProgressIndicator(strokeWidth: 2),
                         ),
                         const SizedBox(width: 12),
-                        Expanded(child: Text('${s.message}（剩餘 ${s.seconds} 秒）')),
+                        Expanded(
+                          child: Text(
+                            context.l10n.commissioning_messageRemaining(
+                              s.message,
+                              s.seconds,
+                            ),
+                          ),
+                        ),
                       ],
                     )
                   : Column(
@@ -3956,7 +4079,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                               key: const Key('verify-retry-bottom'),
                               icon: const Icon(Icons.refresh, size: 20),
                               onPressed: _startVerify,
-                              label: const Text('重試'),
+                              label: Text(context.l10n.common_retry),
                             ),
                           ),
                       ],
@@ -3981,7 +4104,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                 key: const Key('star-list-retry'),
                 icon: const Icon(Icons.refresh, size: 20),
                 onPressed: enabled ? c.writeStarList : null,
-                label: const Text(starListRetryLabel),
+                label: Text(starListRetryLabel),
               ),
             ),
           // After a switch of environment: log in there to check the data.
@@ -3998,7 +4121,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                       }
                     }
                   : null,
-              child: const Text('登入並確認資料'),
+              child: Text(context.l10n.commissioning_loginAndCheck),
             ),
           ],
           // Round 29: 「出貨前切回正式站」 — a developer note of a local test
@@ -4017,7 +4140,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                 tilePadding: EdgeInsets.zero,
                 expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
                 title: Text(
-                  '進階檢查',
+                  context.l10n.commissioning_advancedCheck,
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
                 children: [
@@ -4030,13 +4153,13 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                       onPressed: enabled && c.calibrationOwnMac != null
                           ? () => openDirectCalibration(context)
                           : null,
-                      label: const Text(calibrationTitle),
+                      label: Text(calibrationTitle),
                     ),
                   if (s.loggedIn)
                     TextButton(
                       key: const Key('done-refresh-health'),
                       onPressed: enabled ? () => c.refreshHealth() : null,
-                      child: const Text('更新健康狀態'),
+                      child: Text(context.l10n.commissioning_refreshHealth),
                     ),
                   TextButton(
                     key: const Key('done-repair'),
@@ -4051,7 +4174,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                             }
                           }
                         : null,
-                    child: const Text('重新連線並驗證'),
+                    child: Text(context.l10n.commissioning_reconnectVerify),
                   ),
                 ],
               ),
@@ -4083,11 +4206,14 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     final bound = topology.isDirect && !deferred
         ? directBoundMacOf(s.config) ?? s.direct?.boundMac
         : null;
-    final uploadText = upload.status == '✓ 資料上傳中'
-        ? '✓ 資料持續上傳（${upload.where}）'
+    // §8.2：不比對畫面文字；StatusRow.uploading 只在「✓ 資料上傳中」時為 true
+    // （connection_status.dart，B3 已提供的旗標）。
+    final l10n = context.l10n;
+    final uploadText = upload.uploading
+        ? l10n.commissioning_uploadOngoing(upload.where)
         : upload.status.isEmpty
-        ? '資料上傳：${upload.where}'
-        : '資料上傳：${upload.status}（${upload.where}）';
+        ? l10n.commissioning_uploadWhere(upload.where)
+        : l10n.commissioning_uploadStatusWhere(upload.status, upload.where);
     Widget line(String text, {Key? key, Color? color, bool small = false}) =>
         Padding(
           padding: const EdgeInsets.only(top: 6),
@@ -4124,8 +4250,8 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                     deferred
                         ? deferredDoneTitle
                         : demo
-                        ? '模擬開通完成'
-                        : '開通完成',
+                        ? l10n.commissioning_doneTitleDemo
+                        : l10n.commissioning_doneTitle,
                     key: const Key('done-title'),
                     style: theme.textTheme.titleLarge?.copyWith(
                       fontWeight: FontWeight.w700,
@@ -4136,14 +4262,14 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             ),
             _doneLabelCard(c.site, c.gateway),
             line(
-              '模式：${topology.label}',
+              l10n.commissioning_doneMode(topology.label),
               key: const Key('done-mode'),
               small: true,
               color: colors.onSurfaceVariant,
             ),
             if (bound != null) ...[
               line(
-                '已綁定 PTU',
+                l10n.commissioning_boundPtu,
                 key: const Key('direct-bound-note'),
                 small: true,
                 color: colors.onSurfaceVariant,
@@ -4186,7 +4312,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             // or data), not an invented timestamp of a PTU sample.
             if (s.backendSeenAt != null)
               line(
-                '最近確認上傳：${_doneUploadTime(s.backendSeenAt!)}',
+                l10n.commissioning_lastUploadConfirmed(
+                  _doneUploadTime(s.backendSeenAt!),
+                ),
                 key: const Key('done-upload-confirmed-at'),
                 small: true,
                 color: colors.onSurfaceVariant,
@@ -4198,7 +4326,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             if (!deferred &&
                 s.message.isNotEmpty &&
                 s.message != verifiedText &&
-                s.message != '資料持續更新')
+                !_isDataFlowingMessage(s.message))
               line(s.message, key: const Key('done-message')),
             // Until the first health check answers, say so instead of a
             // premature 資料有異常.
@@ -4215,7 +4343,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                     ? null
                     : () => RecentDataPage.open(context, c.site, c.gateway),
                 icon: const Icon(Icons.table_rows_outlined, size: 20),
-                label: const Text(recentDataLabel),
+                label: Text(recentDataLabel),
               ),
             ),
           ],
@@ -4271,8 +4399,11 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               runSpacing: 2,
               children: [
                 for (final field in [
-                  ('done-site-id', '站點 $site'),
-                  ('done-gateway-id', '閘道器 $gateway'),
+                  ('done-site-id', context.l10n.commissioning_siteN(site)),
+                  (
+                    'done-gateway-id',
+                    context.l10n.commissioning_gatewayN(gateway),
+                  ),
                 ])
                   Text(
                     field.$2,
@@ -4347,7 +4478,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                     padding: const EdgeInsets.symmetric(horizontal: 12),
                   ),
                   onPressed: enabled ? () => _finishDone(c, next: true) : null,
-                  child: const Text(doneNextLabel),
+                  child: Text(doneNextLabel),
                 ),
               ),
               const SizedBox(width: 12),
@@ -4357,7 +4488,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                     key: const Key('done-finish'),
                     onPressed: enabled ? () => _finishDone(c) : null,
                     icon: const Icon(Icons.check, size: 20),
-                    label: const Text(doneFinishLabel),
+                    label: Text(doneFinishLabel),
                   ),
                 ),
               ),
@@ -4428,7 +4559,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                       fromSheet: true,
                     )
                   : null,
-              child: const Text(devShipSwitchLabel),
+              child: Text(devShipSwitchLabel),
             ),
           ),
         ],
@@ -4446,10 +4577,15 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
       // 1.0.0+10: a collapsed section's title (bodyMedium).
       title: Text(
-        s.report.startsWith('模擬') ? '模擬安裝報告' : '安裝報告',
+        // §6：報告本文維持中文（模擬報告以「模擬」開頭），所以比對中文仍成立；
+        // 畫面上的標題照語言翻譯。
+        // TODO(i18n Phase C): switch to B1/B3 flag (e.g. a report demo flag).
+        s.report.startsWith('模擬') // i18n-keep-zh
+            ? context.l10n.commissioning_reportTitleDemo
+            : context.l10n.commissioning_reportTitle,
         style: Theme.of(context).textTheme.bodyMedium,
       ),
-      subtitle: const Text('全文；也可分享或複製'),
+      subtitle: Text(context.l10n.commissioning_reportSubtitle),
       children: [
         SelectableText(s.report),
         Wrap(
@@ -4467,13 +4603,17 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                       } on PlatformException {
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('無法開啟分享，可改用複製報告。')),
+                            SnackBar(
+                              content: Text(
+                                context.l10n.commissioning_shareFailed,
+                              ),
+                            ),
                           );
                         }
                       }
                     }
                   : null,
-              label: const Text('分享安裝報告'),
+              label: Text(context.l10n.commissioning_shareReport),
             ),
             TextButton.icon(
               key: const Key('report-copy'),
@@ -4483,12 +4623,14 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                       await Clipboard.setData(ClipboardData(text: s.report));
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('已複製，可貼上分享')),
+                          SnackBar(
+                            content: Text(context.l10n.commissioning_copied),
+                          ),
                         );
                       }
                     }
                   : null,
-              label: const Text('複製安裝報告'),
+              label: Text(context.l10n.commissioning_copyReport),
             ),
           ],
         ),
@@ -4528,7 +4670,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           key: const Key('deferred-bind-now'),
           icon: const Icon(Icons.lightbulb_outline, size: 20),
           onPressed: enabled ? c.bindDeferredNow : null,
-          label: const Text(deferredBindNowLabel),
+          label: Text(deferredBindNowLabel),
         ),
       ),
     ];
@@ -4567,7 +4709,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               key: const Key('bind-later-go'),
               icon: const Icon(Icons.lightbulb_outline, size: 20),
               onPressed: s.busy ? null : c.startBindLater,
-              label: const Text(bindLaterLabel),
+              label: Text(bindLaterLabel),
             ),
           ],
         ),
@@ -4620,7 +4762,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                 key: const Key('ptu-missing-replace'),
                 icon: const Icon(Icons.swap_horiz, size: 20),
                 onPressed: s.busy ? null : () => _replacePtu(c, mac),
-                label: const Text(replacePtuLabel),
+                label: Text(replacePtuLabel),
               ),
             ],
             if (view.recheck.isNotEmpty) ...[
@@ -4647,16 +4789,16 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       context: context,
       builder: (context) => AlertDialog(
         scrollable: true,
-        title: const Text(replacePtuConfirmTitle),
+        title: Text(replacePtuConfirmTitle),
         content: Text(replacePtuConfirmText(mac)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
+            child: Text(context.l10n.common_cancel),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text(replacePtuLabel),
+            child: Text(replacePtuLabel),
           ),
         ],
       ),
@@ -4752,9 +4894,10 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     final station = s.config['fleet_joined'] == true;
     // Wi-Fi changed with the station kept: review a fresh PTU scan next.
     final recheck = s.config['wifi_only'] == true;
+    final l10n = context.l10n;
     final wifiAction = check.wifiVerdict == WifiVerdict.notConfigured
-        ? '設定 Wi-Fi'
-        : '重設 Wi-Fi';
+        ? l10n.commissioning_setWifi
+        : l10n.commissioning_resetWifi;
 
     Widget item(String title, CheckLine line, String key) => Padding(
       padding: const EdgeInsets.only(top: 14),
@@ -4769,15 +4912,17 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     );
 
     final skipLabel = station
-        ? '先選擇站點（沿用要等網路正常）'
+        ? l10n.commissioning_skipChooseSite
         : s.offline
-        ? '先離線配置新站點（稍後再確認上傳）'
-        : '仍要繼續設定新站點（稍後再確認上傳）';
+        ? l10n.commissioning_skipOfflineNewSite
+        : l10n.commissioning_skipNewSite;
 
     return [
       // 1.0.0+10: a card title (titleSmall w700).
       Text(
-        recheck ? '確認資料上傳' : '閘道器網路體檢',
+        recheck
+            ? l10n.commissioning_confirmUploadTitle
+            : l10n.commissioning_networkCheckTitle,
         style: theme.textTheme.titleSmall?.copyWith(
           fontWeight: FontWeight.w700,
         ),
@@ -4785,11 +4930,11 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       const SizedBox(height: 4),
       Text(
         recheck
-            ? 'Wi-Fi 已更新。等閘道器開始上傳資料，再確認站點（沿用或設定新站點）。'
-            : '先確認閘道器能上網、資料送對地方，再選擇站點。',
+            ? l10n.commissioning_recheckIntro
+            : l10n.commissioning_checkIntro,
         style: muted,
       ),
-      item('閘道器的 Wi-Fi', check.wifi, 'check-wifi'),
+      item(l10n.commissioning_checkWifiItem, check.wifi, 'check-wifi'),
       // Joined but weak: red, with what to do (advice, not a blocker).
       if (check.wifiWeak != null)
         Padding(
@@ -4806,13 +4951,12 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           Padding(
             padding: const EdgeInsets.only(top: 6),
             child: Text(
-              '按下後會先讓閘道器改送到${placeOf(check.syncTarget!)}'
-              '（重新開機一次），再設定 Wi-Fi。',
+              l10n.commissioning_syncFirstHint(placeOf(check.syncTarget!)),
               style: muted,
             ),
           ),
       ],
-      item('資料送到哪裡', check.target, 'check-target'),
+      item(l10n.commissioning_checkTargetItem, check.target, 'check-target'),
       if (!check.wifiProblem && check.need == SyncNeed.sync)
         Padding(
           padding: const EdgeInsets.only(top: 8),
@@ -4820,16 +4964,18 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             width: double.infinity,
             child: NextActionGuide.button(
               active: !check.testMode,
-              hint: '確認資料上傳目的地',
+              hint: l10n.commissioning_confirmTargetHint,
               child: FilledButton.tonal(
                 key: const Key('check-sync'),
                 onPressed: enabled ? () => _syncGateway(explicit: true) : null,
-                child: Text('讓閘道器改送到${placeOf(check.syncTarget!)}（重新開機約 1 分鐘）'),
+                child: Text(
+                  l10n.commissioning_syncTo(placeOf(check.syncTarget!)),
+                ),
               ),
             ),
           ),
         ),
-      item('資料上傳', check.upload, 'check-upload'),
+      item(l10n.commissioning_checkUploadItem, check.upload, 'check-upload'),
       // Round 26 (field: 「✓ 資料上傳中」 with the upload paused).
       if (check.uploadPaused && !check.testMode)
         Padding(
@@ -4842,7 +4988,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               child: FilledButton.tonal(
                 key: const Key('check-resume-upload'),
                 onPressed: enabled ? c.resumeUpload : null,
-                child: const Text(resumeUploadLabel),
+                child: Text(resumeUploadLabel),
               ),
             ),
           ),
@@ -4864,14 +5010,14 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           check.upload.tone == StatusTone.bad)
         TextButton(
           onPressed: enabled ? _fixWifi : null,
-          child: const Text('重設 Wi-Fi'),
+          child: Text(l10n.commissioning_resetWifi),
         ),
       // Round 23: once ready, 「下一步」 is in the bottom bar ([_checkNext]).
       if (!check.ready)
         TextButton(
           key: const Key('check-refresh'),
           onPressed: enabled ? c.refreshUploadTarget : null,
-          child: const Text('重新檢查'),
+          child: Text(l10n.commissioning_recheck),
         ),
       // A new gateway with no Wi-Fi fixes it from the button above (1.0.0+15:
       // the Wi-Fi first, then the station); no skip past it while online.
@@ -4885,16 +5031,15 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         ),
         Text(
           station
-              ? '沒有通過網路體檢時不能沿用目前站點；可以重設 Wi-Fi 或設定新站點。'
-              : '⚠ 閘道器的網路還沒確認好。設定完新站點後會再確認資料上傳，'
-                    '最後的「驗證資料」也會檢查。',
+              ? l10n.commissioning_skipStationNote
+              : l10n.commissioning_skipNewNote,
           style: muted,
         ),
       ],
       if (recheck && station && !check.ready)
         TextButton(
           onPressed: enabled ? c.backToStationChoice : null,
-          child: const Text('回到站點選擇'),
+          child: Text(l10n.commissioning_backToStationChoice),
         ),
     ];
   }
@@ -4990,120 +5135,149 @@ class AssignProgressHeader extends StatelessWidget {
 }
 
 // ---- One-thing screens (09-28): each page's one sentence and its buttons.
+// i18n（docs/i18n.md §5）：測試與其他檔引用的 top-level 文字維持同名，由 const
+// 改成讀 [L10n.current] 的 getter；字串在 lib/l10n/parts/commissioning_*.arb。
 
-const startTaskTitle = '登入後台，開始配置';
-const pickGatewayTaskTitle = '選擇閘道器';
-const checkingTaskTitle = '正在連線並檢查網路，請稍候';
-const checkPassedTaskTitle = '網路檢查通過，看完請按下方繼續';
-const testModeTaskTitle = '閘道器在測試模式，請先切回正常模式';
-const wifiProblemTaskTitle = '閘道器沒有連上 Wi-Fi，請設定 Wi-Fi';
-const targetTaskTitle = '請讓閘道器把資料送到目前的後台';
-const uploadPausedTaskTitle = '閘道器的資料上傳已暫停，請恢復上傳';
-const uploadBadTaskTitle = '閘道器還沒開始上傳資料，請依下方提示處理';
-const wifiTaskTitle = '設定閘道器的 Wi-Fi';
+String get startTaskTitle => L10n.current.commissioning_startTaskTitle;
+String get pickGatewayTaskTitle =>
+    L10n.current.commissioning_pickGatewayTaskTitle;
+String get checkingTaskTitle => L10n.current.commissioning_checkingTaskTitle;
+String get checkPassedTaskTitle =>
+    L10n.current.commissioning_checkPassedTaskTitle;
+String get testModeTaskTitle => L10n.current.commissioning_testModeTaskTitle;
+String get wifiProblemTaskTitle =>
+    L10n.current.commissioning_wifiProblemTaskTitle;
+String get targetTaskTitle => L10n.current.commissioning_targetTaskTitle;
+String get uploadPausedTaskTitle =>
+    L10n.current.commissioning_uploadPausedTaskTitle;
+String get uploadBadTaskTitle => L10n.current.commissioning_uploadBadTaskTitle;
+String get wifiTaskTitle => L10n.current.commissioning_wifiTaskTitle;
 
 /// 1.0.0+15: the Wi-Fi-first page of a gateway not in service.
-const wifiFirstPageText = '先讓閘道器連上 Wi-Fi，網路正常後再設定站號。';
-String stationQuestionTitle(int site) => '目前站號是 $site，這台要配置在本站嗎？';
-const stationInputTitle = '請輸入這台要配置的站號';
-const onlineRunningTaskTitle = '正在確認閘道器上線，請稍候';
-const onlineTaskTitle = '確認閘道器上線';
-const directPickTaskTitle = '請辨識眼前的充電樁，確認後開始配置';
-const starPickTaskTitle = '請選擇本閘道器負責的 PTU';
-const starAssignTaskTitle = '正在配置 PTU 並開始監控';
-const starVerifyTaskTitle = '正在確認資料上傳';
-const verifyLoginTaskTitle = '請登入後台，確認資料上傳';
-const finishingTaskTitle = '正在完成設定並確認資料上傳';
+String get wifiFirstPageText => L10n.current.commissioning_wifiFirstPageText;
+String stationQuestionTitle(int site) =>
+    L10n.current.commissioning_stationQuestionTitle(site);
+String get stationInputTitle => L10n.current.commissioning_stationInputTitle;
+String get onlineRunningTaskTitle =>
+    L10n.current.commissioning_onlineRunningTaskTitle;
+String get onlineTaskTitle => L10n.current.commissioning_onlineTaskTitle;
+String get directPickTaskTitle =>
+    L10n.current.commissioning_directPickTaskTitle;
+String get starPickTaskTitle => L10n.current.commissioning_starPickTaskTitle;
+String get starAssignTaskTitle =>
+    L10n.current.commissioning_starAssignTaskTitle;
+String get starVerifyTaskTitle =>
+    L10n.current.commissioning_starVerifyTaskTitle;
+String get verifyLoginTaskTitle =>
+    L10n.current.commissioning_verifyLoginTaskTitle;
+String get finishingTaskTitle => L10n.current.commissioning_finishingTaskTitle;
 
-const useStationLabel = '使用此站點';
-const useSiteEmptyLabel = '使用站點';
-String useSiteLabel(int site) => '使用站點 $site';
-const otherSiteLabel = '改用其他站號';
-const otherWifiLabel = '改用其他 Wi-Fi';
-const saveWifiLabel = '儲存並繼續';
-const siteFieldLabel = '站號（1–65535）';
-const checkContinueLabel = '繼續設定站點';
-const detailsTitle = '設備與連線資訊';
-const newSiteConfirmTitle = '確定是新站？';
+String get useStationLabel => L10n.current.commissioning_useStationLabel;
+String get useSiteEmptyLabel => L10n.current.commissioning_useSiteEmptyLabel;
+String useSiteLabel(int site) => L10n.current.commissioning_useSiteLabel(site);
+String get otherSiteLabel => L10n.current.commissioning_otherSiteLabel;
+String get otherWifiLabel => L10n.current.commissioning_otherWifiLabel;
+String get saveWifiLabel => L10n.current.commissioning_saveWifiLabel;
+String get siteFieldLabel => L10n.current.commissioning_siteFieldLabel;
+String get checkContinueLabel => L10n.current.commissioning_checkContinueLabel;
+String get detailsTitle => L10n.current.commissioning_detailsTitle;
+String get newSiteConfirmTitle =>
+    L10n.current.commissioning_newSiteConfirmTitle;
 String newSiteConfirmText(int site) =>
-    '後台還沒有站號 $site 的任何閘道器。請確認站號沒有打錯；確定是新站再繼續。';
+    L10n.current.commissioning_newSiteConfirmText(site);
 
 /// 09-28: the station chosen is archived in the back office (GC 刪除).
-const archivedConfirmTitle = '這台閘道器之前在後台被移除（封存），要重新加入嗎？';
+String get archivedConfirmTitle =>
+    L10n.current.commissioning_archivedConfirmTitle;
 String archivedConfirmText(int site, int gw) =>
-    '站點 $site／閘道器 $gw 在後台已被移除（封存）。封存的閘道器，後台不會記錄它的心跳，'
-    '配置會停在「確認閘道器上線」。重新加入後會恢復記錄，原本的歷史資料不變。';
-const archivedRejoinLabel = '重新加入並繼續';
+    L10n.current.commissioning_archivedConfirmText(site, gw);
+String get archivedRejoinLabel =>
+    L10n.current.commissioning_archivedRejoinLabel;
 
 /// r33: the auto-numbering skipped a number another device holds.
 /// 1.0.0+13: the done page's label card — 「請在機殼上標示：」, the station
 /// and gateway in large type, and why.
-const doneLabelHead = '請在機殼上標示：';
-const doneLabelHint = '後台人員靠這個標示找到這台';
+String get doneLabelHead => L10n.current.commissioning_doneLabelHead;
+String get doneLabelHint => L10n.current.commissioning_doneLabelHint;
 
 /// 「請在機殼上標示：站 80 · 閘道器 2」 (the card read as one).
 String doneLabelText(int site, int gateway) =>
-    '$doneLabelHead${gatewayIdText(site, gateway)}';
+    L10n.current.commissioning_doneLabelText(gatewayIdText(site, gateway));
 
 /// 1.0.0+19: the done page's upload interval line — the back office's
 /// policy ([CommissionState.uploadIntervalMs]); null (not read): no number.
-const uploadRateHead = '資料上傳頻率由後台控制';
+String get uploadRateHead => L10n.current.commissioning_uploadRateHead;
 String uploadRateText(int? ms) {
   if (ms == null) return uploadRateHead;
   final seconds = ms % 1000 == 0
       ? '${ms ~/ 1000}'
       : (ms / 1000).toStringAsFixed(1);
-  return '$uploadRateHead（目前每 $seconds 秒）';
+  return L10n.current.commissioning_uploadRateNow(seconds);
 }
 
-const numberTakenTitle = '閘道器編號已被使用';
+String get numberTakenTitle => L10n.current.commissioning_numberTakenTitle;
 String numberTakenText(int site, int taken, int gw) =>
-    '站 $site 的閘道器 $taken 已被其他設備使用，改用閘道器 $gw。';
+    L10n.current.commissioning_numberTakenText(site, taken, gw);
 
 /// 1.0.0+12: [numberTakenText] when the station has no free number left.
 String numberTakenOnlyText(int site, int taken) =>
-    '站 $site 的閘道器 $taken 已被其他設備使用。';
+    L10n.current.commissioning_numberTakenOnlyText(site, taken);
 
 /// 1.0.0+13: instead of [numberTakenReplaceHint] (and without 〔取代舊機〕)
 /// while the gateway holding [taken] is online.
 String numberTakenOnlineText(int taken) =>
-    '閘道器 $taken 目前在線上，不能取代；如果這台是來換掉它，請先把舊機斷電。';
+    L10n.current.commissioning_numberTakenOnlineText(taken);
 String numberTakenReplaceHint(int taken) =>
-    '若這台是來取代那台舊機（舊機已拆除或斷電），按〔取代舊機〕沿用閘道器 $taken。';
-String numberTakenReplaceLabel(int taken) => '取代舊機（沿用閘道器 $taken）';
-String numberTakenNextLabel(int gw) => '改用閘道器 $gw';
+    L10n.current.commissioning_numberTakenReplaceHint(taken);
+String numberTakenReplaceLabel(int taken) =>
+    L10n.current.commissioning_numberTakenReplaceLabel(taken);
+String numberTakenNextLabel(int gw) =>
+    L10n.current.commissioning_numberTakenNextLabel(gw);
 
 /// r33: the back office flags this gateway's own number in conflict.
-const identityConflictTitle = '身分衝突';
+String get identityConflictTitle =>
+    L10n.current.commissioning_identityConflictTitle;
 String identityConflictHint(int site, int gw) =>
-    '若舊機已拆除或換掉，按〔取代舊機〕由這台接手站 $site／閘道器 $gw；'
-    '否則請先找出另一台同編號的閘道器，或改用其他站號。';
-const replaceOldLabel = '取代舊機';
-String replacedText(int site, int gw) => '已由這台接手站 $site／閘道器 $gw';
-const replaceFailedText = '取代舊機沒有成功，請確認網路後重試';
+    L10n.current.commissioning_identityConflictHint(site, gw);
+String get replaceOldLabel => L10n.current.commissioning_replaceOldLabel;
+String replacedText(int site, int gw) =>
+    L10n.current.commissioning_replacedText(site, gw);
+String get replaceFailedText => L10n.current.commissioning_replaceFailedText;
 
 /// r33: the connected gateway already runs in another mode than the APP's.
-String topologyAskTitle(GatewayTopology gateway) =>
-    gateway.isDirect ? '這台閘道器是一對一模式' : '這台閘道器是星狀模式';
+String topologyAskTitle(GatewayTopology gateway) => gateway.isDirect
+    ? L10n.current.commissioning_topologyAskDirectTitle
+    : L10n.current.commissioning_topologyAskStarTitle;
 String topologyAskText(GatewayTopology gateway, Map<String, dynamic> config) {
+  final l10n = L10n.current;
   if (gateway.isDirect) {
     final mac = gatewayBoundMac(config);
-    final bound = mac == null ? '尚未綁定 PTU' : '已綁定 PTU $mac';
-    return '這台閘道器目前是一對一模式（$bound），要改成星狀嗎？\n\n'
-        '選〔維持一對一〕：APP 改用直連模式，閘道器的設定不變。';
+    return mac == null
+        ? l10n.commissioning_topologyAskDirectUnbound
+        : l10n.commissioning_topologyAskDirectBound(mac);
   }
   final max = (config['max_connections'] as num?)?.toInt() ?? maxStarPtuCount;
-  return '這台閘道器目前是星狀模式（最多 $max 台 PTU），要改成一對一嗎？\n\n'
-      '選〔維持星狀〕：APP 改用星狀模式，閘道器的設定不變。';
+  return l10n.commissioning_topologyAskStarText(max);
 }
 
-String topologyKeepLabel(GatewayTopology gateway) =>
-    gateway.isDirect ? '維持一對一' : '維持星狀';
-String topologyChangeLabel(GatewayTopology gateway) =>
-    gateway.isDirect ? '改成星狀' : '改成一對一';
+String topologyKeepLabel(GatewayTopology gateway) => gateway.isDirect
+    ? L10n.current.commissioning_topologyKeepDirect
+    : L10n.current.commissioning_topologyKeepStar;
+String topologyChangeLabel(GatewayTopology gateway) => gateway.isDirect
+    ? L10n.current.commissioning_topologyChangeToStar
+    : L10n.current.commissioning_topologyChangeToDirect;
 String topologyKeptText(GatewayTopology gateway) =>
-    'APP 已改用${gateway.label}，這台閘道器維持原模式';
+    L10n.current.commissioning_topologyKeptText(gateway.label);
 
 /// 09-28: 確認上線 stopped on an archived station — the bottom bar's action.
-const rejoinLabel = '重新加入';
-const rejoinHintText = '這台閘道器在後台被移除（封存），心跳不會被記錄。按下方「重新加入」後會繼續確認上線。';
+String get rejoinLabel => L10n.current.commissioning_rejoinLabel;
+String get rejoinHintText => L10n.current.commissioning_rejoinHintText;
+
+/// §8.2/§8.3：done 頁「資料持續更新」訊息（controller `refreshHealth` 的
+/// `controller_dataStreaming`）。訊息是產生當下的語言，所以比對所有語言。
+/// TODO(i18n Phase C): switch to a B1 state flag instead of the text.
+bool _isDataFlowingMessage(String message) => AppLanguage.values.any(
+  (language) =>
+      lookupAppLocalizations(language.locale).controller_dataStreaming ==
+      message,
+);

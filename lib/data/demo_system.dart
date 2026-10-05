@@ -3,6 +3,7 @@ import 'dart:async';
 import '../core/mqtt_target.dart';
 import '../core/identify.dart';
 import '../core/protocol.dart';
+import '../l10n/l10n.dart';
 import 'contracts.dart';
 
 /// Compile-time production broker host reported by firmware 1.7.3.
@@ -336,7 +337,8 @@ class DemoSystem implements GatewayLink, GatewayApi, ForeignAcks {
     GatewayPeer peer, {
     void Function(String stage)? onStage,
   }) async {
-    onStage?.call('正在連線閘道器');
+    // Same stage text as the real link (BleGatewayLink).
+    onStage?.call(L10n.current.bleGatewayLink_stageConnecting);
     connects++;
     linkedPeer = peer.id;
     if (rebooting) {

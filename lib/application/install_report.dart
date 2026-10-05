@@ -16,6 +16,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/direct_mode.dart';
 import '../core/mqtt_target.dart';
+import '../l10n/l10n.dart';
 import 'commissioning_controller.dart';
 import 'field_journal.dart';
 import 'field_report.dart';
@@ -41,13 +42,17 @@ String? _cut(Object? value, int limit) {
 }
 
 /// Where the gateway uploads, as one short line (`upload_target`).
+///
+/// i18n：只上傳後台，固定中文（docs/i18n.md §6）。
 String uploadTargetOf(Map<String, dynamic> config) {
   final target = parseMqttTarget(config);
+  // i18n-keep-zh-begin
   if (target == null) {
     return reportsMqttTarget(config) ? '未確認' : '正式站（韌體固定）';
   }
   if (target.isLocal) return '本地 ${target.host}:${target.port}';
   return target.host.isEmpty ? '正式站' : '正式站 ${target.host}:${target.port}';
+  // i18n-keep-zh-end
 }
 
 /// The report of the done page on screen, or null when there is none
@@ -160,20 +165,29 @@ class InstallReportStatus {
 
 String _two(int v) => v.toString().padLeft(2, '0');
 
-/// The done page line.
-String installReportStatusText(InstallReportStatus s) => switch (s.phase) {
-  InstallReportPhase.idle => '',
-  InstallReportPhase.sending => '正在把報告送到後台…',
-  InstallReportPhase.sent =>
-    s.sentAt == null
-        ? '報告已送到後台'
-        : '報告已送到後台 ${_two(s.sentAt!.hour)}:${_two(s.sentAt!.minute)}',
-  InstallReportPhase.queued =>
-    s.reason.isEmpty ? '排隊中，網路恢復後自動送' : '排隊中，網路恢復後自動送（${s.reason}）',
-  InstallReportPhase.failed =>
-    s.reason.isEmpty ? '報告沒有送到後台' : '報告沒有送到後台：${s.reason}',
-  InstallReportPhase.disabled => '模擬模式：報告不送後台',
-};
+/// The done page line (screen only: follows the screen language).
+String installReportStatusText(InstallReportStatus s) {
+  final l10n = L10n.current;
+  return switch (s.phase) {
+    InstallReportPhase.idle => '',
+    InstallReportPhase.sending => l10n.installReport_sending,
+    InstallReportPhase.sent =>
+      s.sentAt == null
+          ? l10n.installReport_sent
+          : l10n.installReport_sentAt(
+              '${_two(s.sentAt!.hour)}:${_two(s.sentAt!.minute)}',
+            ),
+    InstallReportPhase.queued =>
+      s.reason.isEmpty
+          ? l10n.installReport_queued
+          : l10n.installReport_queuedReason(s.reason),
+    InstallReportPhase.failed =>
+      s.reason.isEmpty
+          ? l10n.installReport_failed
+          : l10n.installReport_failedReason(s.reason),
+    InstallReportPhase.disabled => l10n.installReport_demo,
+  };
+}
 
 class InstallReportNotifier extends Notifier<InstallReportStatus> {
   @override

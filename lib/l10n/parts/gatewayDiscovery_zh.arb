@@ -1,0 +1,127 @@
+{
+  "@@locale": "zh",
+  "gatewayDiscovery_searching": "正在搜尋附近的閘道器…",
+  "gatewayDiscovery_retrying": "沒找到，再搜尋一次…",
+  "gatewayDiscovery_busy": "正在連線並讀取設定…",
+  "gatewayDiscovery_searchPaused": "已選取閘道器，搜尋已暫停",
+  "gatewayDiscovery_notFound": "未發現附近閘道器。請確認電源、靠近裝置，並確認沒有被其他手機連線。",
+  "gatewayDiscovery_stopped": "已停止搜尋，按〔重新搜尋〕再找一次",
+  "gatewayDiscovery_foundCount": "{count, plural, other{已找到 {count} 台}}",
+  "@gatewayDiscovery_foundCount": {
+    "description": "Live count under the search progress bar.",
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "gatewayDiscovery_found": "{count, plural, other{找到 {count} 台}}",
+  "@gatewayDiscovery_found": {
+    "description": "Line after the search when the nearest hint is shown below it.",
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "gatewayDiscovery_foundPick": "{count, plural, other{找到 {count} 台，請點選本樁的那台}}",
+  "@gatewayDiscovery_foundPick": {
+    "description": "Line after the search; asks to tap the gateway of this charger.",
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "gatewayDiscovery_unconfigured": "未配置",
+  "@gatewayDiscovery_unconfigured": {
+    "description": "Small badge on a gateway card: not configured yet."
+  },
+  "gatewayDiscovery_pending": "待核對",
+  "@gatewayDiscovery_pending": {
+    "description": "Small badge on a gateway card: identity not verified yet."
+  },
+  "gatewayDiscovery_backendOfflineNote": "後台目前未收到此設備的連線訊號。請確認電源與 Wi-Fi；若已更換網路環境，請重新設定 Wi-Fi。",
+  "gatewayDiscovery_backendNoRecordNote": "目前後台查無此設備紀錄。若尚未開通，請點選『開始開通』；若已開通，請確認連線狀態與所選站點。",
+  "gatewayDiscovery_identifyLabel": "閃燈辨識",
+  "@gatewayDiscovery_identifyLabel": {
+    "description": "Tooltip of the bulb icon that blinks the gateway."
+  },
+  "gatewayDiscovery_identifiedHint": "已送出",
+  "gatewayDiscovery_identifiedSnack": "{title} 已送出",
+  "@gatewayDiscovery_identifiedSnack": {
+    "description": "SnackBar after the identify blink was sent; title is the gateway title.",
+    "placeholders": {
+      "title": {"type": "String", "example": "站 80 · 閘道器 2"}
+    }
+  },
+  "gatewayDiscovery_gatewayOnlyHint": "閘道器已閃・PTU 不會閃",
+  "gatewayDiscovery_gatewayOnlyNote": "閘道器已閃燈；它目前沒連到 PTU，PTU 不會閃",
+  "gatewayDiscovery_gatewayOnlySwitchedNote": "閘道器已閃燈；已切換為一對一，閘道器正在重新尋找 PTU，請稍後再按",
+  "gatewayDiscovery_gatewayOnlyBoundMissingNote": "閘道器已閃燈；找不到已綁定的 PTU，請確認原 PTU 已開機並在附近",
+  "gatewayDiscovery_gatewayOnlyNoPtuNote": "閘道器已閃燈；閘道器附近沒聽到 PTU，請確認 PTU 已上電",
+  "gatewayDiscovery_gatewayOnlyWeakNote": "閘道器已閃燈；PTU 訊號太弱（最強 {best} dBm，需 ≥ {min}），請靠近或檢查天線",
+  "@gatewayDiscovery_gatewayOnlyWeakNote": {
+    "placeholders": {
+      "best": {"type": "int"},
+      "min": {"type": "int"}
+    }
+  },
+  "gatewayDiscovery_gatewayOnlyPickingNote": "閘道器已閃燈；閘道器正在選擇 PTU，請 3 秒後再按",
+  "gatewayDiscovery_gatewayOnlySnack": "{title}：{note}",
+  "@gatewayDiscovery_gatewayOnlySnack": {
+    "placeholders": {
+      "title": {"type": "String", "example": "站 80 · 閘道器 2"},
+      "note": {"type": "String", "example": "閘道器已閃燈；它目前沒連到 PTU，PTU 不會閃"}
+    }
+  },
+  "gatewayDiscovery_selected": "已選取",
+  "gatewayDiscovery_connecting": "連線中…",
+  "gatewayDiscovery_pickFirst": "請先選擇閘道器",
+  "gatewayDiscovery_held": "已連線",
+  "gatewayDiscovery_holdFailed": "連線失敗",
+  "gatewayDiscovery_holdLost": "已斷線",
+  "gatewayDiscovery_notConnected": "未連線",
+  "gatewayDiscovery_disconnecting": "斷開中…",
+  "gatewayDiscovery_cleanupIncomplete": "清理未完成",
+  "gatewayDiscovery_cleanupFailed": "藍牙清理未完成，請重試斷開。",
+  "gatewayDiscovery_holdFailedText": "無法連線 {title}，請按「藍牙連線」重試",
+  "@gatewayDiscovery_holdFailedText": {
+    "placeholders": {
+      "title": {"type": "String", "example": "站 80 · 閘道器 2"}
+    }
+  },
+  "gatewayDiscovery_holdLostText": "{title} 的藍牙連線已中斷，請按「藍牙連線」重新連線",
+  "@gatewayDiscovery_holdLostText": {
+    "placeholders": {
+      "title": {"type": "String", "example": "站 80 · 閘道器 2"}
+    }
+  },
+  "gatewayDiscovery_connectLabel": "開始開通：{title}",
+  "@gatewayDiscovery_connectLabel": {
+    "description": "Bottom button for the selected gateway.",
+    "placeholders": {
+      "title": {"type": "String", "example": "站 80 · 閘道器 2"}
+    }
+  },
+  "gatewayDiscovery_stopSearch": "停止搜尋",
+  "gatewayDiscovery_searchAgain": "重新搜尋",
+  "gatewayDiscovery_signalLost": "訊號中斷",
+  "gatewayDiscovery_signalUnknown": "訊號未知",
+  "gatewayDiscovery_scanFailed": "搜尋失敗，請確認藍牙、定位與附近裝置權限後重試。",
+  "gatewayDiscovery_identifyIncomplete": "辨識未完成，請重新連線後再試。",
+  "gatewayDiscovery_bluetoothConnect": "藍牙連線",
+  "@gatewayDiscovery_bluetoothConnect": {
+    "description": "Card button: open the Bluetooth link to the selected gateway."
+  },
+  "gatewayDiscovery_cancelConnect": "取消連線",
+  "gatewayDiscovery_retryDisconnect": "重試斷開",
+  "gatewayDiscovery_disconnect": "斷開",
+  "gatewayDiscovery_startCommissioning": "開始開通",
+  "gatewayDiscovery_selectNearby": "選擇附近的閘道器",
+  "gatewayDiscovery_pickCardHint": "先選擇要配置的閘道器卡片，再點「藍牙連線」",
+  "gatewayDiscovery_recentGroup": "最近使用",
+  "gatewayDiscovery_nearbyGroup": "附近裝置（{count}）",
+  "@gatewayDiscovery_nearbyGroup": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "gatewayDiscovery_rssiNote": "RSSI 為手機收到的藍牙訊號，與後端在線狀態不同。",
+  "gatewayDiscovery_backendRefreshNote": "後端狀態每 15 秒更新，僅代表目前選擇的後端環境。",
+  "gatewayDiscovery_backendReferenceNote": "沒有本機身分核對紀錄時，後端狀態只參考相同站號及閘道器編號；連線後再確認裝置身分。"
+}

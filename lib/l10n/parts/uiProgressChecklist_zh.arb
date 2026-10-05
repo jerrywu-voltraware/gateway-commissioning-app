@@ -1,0 +1,20 @@
+{
+  "@@locale": "zh",
+  "uiProgressChecklist_running": "進行中…",
+  "uiProgressChecklist_runningNote": "進行中… {note}",
+  "@uiProgressChecklist_runningNote": {
+    "placeholders": {
+      "note": {
+        "type": "String"
+      }
+    }
+  },
+  "uiProgressChecklist_doneAt": "{time} 完成",
+  "@uiProgressChecklist_doneAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  }
+}

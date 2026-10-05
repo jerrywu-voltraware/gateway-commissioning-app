@@ -1,0 +1,25 @@
+{
+  "@@locale": "zh",
+  "dashboardApi_backendUnset": "（尚未設定後端網址）",
+  "@dashboardApi_backendUnset": {
+    "description": "describeBackend without a URL. Also written (in Chinese) into the install report."
+  },
+  "dashboardApi_backendLocal": "區域網路／本機後端 {origin}",
+  "@dashboardApi_backendLocal": {
+    "placeholders": {
+      "origin": {
+        "type": "String",
+        "example": "http://192.168.0.12:18000"
+      }
+    }
+  },
+  "dashboardApi_backend": "後端 {origin}",
+  "@dashboardApi_backend": {
+    "placeholders": {
+      "origin": {
+        "type": "String",
+        "example": "https://46.250.255.172"
+      }
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "@@locale": "en",
+  "backendEnvironment_localUnavailable": "The release APP can't use the local test site. Install the local test APK instead.",
+  "backendEnvironment_localUnavailableLabel": "Local test (not in this build)",
+  "backendEnvironment_labelProduction": "Production",
+  "backendEnvironment_labelLocal": "Local test",
+  "backendEnvironment_labelCustom": "Other URL",
+  "backendEnvironment_changeHint": "Backend: {label} (kept from last time; switch at top right)",
+  "backendEnvironment_invalidUrl": "Invalid URL"
+}

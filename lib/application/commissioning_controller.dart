@@ -46,7 +46,7 @@ final demoProvider = NotifierProvider<DemoMode, bool>(DemoMode.new);
 final demoSystemProvider = Provider((ref) => DemoSystem());
 
 /// Label retained for identification diagnostics.
-const identifyPeerLabel = '辨識閘道器（閃燈）';
+String get identifyPeerLabel => L10n.current.controller_identifyPeerLabel;
 
 /// Overall budget for an explicit identification connection, including the
 /// link's own retries. Tests can shorten it without changing transport limits.
@@ -64,7 +64,7 @@ final apiProvider = Provider<GatewayApi>(
 
 /// r33: the conflict text when the back office flags one without its own.
 String identityConflictFallback(int site, int gw) =>
-    'ID 衝突：偵測到多台實體設備使用相同 Site $site / 閘道器 $gw。';
+    L10n.current.controller_identityConflict(site, gw);
 
 /// How [CommissioningController.suggestGateway] found its answer.
 enum GatewaySuggestKind {
@@ -129,7 +129,7 @@ final uploadWatchTimingProvider = Provider<UploadWatchTiming>(
 /// [busyRetryDelay], at most [busyRetryLimit] times (20 s in total).
 const busyRetryDelay = Duration(seconds: 2);
 const busyRetryLimit = 10;
-const gatewayBusyText = '閘道器忙碌中，等待…';
+String get gatewayBusyText => L10n.current.controller_gatewayBusy;
 
 /// Step 7 idle keep-alive ping interval (no RSSI traffic meanwhile).
 const keepAliveInterval = Duration(seconds: 15);
@@ -201,14 +201,14 @@ const wifiFirstKey = 'wifi_first';
 const wifiFirstSsidKey = 'wifi_first_ssid';
 
 /// 1.0.0+15: busy label of the Wi-Fi-first form (no identity is written).
-const wifiFirstRunLabel = '設定 Wi-Fi';
+String get wifiFirstRunLabel => L10n.current.controller_wifiFirstRunLabel;
 
 /// 1.0.0+15: the station page after the Wi-Fi-first form joined.
-const wifiFirstDoneText = '網路已正常，接著設定站號。';
+String get wifiFirstDoneText => L10n.current.controller_wifiFirstDone;
 
 /// 1.0.0+15: the Wi-Fi-first form joined, but another check item has not
 /// passed (upload target, test mode): back on the check.
-const wifiFirstCheckText = 'Wi-Fi 已連上。網路體檢還有項目沒通過，請依下方提示處理。';
+String get wifiFirstCheckText => L10n.current.controller_wifiFirstCheck;
 
 /// 1.0.0+15: the station page says [wifiFirstDoneText] while the Wi-Fi the
 /// gateway not in service joined on the check ([wifiFirstSsidKey]) is kept.
@@ -220,10 +220,11 @@ bool wifiFirstJoined(CommissionState s) {
 }
 
 /// Round 30: the station form's line when [keptWifiSsid] is kept.
-String wifiKeptText(String ssid) => '閘道器已連上 $ssid，沿用';
+String wifiKeptText(String ssid) => L10n.current.controller_wifiKept(ssid);
 
 /// Round 30: after 「儲存站點，沿用此 Wi-Fi」.
-String wifiKeptDoneText(String ssid) => '沿用 Wi-Fi $ssid（未重新連線），下一步確認後端看得到閘道器';
+String wifiKeptDoneText(String ssid) =>
+    L10n.current.controller_wifiKeptDone(ssid);
 
 const gatewayNetKeys = [
   'wifi_state',
@@ -240,46 +241,47 @@ const gatewayNetKeys = [
 ];
 
 /// 「沿用目前站點」 refused because the gateway cannot upload yet.
-const reuseBlockedText =
-    '閘道器還沒連上 Wi-Fi 或還沒開始上傳資料，暫時不能使用此站點。'
-    '請先按「改用其他 Wi-Fi」，或回到網路體檢確認。';
+String get reuseBlockedText => L10n.current.controller_reuseBlocked;
 
 /// 09-28: 〔重新加入〕 running (restore, then reserve the station again).
-const rejoiningText = '正在重新加入後台';
+String get rejoiningText => L10n.current.controller_rejoining;
 
 /// 09-28: 確認上線 waits this long for heartbeats before it asks the back
 /// office whether the station is archived (its heartbeats are skipped).
 const archivedCheckAfterSeconds = 60;
 
 /// Station kept after a Wi-Fi change: confirm upload before reviewing PTUs.
-const uploadNotReadyText =
-    '要等閘道器連上 Wi-Fi 並開始上傳資料，才能繼續選擇 PTU。'
-    '請等「確認資料上傳」出現 ✓，或再重設一次 Wi-Fi。';
+String get uploadNotReadyText => L10n.current.controller_uploadNotReady;
 
 /// Round 26: the Wi-Fi of a station was reset and its upload works — the
 /// station is chosen again (it may be another site's, field round 26).
-const wifiUpdatedChooseStationText =
-    'Wi-Fi 已更新，資料上傳正常。請確認站點：這台閘道器目前的站點若不是這裡，'
-    '請選「改用其他站號」。';
+String get wifiUpdatedChooseStationText =>
+    L10n.current.controller_wifiUpdatedChooseStation;
 
 /// Step 7 after a backend switch: the earlier result belongs to the old one.
-const backendSwitchedDoneText = '已切換連線環境，資料要在新的環境重新確認。';
+String get backendSwitchedDoneText =>
+    L10n.current.controller_backendSwitchedDone;
 
 /// Step 6 after a backend switch.
-const backendSwitchedVerifyText = '已切換連線環境，請按「開始資料驗證」重新確認。';
+String get backendSwitchedVerifyText =>
+    L10n.current.controller_backendSwitchedVerify;
 
 /// PTU tile text when the automatic reset still failed after its retry.
-const resetFailedText = '重置失敗（連線逾時），請靠近後重試';
+String get resetFailedText => L10n.current.controller_resetFailed;
 
 /// 完成頁摘要：「掃到 X 台，本機配置 Y 台」，其他閘道器／重置失敗台數 >0 才顯示。
 String commissionSummaryText(CommissionState s) => s.ptuDeferred
     ? deferredSummaryText
-    : '掃到 ${s.scannedTotal} 台，本機配置 ${s.ptus.length} 台'
-          '${s.pendingNext > 0 ? '，${s.pendingNext} 台屬於其他閘道器' : ''}'
-          '${s.resetFailed.isNotEmpty ? '，${s.resetFailed.length} 台重置失敗' : ''}';
+    : L10n.current.controller_summary(s.scannedTotal, s.ptus.length) +
+          (s.pendingNext > 0
+              ? L10n.current.controller_summaryOtherGateways(s.pendingNext)
+              : '') +
+          (s.resetFailed.isNotEmpty
+              ? L10n.current.controller_summaryResetFailed(s.resetFailed.length)
+              : '');
 
 /// Saved resume: the user cancelled the backend login.
-const resumeWithoutLoginText = '未登入時無法自動收編殘留編號，將以手動模式繼續';
+String get resumeWithoutLoginText => L10n.current.controller_resumeWithoutLogin;
 
 /// 'wifi_failed' after set_wifi, carrying the firmware reason (1.7.32,
 /// [wifiDiscReasonOf]) only when it belongs to this attempt: reported no
@@ -315,18 +317,18 @@ String ptuFailureText(Object? error) {
       : error?.toString() ?? '';
   final text = raw.toLowerCase();
   if (isPtuConnectFailure(error)) {
-    return 'PTU 連線失敗，請確認 PTU 電源與距離';
+    return L10n.current.controller_ptuConnectFailed;
   }
   if (text.contains('timeout') || text.contains('timed out')) {
-    return 'PTU 沒有回應';
+    return L10n.current.controller_ptuNoResponse;
   }
   if (text.contains('not found') || text.contains('not_found')) {
-    return '閘道器找不到這台 PTU，請重新掃描';
+    return L10n.current.controller_ptuNotFound;
   }
   if (error is GatewayFailure && error.code != 'unexpected') {
     return error.message;
   }
-  return 'PTU 設定未完成，請靠近後重試';
+  return L10n.current.controller_ptuSetupIncomplete;
 }
 
 /// Round 26: a failure a gateway in test mode explains — anything the
@@ -400,15 +402,17 @@ RescueCode ptuFailRescueCode(Object? error) => isPtuConnectFailure(error)
 /// Appends the link's first connect failure type (round 8 analysis aid).
 String withFirstFailure(String detail, Object link) {
   final first = link is ConnectDiagnostics ? link.firstConnectFailure : null;
-  return first == null ? detail : '$detail\n第一次連線失敗：$first';
+  return first == null
+      ? detail
+      : '$detail\n${L10n.current.controller_firstConnectFailure(first)}';
 }
 
 /// Shown while the phone re-opens the BLE link to the gateway.
-const reconnectingText = '正在重新連線閘道器';
+String get reconnectingText => L10n.current.controller_reconnecting;
 
 /// Step 2 busy text once the BLE link is up and the gateway's first replies
 /// (ping, get_config, get_net_status, get_ble_devices) are being read.
-const linkConfirmingText = '藍牙已連線，正在確認閘道器回應與設定…';
+String get linkConfirmingText => L10n.current.controller_linkConfirming;
 
 /// Round 10: step 2 connect and reconnects keep retrying 133 / disconnected
 /// for this long before showing the error.
@@ -418,7 +422,8 @@ Duration connectPersistence = const Duration(seconds: 60);
 Duration connectRetryGap = const Duration(milliseconds: 1500);
 
 /// Busy text of the n-th connect attempt (n >= 2).
-String connectingAttemptText(int attempt) => '連線中（第 $attempt 次）';
+String connectingAttemptText(int attempt) =>
+    L10n.current.controller_connectingAttempt(attempt);
 
 /// Round 18: the phone↔gateway link itself is gone (not a gateway reply).
 bool isLinkDrop(Object error) =>
@@ -463,16 +468,16 @@ const reconnectBudget = Duration(seconds: 80);
 
 /// Banner after 「重新連線並繼續」 gave up (round 11).
 String reconnectFailedAttemptsText(int attempts) =>
-    '重新連線失敗（已嘗試 $attempts 次），請靠近閘道器後再按一次';
+    L10n.current.controller_reconnectFailedAttempts(attempts);
 
 /// Shown while the phone's Bluetooth was just turned on (「重新連線並繼續」).
-const waitingBluetoothText = '等待藍牙就緒';
+String get waitingBluetoothText => L10n.current.controller_waitingBluetooth;
 
 /// Longest wait for a just-enabled phone Bluetooth before reconnecting.
 const bluetoothReadyBudget = Duration(seconds: 10);
 
 /// Done page: before the first health check has an answer.
-const healthPendingText = '正在確認資料上傳…';
+String get healthPendingText => L10n.current.controller_healthPending;
 
 /// Normalised MAC for comparisons (case and separators ignored).
 String macKey(Object? mac) =>
@@ -480,7 +485,7 @@ String macKey(Object? mac) =>
 
 bool sameMac(Object? a, Object? b) => macKey(a) == macKey(b);
 
-const wrongDeviceText = '指派到錯誤裝置，請重試';
+String get wrongDeviceText => L10n.current.controller_wrongDevice;
 
 /// Firmware 1.7.15+ assign ack check: `mac` (the PTU written) and
 /// `device_number` must match the request; absent fields (older firmware)
@@ -497,12 +502,12 @@ String? assignAckMismatch(Map<String, dynamic> ack, String mac, int id) {
   if (id == 255) {
     if (number != null &&
         (number is! num || (number.toInt() != 0 && number.toInt() != 255))) {
-      return '裝置回報編號 #$number 與指派 #$id 不符，請重試';
+      return L10n.current.controller_ackNumberMismatch('$number', id);
     }
     return null;
   }
   if (number != null && (number is! num || number.toInt() != id)) {
-    return '裝置回報編號 #$number 與指派 #$id 不符，請重試';
+    return L10n.current.controller_ackNumberMismatch('$number', id);
   }
   return null;
 }
@@ -510,20 +515,25 @@ String? assignAckMismatch(Map<String, dynamic> ack, String mac, int id) {
 /// The ack only confirms the write was sent; confirm via read-back.
 bool ackNeedsReadback(Map<String, dynamic> ack) => ack['verified'] == false;
 
-String pendingReadbackText(int id) => '已送出 #$id，待回讀確認';
+String pendingReadbackText(int id) =>
+    L10n.current.controller_pendingReadback(id);
 
 String readbackMismatchText(int actual, int wanted) =>
-    '回讀編號為 #$actual，不是指派的 #$wanted，請重試';
+    L10n.current.controller_readbackMismatch(actual, wanted);
 
 /// Display labels for a saved [CommissionState.step] (restore prompt).
-const _savedStepLabels = {
-  1: '第 2 步（找到閘道器）',
-  2: '第 3 步（閘道器網路體檢）',
-  3: '第 5 步（確認資料上傳）',
-  4: '第 7 步（選擇 PTU）',
-  5: '第 8 步（開始監控）',
-  6: '第 9 步（驗證資料）',
-};
+String? _savedStepLabel(int step) {
+  final l10n = L10n.current;
+  return switch (step) {
+    1 => l10n.controller_savedStepFind,
+    2 => l10n.controller_savedStepNetCheck,
+    3 => l10n.controller_savedStepUpload,
+    4 => l10n.controller_savedStepSelect,
+    5 => l10n.controller_savedStepMonitor,
+    6 => l10n.controller_savedStepVerify,
+    _ => null,
+  };
+}
 
 /// Restore prompt after the APP was killed; [done] are the PTU numbers
 /// already assigned, [pending] the selected ones still to configure.
@@ -555,7 +565,9 @@ String configureLabel(CommissionState s) {
   if (step7LinkLost(s)) return rescanAfterLossLabel;
   // Phone link lost: the button reconnects first (same as the banner).
   if (s.resumePending) {
-    return rest == 0 ? '重新連線並繼續' : '重新連線並繼續（剩 $rest 台）';
+    return rest == 0
+        ? rescanAfterLossLabel
+        : L10n.current.controller_reconnectContinueRest(rest);
   }
   // Round 22: after a topology switch at step 7 the old mode's list is gone
   // — nothing to configure until the list is read again.
@@ -569,12 +581,16 @@ String configureLabel(CommissionState s) {
   if (rest == 0) {
     // Round 10: a rescan in progress is not 「恢復監控」 with 已選 0/5.
     if (s.busy || s.ptus.isEmpty) return scanningLabel;
-    return s.monitoringOk ? '開始驗證' : '恢復監控';
+    return s.monitoringOk
+        ? L10n.current.controller_startVerify
+        : L10n.current.controller_resumeMonitoring;
   }
   // Round 16b: with some already done, 「剩餘」 — 「配置 1 台」 beside
   // 「已選 5 / 5 台」 read as if only one would be set up.
   final done = s.selected.length - rest;
-  return done > 0 ? '配置剩餘 $rest 台並開始監控' : '配置 $rest 台並開始監控';
+  return done > 0
+      ? L10n.current.controller_configureRest(rest)
+      : L10n.current.controller_configureCount(rest);
 }
 
 /// Round 23: a step 8 run is assigning ([CommissionState.assignRunning])
@@ -587,7 +603,7 @@ bool assigningShown(CommissionState s) =>
 /// ([assignProgressText]).
 String assigningLabel(Map<String, AssignStatus> statuses) {
   final done = statuses.values.where((a) => a.phase == AssignPhase.done);
-  return '配置中… ${done.length}/${statuses.length}';
+  return L10n.current.controller_assigningLabel(done.length, statuses.length);
 }
 
 /// Step 7/8 line above the configure button: 「已選 n / target 台」, or —
@@ -605,8 +621,14 @@ String selectionCountText(CommissionState s, int target) {
   if (s.step == 4 && s.ptus.isEmpty && s.ptuListBusy) return ptuListBusyText;
   final rest = configureTargets(s).length;
   final done = s.selected.length - rest;
-  if (done == 0 || rest == 0) return '已選 ${s.selected.length} / $target 台';
-  return '已選 ${s.selected.length} 台 · 已完成 $done 台 · 將配置 $rest 台';
+  if (done == 0 || rest == 0) {
+    return L10n.current.controller_selectedOfTarget(s.selected.length, target);
+  }
+  return L10n.current.controller_selectedDoneRest(
+    s.selected.length,
+    done,
+    rest,
+  );
 }
 
 /// Round 22: step 7 while the PTU list is (re)read — the list is empty
@@ -616,7 +638,8 @@ bool ptuListLoading(CommissionState s) =>
     s.step == 4 && s.ptus.isEmpty && (s.busy || s.relinking);
 
 /// Round 22: the count line while [ptuListLoading].
-String ptuListLoadingText(int target) => '讀取中…（目標 $target 台）';
+String ptuListLoadingText(int target) =>
+    L10n.current.controller_ptuListLoading(target);
 
 /// Round 23: the list card's count line — 「已連線 n 台／周邊未連線 m 台」
 /// only once the list is read. While it is read with nothing in yet it is
@@ -635,21 +658,27 @@ String ptuCountText(CommissionState s) {
     if (s.ptuListBusy) return ptuListBusyText;
   }
   final connected = s.ptus.where((p) => p['connected'] == true).length;
-  final counts = '已連線 $connected 台／周邊未連線 ${s.ptus.length - connected} 台';
+  final counts = L10n.current.controller_ptuCounts(
+    connected,
+    s.ptus.length - connected,
+  );
   if (s.ptuListBusy && s.step == 4 && !s.busy) {
-    return '$ptuListBusyText（下面是上一次的列表：$counts）';
+    return L10n.current.controller_ptuListBusyWithCounts(
+      ptuListBusyText,
+      counts,
+    );
   }
   return counts;
 }
 
 /// Round 24: the count lines after a list read refused as busy.
-const ptuListBusyText = '閘道器忙碌，列表暫時無法更新';
+String get ptuListBusyText => L10n.current.controller_ptuListBusy;
 
 /// Round 23: [ptuCountText] while the PTU list is read.
-const ptuCountReadingText = '讀取中…';
+String get ptuCountReadingText => L10n.current.controller_ptuCountReading;
 
 /// Round 23: [ptuCountText] after a topology switch, before the new read.
-const ptuCountUnreadText = '尚未讀取 PTU 列表';
+String get ptuCountUnreadText => L10n.current.controller_ptuCountUnread;
 
 /// Round 23 (field round 23: switched back to star at step 7, the gateway
 /// still connected one PTU — its max_connections is applied only by
@@ -666,33 +695,33 @@ String? starApplyNote(CommissionState s, {required bool isStar}) {
 }
 
 /// Round 23: [starApplyNote]'s text for a gateway at [limit] connections.
-String starApplyText(int limit) =>
-    '閘道器目前只連 $limit 台；按下「配置」後，閘道器會切換為星狀並連線全部 PTU。';
+String starApplyText(int limit) => L10n.current.controller_starApply(limit);
 
 /// Round 22: the count line after a topology switch at step 7
 /// ([CommissionState.relistReason], e.g. 「已切換為星狀模式」): the old
 /// mode's list is dropped and read again ([reading]); until a read starts
 /// (a switch while a step ran) it only says the list needs reading.
-String topologyRelistText(String reason, {required bool reading}) =>
-    reading ? '$reason，重新讀取 PTU 列表…' : '$reason，PTU 列表需重新讀取';
+String topologyRelistText(String reason, {required bool reading}) => reading
+    ? L10n.current.controller_topologyRelistReading(reason)
+    : L10n.current.controller_topologyRelistPending(reason);
 
 /// Round 22: [CommissionState.relistReason] for a switch to [topology].
 String topologySwitchedText(GatewayTopology topology) =>
-    '已切換為${topology.shortLabel}';
+    L10n.current.controller_topologySwitched(topology.shortLabel);
 
 /// Step 7 bottom button while a scan is still running.
-const scanningLabel = '掃描中…';
+String get scanningLabel => L10n.current.controller_scanningLabel;
 
 /// Round 15: step 7 bottom button after a scan failed, timed out (e.g. the
 /// get_ble_devices reply lost over BLE) or found no PTU.
-const rescanLabel = '重新掃描';
+String get rescanLabel => L10n.current.controller_rescanLabel;
 
 /// Steps 7/8 bottom button while the automatic reconnect runs (disabled).
-const relinkingLabel = '重新連線中…';
+String get relinkingLabel => L10n.current.controller_relinkingLabel;
 
 /// Round 21: step 7 bottom button once the phone is back and the PTU list
 /// is read again (disabled).
-const relistingLabel = '讀取列表中…';
+String get relistingLabel => L10n.current.controller_relistingLabel;
 
 /// Round 21: the automatic reconnect's stage ([CommissionState.relinkStage]).
 enum RelinkStage {
@@ -708,11 +737,11 @@ enum RelinkStage {
 }
 
 /// Round 21: bottom bar status while the phone reconnects by itself.
-const relinkReconnectText = '手機與閘道器重新連線中…';
+String get relinkReconnectText => L10n.current.controller_relinkReconnect;
 
 /// Round 21: bottom bar status once reconnected, while the list is read
 /// again (field round 21: the list came 20 s after the reconnect).
-const relinkReloadText = '重新讀取 PTU 列表…';
+String get relinkReloadText => L10n.current.controller_relinkReload;
 
 /// Round 22: the automatic reconnect's own texts (「重新連線中…」,
 /// 「正在自動重新連線…」) only while it reconnects or reads the list again —
@@ -738,7 +767,7 @@ String? relinkStatusText(CommissionState s) {
 }
 
 /// Round 13: status card / rescan button while the automatic reconnect runs.
-const autoRelinkingText = '正在自動重新連線…';
+String get autoRelinkingText => L10n.current.controller_autoRelinking;
 
 /// Round 13: most automatic reconnect rounds per phone↔gateway link loss
 /// (steps 7 and 8, [CommissioningController] `_autoRelink`). Each round
@@ -755,7 +784,8 @@ Duration backendRetryGap = const Duration(seconds: 5);
 Duration backendRetryWindow = const Duration(seconds: 60);
 
 /// Step 9 busy text while the backend is retried automatically.
-String backendRetryText(int attempt) => '後端暫時無回應，自動重試中（$attempt）';
+String backendRetryText(int attempt) =>
+    L10n.current.controller_backendRetry(attempt);
 
 /// A backend failure worth retrying by itself: HTTP 5xx (e.g. 502 while the
 /// API container restarts), unreachable, or timed out.
@@ -767,7 +797,7 @@ bool isTransientBackendFailure(Object error) =>
 
 /// Step 7 bottom button after the automatic reconnect gave up. Round 15:
 /// one name for every reconnect after a link loss (steps 7 and 8).
-const rescanAfterLossLabel = '重新連線並繼續';
+String get rescanAfterLossLabel => L10n.current.controller_rescanAfterLossLabel;
 
 /// Round 15: step 7 idle link loss — after the first automatic reconnect
 /// (immediate), a loss that recurs is retried after each of these gaps
@@ -785,7 +815,7 @@ Duration step7StableAfter = const Duration(seconds: 60);
 
 /// Step 7 banner while waiting before an automatic retry.
 String step7RetryText(int retry, int total, Duration gap) =>
-    '藍牙連線又中斷，${gap.inSeconds} 秒後自動重新連線（第 $retry/$total 次重試）';
+    L10n.current.controller_step7Retry(gap.inSeconds, retry, total);
 
 /// Round 15: direct flow (firmware 1.7.20+) polls get_status.direct this
 /// often, at most [directPollLimit] times (~20 s), for the gateway's pick.
@@ -805,14 +835,14 @@ int get directSwitchSeconds =>
 /// Header after [directSwitchWait] passed without the switch: the step 7
 /// refresh keeps reading the gateway and clears the error once it has.
 String directSwitchPendingText(String mac) =>
-    '閘道器仍在改連 PTU ${formatMac(mac)}，連上後畫面會自動更新；也可改選其他 PTU。';
+    L10n.current.controller_directSwitchPending(formatMac(mac));
 
 /// The gateway connected the PTU chosen under 「不是這台？」.
 String directSwitchDoneText(String mac) =>
-    '閘道器已改連 PTU $mac（已綁定），請按「辨識此樁」確認是眼前這台。';
+    L10n.current.controller_directSwitchDone(mac);
 
 /// Step 7 direct flow busy text while the gateway picks its PTU.
-const directPickingText = '閘道器正在選擇最近的 PTU，請稍候';
+String get directPickingText => L10n.current.controller_directPicking;
 
 /// Round 17: a new connected pick with no RSSI read yet (0 / null) keeps
 /// 「辨識此樁」 at 「連線建立中…」 this long (field round 17: an identify
@@ -825,23 +855,24 @@ Duration identifyRetryDelay = const Duration(milliseconds: 1500);
 
 /// Round 17: busy text while the gateway runs a new collection window
 /// (「不是這台？」 without candidates, 「重新搜尋」 with a pick).
-const directFreshWindowText = '閘道器正在重新收集附近的 PTU，請稍候';
+String get directFreshWindowText => L10n.current.controller_directFreshWindow;
 
 /// The page's button that ends the run and goes back to the gateway list.
-const endFlowLabel = '結束並重新選擇閘道器';
+String get endFlowLabel => L10n.current.controller_endFlowLabel;
 
 /// 09-29: the gateway list's button (and the system 返回 there) — back to
 /// the start page ([CommissioningController.leaveList]); field: the list
 /// had no way out (返回 left the APP, the button said 「已取消」 in place).
-const leaveListLabel = '結束配置';
+String get leaveListLabel => L10n.current.controller_leaveListLabel;
 
 /// Title of the [leaveListLabel] confirmation (the system 返回 does not ask).
-const leaveListConfirmTitle = '結束這次配置並回首頁？';
+String get leaveListConfirmTitle =>
+    L10n.current.controller_leaveListConfirmTitle;
 
 /// Round 17: 「結束並重新選擇閘道器」 after step 3 asks first (field round
 /// 17: a late tap meant for 「改選其他 PTU」 landed on it once the layout
 /// moved, and ended the whole flow).
-const endFlowConfirmTitle = '結束目前配置？';
+String get endFlowConfirmTitle => L10n.current.controller_endFlowConfirmTitle;
 
 /// Body of the [endFlowConfirmTitle] dialog; [done] = PTUs configured.
 ///
@@ -851,10 +882,12 @@ const endFlowConfirmTitle = '結束目前配置？';
 String endFlowConfirmText(int done, {bool restoresBind = false}) {
   if (restoresBind) {
     return done > 0
-        ? '結束後會把閘道器的 PTU 綁定還原為改選前的狀態；已完成的 $done 台保留。'
-        : '結束後會把閘道器的 PTU 綁定還原為改選前的狀態；目前尚未完成任何 PTU。';
+        ? L10n.current.controller_endFlowRestoreDone(done)
+        : L10n.current.controller_endFlowRestoreNone;
   }
-  return done > 0 ? '已完成的 $done 台會保留在閘道器。' : '目前尚未完成任何 PTU。';
+  return done > 0
+      ? L10n.current.controller_endFlowKeepDone(done)
+      : L10n.current.controller_endFlowNoneDone;
 }
 
 /// Round 18: 結束 now would undo a temporary 「不是這台？」 binding
@@ -869,9 +902,13 @@ bool endFlowRestoresBind(CommissionState s) {
 
 /// Round 15: done page / install report line when the direct-mode gateway
 /// is bound to a PTU MAC (「確認後綁定 PTU」, or kept from 「不是這台？」).
-String? directBoundNote(CommissionState s) {
+///
+/// i18n（docs/i18n.md §6）：畫面用 [L10n.current]；安裝報告傳 [l10n]＝[L10n.zh]。
+String? directBoundNote(CommissionState s, {AppLocalizations? l10n}) {
   final bound = directBoundMacOf(s.config) ?? s.direct?.boundMac;
-  return bound == null ? null : '已綁定 PTU MAC：$bound（閘道器只連這台）';
+  return bound == null
+      ? null
+      : (l10n ?? L10n.current).controller_directBoundNote(bound);
 }
 
 /// Step 7 direct flow message once the gateway's pick has been polled.
@@ -879,14 +916,14 @@ String directPickMessage(DirectStatus? direct) {
   final mac = direct?.pickedMac;
   if (mac != null) {
     return direct!.ambiguous
-        ? '閘道器選中 PTU $mac，但附近有訊號相近的 PTU，請按「辨識此樁」確認'
-        : '閘道器選中 PTU $mac，請按「辨識此樁」確認是眼前這台';
+        ? L10n.current.controller_directPickedAmbiguous(mac)
+        : L10n.current.controller_directPicked(mac);
   }
   return switch (direct?.state) {
-    DirectState.noCandidate => '閘道器找不到夠近的 PTU：請確認同樁 PTU 已上電並靠近，再按「重新搜尋」。',
-    DirectState.boundMissing => '閘道器綁定的 PTU 不在場：請確認它已上電，或解除綁定後按「重新搜尋」。',
-    null => '閘道器尚未回報選台結果，請按「重新搜尋」。',
-    _ => '閘道器仍在尋找 PTU，請稍候再按「重新搜尋」。',
+    DirectState.noCandidate => L10n.current.controller_directNoCandidate,
+    DirectState.boundMissing => L10n.current.controller_directBoundMissing,
+    null => L10n.current.controller_directNoReport,
+    _ => L10n.current.controller_directStillSearching,
   };
 }
 
@@ -907,100 +944,97 @@ bool directNoPtu(CommissionState s, {required bool directFlow}) {
 }
 
 /// Round 28: 〔先完成配置〕.
-const deferFinishLabel = '先完成配置';
+String get deferFinishLabel => L10n.current.controller_deferFinishLabel;
 
 /// Round 28: the busy text of 〔先完成配置〕.
-const deferringText = '正在完成閘道器配置（本樁 PTU 尚未連線）';
+String get deferringText => L10n.current.controller_deferring;
 
 /// Round 28: the confirm dialog of 〔先完成配置〕.
-const deferConfirmTitle = '先完成配置，稍後 PTU 上電自動連線？';
+String get deferConfirmTitle => L10n.current.controller_deferConfirmTitle;
 
 /// Round 28: its body ([threshold]: the gateway's `auto_connect_min_rssi`).
 String deferConfirmText(int threshold) =>
-    '閘道器會照常完成配置：加入運作、恢復上傳，維持一對一模式與目前門檻'
-    '（$threshold dBm），但不綁定 PTU。\n'
-    '本樁 PTU 上電後，閘道器會自動連上它；綁定需之後到現場按〔辨識〕確認。';
+    L10n.current.controller_deferConfirm(threshold);
 
 /// Round 28: the done page after 〔先完成配置〕.
-const deferredDoneTitle = '閘道器配置完成';
-const deferredDoneText = '本樁 PTU 尚未連線。PTU 上電後會自動連線，之後到現場按〔辨識〕確認綁定。';
+String get deferredDoneTitle => L10n.current.controller_deferredDoneTitle;
+String get deferredDoneText => L10n.current.controller_deferredDone;
 
 /// Round 28: what the gateway was left with ([threshold] dBm).
-String deferredDetailText(int threshold) =>
-    '閘道器已加入運作並恢復上傳，維持一對一模式（門檻 $threshold dBm），尚未綁定 PTU。';
+///
+/// i18n（docs/i18n.md §6）：畫面用 [L10n.current]；安裝報告傳 [l10n]＝[L10n.zh]。
+String deferredDetailText(int threshold, {AppLocalizations? l10n}) =>
+    (l10n ?? L10n.current).controller_deferredDetail(threshold);
 
 /// Round 28: how the binding is made later.
-const deferredLaterText =
-    '之後補做綁定：PTU 上電後，用 APP 重新連上這台閘道器，會出現〔辨識並綁定〕。'
-    '人還在現場且 PTU 已上電，可直接按下方按鈕。';
+String get deferredLaterText => L10n.current.controller_deferredLater;
 
 /// Round 28: the done page button while still on site.
-const deferredBindNowLabel = 'PTU 已上電：辨識並綁定';
+String get deferredBindNowLabel => L10n.current.controller_deferredBindNowLabel;
 
 /// Round 28: 「連線狀態」 after 〔先完成配置〕 (uploading, no PTU data yet).
-const deferredUploadStatus = '✓ 已恢復上傳（等本樁 PTU 連上）';
+String get deferredUploadStatus => L10n.current.controller_deferredUploadStatus;
 
 /// Round 28: the install report's PTU line after 〔先完成配置〕.
-const deferredReportLine = 'PTU：尚未連線（上電後閘道器自動連上；綁定與編號待現場按〔辨識〕確認）';
+/// 只出現在安裝報告，維持中文（docs/i18n.md §6）。
+const deferredReportLine =
+    'PTU：尚未連線（上電後閘道器自動連上；綁定與編號待現場按〔辨識〕確認）'; // i18n-keep-zh
 
 /// Round 28: the done page summary after 〔先完成配置〕.
-const deferredSummaryText = '本樁 PTU 尚未連線（上電後自動連上）';
+String get deferredSummaryText => L10n.current.controller_deferredSummary;
 
 /// Round 28 (field round 28: pile B left with its upload paused — nothing
 /// would have told the installer): 「結束目前配置？」 on a gateway not in
 /// service yet ([uploadHeldUntilJoin]) past the identity step.
-const endFlowHeldUploadText = '注意：這台閘道器還沒加入運作（資料上傳暫停），結束後不會上傳任何資料。';
+String get endFlowHeldUploadText => L10n.current.controller_endFlowHeldUpload;
 
 /// Round 28: [endFlowHeldUploadText] at direct step 7 without this pile's
 /// PTU ([directNoPtu]).
-const endFlowDeferHint = '本樁 PTU 不在場時，請改按「$deferFinishLabel」。';
+String get endFlowDeferHint =>
+    L10n.current.controller_endFlowDeferHint(deferFinishLabel);
 
 // ---- Round 28: the binding made later (bind-later card) ----
 
 /// Round 28: the card on a gateway in service, one-to-one, unbound, that
 /// is connected to a PTU ([CommissionState.bindLaterMac]).
-String bindLaterTitle(String mac) => '這台閘道器已連上 PTU ${formatMac(mac)}，但尚未綁定';
+String bindLaterTitle(String mac) =>
+    L10n.current.controller_bindLaterTitle(formatMac(mac));
 
 /// Round 28: the same card when the PTU is not connected yet but this
 /// phone finished the gateway without it ([CommissionState.bindLaterDeferred]).
-const bindLaterWaitingTitle = '上次配置時本樁 PTU 尚未連線，閘道器目前仍未連上 PTU';
+String get bindLaterWaitingTitle =>
+    L10n.current.controller_bindLaterWaitingTitle;
 
-const bindLaterHint =
-    '請按〔辨識並綁定〕：到選擇 PTU 時按「辨識此樁」確認是眼前這台，'
-    '再按「是這台，開始配置」即會綁定並把它編為 #1。';
+String get bindLaterHint => L10n.current.controller_bindLaterHint;
 
-const bindLaterWaitingHint = '請確認本樁 PTU 已上電、與閘道器放在同一個機殼內；連上後按〔辨識並綁定〕。';
+String get bindLaterWaitingHint => L10n.current.controller_bindLaterWaitingHint;
 
-const bindLaterLabel = '辨識並綁定';
+String get bindLaterLabel => L10n.current.controller_bindLaterLabel;
 
 // ---- r34: the bound PTU is not connected (PTU-missing card) ----
 
 /// r34: the card on a gateway in service, one-to-one and bound to [mac],
 /// whose bound PTU is not connected ([CommissionState.ptuMissingMac]).
 String ptuMissingTitle(String mac) =>
-    '本樁 PTU 不在場（綁定 MAC 後 4 碼 ${macTail4(mac)}）';
+    L10n.current.controller_ptuMissingTitle(macTail4(mac));
 
-const ptuMissingHint =
-    '請確認原 PTU 已上電。一般情況可透過手機藍牙更換，原 PTU 不需在場。'
-    '後台同步與資料驗證仍需閘道器上網，且手機可連到後台。'
-    '若只是更換網路，可先重設 Wi-Fi，不需 PTU 在場。';
+String get ptuMissingHint => L10n.current.controller_ptuMissingHint;
 
 /// r34: the same card once the re-check found the PTU connected
 /// ([CommissionState.ptuMissingBack]).
-String ptuBackTitle(String mac) => 'PTU 已連線（${formatMac(mac)}）';
+String ptuBackTitle(String mac) =>
+    L10n.current.controller_ptuBackTitle(formatMac(mac));
 
-const ptuBackHint = '閘道器已連上綁定的 PTU，不需要更換。';
+String get ptuBackHint => L10n.current.controller_ptuBackHint;
 
-const replacePtuLabel = '更換 PTU';
-const recheckPtuLabel = 'PTU 已上電，重新檢查';
-const replacePtuConfirmTitle = '更換 PTU：解除綁定並重新配對？';
+String get replacePtuLabel => L10n.current.controller_replacePtuLabel;
+String get recheckPtuLabel => L10n.current.controller_recheckPtuLabel;
+String get replacePtuConfirmTitle =>
+    L10n.current.controller_replacePtuConfirmTitle;
 
 /// r34: the confirm body of 〔更換 PTU〕.
 String replacePtuConfirmText(String mac) =>
-    '會解除閘道器對 PTU ${formatMac(mac)} 的綁定（站點與 Wi-Fi 不變），'
-    '通過裝置安全檢查後，透過手機藍牙在本機搜尋新的 PTU，原 PTU 不需在場。'
-    '新綁定確認前取消或失敗會還原原綁定；藍牙中斷時請重新連線完成還原。'
-    '後台同步與資料驗證仍需網路，尚未驗證前不算開通完成。';
+    L10n.current.controller_replacePtuConfirm(formatMac(mac));
 
 /// r34: the busy texts.
 class _ReplacePtuFailure extends GatewayFailure {
@@ -1009,8 +1043,8 @@ class _ReplacePtuFailure extends GatewayFailure {
   final String message;
 }
 
-const replacingPtuText = '正在解除 PTU 綁定';
-const recheckingPtuText = '正在重新檢查 PTU';
+String get replacingPtuText => L10n.current.controller_replacingPtu;
+String get recheckingPtuText => L10n.current.controller_recheckingPtu;
 
 /// 1.0.0+10 (review P2-8): ⋮「閘道器狀態…」 — its own BLE scan and back
 /// office reads — only while nothing runs and no gateway is connected
@@ -1019,11 +1053,12 @@ bool gatewayStatusMenuEnabled(CommissionState s) =>
     !s.busy && !s.discoveryLinkActive && s.step < 2;
 
 /// 1.0.0+10: why ⋮「閘道器狀態…」 is greyed.
-const gatewayStatusBusyText = '配置進行中不可用';
+String get gatewayStatusBusyText => L10n.current.controller_gatewayStatusBusy;
 
 /// 1.0.0+10: the menu item's text ([gatewayStatusMenuEnabled]).
-String gatewayStatusMenuText(CommissionState s) =>
-    gatewayStatusMenuEnabled(s) ? '查看上傳資料…' : '查看上傳資料（$gatewayStatusBusyText）';
+String gatewayStatusMenuText(CommissionState s) => gatewayStatusMenuEnabled(s)
+    ? L10n.current.controller_gatewayStatusMenu
+    : L10n.current.controller_gatewayStatusMenuBusy(gatewayStatusBusyText);
 
 /// 1.0.0+10 (review P2-3): a bound PTU the gateway is still looking for
 /// (scanning / connecting) this soon after a boot is not called missing.
@@ -1075,18 +1110,19 @@ BoundPtuPresence boundPtuPresence(
 }
 
 /// 1.0.0+10: the neutral card (the gateway still looking for its PTU).
-const ptuSearchingTitle = '正在尋找本樁 PTU…';
+String get ptuSearchingTitle => L10n.current.controller_ptuSearchingTitle;
 
-String ptuSearchingHint(String mac) =>
-    '閘道器剛開機或狀態剛變化，正在連線綁定的 PTU（MAC 後 4 碼 ${macTail4(mac)}），'
-    '通常 1 分鐘內會連上；請稍候再按〔$ptuSearchingRecheckLabel〕。';
+String ptuSearchingHint(String mac) => L10n.current.controller_ptuSearchingHint(
+  macTail4(mac),
+  ptuSearchingRecheckLabel,
+);
 
-const ptuSearchingRecheckLabel = '重新檢查';
+String get ptuSearchingRecheckLabel =>
+    L10n.current.controller_ptuSearchingRecheckLabel;
 
 /// 1.0.0+10: connected, but not to the bound PTU.
 String ptuOtherTitle(String bound, String other) =>
-    '連到的不是綁定的 PTU（綁定 MAC 後 4 碼 ${macTail4(bound)}，'
-    '目前連 ${macTail4(other)}）';
+    L10n.current.controller_ptuOtherTitle(macTail4(bound), macTail4(other));
 
 /// 1.0.0+10: the PTU-missing card's colour.
 enum PtuCardTone { ok, searching, missing }
@@ -1133,24 +1169,23 @@ const replacedBindMarker = '';
 
 /// 1.0.0+10: 〔辨識並綁定〕 / 〔更換 PTU〕 could not go on to 「選擇 PTU」 and
 /// nothing else said why.
-const bindLaterBlockedText = '目前無法進入「選擇 PTU」，請先完成網路體檢後再按一次。';
+String get bindLaterBlockedText => L10n.current.controller_bindLaterBlocked;
 
 /// 1.0.0+10: the gateway has no station to keep (「沿用目前站點」 is not
 /// offered).
-const bindLaterNoStationText = '這台閘道器目前不能沿用站點，請先完成站點與 Wi-Fi 設定。';
+String get bindLaterNoStationText => L10n.current.controller_bindLaterNoStation;
 
 /// 1.0.0+10: another action is still running.
-const busyTryAgainText = '另一個動作還在進行，請等它結束後再按一次。';
+String get busyTryAgainText => L10n.current.controller_busyTryAgain;
 
 /// 1.0.0+10: 〔更換 PTU〕 cleared the binding, step 7 was refused after
 /// all, and putting [old] back failed too.
 String replaceRestoreFailedText(String old) =>
-    '無法進入「選擇 PTU」，且閘道器的 PTU 綁定未能還原成 ${formatMac(old)}：'
-    '請重新連線這台閘道器確認綁定。';
+    L10n.current.controller_replaceRestoreFailed(formatMac(old));
 
 /// r34: the field report line (the rescue page's timeline).
 String ptuMissingReportText(String mac) =>
-    '本樁 PTU 不在場：閘道器綁定 ${formatMac(mac)}，目前未連上 PTU';
+    '本樁 PTU 不在場：閘道器綁定 ${formatMac(mac)}，目前未連上 PTU'; // i18n-keep-zh（field 診斷 error_message，§6）
 
 /// The last four hex digits of [mac] (「9600」), or the MAC as given.
 String macTail4(String mac) {
@@ -1196,7 +1231,7 @@ Set<String> configureTargets(CommissionState s) =>
     s.selected.difference(s.assignedOk);
 
 /// Step 10 message right after verification, before any health answer.
-const verifiedText = '開通驗證通過，已恢復自動監控';
+String get verifiedText => L10n.current.controller_verified;
 
 /// Round 29 (field drill: after 〔完成〕 nothing said the last gateway was
 /// done; a finished run restored after a restart came back as a 「上次配置」
@@ -1207,35 +1242,33 @@ String lastDoneText(
   Object? site,
   Object? gateway, {
   bool ptuDeferred = false,
-}) =>
-    '上一台已完成：站 $site 閘道器 $gateway'
-    '${ptuDeferred ? '（本樁 PTU 尚未連線，上電後自動連上）' : ''}';
+}) => ptuDeferred
+    ? L10n.current.controller_lastDoneDeferred('$site', '$gateway')
+    : L10n.current.controller_lastDone('$site', '$gateway');
 
 /// The message after 〔檢查並開始〕 passed (1.0.0+17: not shown on the
 /// gateway list — it only said the step before was over).
-const preparedText = '準備完成';
+String get preparedText => L10n.current.controller_prepared;
 
 /// Round 29: the gateway list after 〔配置下一台〕 — a new gateway is
 /// proposed on the same station ([site]).
-String nextGatewayText(int site) => '請選擇下一台閘道器；新的閘道器會預設沿用站 $site。';
+String nextGatewayText(int site) => L10n.current.controller_nextGateway(site);
 
 /// Round 29: the done page's main button (also the system 返回 there).
-const doneFinishLabel = '完成';
+String get doneFinishLabel => L10n.current.controller_doneFinishLabel;
 
 /// Round 29: the done page's second button.
-const doneNextLabel = '配置下一台';
+String get doneNextLabel => L10n.current.controller_doneNextLabel;
 
 /// Round 29: the system 返回 on the done page while an action there runs.
-const doneBusyText = '正在處理，完成後再按〔完成〕。';
+String get doneBusyText => L10n.current.controller_doneBusy;
 
 /// Round 29: the done page's developer note, local test builds only
 /// ([EnvSwitchPolicy.localBuild]) — never the done page's main action.
-const devShipNoteText =
-    '開發環境提示（本地測試版才會出現，現場人員不用處理）：這台閘道器目前上傳到本地測試站，'
-    '出貨前需由開發人員把手機和閘道器一起切回正式站。';
+String get devShipNoteText => L10n.current.controller_devShipNote;
 
 /// Round 29: the developer note's small text button.
-const devShipSwitchLabel = '切回正式站';
+String get devShipSwitchLabel => L10n.current.controller_devShipSwitchLabel;
 
 /// Step 8/max_connections policy: star mode always opens the full range (5)
 /// so a later 5th PTU can still connect; direct mode is one PTU.
@@ -1271,19 +1304,21 @@ String resumeText(
   // Round 12: [shown] is the 1-based step the installer saw (steps 3–6 all
   // live in controller step 2, which made every kill there 「第 3 步」).
   final where = shown != null && shown >= 2 && shown <= stepLabels.length - 1
-      ? '第 $shown 步（${stepLabels[shown - 1]}）'
-      : _savedStepLabels[step];
-  if (where == null) return '已保留先前進度，請重新連線以核對裝置現況。';
-  String list(List<int> v) =>
-      (List<int>.of(v)..sort()).map((i) => '#$i').join('、');
+      ? L10n.current.controller_stepWhere(shown, stepLabels[shown - 1])
+      : _savedStepLabel(step);
+  final l10n = L10n.current;
+  if (where == null) return l10n.controller_resumeUnknown;
+  String list(List<int> v) => (List<int>.of(
+    v,
+  )..sort()).map((i) => '#$i').join(l10n.controller_listSeparator);
   final doneText = done.isEmpty
-      ? '尚未完成任何 PTU'
-      : '已完成 ${done.length} 台（${list(done)}）';
+      ? l10n.controller_resumeNoneDone
+      : l10n.controller_resumeDone(done.length, list(done));
   final inflightText = inflight.isEmpty
       ? ''
-      : '，${list(inflight)} 指派中斷、重新連線後以閘道器核對為準';
-  final pendingText = pending > 0 ? '，尚有 $pending 台未配置' : '';
-  return '上次中斷於$where，$doneText$inflightText$pendingText。閘道器仍在運作，不需重新上電。';
+      : l10n.controller_resumeInflight(list(inflight));
+  final pendingText = pending > 0 ? l10n.controller_resumePending(pending) : '';
+  return l10n.controller_resume(where, doneText, inflightText, pendingText);
 }
 
 /// Step 9 waits this long between completed verification polls (seconds).
@@ -1430,19 +1465,22 @@ String verifyProgressText(
   Set<int> skipped = const {},
 ]) {
   final sorted = List.of(ids)..sort();
-  final line = sorted.map((id) => '#$id ${counts[id] ?? 0}/3').join('、');
+  final l10n = L10n.current;
+  final line = sorted
+      .map((id) => '#$id ${counts[id] ?? 0}/3')
+      .join(l10n.controller_listSeparator);
   final idle = [
     for (final id in sorted)
       if (skipped.contains(id))
-        'PTU #$id 未驗證（已略過）'
+        l10n.controller_verifySkipped(id)
       else if (waiting.contains(id))
-        'PTU #$id 尚無資料',
+        l10n.controller_verifyNoData(id),
   ];
-  return ['資料驗證 $line', ...idle].join('\n');
+  return [l10n.controller_verifyProgress(line), ...idle].join('\n');
 }
 
 /// Text for 「N 台在本次掃描未出現，已取消勾選」.
-String absentSelectionText(int n) => '$n 台在本次掃描未出現，已取消勾選';
+String absentSelectionText(int n) => L10n.current.controller_absentSelection(n);
 
 /// /api/latest rows show this gateway uploading within the last 60 s
 /// ([lagLimit], 1.0.0+20: longer for a gateway at a longer interval).
@@ -1454,7 +1492,7 @@ bool backendRowsFresh(Iterable<Map> rows, {int lagLimit = verifyLagLimit}) =>
 
 /// Star mode: fleet-status could not tell whether out-of-range PTUs' owner
 /// gateways are registered, so nothing was reset automatically.
-const starOwnerUnknownText = '無法確認閘道器登記狀態，請手動重置';
+String get starOwnerUnknownText => L10n.current.controller_starOwnerUnknown;
 
 /// [CommissionState.copy]: leave a nullable field as it is.
 const _keep = Object();
@@ -1577,8 +1615,28 @@ bool directConfirmReady(CommissionState s) {
   return identified != null && sameMac(identified, picked);
 }
 
+/// 2026-10-05 i18n（docs/i18n.md §8.2）：[CommissionState.message] 是哪一種
+/// 已知訊息，讓其他檔不必比對畫面文字（文字跟著語言變）。只在設定該
+/// message 的同一個 [CommissionState.copy] 帶入；之後 copy 換了 message
+/// 而沒給 messageKind，就回到 [none]。
+enum MessageKind {
+  /// 其他訊息（或空白）。
+  none,
+
+  /// [verifiedText]：資料驗證剛通過（完成頁）。
+  verified,
+
+  /// 完成頁健康檢查「資料持續更新」（`controller_dataStreaming`）。
+  dataStreaming,
+
+  /// 第 1 步掃描沒找到閘道器（`controller_noGatewayFound`）。
+  noGatewayFound,
+}
+
 class CommissionState {
   const CommissionState({
+    this.messageKind = MessageKind.none,
+    this.pendingReadback = const {},
     this.step = 0,
     this.busy = false,
     this.discoveryLinkActive = false,
@@ -2063,6 +2121,24 @@ class CommissionState {
   final List<Map<String, dynamic>> ptus;
   final Set<String> selected;
   final Map<String, String> results;
+
+  /// 2026-10-05 i18n：[message] 的種類（[MessageKind]）；取代比對文字。
+  final MessageKind messageKind;
+
+  /// 完成頁健康檢查顯示「資料持續更新」（取代 `message == '資料持續更新'`）。
+  bool get dataStreaming => messageKind == MessageKind.dataStreaming;
+
+  /// 第 1 步掃描沒找到閘道器（取代 `message.startsWith('未找到閘道器')`）。
+  bool get noGatewayFound => messageKind == MessageKind.noGatewayFound;
+
+  /// 2026-10-05 i18n：第 8 步 [results] 目前是「已送出 #n，待回讀確認」
+  /// （[pendingReadbackText]）的 PTU MAC——取代 `results[mac].contains('待回讀
+  /// 確認')`。[copy] 換了 [results] 而沒給這個欄位時，只留下文字沒變的 MAC。
+  final Set<String> pendingReadback;
+
+  /// [mac] 的第 8 步結果是否為待回讀確認（見 [pendingReadback]）。
+  bool pendingReadbackOf(String mac) => pendingReadback.contains(mac);
+
   final List<String> missing;
   CommissionState copy({
     int? step,
@@ -2161,7 +2237,23 @@ class CommissionState {
     Object? uploadIntervalMs = _keep,
     Object? verifyIntervalMs = _keep,
     BuildModeFallback? buildModeFallback,
+    MessageKind? messageKind,
+    Set<String>? pendingReadback,
   }) => CommissionState(
+    messageKind:
+        messageKind ??
+        (message == null || message == this.message
+            ? this.messageKind
+            : MessageKind.none),
+    pendingReadback:
+        pendingReadback ??
+        (results == null
+            ? this.pendingReadback
+            : {
+                for (final mac in this.pendingReadback)
+                  if (results[mac] != null && results[mac] == this.results[mac])
+                    mac,
+              }),
     buildMode: buildMode ?? this.buildMode,
     buildModeFallback: buildModeFallback ?? this.buildModeFallback,
     uploadIntervalMs: identical(uploadIntervalMs, _keep)
@@ -3020,7 +3112,7 @@ class CommissioningController extends Notifier<CommissionState> {
     if (assigned) {
       list = list.doneBefore(
         direct ? finishItemSettings : finishItemJoin,
-        note: '先前已完成',
+        note: L10n.current.controller_doneBefore,
       );
     }
     list = list.startNext();
@@ -3041,9 +3133,15 @@ class CommissioningController extends Notifier<CommissionState> {
   /// The gateway already monitors the chosen PTUs: nothing is sent.
   void _monitoringChecked() => _tick(
     (l) => l
-        .done(finishItemSettings, note: '已在監控')
-        .done(finishItemJoin, note: '已在監控')
-        .done(finishItemJoined, note: '已在監控'),
+        .done(
+          finishItemSettings,
+          note: L10n.current.controller_alreadyMonitoring,
+        )
+        .done(finishItemJoin, note: L10n.current.controller_alreadyMonitoring)
+        .done(
+          finishItemJoined,
+          note: L10n.current.controller_alreadyMonitoring,
+        ),
     kind: ChecklistKind.finish,
   );
 
@@ -3051,7 +3149,9 @@ class CommissioningController extends Notifier<CommissionState> {
   void _joinedChecked() => _tick(
     (l) => l.done(
       finishItemJoined,
-      note: directFlow ? 'PTU 已連上閘道器' : '${state.ptus.length} 台 PTU 已連上',
+      note: directFlow
+          ? L10n.current.controller_ptuJoinedDirect
+          : L10n.current.controller_ptuJoinedCount(state.ptus.length),
     ),
     kind: ChecklistKind.finish,
   );
@@ -3066,7 +3166,7 @@ class CommissioningController extends Notifier<CommissionState> {
       list = finishChecklist(
         direct: directFlow,
         total: ptus.length,
-      ).doneBefore(finishItemData, note: '先前已完成');
+      ).doneBefore(finishItemData, note: L10n.current.controller_doneBefore);
     }
     _setChecklist(
       list.start(finishItemData, note: dataCountNote(0, 3, ptus: ptus.length)),
@@ -3078,7 +3178,7 @@ class CommissioningController extends Notifier<CommissionState> {
     final all = state.assignStatus.values;
     if (all.isEmpty) return '';
     final done = all.where((a) => a.phase == AssignPhase.done).length;
-    return '$done/${all.length} 台';
+    return L10n.current.controller_assignCount(done, all.length);
   }
 
   /// After [_assignAll] of a list flow: 指派 PTU done, or failed with how
@@ -3094,12 +3194,19 @@ class CommissioningController extends Notifier<CommissionState> {
       }
       final bound = l.isDone(finishItemBind)
           ? l
-          : l.done(finishItemBind, note: bindNote ?? '已指派 PTU #$directPtuId');
+          : l.done(
+              finishItemBind,
+              note:
+                  bindNote ?? L10n.current.controller_assignedPtu(directPtuId),
+            );
       return bound.start(finishItemSettings);
     }
     return failed.isEmpty
         ? l.done(finishItemAssign, note: _assignCount())
-        : l.fail('${failed.length} 台指派失敗', id: finishItemAssign);
+        : l.fail(
+            L10n.current.controller_assignFailedCount(failed.length),
+            id: finishItemAssign,
+          );
   }, kind: ChecklistKind.finish);
 
   /// [relinkStep] (4 = step 7 scan, 5 = step 8): a link loss ending this run
@@ -3245,7 +3352,8 @@ class CommissioningController extends Notifier<CommissionState> {
         final log = _connectLog;
         state = state.copy(
           errorDetail: log != null && log.$1 == generation && log.$2.isNotEmpty
-              ? '${failure.toString()}\n連線失敗紀錄：${log.$2.join('、')}'
+              ? '${failure.toString()}\n'
+                    '${L10n.current.controller_connectLogDetail(log.$2.join(L10n.current.controller_listSeparator))}'
               : failure.toString(),
           reconnectFailed: failure.code == 'reconnect_failed',
           // Round 11: no 「連線中（第 n 次）」 left beside the banner.
@@ -3264,9 +3372,9 @@ class CommissioningController extends Notifier<CommissionState> {
               : rebooted
               ? gatewayRebootRetryText
               : !safe
-              ? '尚未確認閘道器已恢復監控，請重新連線核對設定。'
+              ? L10n.current.controller_monitorUnconfirmedCheck
               : detailed
-              ? '資料驗證未通過：\n${diagnosis.$2}'
+              ? L10n.current.controller_verifyFailed(diagnosis.$2)
               : failure.message,
         );
         // Field rescue: classified after the red box is set, so the report
@@ -3416,11 +3524,15 @@ class CommissioningController extends Notifier<CommissionState> {
           state = state.copy(
             savedResume: true,
             savedProgress: true,
-            message: '上次更換 PTU 尚未完成，請重新連線核對並還原原綁定。',
+            message: L10n.current.controller_replaceUnfinished,
           );
         }
       } catch (_) {
-        if (ref.mounted) state = state.copy(error: '更換 PTU 的恢復紀錄無法讀取，請聯絡維護人員。');
+        if (ref.mounted) {
+          state = state.copy(
+            error: L10n.current.controller_replaceJournalUnreadable,
+          );
+        }
       }
       return;
     }
@@ -3503,7 +3615,7 @@ class CommissioningController extends Notifier<CommissionState> {
   /// 「重新開始」 on an unfinished run's saved progress: forget it.
   Future<void> clearCompleted() async {
     if (_pendingPtuReplace != null) {
-      state = state.copy(error: '請先重新連線還原上次更換 PTU 的綁定，不能略過恢復紀錄。');
+      state = state.copy(error: L10n.current.controller_replaceMustRestore);
       return;
     }
     _field.end('abandoned');
@@ -3538,7 +3650,8 @@ class CommissioningController extends Notifier<CommissionState> {
     if (state.busy || data == null || data['peer'] is! String) return;
     final peer = GatewayPeer(
       data['peer'] as String,
-      (data['peer_name'] as String?) ?? '閘道器',
+      (data['peer_name'] as String?) ??
+          L10n.current.controller_gatewayFallbackName,
       0,
     );
     if (_pendingPtuReplace != null) {
@@ -3593,7 +3706,7 @@ class CommissioningController extends Notifier<CommissionState> {
       config: {...state.config, 'choose_station': false},
       results: {},
       assignStatus: {},
-      message: '已重新連線，由閘道器重新掃描 PTU。',
+      message: L10n.current.controller_reconnectedRescan,
     );
     await discover();
     if (!ref.mounted || state.error != null || step != 5) return;
@@ -3647,7 +3760,9 @@ class CommissioningController extends Notifier<CommissionState> {
   /// once it is answered the check goes on by itself. A refusal fails the
   /// run with its usual text.
   Future<void> prepare(String base, String password, {bool offline = false}) =>
-      _run('檢查藍牙與後端連線', 30, untimed: _link.prepare, (generation) async {
+      _run(L10n.current.controller_prepareRun, 30, untimed: _link.prepare, (
+        generation,
+      ) async {
         _backend = describeBackend(Uri.tryParse(base.trim()));
         if (!offline) {
           final secret = _passwordFor(base, password);
@@ -3658,21 +3773,27 @@ class CommissioningController extends Notifier<CommissionState> {
         state = state.copy(
           step: 1,
           offline: offline,
-          message: offline ? '離線模式：最後仍需登入驗證資料' : preparedText,
+          message: offline ? L10n.current.controller_offlineMode : preparedText,
         );
       });
 
-  Future<void> scan() => _run('搜尋附近的閘道器', 30, (generation) async {
-    // 09-28: a failed connect's checklist is not this search's.
-    if (state.checklist?.kind == ChecklistKind.connect) _setChecklist(null);
-    final peers = await _link.scan();
-    _check(generation);
-    noteGatewayPeers(peers);
-    state = state.copy(
-      peers: peers,
-      message: peers.isEmpty ? '未找到閘道器，請靠近並確認電源後重掃。' : '請選擇要開通的閘道器',
-    );
-  });
+  Future<void> scan() =>
+      _run(L10n.current.controller_scanRun, 30, (generation) async {
+        // 09-28: a failed connect's checklist is not this search's.
+        if (state.checklist?.kind == ChecklistKind.connect) _setChecklist(null);
+        final peers = await _link.scan();
+        _check(generation);
+        noteGatewayPeers(peers);
+        state = state.copy(
+          peers: peers,
+          message: peers.isEmpty
+              ? L10n.current.controller_noGatewayFound
+              : L10n.current.controller_chooseGateway,
+          messageKind: peers.isEmpty
+              ? MessageKind.noGatewayFound
+              : MessageKind.none,
+        );
+      });
 
   /// Blinks the gateway LED; firmware 1.7.20+ (`identify_ptu_supported`)
   /// also writes the connected PTU ([target] ptu | gateway | both) and acks
@@ -3699,7 +3820,9 @@ class CommissioningController extends Notifier<CommissionState> {
   /// the first command after ~11 s idle, the link had dropped with 0x08 and
   /// the red box waited for a tap); the identification made before stands.
   Future<void> identify({String target = 'both'}) async {
-    await _run('辨識閘道器', 12, relinkStep: 4, (generation) async {
+    await _run(L10n.current.controller_identifyRun, 12, relinkStep: 4, (
+      generation,
+    ) async {
       if (state.config['identify_supported'] != true) {
         throw const GatewayFailure('identify_unsupported');
       }
@@ -4059,7 +4182,7 @@ class CommissioningController extends Notifier<CommissionState> {
     } catch (error) {
       if (ref.mounted && token == _holdToken) {
         state = state.copy(
-          error: '藍牙連線未完成，請重試。',
+          error: L10n.current.controller_bleConnectIncomplete,
           errorDetail: error.toString(),
         );
       }
@@ -4072,7 +4195,7 @@ class CommissioningController extends Notifier<CommissionState> {
       } catch (error) {
         if (ref.mounted) {
           state = state.copy(
-            error: '藍牙清理未完成，請重試斷開。',
+            error: L10n.current.controller_bleCleanupIncomplete,
             errorDetail: error.toString(),
           );
         }
@@ -4211,7 +4334,7 @@ class CommissioningController extends Notifier<CommissionState> {
       } catch (error) {
         if (ref.mounted) {
           state = state.copy(
-            error: '藍牙清理未完成，請重試斷開。',
+            error: L10n.current.controller_bleCleanupIncomplete,
             errorDetail: error.toString(),
           );
         }
@@ -4601,9 +4724,13 @@ class CommissioningController extends Notifier<CommissionState> {
 
   Future<void> _connect(
     GatewayPeer peer,
-  ) => _run('正在連線 ${peer.name}，請保持靠近', 120, (generation) async {
+  ) => _run(L10n.current.controller_connectingPeer(peer.name), 120, (
+    generation,
+  ) async {
     if (_pendingPtuReplace != null) {
-      throw const _ReplacePtuFailure('上次更換 PTU 尚未還原，請使用「重新連線並繼續」先核對原綁定。');
+      throw _ReplacePtuFailure(
+        L10n.current.controller_replaceNotRestored(rescanAfterLossLabel),
+      );
     }
     // Stage text (清除舊連線／正在連線／第 n 次重試) on the first connect too,
     // not only on a relink (round 7b saw none here).
@@ -4682,7 +4809,10 @@ class CommissioningController extends Notifier<CommissionState> {
         }
         final fw = config['fw_version']?.toString() ?? '';
         _tick(
-          (l) => l.done(connectItemStatus, note: fw.isEmpty ? '' : '韌體 $fw'),
+          (l) => l.done(
+            connectItemStatus,
+            note: fw.isEmpty ? '' : L10n.current.controller_firmwareNote(fw),
+          ),
           kind: ChecklistKind.connect,
         );
         // The explicit identification connection to [peer] is
@@ -4708,7 +4838,7 @@ class CommissioningController extends Notifier<CommissionState> {
         checkPassed: false,
         ptus: devices,
         selected: devices.map((d) => d['mac'].toString()).toSet(),
-        message: '已連線，此閘道器已有站點設定。先做網路體檢，再選擇沿用或設定新站。',
+        message: L10n.current.controller_connectedHasStation,
         uploadNotice: '',
       );
       return;
@@ -4835,7 +4965,7 @@ class CommissioningController extends Notifier<CommissionState> {
       config: _withUpload(config, net),
       net: _netFields(net),
       checkPassed: false,
-      message: '已連線。先做網路體檢，再設定身份與 Wi-Fi。',
+      message: L10n.current.controller_connectedNew,
       uploadNotice: '',
     );
   });
@@ -4888,9 +5018,13 @@ class CommissioningController extends Notifier<CommissionState> {
     final station = state.config['choose_station'] == true;
     final String message;
     if (station) {
-      message = skip ? '網路體檢未通過：可重設 Wi-Fi 或設定新站點；沿用要等網路正常。' : '網路體檢通過，請選擇站點。';
+      message = skip
+          ? L10n.current.controller_checkFailedStation
+          : L10n.current.controller_checkPassedStation;
     } else {
-      message = skip ? '網路體檢未通過，仍可設定新站點；之後會再確認資料上傳。' : '網路體檢通過，請設定身份與 Wi-Fi。';
+      message = skip
+          ? L10n.current.controller_checkFailedNew
+          : L10n.current.controller_checkPassedNew;
     }
     state = state.copy(checkPassed: true, message: message);
   }
@@ -4933,8 +5067,8 @@ class CommissioningController extends Notifier<CommissionState> {
       verified: false,
       report: '',
       message: station
-          ? '保留目前站點與 PTU，只重設 Wi-Fi。請選 2.4 GHz 的 Wi-Fi。'
-          : '請先設定 Wi-Fi（閘道器只能用 2.4 GHz），網路正常後再設定站號。',
+          ? L10n.current.controller_keepStationResetWifi
+          : L10n.current.controller_wifiFirstPrompt,
     );
   }
 
@@ -4963,7 +5097,7 @@ class CommissioningController extends Notifier<CommissionState> {
       selected: station
           ? state.ptus.map((d) => d['mac'].toString()).toSet()
           : null,
-      message: '網路體檢：確認閘道器的 Wi-Fi 與資料上傳。',
+      message: L10n.current.controller_netCheckIntro,
     );
     _watchUploadIfPending();
   }
@@ -4979,7 +5113,7 @@ class CommissioningController extends Notifier<CommissionState> {
         'new_station': false,
         'wifi_only': false,
       },
-      message: '請選擇站點。沿用要等閘道器開始上傳資料。',
+      message: L10n.current.controller_chooseStationWaitUpload,
     );
   }
 
@@ -5059,10 +5193,10 @@ class CommissioningController extends Notifier<CommissionState> {
       verified: false,
       report: '',
       message: newStation
-          ? '請輸入新的站點 ID 與 Wi-Fi；儲存後才會變更閘道器。'
+          ? L10n.current.controller_newStationPrompt
           : wifiOnly
-          ? '保留目前站點與 PTU，僅更新 Wi-Fi。'
-          : '使用此站點，由閘道器搜尋 PTU，請確認要監控的裝置。',
+          ? L10n.current.controller_wifiOnlyPrompt
+          : L10n.current.controller_reuseStationPrompt,
     );
     if (!newStation && !wifiOnly) await discover();
   }
@@ -5635,19 +5769,22 @@ class CommissioningController extends Notifier<CommissionState> {
       state = state.copy(
         checkPassed: false,
         config: {...state.config, wifiFirstSsidKey: ssid},
-        message: 'Wi-Fi 已更新，站點與 PTU 設定保留。接著確認資料有上傳。',
+        message: L10n.current.controller_wifiUpdatedKeepStation,
       );
       return;
     }
     _pendingReplace = false;
     state = state.copy(
       step: 3,
-      message: keepWifi ? wifiKeptDoneText(ssid) : 'WiFi 已連線，下一步確認後端看得到閘道器',
+      message: keepWifi
+          ? wifiKeptDoneText(ssid)
+          : L10n.current.controller_wifiConnectedNext,
     );
   });
 
-  String get _configureWifiLabel =>
-      state.config[wifiFirstKey] == true ? wifiFirstRunLabel : '設定身份與 WiFi';
+  String get _configureWifiLabel => state.config[wifiFirstKey] == true
+      ? wifiFirstRunLabel
+      : L10n.current.controller_configureWifiRun;
 
   void _stationChangeStage(int generation, StationChangeStage stage) {
     _check(generation);
@@ -5750,7 +5887,7 @@ class CommissioningController extends Notifier<CommissionState> {
     String? environment,
     String? password,
     bool rejoin,
-  ) => _run('確認閘道器持續上線', 90, (generation) async {
+  ) => _run(L10n.current.controller_onlineRun, 90, (generation) async {
     // 09-28: 連上後台 → 第 1 次心跳 → 第 2 次心跳 → 上傳目標, each ticked
     // on what the back office answers.
     if (!skip) _setChecklist(onlineChecklist().start(onlineItemBackend));
@@ -5765,7 +5902,10 @@ class CommissioningController extends Notifier<CommissionState> {
       _loginOk(base, secret);
     }
     if (skip || !_loggedIn) {
-      state = state.copy(step: 4, message: '後端尚未確認；完成配置後仍需驗證');
+      state = state.copy(
+        step: 4,
+        message: L10n.current.controller_backendUnconfirmed,
+      );
       return;
     }
     if (rejoin) await _rejoin(generation, site, gateway);
@@ -5775,7 +5915,10 @@ class CommissioningController extends Notifier<CommissionState> {
         wanted = _checkUploadTarget(base, environment);
       } on GatewayFailure {
         _tick(
-          (l) => l.fail('閘道器的資料送到別的後台', id: onlineItemTarget),
+          (l) => l.fail(
+            L10n.current.controller_uploadElsewhere,
+            id: onlineItemTarget,
+          ),
           kind: ChecklistKind.online,
         );
         rethrow;
@@ -5821,7 +5964,10 @@ class CommissioningController extends Notifier<CommissionState> {
             : l.done(onlineItemBackend).start(onlineItemBeat1);
         if (heartbeat != null && !next.isDone(onlineItemBeat1)) {
           next = next
-              .done(onlineItemBeat1, note: '心跳 1/2')
+              .done(
+                onlineItemBeat1,
+                note: L10n.current.controller_heartbeatNote(1),
+              )
               .start(onlineItemBeat2);
         }
         return next;
@@ -5832,8 +5978,12 @@ class CommissioningController extends Notifier<CommissionState> {
           heartbeat != null &&
           heartbeat != previous) {
         _tick(
-          (l) =>
-              l.done(onlineItemBeat2, note: '心跳 2/2').start(onlineItemTarget),
+          (l) => l
+              .done(
+                onlineItemBeat2,
+                note: L10n.current.controller_heartbeatNote(2),
+              )
+              .start(onlineItemTarget),
           kind: ChecklistKind.online,
         );
         await _request(generation, 'PATCH', '$_path/bot-monitor', {
@@ -5852,7 +6002,7 @@ class CommissioningController extends Notifier<CommissionState> {
         state = state.copy(
           step: 4,
           online: true,
-          message: '閘道器持續上線，可搜尋 PTU',
+          message: L10n.current.controller_onlineReady,
           // Heartbeats reached this backend, so the gateway is uploading.
           config: reportsMqttTarget(state.config)
               ? {...state.config, 'mqtt_connected': true}
@@ -6119,12 +6269,12 @@ class CommissioningController extends Notifier<CommissionState> {
             : state.scanResumePending
             ? phoneLinkLostText
             : state.uploadWatch == UploadWatch.linkLost
-            ? '閘道器掃描未完成：藍牙連線已中斷。請靠近閘道器，再按「$rescanAfterLossLabel」。'
+            ? L10n.current.controller_scanLinkLost(rescanAfterLossLabel)
             : state.testMode
-            ? '閘道器在測試模式，不會掃描 PTU。請按「$leaveTestModeLabel」，切換後 APP 會自動重新掃描。'
+            ? L10n.current.controller_scanTestMode(leaveTestModeLabel)
             : directFlow
-            ? '閘道器選台未完成，請查看錯誤後按「重新搜尋」。'
-            : '閘道器掃描未完成，請查看錯誤後按「$rescanLabel」。',
+            ? L10n.current.controller_directPickIncomplete
+            : L10n.current.controller_scanIncomplete(rescanLabel),
         error: state.error,
       );
     }
@@ -6425,7 +6575,9 @@ class CommissioningController extends Notifier<CommissionState> {
   Future<void> _listDiscover({
     bool autoReset = true,
     Set<String>? keep,
-  }) => _run(relinkStep: 4, '閘道器正在掃描周邊 PTU，請稍候', 75, (generation) async {
+  }) => _run(relinkStep: 4, L10n.current.controller_scanningPtus, 75, (
+    generation,
+  ) async {
     final relink =
         state.uploadWatch == UploadWatch.linkLost || state.resumePending;
     if (relink) {
@@ -6471,7 +6623,7 @@ class CommissioningController extends Notifier<CommissionState> {
       starNotice: state.starNotice,
     );
     state = state.copy(
-      message: relink ? relinkReloadText : '閘道器正在掃描周邊 PTU，請稍候',
+      message: relink ? relinkReloadText : L10n.current.controller_scanningPtus,
       ptus: [],
       selected: {},
       results: {},
@@ -6545,7 +6697,9 @@ class CommissioningController extends Notifier<CommissionState> {
             .where((p) => !registry.contains(_ownerGateway(p)))
             .toList();
         if (stale.isNotEmpty) {
-          state = state.copy(message: '發現 ${stale.length} 台殘留編號的 PTU，自動重置中');
+          state = state.copy(
+            message: L10n.current.controller_resettingStale(stale.length),
+          );
           for (final p in stale) {
             final mac = p['mac'].toString();
             var ok = false;
@@ -6626,7 +6780,7 @@ class CommissioningController extends Notifier<CommissionState> {
           : '',
       message: ptus.isEmpty
           ? const GatewayFailure('no_devices').message
-          : '閘道器已回傳 ${ptus.length} 台 PTU，請選擇要監控的裝置，最多 $target 台',
+          : L10n.current.controller_ptusReturned(ptus.length, target),
     );
     await _reconcileAssigned(generation, ptus);
   });
@@ -6703,40 +6857,43 @@ class CommissioningController extends Notifier<CommissionState> {
   /// Step 7 with every selected PTU already assigned (round 9 dead end):
   /// 「開始驗證」 goes straight to step 9 when the gateway already monitors
   /// them; otherwise 「恢復監控」 sends join_fleet first. Never re-assigns.
-  Future<void> finishConfigured() =>
-      _step8Run('正在確認閘道器監控狀態', 90, (generation) async {
-        final chosen = state.ptus
-            .where((p) => state.selected.contains(p['mac']))
-            .toList();
-        if (chosen.isEmpty) throw const GatewayFailure('no_devices');
-        state = state.copy(step: 5);
-        _startFinishChecklist(chosen, assigned: true);
-        if (await _alreadyMonitoring(generation, chosen)) {
-          _monitoringChecked();
-          return;
-        }
-        _provisioningMayBeActive = true;
-        final isStar = ref.read(topologyProvider).topology.isStar;
-        final config = await _command(generation, 'get_config');
-        final toStar = isStar && await _switchingToStar(generation, config);
-        if (config['max_connections'] != monitorLimit(isStar)) {
-          await _command(generation, 'set_config', {
-            'max_connections': monitorLimit(isStar),
-          });
-        }
-        // Round 26: direct → star, the allow list goes with the switch.
-        if (toStar) await _starListAfterSwitch(generation, chosen);
-        await _command(generation, 'join_fleet');
-        _tick(
-          (l) => l
-              .done(finishItemSettings)
-              .done(finishItemJoin)
-              .start(finishItemJoined),
-          kind: ChecklistKind.finish,
-        );
-        await _waitConnected(generation, chosen, limitSec: 30);
-        _joinedChecked();
-      });
+  Future<void> finishConfigured() => _step8Run(
+    L10n.current.controller_checkingMonitor,
+    90,
+    (generation) async {
+      final chosen = state.ptus
+          .where((p) => state.selected.contains(p['mac']))
+          .toList();
+      if (chosen.isEmpty) throw const GatewayFailure('no_devices');
+      state = state.copy(step: 5);
+      _startFinishChecklist(chosen, assigned: true);
+      if (await _alreadyMonitoring(generation, chosen)) {
+        _monitoringChecked();
+        return;
+      }
+      _provisioningMayBeActive = true;
+      final isStar = ref.read(topologyProvider).topology.isStar;
+      final config = await _command(generation, 'get_config');
+      final toStar = isStar && await _switchingToStar(generation, config);
+      if (config['max_connections'] != monitorLimit(isStar)) {
+        await _command(generation, 'set_config', {
+          'max_connections': monitorLimit(isStar),
+        });
+      }
+      // Round 26: direct → star, the allow list goes with the switch.
+      if (toStar) await _starListAfterSwitch(generation, chosen);
+      await _command(generation, 'join_fleet');
+      _tick(
+        (l) => l
+            .done(finishItemSettings)
+            .done(finishItemJoin)
+            .start(finishItemJoined),
+        kind: ChecklistKind.finish,
+      );
+      await _waitConnected(generation, chosen, limitSec: 30);
+      _joinedChecked();
+    },
+  );
 
   /// Default selection: in-range PTUs, connected first, then RSSI; capped.
   Set<String> _preselect(List<Map<String, dynamic>> ptus, int target) {
@@ -6846,14 +7003,14 @@ class CommissioningController extends Notifier<CommissionState> {
       final id = (p['device_number'] as num?)?.toInt() ?? 0;
       return id == 0 || id == 255;
     });
-    if (occupied >= 5 && addsNew) return '本機已滿，請連另一台閘道器。';
+    if (occupied >= 5 && addsNew) return L10n.current.controller_gatewayFull;
     return null;
   }
 
   /// 「重置並納入」：把範圍外 PTU 的編號清成 255，再重新掃描，讓它可被本機
   /// 勾選。呼叫端（page）只在 [ptuOutOfRange] 為 true 時提供這個動作。
   Future<void> resetAndInclude(String mac) async {
-    await _run('重置編號，準備重新掃描', 20, (generation) async {
+    await _run(L10n.current.controller_resetNumberRun, 20, (generation) async {
       final result = await _command(generation, 'assign_device_id', {
         'mac': mac,
         'new_id': 255,
@@ -7099,7 +7256,7 @@ class CommissioningController extends Notifier<CommissionState> {
       if (reason != null) {
         await _save();
         failed[mac] = reason;
-        results[mac] = '指派失敗：$reason';
+        results[mac] = L10n.current.controller_assignFailedReason(reason);
         state = state.copy(
           results: Map.of(results),
           assignFailed: {...state.assignFailed, mac: reason},
@@ -7122,11 +7279,14 @@ class CommissioningController extends Notifier<CommissionState> {
       _doneAssign[mac] = id;
       results[mac] = _pendingReadback.contains(mac)
           ? pendingReadbackText(id)
-          : '已指派 #$id，等待連線';
+          : L10n.current.controller_assignedWaiting(id);
       final stillFailed = Map<String, String>.of(state.assignFailed)
         ..remove(mac);
       state = state.copy(
         results: Map.of(results),
+        pendingReadback: _pendingReadback.contains(mac)
+            ? {...state.pendingReadback, mac}
+            : null,
         assignFailed: stillFailed,
         unassigned: state.unassigned.difference({mac}),
         assignedOk: {...state.assignedOk, mac},
@@ -7183,12 +7343,14 @@ class CommissioningController extends Notifier<CommissionState> {
         _doneAssign.remove(entry.key);
         mismatched.add(entry.key);
         failed[entry.key] = reason;
-        results[entry.key] = '指派失敗：$reason';
+        results[entry.key] = L10n.current.controller_assignFailedReason(reason);
         for (final p in state.ptus.where((p) => p['mac'] == entry.key)) {
           p['device_number'] = actual;
         }
       } else if (device['connected'] == true) {
-        results[entry.key] = '已連線 #${entry.value}';
+        results[entry.key] = L10n.current.controller_connectedNumber(
+          '${entry.value}',
+        );
       }
     }
     _settlePending(results);
@@ -7218,7 +7380,7 @@ class CommissioningController extends Notifier<CommissionState> {
     for (final mac in _pendingReadback) {
       final id = _doneAssign[mac];
       if (id != null && results[mac] == pendingReadbackText(id)) {
-        results[mac] = '已指派 #$id，等待連線';
+        results[mac] = L10n.current.controller_assignedWaiting(id);
       }
     }
     _pendingReadback.clear();
@@ -7228,43 +7390,48 @@ class CommissioningController extends Notifier<CommissionState> {
   ///
   /// Round 27 (star, firmware 1.7.36+): this gateway's target list goes out
   /// before the first assign ([_starListBeforeAssign]).
-  Future<void> configurePtus({Set<String> skip = const {}}) =>
-      _step8Run('逐台編號並開始監控', 240 + _starListRunSeconds, (generation) async {
-        final chosen = state.ptus
-            .where((p) => state.selected.contains(p['mac']))
-            .toList();
-        if (chosen.isEmpty || chosen.length > targetPtuCount) {
-          throw const GatewayFailure('no_devices');
-        }
-        _provisioningMayBeActive = true;
-        if (skip.isEmpty) {
-          _doneAssign.clear();
-          _inflightAssign.clear();
-          _starKeep = const [];
-        }
-        final targets = chosen.where((p) => !skip.contains(p['mac'])).toList();
-        state = state.copy(
-          step: 5,
-          results: {
-            for (final p in chosen)
-              if (skip.contains(p['mac']))
-                p['mac'].toString(): '已指派 #${p['device_number']}',
-          },
-          assignRunning: true,
-          assignStatus: _assignStart(chosen, targets),
-          assignFailed: {},
-          unassigned: {},
-          assignedOk: skip,
-          resumePending: false,
-          monitoringOk: false,
-        );
-        _startFinishChecklist(chosen, targets: targets);
-        await _starListBeforeAssign(generation, chosen, targets);
-        _assignStarted();
-        final failed = await _assignAll(generation, targets);
-        _assignChecked(failed);
-        await _startMonitoring(generation, chosen, failed);
-      });
+  Future<void> configurePtus({Set<String> skip = const {}}) => _step8Run(
+    L10n.current.controller_configureRun,
+    240 + _starListRunSeconds,
+    (generation) async {
+      final chosen = state.ptus
+          .where((p) => state.selected.contains(p['mac']))
+          .toList();
+      if (chosen.isEmpty || chosen.length > targetPtuCount) {
+        throw const GatewayFailure('no_devices');
+      }
+      _provisioningMayBeActive = true;
+      if (skip.isEmpty) {
+        _doneAssign.clear();
+        _inflightAssign.clear();
+        _starKeep = const [];
+      }
+      final targets = chosen.where((p) => !skip.contains(p['mac'])).toList();
+      state = state.copy(
+        step: 5,
+        results: {
+          for (final p in chosen)
+            if (skip.contains(p['mac']))
+              p['mac'].toString(): L10n.current.controller_assignedNumber(
+                '${p['device_number']}',
+              ),
+        },
+        assignRunning: true,
+        assignStatus: _assignStart(chosen, targets),
+        assignFailed: {},
+        unassigned: {},
+        assignedOk: skip,
+        resumePending: false,
+        monitoringOk: false,
+      );
+      _startFinishChecklist(chosen, targets: targets);
+      await _starListBeforeAssign(generation, chosen, targets);
+      _assignStarted();
+      final failed = await _assignAll(generation, targets);
+      _assignChecked(failed);
+      await _startMonitoring(generation, chosen, failed);
+    },
+  );
 
   /// Direct mode on firmware 1.7.20+: keeps the gateway's `direct` report
   /// (state, threshold, bound MAC, candidates). `get_status` is the only op
@@ -7352,7 +7519,9 @@ class CommissioningController extends Notifier<CommissionState> {
     if (state.busy) return false;
     final wanted = dbm.clamp(minDirectRssi, maxDirectRssi);
     var saved = false;
-    await _sideTask('正在寫入門檻 $wanted dBm', 20, (generation) async {
+    await _sideTask(L10n.current.controller_writingThreshold('$wanted'), 20, (
+      generation,
+    ) async {
       if (!directAutoConnectSupported(state.config)) {
         throw const GatewayFailure('direct_unsupported');
       }
@@ -7365,7 +7534,10 @@ class CommissioningController extends Notifier<CommissionState> {
       if (readBack is! num || readBack.toInt() != wanted) {
         throw GatewayFailure(
           'direct_threshold_not_saved',
-          detail: '寫入 $wanted，回讀 ${readBack ?? '（無）'}',
+          detail: L10n.current.controller_thresholdReadback(
+            '$wanted',
+            '${readBack ?? L10n.current.controller_noneValue}',
+          ),
         );
       }
       saved = true;
@@ -7414,7 +7586,7 @@ class CommissioningController extends Notifier<CommissionState> {
   }
 
   Future<void> _directConfig(Map<String, dynamic> params) =>
-      _sideTask('正在更新直連設定', 20, (generation) async {
+      _sideTask(L10n.current.controller_updatingDirect, 20, (generation) async {
         if (!directAutoConnectSupported(state.config)) {
           throw const GatewayFailure('direct_unsupported');
         }
@@ -7458,117 +7630,124 @@ class CommissioningController extends Notifier<CommissionState> {
     }
   }
 
-  Future<void> _confirmDirectPick() =>
-      _step8Run('正在指派 #$directPtuId 並開始監控', 150, (generation) async {
-        if (!directFlow) throw const GatewayFailure('direct_unsupported');
-        final shown = state.selected.firstOrNull;
-        final identified = state.identifiedMac;
-        final required = directIdentifyRequired(state.config);
-        final status = await _command(generation, 'get_status');
-        _check(generation);
-        _takeDirect(status['direct']);
-        final picked = state.direct?.pickedMac;
-        _syncDirectPick();
-        if (picked == null) {
-          state = state.copy(message: directPickMessage(state.direct));
-          throw const GatewayFailure('direct_pick_missing');
-        }
-        if (required
-            ? identified == null || !sameMac(identified, picked)
-            : shown == null || !sameMac(shown, picked)) {
-          final notice = required
-              ? directSwitchedText(picked)
-              : '閘道器目前連的是 PTU $picked，請先按「辨識此樁」確認是眼前這台，再按「是這台，開始配置」。';
-          state = state.copy(
-            identifiedMac: null,
-            directNotice: notice,
-            message: notice,
+  Future<void> _confirmDirectPick() => _step8Run(
+    L10n.current.controller_assigningDirect(directPtuId),
+    150,
+    (generation) async {
+      if (!directFlow) throw const GatewayFailure('direct_unsupported');
+      final shown = state.selected.firstOrNull;
+      final identified = state.identifiedMac;
+      final required = directIdentifyRequired(state.config);
+      final status = await _command(generation, 'get_status');
+      _check(generation);
+      _takeDirect(status['direct']);
+      final picked = state.direct?.pickedMac;
+      _syncDirectPick();
+      if (picked == null) {
+        state = state.copy(message: directPickMessage(state.direct));
+        throw const GatewayFailure('direct_pick_missing');
+      }
+      if (required
+          ? identified == null || !sameMac(identified, picked)
+          : shown == null || !sameMac(shown, picked)) {
+        final notice = required
+            ? directSwitchedText(picked)
+            : L10n.current.controller_notIdentifiedPick(picked);
+        state = state.copy(
+          identifiedMac: null,
+          directNotice: notice,
+          message: notice,
+        );
+        return;
+      }
+      final row = state.ptus.single;
+      final mac = row['mac'].toString();
+      // Round 15b: confirmed — a temporary 「不是這台？」 binding (or a
+      // leftover one the installer did not answer) becomes permanent.
+      final gatewayBound = directBoundMacOf(state.config);
+      if (_pendingPtuReplace == null &&
+          gatewayBound != null &&
+          sameMac(gatewayBound, mac)) {
+        await _rememberBind(gatewayBound);
+      }
+      state = state.copy(
+        tempBoundMac: _pendingPtuReplace == null ? null : state.tempBoundMac,
+        tempRestoreMac: _pendingPtuReplace == null
+            ? null
+            : state.tempRestoreMac,
+        strayBindMac: null,
+        directNotice: '',
+      );
+      final done =
+          state.assignedOk.any((m) => sameMac(m, mac)) &&
+          (row['device_number'] as num?)?.toInt() == directPtuId;
+      _provisioningMayBeActive = true;
+      if (!done) {
+        _doneAssign.clear();
+        _inflightAssign.clear();
+      }
+      state = state.copy(
+        step: 5,
+        results: done
+            ? {mac: L10n.current.controller_assignedNumber('$directPtuId')}
+            : {},
+        assignRunning: true,
+        assignStatus: _assignStart([row], done ? const [] : [row]),
+        assignFailed: {},
+        unassigned: {},
+        assignedOk: done ? {mac} : {},
+        resumePending: false,
+        monitoringOk: false,
+        identifyNote: '',
+      );
+      // 09-28: 寫入 PTU 綁定 → 設定 → 加入監控 → 核對 → 驗證資料.
+      _startFinishChecklist([row], targets: done ? const [] : [row]);
+      final failed = done
+          ? <String, String>{}
+          : await _assignAll(generation, [row]);
+      final bound = directBoundMacOf(state.config);
+      // Round 28: 〔辨識並綁定〕 binds whatever 「確認後綁定 PTU」 says.
+      if (failed.isEmpty &&
+          (ref.read(topologyProvider).directBindOnConfirm || _bindLaterRun) &&
+          (bound == null || !sameMac(bound, mac))) {
+        await _writeReplaceBind(generation, mac);
+        state = state.copy(config: {...state.config, 'direct_bind_mac': mac});
+        if (_pendingPtuReplace == null) await _rememberBind(mac);
+      }
+      if (_pendingPtuReplace != null) {
+        if (failed.isNotEmpty) {
+          final failure = await _releaseTempBind();
+          throw _ReplacePtuFailure(
+            failure ?? L10n.current.controller_replaceSetupRestored,
           );
-          return;
         }
-        final row = state.ptus.single;
-        final mac = row['mac'].toString();
-        // Round 15b: confirmed — a temporary 「不是這台？」 binding (or a
-        // leftover one the installer did not answer) becomes permanent.
-        final gatewayBound = directBoundMacOf(state.config);
-        if (_pendingPtuReplace == null &&
-            gatewayBound != null &&
-            sameMac(gatewayBound, mac)) {
-          await _rememberBind(gatewayBound);
+        final back = await _command(generation, 'get_config');
+        _checkReplaceIdentity(back, _pendingPtuReplace!);
+        if (!sameMac(directBoundMacOf(back), mac)) {
+          throw _ReplacePtuFailure(L10n.current.controller_replaceNotReadBack);
         }
-        state = state.copy(
-          tempBoundMac: _pendingPtuReplace == null ? null : state.tempBoundMac,
-          tempRestoreMac: _pendingPtuReplace == null
-              ? null
-              : state.tempRestoreMac,
-          strayBindMac: null,
-          directNotice: '',
-        );
-        final done =
-            state.assignedOk.any((m) => sameMac(m, mac)) &&
-            (row['device_number'] as num?)?.toInt() == directPtuId;
-        _provisioningMayBeActive = true;
-        if (!done) {
-          _doneAssign.clear();
-          _inflightAssign.clear();
-        }
-        state = state.copy(
-          step: 5,
-          results: done ? {mac: '已指派 #$directPtuId'} : {},
-          assignRunning: true,
-          assignStatus: _assignStart([row], done ? const [] : [row]),
-          assignFailed: {},
-          unassigned: {},
-          assignedOk: done ? {mac} : {},
-          resumePending: false,
-          monitoringOk: false,
-          identifyNote: '',
-        );
-        // 09-28: 寫入 PTU 綁定 → 設定 → 加入監控 → 核對 → 驗證資料.
-        _startFinishChecklist([row], targets: done ? const [] : [row]);
-        final failed = done
-            ? <String, String>{}
-            : await _assignAll(generation, [row]);
-        final bound = directBoundMacOf(state.config);
-        // Round 28: 〔辨識並綁定〕 binds whatever 「確認後綁定 PTU」 says.
-        if (failed.isEmpty &&
-            (ref.read(topologyProvider).directBindOnConfirm || _bindLaterRun) &&
-            (bound == null || !sameMac(bound, mac))) {
-          await _writeReplaceBind(generation, mac);
-          state = state.copy(config: {...state.config, 'direct_bind_mac': mac});
-          if (_pendingPtuReplace == null) await _rememberBind(mac);
-        }
-        if (_pendingPtuReplace != null) {
-          if (failed.isNotEmpty) {
-            final failure = await _releaseTempBind();
-            throw _ReplacePtuFailure(failure ?? 'PTU 配置未完成，已還原原綁定；請重新開始更換。');
-          }
-          final back = await _command(generation, 'get_config');
-          _checkReplaceIdentity(back, _pendingPtuReplace!);
-          if (!sameMac(directBoundMacOf(back), mac)) {
-            throw const _ReplacePtuFailure('新 PTU 綁定尚未讀回確認，已停止更換。');
-          }
-          await _rememberBind(mac);
-          _check(generation);
-          await _clearReplace();
-          _check(generation);
-          state = state.copy(tempBoundMac: null, tempRestoreMac: null);
-        }
-        // Round 28: this pile's PTU is confirmed — no longer 「先完成配置」.
-        if (failed.isEmpty) {
-          _bindLaterRun = false;
-          await _recordDeferred(false);
-          state = state.copy(bindLaterMac: null, bindLaterDeferred: false);
-        }
-        final boundNow = directBoundMacOf(state.config);
-        _assignChecked(
-          failed,
-          bindNote: boundNow != null && sameMac(boundNow, mac)
-              ? '已綁定 PTU #$directPtuId'
-              : '已指派 PTU #$directPtuId',
-        );
-        await _startMonitoring(generation, [row], failed);
-      });
+        await _rememberBind(mac);
+        _check(generation);
+        await _clearReplace();
+        _check(generation);
+        state = state.copy(tempBoundMac: null, tempRestoreMac: null);
+      }
+      // Round 28: this pile's PTU is confirmed — no longer 「先完成配置」.
+      if (failed.isEmpty) {
+        _bindLaterRun = false;
+        await _recordDeferred(false);
+        state = state.copy(bindLaterMac: null, bindLaterDeferred: false);
+      }
+      final boundNow = directBoundMacOf(state.config);
+      _assignChecked(
+        failed,
+        bindNote: boundNow != null && sameMac(boundNow, mac)
+            ? L10n.current.controller_boundPtu(directPtuId)
+            : L10n.current.controller_assignedPtu(directPtuId),
+      );
+      await _startMonitoring(generation, [row], failed);
+    },
+  );
 
   /// Round 16b: the gateway's PTU binding as last read — the step 7 status
   /// (`direct.bound_mac`, refreshed while step 7 is open), else get_config;
@@ -7591,7 +7770,7 @@ class CommissioningController extends Notifier<CommissionState> {
     await _run(
       relinkStep: 4,
       countdown: directSwitchSeconds,
-      '正在讓閘道器改連 PTU $mac',
+      L10n.current.controller_switchingPick(mac),
       directSwitchSeconds + 10,
       (generation) async {
         final until = DateTime.now().add(wait);
@@ -7695,8 +7874,12 @@ class CommissioningController extends Notifier<CommissionState> {
           throw GatewayFailure(
             'direct_defer_unconfirmed',
             detail: restore == null
-                ? '暫時綁定 $temp 未能解除：$failure'
-                : '暫時綁定 $temp 未能還原成 $restore：$failure',
+                ? L10n.current.controller_tempUnbindFailed('$temp', failure)
+                : L10n.current.controller_tempRestoreFailed(
+                    '$temp',
+                    restore,
+                    failure,
+                  ),
           );
         }
       }
@@ -7740,14 +7923,17 @@ class CommissioningController extends Notifier<CommissionState> {
       _inflightAssign.clear();
       _bindLaterRun = false;
       final threshold = directMinRssiOf(state.config);
+      // 安裝報告上傳後台、分享、複製，一律中文（docs/i18n.md §6）。
+      // i18n-keep-zh-begin
       _reportBody = [
         _link.demo ? '模擬安裝報告（非實機驗證）' : '安裝報告',
         '站點 $site / 閘道器 $gateway',
         deferredReportLine,
-        deferredDetailText(threshold),
+        deferredDetailText(threshold, l10n: L10n.zh),
         '完成時間：${DateTime.now().toIso8601String()}',
         '後端：$_backend',
       ].join('\n');
+      // i18n-keep-zh-end
       state = state.copy(
         step: 7,
         verified: false,
@@ -7852,12 +8038,12 @@ class CommissioningController extends Notifier<CommissionState> {
     if (before.busy || before.step != 2 || old == null || peer == null) return;
     if ((expectedPeerId != null && expectedPeerId != peer.id) ||
         (expectedMac != null && !sameMac(expectedMac, old))) {
-      state = state.copy(error: '閘道器或綁定已改變，請重新確認要更換的 PTU。');
+      state = state.copy(error: L10n.current.controller_replaceChanged);
       return;
     }
     await _run(replacingPtuText, 60, (generation) async {
       if (_pendingPtuReplace != null) {
-        throw const _ReplacePtuFailure('上次更換尚未還原，請先取消並還原原綁定。');
+        throw _ReplacePtuFailure(L10n.current.controller_replacePending);
       }
       final fresh = await _command(generation, 'get_config');
       _checkReplaceIdentity(fresh, {
@@ -7867,7 +8053,7 @@ class CommissioningController extends Notifier<CommissionState> {
         'gateway': before.config['gateway_id'],
       });
       if (!sameMac(directBoundMacOf(fresh), old)) {
-        throw const _ReplacePtuFailure('閘道器的 PTU 綁定已改變，請重新連線核對；尚未變更綁定。');
+        throw _ReplacePtuFailure(L10n.current.controller_replaceBindChanged);
       }
       if (isTestMode(fresh)) throw const GatewayFailure('test_mode');
       if (uploadPausedProblem(fresh)) {
@@ -7877,7 +8063,7 @@ class CommissioningController extends Notifier<CommissionState> {
         throw const GatewayFailure('otp_enabled');
       }
       if (fresh['ble_enabled'] != true) {
-        throw const _ReplacePtuFailure('閘道器的 PTU 藍牙尚未啟用，請先確認裝置狀態；尚未變更綁定。');
+        throw _ReplacePtuFailure(L10n.current.controller_replaceBleOff);
       }
       final journal = <String, dynamic>{
         'peer': peer.id,
@@ -7899,7 +8085,9 @@ class CommissioningController extends Notifier<CommissionState> {
         final back = await _command(generation, 'get_config');
         _checkReplaceIdentity(back, journal);
         if (directBoundMacOf(back) != null) {
-          throw const _ReplacePtuFailure('閘道器尚未確認解除綁定，已停止更換。');
+          throw _ReplacePtuFailure(
+            L10n.current.controller_replaceUnbindUnconfirmed,
+          );
         }
         if (!ref.read(topologyProvider).topology.isDirect) {
           await ref
@@ -7924,7 +8112,7 @@ class CommissioningController extends Notifier<CommissionState> {
           ptuMissingSearching: false,
           ptuMissingOther: null,
           strayBindMac: null,
-          message: '正在本機搜尋新 PTU；後台同步與資料驗證仍需網路。',
+          message: L10n.current.controller_replaceSearching,
         );
         _bindLaterRun = true;
         _startPtuRefresh();
@@ -7972,7 +8160,7 @@ class CommissioningController extends Notifier<CommissionState> {
         config['fleet_joined'] != true ||
         config['max_connections'] != 1 ||
         !directAutoConnectSupported(config)) {
-      throw const _ReplacePtuFailure('閘道器身分、站點或一對一設定無法核對，請重新連線確認；未變更綁定。');
+      throw _ReplacePtuFailure(L10n.current.controller_replaceIdentityMismatch);
     }
   }
 
@@ -7980,7 +8168,9 @@ class CommissioningController extends Notifier<CommissionState> {
     final storing = () async {
       final prefs = await SharedPreferences.getInstance();
       if (!await prefs.setString(_replacePrefsKey, jsonEncode(value))) {
-        throw const _ReplacePtuFailure('無法保存 PTU 更換恢復紀錄，未變更綁定。');
+        throw _ReplacePtuFailure(
+          L10n.current.controller_replaceJournalSaveFailed,
+        );
       }
       _pendingPtuReplace = value;
     }();
@@ -7996,7 +8186,9 @@ class CommissioningController extends Notifier<CommissionState> {
     final clearing = () async {
       final prefs = await SharedPreferences.getInstance();
       if (!await prefs.remove(_replacePrefsKey)) {
-        throw const _ReplacePtuFailure('PTU 綁定已讀回，恢復紀錄尚未清除，請重新連線核對。');
+        throw _ReplacePtuFailure(
+          L10n.current.controller_replaceJournalNotCleared,
+        );
       }
       _pendingPtuReplace = null;
       _bindLaterRun = false;
@@ -8035,7 +8227,7 @@ class CommissioningController extends Notifier<CommissionState> {
   }
 
   Future<void> _resumeReplace(GatewayPeer peer) async {
-    await _run('正在核對並還原原 PTU 綁定', 90, (generation) async {
+    await _run(L10n.current.controller_restoringBind, 90, (generation) async {
       await _link.prepare();
       _check(generation);
       state = state.copy(peer: peer, verified: false);
@@ -8057,7 +8249,7 @@ class CommissioningController extends Notifier<CommissionState> {
         wifiGraceOver: false,
         savedResume: false,
         savedProgress: false,
-        message: '已核對並還原原 PTU 綁定。網路尚需重新檢查。',
+        message: L10n.current.controller_restoredBind,
       );
       await _checkBindLater();
     });
@@ -8286,7 +8478,9 @@ class CommissioningController extends Notifier<CommissionState> {
   /// new pick (identify it again).
   Future<void> releaseStrayBind() async {
     if (state.strayBindMac == null) return;
-    await _run(relinkStep: 4, '正在解除閘道器的 PTU 綁定', 45, (generation) async {
+    await _run(relinkStep: 4, L10n.current.controller_unbindingRun, 45, (
+      generation,
+    ) async {
       await _command(generation, 'set_config', {'direct_bind_mac': ''});
       state = state.copy(
         config: {...state.config, 'direct_bind_mac': ''},
@@ -8381,7 +8575,7 @@ class CommissioningController extends Notifier<CommissionState> {
       final temporary = journal['temporary'] as String;
       if (!sameMac(bound, old)) {
         if (bound != null && !sameMac(bound, temporary)) {
-          throw const _ReplacePtuFailure('閘道器已有另一筆 PTU 綁定，未覆寫；請重新連線核對。');
+          throw _ReplacePtuFailure(L10n.current.controller_replaceOtherBinding);
         }
         if (back['otp_enabled'] == true) {
           throw const GatewayFailure('otp_enabled');
@@ -8555,7 +8749,7 @@ class CommissioningController extends Notifier<CommissionState> {
       if (expected != null ? id != expected : !(inRange && unique)) continue;
       _doneAssign[mac] = id;
       ok.add(mac);
-      results[mac] = '已連線 #$id';
+      results[mac] = L10n.current.controller_connectedNumber('$id');
       for (final p in state.ptus.where((p) => sameMac(p['mac'], mac))) {
         p['device_number'] = id;
       }
@@ -8680,7 +8874,9 @@ class CommissioningController extends Notifier<CommissionState> {
         relinkStage: RelinkStage.resumed,
         assignRunning: true,
         assignStatus: _assignStart(chosen, targets),
-        message: targets.isEmpty ? '正在確認閘道器監控狀態' : '繼續指派 ${targets.length} 台',
+        message: targets.isEmpty
+            ? L10n.current.controller_checkingMonitor
+            : L10n.current.controller_continueAssign(targets.length),
       );
       _startFinishChecklist(
         chosen,
@@ -8751,9 +8947,11 @@ class CommissioningController extends Notifier<CommissionState> {
       ptus: owned,
       results: {
         for (final p in owned)
-          p['mac'].toString(): '已連線 #${p['device_number']}',
+          p['mac'].toString(): L10n.current.controller_connectedNumber(
+            '${p['device_number']}',
+          ),
       },
-      message: '配置完成，請驗證後端資料',
+      message: L10n.current.controller_configuredVerify,
     );
     return true;
   }
@@ -8783,42 +8981,45 @@ class CommissioningController extends Notifier<CommissionState> {
                 state.assignedOk.contains(p['mac']),
           )
           .toList(),
-      message: '已略過監控確認，請在資料驗證確認各台是否上傳。',
+      message: L10n.current.controller_monitorSkipped,
     );
     unawaited(_save());
   }
 
   /// 「重試這 N 台」：只對上次指派失敗的 PTU 重跑指派，再 set_config/join_fleet。
-  Future<void> retryFailedAssign() =>
-      _step8Run('重試指派失敗的 PTU', 240 + _starListRunSeconds, (generation) async {
-        final chosen = state.ptus
-            .where(
-              (p) =>
-                  state.selected.contains(p['mac']) ||
-                  state.assignFailed.containsKey(p['mac']),
-            )
-            .toList();
-        final targets = chosen
-            .where((p) => state.assignFailed.containsKey(p['mac']))
-            .toList();
-        if (targets.isEmpty) throw const GatewayFailure('no_devices');
-        state = state.copy(
-          selected: chosen.map((p) => p['mac'].toString()).toSet(),
-        );
-        _provisioningMayBeActive = true;
-        state = state.copy(
-          step: 5,
-          assignRunning: true,
-          assignStatus: _assignStart(chosen, targets),
-        );
-        _startFinishChecklist(chosen, targets: targets);
-        // Round 27: e.g. foreign PTUs held the connections last time.
-        await _starListBeforeAssign(generation, chosen, targets);
-        _assignStarted();
-        final failed = await _assignAll(generation, targets);
-        _assignChecked(failed);
-        await _startMonitoring(generation, chosen, failed);
-      });
+  Future<void> retryFailedAssign() => _step8Run(
+    L10n.current.controller_retryAssignRun,
+    240 + _starListRunSeconds,
+    (generation) async {
+      final chosen = state.ptus
+          .where(
+            (p) =>
+                state.selected.contains(p['mac']) ||
+                state.assignFailed.containsKey(p['mac']),
+          )
+          .toList();
+      final targets = chosen
+          .where((p) => state.assignFailed.containsKey(p['mac']))
+          .toList();
+      if (targets.isEmpty) throw const GatewayFailure('no_devices');
+      state = state.copy(
+        selected: chosen.map((p) => p['mac'].toString()).toSet(),
+      );
+      _provisioningMayBeActive = true;
+      state = state.copy(
+        step: 5,
+        assignRunning: true,
+        assignStatus: _assignStart(chosen, targets),
+      );
+      _startFinishChecklist(chosen, targets: targets);
+      // Round 27: e.g. foreign PTUs held the connections last time.
+      await _starListBeforeAssign(generation, chosen, targets);
+      _assignStarted();
+      final failed = await _assignAll(generation, targets);
+      _assignChecked(failed);
+      await _startMonitoring(generation, chosen, failed);
+    },
+  );
 
   /// set_config（成功台數，至少 1）＋ join_fleet；有失敗時先讓成功的上線、
   /// 停在選擇頁列出失敗台；全部成功才等連線並進入驗證。
@@ -8836,8 +9037,7 @@ class CommissioningController extends Notifier<CommissionState> {
       state = state.copy(
         step: 4,
         assignFailed: failed,
-        message:
-            '${failed.length} 台都指派失敗，閘道器設定未變更；請確認 PTU 後按「重試這 ${failed.length} 台」。',
+        message: L10n.current.controller_allAssignFailed(failed.length),
       );
       return;
     }
@@ -8871,7 +9071,12 @@ class CommissioningController extends Notifier<CommissionState> {
       _tick(
         (l) => l.has(finishItemSettings)
             ? l
-                  .done(finishItemSettings, note: isStar ? '星狀' : '一對一')
+                  .done(
+                    finishItemSettings,
+                    note: isStar
+                        ? L10n.current.controller_topologyStar
+                        : L10n.current.controller_topologyDirect,
+                  )
                   .start(finishItemJoin)
             : l,
         kind: ChecklistKind.finish,
@@ -8894,8 +9099,7 @@ class CommissioningController extends Notifier<CommissionState> {
       _provisioningMayBeActive = false;
       state = state.copy(
         step: 4,
-        message:
-            '已先讓 $ok 台上線；${failed.length} 台指派失敗，可按「重試這 ${failed.length} 台」。',
+        message: L10n.current.controller_partialAssign(ok, failed.length),
       );
       return;
     }
@@ -8993,9 +9197,11 @@ class CommissioningController extends Notifier<CommissionState> {
           ptus: owned,
           results: {
             for (final p in owned)
-              p['mac'].toString(): '已連線 #${p['device_number']}',
+              p['mac'].toString(): L10n.current.controller_connectedNumber(
+                '${p['device_number']}',
+              ),
           },
-          message: '配置完成，請驗證後端資料',
+          message: L10n.current.controller_configuredVerify,
         );
         return;
       }
@@ -9029,9 +9235,9 @@ class CommissioningController extends Notifier<CommissionState> {
               .toList(),
           message: connected.isEmpty
               ? directFlow
-                    ? '閘道器還沒收到這台 PTU 的資料，請確認 PTU 電源後再按「是這台，開始配置」重試；閘道器仍維持監控。'
-                    : '未連上任何 PTU，請確認 PTU 電源與距離後重試；閘道器仍維持監控。'
-              : '已調整為 ${connected.length} 台；請重新選擇已連線裝置或修復缺少的 PTU。',
+                    ? L10n.current.controller_directNoData
+                    : L10n.current.controller_noPtuConnected
+              : L10n.current.controller_adjustedTo(connected.length),
         );
         throw const GatewayFailure('incomplete');
       }
@@ -9067,7 +9273,7 @@ class CommissioningController extends Notifier<CommissionState> {
         (_buildModeFallbackAsked &&
             _buildModeFallbackFor == _buildModeGeneration);
     final countdown = known ? guard : verifyRunSecondsFor(null);
-    await _run('確認每台 PTU 的資料持續進入後端', guard, countdown: countdown, (
+    await _run(L10n.current.controller_verifyRun, guard, countdown: countdown, (
       generation,
     ) async {
       state = state.copy(
@@ -9273,7 +9479,7 @@ class CommissioningController extends Notifier<CommissionState> {
   ) async {
     _starAssignList = null;
     void unchanged() => _tick(
-      (l) => l.done(finishItemList, note: '不需變更'),
+      (l) => l.done(finishItemList, note: L10n.current.controller_noChange),
       kind: ChecklistKind.finish,
     );
     if (targets.isEmpty || !_starListApplies) {
@@ -9350,8 +9556,11 @@ class CommissioningController extends Notifier<CommissionState> {
     // The assignment goes on either way (round 27).
     _tick(
       (l) => ok
-          ? l.done(finishItemList, note: '${macs.length} 台')
-          : l.fail('名單沒有寫入，指派照常進行', id: finishItemList),
+          ? l.done(
+              finishItemList,
+              note: L10n.current.controller_ptuCount(macs.length),
+            )
+          : l.fail(L10n.current.controller_listNotWritten, id: finishItemList),
       kind: ChecklistKind.finish,
     );
   }
@@ -9609,7 +9818,7 @@ class CommissioningController extends Notifier<CommissionState> {
     if (ids.isEmpty) throw const GatewayFailure('no_devices');
     final unnumbered = chosen
         .where((p) => ((p['device_number'] as num?)?.toInt() ?? 0) == 0)
-        .map((p) => 'PTU ${p['mac']}：PTU 未取得裝置編號（device_number=0）')
+        .map((p) => L10n.current.controller_ptuUnnumbered('${p['mac']}'))
         .toList();
     if (unnumbered.isNotEmpty) {
       // A PTU without a number can never pass; report it instead of waiting.
@@ -9846,6 +10055,8 @@ class CommissioningController extends Notifier<CommissionState> {
           );
           _lease = false;
           final skippedIds = ids.where(skipped.contains).toList()..sort();
+          // 安裝報告上傳後台、分享、複製，一律中文（docs/i18n.md §6）。
+          // i18n-keep-zh-begin
           final skippedNote = skippedIds.isEmpty
               ? ''
               : '\n未驗證（已略過）：${skippedIds.map((id) => "#$id").join('、')}，'
@@ -9855,13 +10066,15 @@ class CommissioningController extends Notifier<CommissionState> {
             kind: ChecklistKind.finish,
           );
           _reportBody =
-              '${_link.demo ? "模擬安裝報告（非實機驗證）" : "安裝報告"}\n站點 $site / 閘道器 $gateway\n${byDeviceNumber(state.ptus).map((p) => "#${p['device_number']}  ${p['mac']}").join('\n')}${directBoundNote(state) == null ? '' : '\n${directBoundNote(state)}'}\n驗證時間：${DateTime.now().toIso8601String()}\n驗證後端：$_backend\n每台連續三次資料更新通過$skippedNote';
+              '${_link.demo ? "模擬安裝報告（非實機驗證）" : "安裝報告"}\n站點 $site / 閘道器 $gateway\n${byDeviceNumber(state.ptus).map((p) => "#${p['device_number']}  ${p['mac']}").join('\n')}${directBoundNote(state, l10n: L10n.zh) == null ? '' : '\n${directBoundNote(state, l10n: L10n.zh)}'}\n驗證時間：${DateTime.now().toIso8601String()}\n驗證後端：$_backend\n每台連續三次資料更新通過$skippedNote';
+          // i18n-keep-zh-end
           state = state.copy(
             step: 7,
             verified: true,
             online: true,
             report: _report(),
             message: verifiedText,
+            messageKind: MessageKind.verified,
           );
           _field.end('completed');
           // 1.0.0+19: the done page's upload interval line (never waited).
@@ -9989,7 +10202,7 @@ class CommissioningController extends Notifier<CommissionState> {
   /// Logs in to [base] outside a step (after switching environments);
   /// an empty [password] uses this build's credential.
   Future<void> login(String base, [String password = '']) =>
-      _sideTask('登入後端', 30, (generation) async {
+      _sideTask(L10n.current.controller_loginRun, 30, (generation) async {
         final secret = _passwordFor(base, password);
         await _api.login(base.trim(), secret);
         _check(generation);
@@ -10245,19 +10458,23 @@ class CommissioningController extends Notifier<CommissionState> {
   }
 
   String get _uploadText => state.config['mqtt_connected'] == true
-      ? '閘道器已開始上傳資料。'
-      : '閘道器正在連線，APP 會自動確認（最多約 2 分鐘）。';
+      ? L10n.current.controller_uploadStarted
+      : L10n.current.controller_uploadConnecting;
 
   /// Re-reads the running upload target and upload state.
   Future<void> refreshUploadTarget() async {
-    await _sideTask('重新讀取閘道器狀態', 20, (generation) async {
+    await _sideTask(L10n.current.controller_rereadStatusRun, 20, (
+      generation,
+    ) async {
       final net = await _command(generation, 'get_net_status');
       _absorbTarget(net);
       _absorbNet(net);
       _stopWatch(UploadWatch.idle);
       final target = parseMqttTarget(state.config);
       state = state.copy(
-        uploadNotice: target == null ? '' : '已重新讀取。$_uploadText',
+        uploadNotice: target == null
+            ? ''
+            : L10n.current.controller_reread(_uploadText),
       );
     });
     _watchUploadIfPending();
@@ -10280,79 +10497,85 @@ class CommissioningController extends Notifier<CommissionState> {
   Future<void> _switchUploadTarget(
     MqttTarget wanted,
     bool waitUpload,
-  ) => _sideTask('正在把閘道器切到${wanted.plainLabel}（會重新開機，約 1 分鐘）', 120, (
-    generation,
-  ) async {
-    final peer = state.peer;
-    if (peer == null) throw const GatewayFailure('disconnected');
-    if (!reportsMqttTarget(state.config)) {
-      throw GatewayFailure(
-        'target_unsupported',
-        detail: state.config['fw_version']?.toString(),
-      );
-    }
-    SetTargetAck? ack;
-    _expectReboot();
-    for (int attempt = 0; ; attempt++) {
-      try {
-        ack = parseSetTargetAck(
-          await _command(generation, 'set_mqtt_target', wanted.params),
+  ) => _sideTask(
+    L10n.current.controller_switchingTarget(wanted.plainLabel),
+    120,
+    (generation) async {
+      final peer = state.peer;
+      if (peer == null) throw const GatewayFailure('disconnected');
+      if (!reportsMqttTarget(state.config)) {
+        throw GatewayFailure(
+          'target_unsupported',
+          detail: state.config['fw_version']?.toString(),
         );
-      } on GatewayFailure catch (error) {
-        if (error.fromGateway) throw GatewayFailure.uploadTarget(error.code);
-        if (error.code == 'not_connected' && attempt == 0) {
-          // The link had already dropped, so nothing reached the gateway:
-          // reconnect, then send the command once more.
-          await _relink(generation, peer);
-          continue;
+      }
+      SetTargetAck? ack;
+      _expectReboot();
+      for (int attempt = 0; ; attempt++) {
+        try {
+          ack = parseSetTargetAck(
+            await _command(generation, 'set_mqtt_target', wanted.params),
+          );
+        } on GatewayFailure catch (error) {
+          if (error.fromGateway) throw GatewayFailure.uploadTarget(error.code);
+          if (error.code == 'not_connected' && attempt == 0) {
+            // The link had already dropped, so nothing reached the gateway:
+            // reconnect, then send the command once more.
+            await _relink(generation, peer);
+            continue;
+          }
+          // ACK lost: the gateway may already be rebooting. Reconnect and
+          // read back instead of guessing.
+          if (error.code != 'disconnected' && error.code != 'timeout') rethrow;
         }
-        // ACK lost: the gateway may already be rebooting. Reconnect and
-        // read back instead of guessing.
-        if (error.code != 'disconnected' && error.code != 'timeout') rethrow;
+        break;
       }
-      break;
-    }
-    if (ack != null && !ack.changed) {
-      final status = await _command(generation, 'get_net_status');
-      _absorbTarget(status);
-      _absorbNet(status);
-      final now = parseMqttTarget(state.config) ?? ack.target;
-      if (!now.sameAs(wanted)) {
-        throw GatewayFailure.targetReadback(
-          actual: now.plainLabel,
-          wanted: wanted.plainLabel,
+      if (ack != null && !ack.changed) {
+        final status = await _command(generation, 'get_net_status');
+        _absorbTarget(status);
+        _absorbNet(status);
+        final now = parseMqttTarget(state.config) ?? ack.target;
+        if (!now.sameAs(wanted)) {
+          throw GatewayFailure.targetReadback(
+            actual: now.plainLabel,
+            wanted: wanted.plainLabel,
+          );
+        }
+        _stopWatch(UploadWatch.idle);
+        state = state.copy(
+          uploadNotice: L10n.current.controller_targetUnchanged(
+            now.plainLabel,
+            _uploadText,
+          ),
         );
+        return;
       }
-      _stopWatch(UploadWatch.idle);
+      // Changed (or outcome unknown): the old MQTT state no longer applies.
+      // The firmware commits the target to NVS before a changed:true ACK, so
+      // the gateway boots with it even if the reconnect below fails; with no
+      // ACK the running target is unknown until it is read back.
+      final config = {...state.config}..remove('mqtt_connected');
+      if (ack != null) {
+        config.addAll(ack.target.fields);
+      } else {
+        config
+          ..['mqtt_target'] = unconfirmedMqttTarget
+          ..remove('mqtt_host')
+          ..remove('mqtt_port');
+      }
+      state = state.copy(config: config, net: const {}, uploadNotice: '');
+      await _reconnectAfterReboot(generation, peer, ack?.rebootInMs ?? 1500);
+      // Rebooted: the Wi-Fi is joined again from scratch.
+      _startWifiGrace();
+      final confirmed = await _readBackTarget(generation, wanted, waitUpload);
       state = state.copy(
-        uploadNotice: '不用切換：閘道器本來就送到${now.plainLabel}（沒有重新開機）。$_uploadText',
+        uploadNotice: L10n.current.controller_targetSwitched(
+          confirmed.plainLabel,
+          waitUpload ? _uploadText : L10n.current.controller_nextSetWifi,
+        ),
       );
-      return;
-    }
-    // Changed (or outcome unknown): the old MQTT state no longer applies.
-    // The firmware commits the target to NVS before a changed:true ACK, so
-    // the gateway boots with it even if the reconnect below fails; with no
-    // ACK the running target is unknown until it is read back.
-    final config = {...state.config}..remove('mqtt_connected');
-    if (ack != null) {
-      config.addAll(ack.target.fields);
-    } else {
-      config
-        ..['mqtt_target'] = unconfirmedMqttTarget
-        ..remove('mqtt_host')
-        ..remove('mqtt_port');
-    }
-    state = state.copy(config: config, net: const {}, uploadNotice: '');
-    await _reconnectAfterReboot(generation, peer, ack?.rebootInMs ?? 1500);
-    // Rebooted: the Wi-Fi is joined again from scratch.
-    _startWifiGrace();
-    final confirmed = await _readBackTarget(generation, wanted, waitUpload);
-    state = state.copy(
-      uploadNotice:
-          '已把閘道器切到${confirmed.plainLabel}，閘道器已重新開機並重新連上。'
-          '${waitUpload ? _uploadText : '接著設定 Wi-Fi。'}',
-    );
-  });
+    },
+  );
 
   /// Reconnects a link that dropped while idle (no reboot involved). Times
   /// out above the link's own worst-case retry budget (51s, see
@@ -10417,7 +10640,12 @@ class CommissioningController extends Notifier<CommissionState> {
               peer,
               onStage: attempt == 1
                   ? stage
-                  : (text) => stage('${connectingAttemptText(attempt)}：$text'),
+                  : (text) => stage(
+                      L10n.current.controller_connectingStage(
+                        connectingAttemptText(attempt),
+                        text,
+                      ),
+                    ),
             )
             .timeout(
               remaining > const Duration(seconds: 5)
@@ -10430,7 +10658,10 @@ class CommissioningController extends Notifier<CommissionState> {
       } catch (error) {
         if (error is GatewayFailure && error.code == 'cancelled') rethrow;
         _check(generation);
+        // connect_log 上傳 field 診斷，維持中文（docs/i18n.md §6）。
+        // i18n-keep-zh-begin
         failures.add('第 $attempt 次：${connectFailureType(error)}');
+        // i18n-keep-zh-end
         if (state.relinkStage != RelinkStage.reconnecting) {
           state = state.copy(
             relinkStage: RelinkStage.reconnecting,
@@ -10523,7 +10754,7 @@ class CommissioningController extends Notifier<CommissionState> {
       final target = parseMqttTarget(status);
       if (target == null || !target.sameAs(wanted)) {
         throw GatewayFailure.targetReadback(
-          actual: target?.plainLabel ?? '（未回報）',
+          actual: target?.plainLabel ?? L10n.current.controller_notReported,
           wanted: wanted.plainLabel,
         );
       }
@@ -10533,7 +10764,7 @@ class CommissioningController extends Notifier<CommissionState> {
     }
     if (seen == null) {
       throw GatewayFailure.targetReadback(
-        actual: '（無法讀取）',
+        actual: L10n.current.controller_unreadable,
         wanted: wanted.plainLabel,
       );
     }
@@ -10894,15 +11125,21 @@ class CommissioningController extends Notifier<CommissionState> {
           message: abnormal && _abnormalStreak < 2
               ? healthPendingText
               : abnormal
-              ? '資料有異常，請檢查 PTU 與網路。'
+              ? L10n.current.controller_healthAbnormal
               : fresh
-              ? '資料持續更新'
-              : '資料暫未更新',
+              ? L10n.current.controller_dataStreaming
+              : L10n.current.controller_dataStale,
+          messageKind: !abnormal && fresh
+              ? MessageKind.dataStreaming
+              : MessageKind.none,
         );
       }
     } catch (_) {
       if (ref.mounted && !stale()) {
-        state = state.copy(online: false, message: '無法確認最新資料，請檢查網路');
+        state = state.copy(
+          online: false,
+          message: L10n.current.controller_healthUnknown,
+        );
       }
     } finally {
       _healthBusy = false;
@@ -10911,27 +11148,30 @@ class CommissioningController extends Notifier<CommissionState> {
 
   /// [base] / [password] log in first when the backend was switched since
   /// the last login (step 7 offers the password field for that).
-  Future<void> repair({String? base, String? password}) => _run('重新連接閘道器', 60, (
-    generation,
-  ) async {
-    final secret = base == null ? '' : _passwordFor(base, password);
-    if (!_loggedIn && base != null && secret.isNotEmpty) {
-      _backend = describeBackend(Uri.tryParse(base.trim()));
-      await _api.login(base.trim(), secret);
-      _check(generation);
-      _loginOk(base, secret);
-    }
-    // After an environment switch the old login must not reach the new
-    // site.
-    if (!_loggedIn) throw const GatewayFailure('authentication');
-    _expectReboot();
-    await _request(generation, 'POST', '$_path/commands', {
-      'op': 'reconnect_ble',
-      'params': {'target_mac': state.config['gateway_uid']},
-      'ttl': 30,
-    });
-    state = state.copy(step: 3, verified: false, message: '已要求重新連線，請重新確認上線與資料');
-  });
+  Future<void> repair({String? base, String? password}) =>
+      _run(L10n.current.controller_repairRun, 60, (generation) async {
+        final secret = base == null ? '' : _passwordFor(base, password);
+        if (!_loggedIn && base != null && secret.isNotEmpty) {
+          _backend = describeBackend(Uri.tryParse(base.trim()));
+          await _api.login(base.trim(), secret);
+          _check(generation);
+          _loginOk(base, secret);
+        }
+        // After an environment switch the old login must not reach the new
+        // site.
+        if (!_loggedIn) throw const GatewayFailure('authentication');
+        _expectReboot();
+        await _request(generation, 'POST', '$_path/commands', {
+          'op': 'reconnect_ble',
+          'params': {'target_mac': state.config['gateway_uid']},
+          'ttl': 30,
+        });
+        state = state.copy(
+          step: 3,
+          verified: false,
+          message: L10n.current.controller_repairRequested,
+        );
+      });
 
   /// 「取消操作」 during step 8: stop the run but keep assignedOk and the
   /// selection; the page then offers 「重新連線並繼續（剩 N 台）」.
@@ -10943,8 +11183,15 @@ class CommissioningController extends Notifier<CommissionState> {
     if (!ref.mounted) return;
     state = state.copy(
       resumePending: true,
-      error: safe ? null : '尚未確認閘道器已恢復監控，請按「重新連線並繼續」核對。',
-      message: '已停止。已完成的 ${state.assignedOk.length} 台保留，可按「重新連線並繼續」接續。',
+      error: safe
+          ? null
+          : L10n.current.controller_monitorUnconfirmedResume(
+              rescanAfterLossLabel,
+            ),
+      message: L10n.current.controller_stoppedStep8(
+        state.assignedOk.length,
+        rescanAfterLossLabel,
+      ),
     );
     await _save();
   }
@@ -10969,7 +11216,7 @@ class CommissioningController extends Notifier<CommissionState> {
       verifyCounts: const {},
       verifyWaiting: const {},
       verifySkipped: const {},
-      message: wasBusy ? '已停止驗證，可調整勾選後重新配置。' : '',
+      message: wasBusy ? L10n.current.controller_verifyStopped : '',
     );
     if (_lease) {
       try {
@@ -10987,16 +11234,20 @@ class CommissioningController extends Notifier<CommissionState> {
 
   /// Banner 「重新連線」 outside steps 7/8: re-open the BLE link and read
   /// fresh network status, keeping the current step.
-  Future<void> reconnectLink() => _sideTask('重新連線閘道器', 70, (generation) async {
-    await _reconnect(generation);
-    final net = await _command(
-      generation,
-      state.netCheckSupported ? 'get_net_status' : 'get_status',
-    );
-    _absorbTarget(net);
-    _absorbNet(net);
-    state = state.copy(reconnectFailed: false);
-  });
+  Future<void> reconnectLink() => _sideTask(
+    L10n.current.controller_reconnectLinkRun,
+    70,
+    (generation) async {
+      await _reconnect(generation);
+      final net = await _command(
+        generation,
+        state.netCheckSupported ? 'get_net_status' : 'get_status',
+      );
+      _absorbTarget(net);
+      _absorbNet(net);
+      state = state.copy(reconnectFailed: false);
+    },
+  );
 
   bool _cancelling = false;
 
@@ -11034,7 +11285,7 @@ class CommissioningController extends Notifier<CommissionState> {
         if (ref.mounted) {
           state = state.copy(
             busy: false,
-            error: '$unbindFailure 請保持靠近並再次取消以重試還原，或重開 APP 後重新連線。',
+            error: L10n.current.controller_cancelRestoreRetry(unbindFailure),
           );
         }
         return;
@@ -11078,16 +11329,23 @@ class CommissioningController extends Notifier<CommissionState> {
           strayBindMac: null,
           directNotice: '',
           error: !safe
-              ? '尚未確認閘道器已恢復監控，請重新連線核對。'
+              ? L10n.current.controller_monitorUnconfirmedRecheck
               : unbindFailure != null
               ? directUnbindFailedText(tempBound, restore)
               : null,
           errorDetail: unbindFailure == null
               ? null
               : restore == null
-              ? '暫時綁定 $tempBound 未能解除：$unbindFailure'
-              : '暫時綁定 $tempBound 未能還原成 $restore：$unbindFailure',
-          message: fromList ? '' : '已取消。請重新連線核對進度；未成功恢復的監控會話最晚於到期時恢復。',
+              ? L10n.current.controller_tempUnbindFailed(
+                  '$tempBound',
+                  unbindFailure,
+                )
+              : L10n.current.controller_tempRestoreFailed(
+                  '$tempBound',
+                  restore,
+                  unbindFailure,
+                ),
+          message: fromList ? '' : L10n.current.controller_cancelled,
         );
         if (!safe) {
           _field.noteErrorCode(RescueCode.monitorUnconfirmed);
@@ -11113,7 +11371,10 @@ class CommissioningController extends Notifier<CommissionState> {
   /// offers to resume).
   Future<void> leaveList() async {
     if (state.step != 1 || state.busy) return;
-    state = state.copy(busy: true, message: '正在斷開藍牙…');
+    state = state.copy(
+      busy: true,
+      message: L10n.current.controller_disconnecting,
+    );
     _generation++;
     _health?.cancel();
     _verifyCarry = null;
@@ -11162,7 +11423,11 @@ class CommissioningController extends Notifier<CommissionState> {
   Future<void> finishDone({bool next = false}) async {
     if (_finishing || state.busy || state.step != 7) return;
     _finishing = true;
-    state = state.copy(busy: true, message: '正在斷開藍牙…', error: state.error);
+    state = state.copy(
+      busy: true,
+      message: L10n.current.controller_disconnecting,
+      error: state.error,
+    );
     try {
       final doneSite = site;
       final done = lastDoneText(
@@ -11184,7 +11449,10 @@ class CommissioningController extends Notifier<CommissionState> {
       } catch (_) {
         if (ref.mounted) {
           state = state.copy(
-            error: '藍牙清理未完成，請按「完成」或「配置下一台」重試斷開。',
+            error: L10n.current.controller_bleCleanupDone(
+              doneFinishLabel,
+              doneNextLabel,
+            ),
             errorDetail: state.errorDetail,
             message: '',
           );

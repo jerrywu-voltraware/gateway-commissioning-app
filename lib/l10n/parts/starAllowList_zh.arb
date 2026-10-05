@@ -1,0 +1,45 @@
+{
+  "@@locale": "zh",
+  "starAllowList_writing": "正在寫入 PTU 綁定名單",
+  "starAllowList_failed": "PTU 綁定名單未寫入，請重試。未寫入前閘道器只看編號，附近帶相同編號的其他 PTU 仍可能被連走。",
+  "@starAllowList_failed": {
+    "description": "Completion page: the star allow list (PTU binding list) could not be written."
+  },
+  "starAllowList_retryButton": "重試寫入綁定名單",
+  "starAllowList_switchFailed": "切回星狀後 PTU 綁定名單未寫入，資料驗證完成後會再寫一次。",
+  "starAllowList_beforeFailed": "PTU 綁定名單未寫入，繼續配置。若附近有編號相同的其他 PTU 佔住連線，部分 PTU 可能指派失敗；資料驗證完成後會再寫一次。",
+  "starAllowList_written": "PTU 綁定名單已寫入：{ids}（閘道器只連這幾台，附近編號相同的其他 PTU 不會被連走）",
+  "@starAllowList_written": {
+    "placeholders": {
+      "ids": {
+        "type": "String",
+        "example": "#1、#2、#3"
+      }
+    }
+  },
+  "starAllowList_idSeparator": "、",
+  "@starAllowList_idSeparator": {
+    "description": "Joins PTU numbers (#1、#2)."
+  },
+  "starAllowList_foreignIgnored": "{count, plural, other{附近有 {count} 台編號相同的其他 PTU，已被閘道器忽略（不會連線）。}}",
+  "@starAllowList_foreignIgnored": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "starAllowList_unlistedDropped": "{count, plural, other{有 {count} 台已連線的 PTU 不在這台閘道器的綁定名單，閘道器會自動斷開。}}",
+  "@starAllowList_unlistedDropped": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "starAllowList_reselectHint": "若其中有這台閘道器要接的 PTU，請勾選它後重新配置。",
+  "starAllowList_sentenceSeparator": "",
+  "@starAllowList_sentenceSeparator": {
+    "description": "Joins the sentences of the foreign-PTU note: empty in Chinese, a space in English."
+  }
+}

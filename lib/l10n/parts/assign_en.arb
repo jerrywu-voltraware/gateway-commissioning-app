@@ -1,5 +1,27 @@
 {
   "@@locale": "en",
   "assign_notAssignedLink": "Not assigned (phone lost the gateway)",
-  "assign_assigningResult": "Assigning #{id}"
+  "assign_assigningResult": "Assigning #{id}",
+  "assign_waiting": "Waiting",
+  "assign_assigning": "Assigning",
+  "assign_assigningId": "Assigning #{id}",
+  "assign_linkRetry": "Bluetooth link failed, retrying {retry}/{retries}",
+  "assign_retry": "Not done, retrying {retry}/{retries}",
+  "assign_busy": "Gateway busy, retrying shortly",
+  "assign_done": "Done",
+  "assign_doneResult": "Done · {result}",
+  "assign_doneId": "Done · #{id}",
+  "assign_failed": "Failed, needs action",
+  "assign_failedReason": "Failed, needs action: {reason}",
+  "assign_progressDone": "{done}/{total} done",
+  "assign_progressRetrying": "{count} retrying automatically",
+  "assign_progressFailed": "{count} failed, needs action",
+  "assign_progressSeparator": ", ",
+  "assign_retryAttempt": " ({retry}/{retries})",
+  "assign_retryingOne": "{name} retrying automatically{attempt}",
+  "assign_nameSeparator": ", ",
+  "assign_retryingTwo": "{names} retrying automatically",
+  "assign_retryingMany": "{names} and others: {count} retrying automatically",
+  "assign_autoHint": "Handled automatically. Failures are retried; nothing to do.",
+  "assign_failedHint": "{count, plural, =1{Check the PTU's power and distance, then tap [Retry this one] below.} other{Check PTU power and distance, then tap [Retry these {count}] below.}}"
 }

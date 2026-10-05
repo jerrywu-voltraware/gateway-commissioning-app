@@ -1,0 +1,175 @@
+{
+  "@@locale": "zh",
+  "directMode_rssiPeak": "峰值 {rssi} dBm",
+  "@directMode_rssiPeak": {
+    "description": "A direct-mode candidate's advertising peak.",
+    "placeholders": {"rssi": {"type": "int", "example": "-48"}}
+  },
+  "directMode_rssiReading": "訊號讀取中…",
+  "@directMode_rssiReading": {
+    "description": "The gateway's pick has no link RSSI reading yet."
+  },
+  "directMode_advRssi": "廣播 {rssi} dBm（連線訊號讀取中）",
+  "@directMode_advRssi": {
+    "placeholders": {"rssi": {"type": "int", "example": "-49"}}
+  },
+  "directMode_advStale": "{rssi} dBm（廣播值）",
+  "@directMode_advStale": {
+    "description": "Link RSSI still unread: the last advertising RSSI, marked as such.",
+    "placeholders": {"rssi": {"type": "int", "example": "-49"}}
+  },
+  "directMode_stateConnected": "已連上 PTU",
+  "directMode_stateConnecting": "正在連線 PTU",
+  "directMode_stateNoCandidate": "找不到夠近的 PTU",
+  "directMode_stateScanning": "正在尋找最近的 PTU",
+  "directMode_stateBoundMissing": "已綁定的 PTU 不在場",
+  "directMode_hintNoCandidate": "請靠近／確認同樁 PTU 已上電",
+  "directMode_hintBoundMissing": "已綁定的 PTU 不在場，請確認其電源；若已更換 PTU，請解除綁定",
+  "directMode_reasonOk": "訊號最強且明確",
+  "@directMode_reasonOk": {
+    "description": "Why the gateway picked this PTU (select_reason ok)."
+  },
+  "directMode_reasonAmbiguous": "附近訊號相近，閘道器暫選最強的一台",
+  "directMode_reasonBound": "已綁定這台，閘道器只連它",
+  "directMode_reasonResume": "延續既有連線",
+  "directMode_identifyFirstLabel": "請先按「辨識此樁」確認",
+  "@directMode_identifyFirstLabel": {
+    "description": "Main button label until the shown PTU is identified. 「辨識此樁」 is the identify button."
+  },
+  "directMode_confirmLabel": "是這台，開始配置",
+  "@directMode_confirmLabel": {
+    "description": "Main button of the direct pick: this PTU is the one, start the setup."
+  },
+  "directMode_identifyFirstText": "請先按「辨識此樁」確認是眼前這台，再按「{confirm}」。",
+  "@directMode_identifyFirstText": {
+    "placeholders": {"confirm": {"type": "String", "example": "是這台，開始配置"}}
+  },
+  "directMode_switched": "閘道器已切換到另一顆 PTU（{mac}），請重新辨識",
+  "@directMode_switched": {
+    "placeholders": {"mac": {"type": "String", "example": "90:5F:E8:9A:96:00"}}
+  },
+  "directMode_strayBind": "閘道器目前綁定 PTU {mac}",
+  "@directMode_strayBind": {
+    "placeholders": {"mac": {"type": "String", "example": "90:5F:E8:9A:96:00"}}
+  },
+  "directMode_strayBindHint": "這個綁定不是在本機確認過的：保留則閘道器只連這台；解除則恢復自動選最近的 PTU。",
+  "directMode_unbindFailed": "已取消，但閘道器的暫時綁定（PTU {mac}）未能解除；下次進入第 7 步會再詢問是否解除。",
+  "@directMode_unbindFailed": {
+    "placeholders": {"mac": {"type": "String", "example": "90:5F:E8:9A:96:00"}}
+  },
+  "directMode_unbindRestoreFailed": "已取消，但閘道器的 PTU 綁定未能還原成原本的 {restore}；請重新連線這台閘道器確認綁定。",
+  "@directMode_unbindRestoreFailed": {
+    "placeholders": {"restore": {"type": "String", "example": "90:5F:E8:9A:96:00"}}
+  },
+  "directMode_unbindTempRestoreFailed": "已取消，但閘道器的暫時綁定（PTU {mac}）未能還原成原本的綁定 {restore}；下次進入第 7 步會再詢問。",
+  "@directMode_unbindTempRestoreFailed": {
+    "placeholders": {
+      "mac": {"type": "String", "example": "90:5F:E8:9A:96:01"},
+      "restore": {"type": "String", "example": "90:5F:E8:9A:96:00"}
+    }
+  },
+  "directMode_ambiguous": "附近有訊號相近的 PTU，請按「辨識此樁」確認是否為眼前這台",
+  "directMode_identifySent": "已送出，請看樁上燈號",
+  "directMode_identifySentLine": "已送出 · 請看樁上燈號",
+  "@directMode_identifySentLine": {
+    "description": "One-line bottom bar form of directMode_identifySent."
+  },
+  "directMode_identifyPending": "已送出，等待閘道器回應…",
+  "directMode_identifyConfirmed": "PTU 已確認亮燈",
+  "directMode_identifyConfirmTimeout": "閘道器已送出；舊版閘道器未取得 PTU 確認，請看樁上燈號",
+  "directMode_identifyUnsupportedPattern": "閘道器已送出；PTU 不支援此燈效，請看樁上燈號",
+  "directMode_lineTimeout": "已送出 · PTU 未回應確認 · 請看樁上燈號",
+  "directMode_lineUnsupportedPattern": "已送出 · PTU 不支援此燈效 · 請看樁上燈號",
+  "directMode_lineStopPtuNotSent": "閘道器已停止辨識 · PTU 關燈未送出",
+  "directMode_lineOffSent": "已送出關燈指令",
+  "directMode_lineGatewayOnly": "已送出 · 只有閘道器閃燈，PTU 未收到",
+  "directMode_noteStopPtuNotSent": "{gateway}；PTU 關燈未送出（{reason}）",
+  "@directMode_noteStopPtuNotSent": {
+    "placeholders": {
+      "gateway": {"type": "String", "example": "閘道器已停止閃燈"},
+      "reason": {"type": "String", "example": "閘道器尚未連上 PTU"}
+    }
+  },
+  "directMode_noteOffSent": "已送出關燈指令；{gateway}。PTU 不回覆，請查看燈號。",
+  "@directMode_noteOffSent": {
+    "placeholders": {"gateway": {"type": "String", "example": "閘道器已停止閃燈"}}
+  },
+  "directMode_noteGatewayOnly": "已送出：只有閘道器在閃燈，PTU 未收到（{reason}）",
+  "@directMode_noteGatewayOnly": {
+    "placeholders": {"reason": {"type": "String", "example": "閘道器尚未連上 PTU"}}
+  },
+  "directMode_noteWithDetail": "{head}（{detail}）",
+  "@directMode_noteWithDetail": {
+    "description": "An identify note followed by its detail in brackets.",
+    "placeholders": {
+      "head": {"type": "String", "example": "PTU 已確認亮燈"},
+      "detail": {"type": "String", "example": "PTU 90:5F:E8:9A:96:00 · -46 dBm"}
+    }
+  },
+  "directMode_ptuWriteNotConnected": "閘道器尚未連上 PTU",
+  "directMode_ptuWriteAmbiguousTarget": "閘道器連著多台 PTU，沒有指定哪一台",
+  "directMode_ptuWriteFailed": "閘道器寫入 PTU 失敗",
+  "directMode_ptuWriteOther": "PTU 沒有收到指令",
+  "directMode_resultGatewayOnly": "只有閘道器閃燈（{reason}）",
+  "@directMode_resultGatewayOnly": {
+    "placeholders": {"reason": {"type": "String", "example": "閘道器尚未連上 PTU"}}
+  },
+  "directMode_resultTimeout": "舊版閘道器未取得 PTU 確認",
+  "directMode_resultUnsupportedPattern": "PTU 不支援此燈效",
+  "directMode_resultOffSent": "PTU 關燈指令已送出",
+  "directMode_resultIdentifySent": "PTU 辨識指令已送出",
+  "directMode_remoteGateway": "後台讓閘道器閃燈（請看閘道器上的燈）",
+  "directMode_remoteOffSent": "後台已送出 PTU 關燈指令；{gateway}",
+  "@directMode_remoteOffSent": {
+    "placeholders": {"gateway": {"type": "String", "example": "閘道器已停止閃燈"}}
+  },
+  "directMode_remoteOffNotSent": "後台：{gateway}；PTU 關燈未送出",
+  "@directMode_remoteOffNotSent": {
+    "placeholders": {"gateway": {"type": "String", "example": "閘道器已停止閃燈"}}
+  },
+  "directMode_remoteSentPtu": "後台已送出 PTU {label} 辨識指令（請看樁上燈號）",
+  "@directMode_remoteSentPtu": {
+    "placeholders": {"label": {"type": "String", "example": "#3"}}
+  },
+  "directMode_remoteSentPtuUnnamed": "後台已送出 PTU 辨識指令（請看樁上燈號）",
+  "directMode_remoteHeadConfirmed": "後台已讓此樁閃燈 · PTU 已確認",
+  "@directMode_remoteHeadConfirmed": {
+    "description": "Short first line of the back office identify notice; keep all remoteHead texts short (one line of a 360 dp bar)."
+  },
+  "directMode_remoteHeadTimeout": "後台已送出 · 舊版未取得確認",
+  "directMode_remoteHeadUnsupportedPattern": "後台已送出 · PTU 不支援燈效",
+  "directMode_remoteHeadPtuSent": "後台已送出 PTU 辨識指令",
+  "directMode_remoteHeadGatewayOnly": "後台已讓閘道器閃燈 · PTU 未收到",
+  "directMode_remoteHeadSent": "後台已送出 · 請查看燈號",
+  "directMode_remoteHeadOffSent": "後台已送出關燈指令",
+  "directMode_remoteHeadStopped": "後台已停止閘道器辨識",
+  "directMode_settlingLabel": "連線建立中…",
+  "directMode_waitingLabel": "等待閘道器連上 PTU",
+  "directMode_identifyNoPtu": "閘道器雙閃 4 秒；閘道器尚未連上 PTU，PTU 不會閃燈。",
+  "directMode_ackWithNumber": "{note}（#{number}）；{gateway}。",
+  "@directMode_ackWithNumber": {
+    "placeholders": {
+      "note": {"type": "String", "example": "PTU 已確認亮燈（PTU 90:5F:E8:9A:96:00）"},
+      "number": {"type": "String", "example": "3"},
+      "gateway": {"type": "String", "example": "閘道器雙閃 6 秒"}
+    }
+  },
+  "directMode_ackPlain": "{note}；{gateway}。",
+  "@directMode_ackPlain": {
+    "placeholders": {
+      "note": {"type": "String", "example": "PTU 已確認亮燈（PTU 90:5F:E8:9A:96:00）"},
+      "gateway": {"type": "String", "example": "閘道器雙閃 6 秒"}
+    }
+  },
+  "directMode_ptuFailedStop": "閘道器已停止辨識；PTU 關燈未送出（{reason}）。",
+  "@directMode_ptuFailedStop": {
+    "placeholders": {"reason": {"type": "String", "example": "閘道器尚未連上 PTU"}}
+  },
+  "directMode_ptuFailedBlinking": "閘道器正在閃燈（{seconds} 秒）；PTU 指令未送出（{reason}）。",
+  "@directMode_ptuFailedBlinking": {
+    "placeholders": {
+      "seconds": {"type": "int", "example": "6"},
+      "reason": {"type": "String", "example": "閘道器尚未連上 PTU"}
+    }
+  }
+}

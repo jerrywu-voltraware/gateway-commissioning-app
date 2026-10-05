@@ -1,4 +1,9 @@
 {
   "@@locale": "en",
-  "settings_language": "Language"
+  "settings_language": "Language",
+  "settings_more": "More",
+  "settings_appearance": "Appearance",
+  "settings_themeSystem": "System default",
+  "settings_themeLight": "Light",
+  "settings_themeDark": "Dark"
 }

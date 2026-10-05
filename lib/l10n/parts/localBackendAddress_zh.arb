@@ -1,0 +1,9 @@
+{
+  "@@locale": "zh",
+  "localBackendAddress_hostEmpty": "請輸入電腦的 IP 位址",
+  "localBackendAddress_hostFormat": "格式應為 4 組 0–255 的數字，例如 192.168.1.187",
+  "localBackendAddress_hostLoopback": "127.x 是手機本身，請輸入電腦在區域網路的 IP",
+  "localBackendAddress_hostNotPrivate": "只接受區域網路位址（10.x、172.16–31.x、192.168.x）",
+  "localBackendAddress_hostLastOctet": "最後一組不可為 0 或 255",
+  "localBackendAddress_portRange": "連接埠需為 1–65535"
+}

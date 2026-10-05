@@ -1,0 +1,8 @@
+{
+  "@@locale": "en",
+  "identify_secondsError": "Enter 0 (light off) or a whole number 2–10 (1 keeps the PTU light on, not offered)",
+  "identify_ptuOnly": "PTU only; gateway light unchanged",
+  "identify_gatewayLedUnavailable": "Gateway light effect unavailable",
+  "identify_gatewayStopped": "Gateway stopped identifying; normal light restored",
+  "identify_gatewayBlink": "{seconds, plural, =1{Gateway double-blinks for 1 second} other{Gateway double-blinks for {seconds} seconds}}"
+}

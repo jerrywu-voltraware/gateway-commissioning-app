@@ -48,6 +48,8 @@ import 'package:gateway_commissioning/presentation/gateway_status_page.dart';
 
 import 'network_check_test.dart' show WifiGateway;
 import 'support/pick_gateway.dart';
+import 'support/l10n.dart';
+import 'package:gateway_commissioning/l10n/l10n.dart';
 
 /// The demo gateway's Wi-Fi MAC (`gateway_uid`).
 const _uid = 'AABBCCDDEEFF';
@@ -1295,5 +1297,28 @@ void main() {
       expect(tester.getRect(card).bottom, lessThan(640));
       expect(tester.takeException(), isNull);
     });
+  });
+
+  testWidgets('English (i18n B2): swap sheet texts', (tester) async {
+    useLanguage(AppLanguage.en);
+    await tester.pumpWidget(
+      wrapWithL10n(
+        Scaffold(
+          body: GatewaySwapSheet(
+            site: 80,
+            candidates: const [SwapCandidate(site: 80, gateway: 3)],
+            now: DateTime(2026, 10, 5),
+            onPicked: (_) {},
+            onClose: () {},
+          ),
+        ),
+        language: AppLanguage.en,
+      ),
+    );
+    expect(find.text('Pick the gateway to replace (Site 80)'), findsOneWidget);
+    expect(find.text('Gateway 3'), findsOneWidget);
+    expect(find.text('Never online'), findsOneWidget);
+    expect(find.text('Cancel'), findsOneWidget);
+    expect(swapConfirmText(80, 1, null), startsWith('This gateway takes over'));
   });
 }

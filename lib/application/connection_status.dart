@@ -9,13 +9,14 @@ import '../core/gateway_net.dart';
 import '../core/gateway_reboot.dart';
 import '../core/mqtt_target.dart';
 import '../data/local_backend_probe.dart';
+import '../l10n/l10n.dart';
 import 'backend_environment.dart';
 import 'commissioning_controller.dart';
 
 enum StatusTone { ok, pending, bad, warn, neutral }
 
 class StatusRow {
-  const StatusRow(this.where, this.status, this.tone);
+  const StatusRow(this.where, this.status, this.tone, {this.uploading = false});
 
   /// 本地測試主機 / 正式站 / 其他網址.
   final String where;
@@ -23,7 +24,14 @@ class StatusRow {
   /// ✓ 已連線 / ⏳ 連線中… / ✗ 連不上 / ⚠ 送到別處 … (empty: name only).
   final String status;
   final StatusTone tone;
+
+  /// The gateway row says 「✓ 資料上傳中」 ([uploadingStatusText]): PTU data
+  /// is flowing. Logic checks this flag, never the (translated) [status].
+  final bool uploading;
 }
+
+/// 「✓ 資料上傳中」 of the gateway row ([StatusRow.uploading]).
+String get uploadingStatusText => L10n.current.connectionStatus_statusUploading;
 
 /// What the one-tap 「同步」 would do.
 enum SyncNeed {
@@ -98,42 +106,45 @@ class ConnectionStatus {
   return (SyncNeed.sync, wanted);
 }
 
-String placeOf(MqttTarget target) => target.isLocal ? '本地測試主機' : '正式站';
+String placeOf(MqttTarget target) => target.isLocal
+    ? L10n.current.connectionStatus_placeLocal
+    : L10n.current.backendEnvironment_labelProduction;
 
 /// The gateway is on another /24 than the local test host, or null.
-String? subnetHint(
-  MqttTarget current,
-  String gatewayIp, {
-  String wifiAction = '改用其他 Wi-Fi',
-}) {
+String? subnetHint(MqttTarget current, String gatewayIp, {String? wifiAction}) {
   final gatewayNet = ipv4Prefix24(gatewayIp);
   final hostNet = current.isLocal ? ipv4Prefix24(current.host) : null;
   if (gatewayNet == null || hostNet == null || gatewayNet == hostNet) {
     return null;
   }
-  return '閘道器目前在 $gatewayNet.x 網段，可能連不到測試主機 ${current.host}。'
-      '請確認閘道器和這台電腦連同一個 Wi-Fi（可用「$wifiAction」）。';
+  return L10n.current.connectionStatus_subnetHint(
+    gatewayNet,
+    current.host,
+    wifiAction ?? L10n.current.connectionStatus_wifiActionOther,
+  );
 }
 
 /// What to check when a gateway with Wi-Fi does not upload to [current].
 String uploadCheckHint(MqttTarget current) => current.isLocal
-    ? '請確認電腦上的測試主機是否開著，以及閘道器是否連上和這台電腦同一個 Wi-Fi。'
-    : '請確認閘道器所在的 Wi-Fi 可以上網。';
+    ? L10n.current.connectionStatus_uploadCheckLocal
+    : L10n.current.connectionStatus_uploadCheckProduction;
 
 /// Main hint when the gateway has no Wi-Fi: the cause first, then how to
 /// get back to 「重設 Wi-Fi」 (after reconnecting Bluetooth if it dropped).
 String wifiProblemHint(CommissionState state) {
   final ssid = gatewaySsid(state.net, state.config['wifi_ssid']);
   final reason = wifiDiscReasonOf(state.net);
-  final action = ssid?.isEmpty == true ? '設定 Wi-Fi' : '重設 Wi-Fi';
+  final l10n = L10n.current;
+  final action = ssid?.isEmpty == true
+      ? l10n.connectionStatus_wifiActionSet
+      : l10n.connectionStatus_wifiActionReset;
   final next = state.uploadWatch == UploadWatch.linkLost && state.relinking
-      ? '手機和閘道器的藍牙也斷了，$autoRelinkingText'
+      ? l10n.connectionStatus_wifiLinkLostRelinking(autoRelinkingText)
       : state.uploadWatch == UploadWatch.linkLost
-      ? '手機和閘道器的藍牙也斷了：請靠近閘道器，按「結束並重新選擇閘道器」'
-            '重新連線，再按「$action」。'
+      ? l10n.connectionStatus_wifiLinkLostReconnect(action)
       : state.step == 2
-      ? '請按「$action」，改成現場的 2.4 GHz Wi-Fi。'
-      : '請按「結束並重新選擇閘道器」重新連線，在網路體檢按「$action」。';
+      ? l10n.connectionStatus_wifiFixHere(action)
+      : l10n.connectionStatus_wifiFixReconnect(action);
   return '${wifiProblemText(ssid, reason: reason)}\n$next';
 }
 
@@ -143,20 +154,25 @@ String wifiProblemHint(CommissionState state) {
 /// shown (steps 7 / 8).
 String linkLostHint(CommissionState state) {
   // Round 22: back already (the list is read again) — not 「已中斷」 any more.
-  if (relinkBack(state)) return '手機已重新連上閘道器，$relinkReloadText';
-  if (state.relinking) return '手機和閘道器的藍牙已中斷，$autoRelinkingText';
+  final l10n = L10n.current;
+  if (relinkBack(state)) {
+    return l10n.connectionStatus_linkBack(relinkReloadText);
+  }
+  if (state.relinking) {
+    return l10n.connectionStatus_linkLostRelinking(autoRelinkingText);
+  }
   final action = switch (state.step) {
-    4 when !state.resumePending => '請按「$rescanAfterLossLabel」。',
-    4 || 5 => '請按「重新連線並繼續」。',
-    _ => '請重新連線閘道器後再確認。',
+    // Steps 4 and 5 both name 〔重新連線並繼續〕 ([rescanAfterLossLabel]).
+    4 || 5 => l10n.connectionStatus_tapButton(rescanAfterLossLabel),
+    _ => l10n.connectionStatus_reconnectThenCheck,
   };
-  return '手機和閘道器的藍牙已中斷，無法讀取目前狀態。$action';
+  return l10n.connectionStatus_linkLostCannotRead(action);
 }
 
 String _envPlace(BackendEnv env) => switch (env) {
-  BackendEnv.production => '正式站',
-  BackendEnv.local => '本地測試主機',
-  BackendEnv.custom => '其他網址',
+  BackendEnv.production => L10n.current.backendEnvironment_labelProduction,
+  BackendEnv.local => L10n.current.connectionStatus_placeLocal,
+  BackendEnv.custom => L10n.current.backendEnvironment_labelCustom,
 };
 
 StatusRow _phoneRow(
@@ -165,44 +181,70 @@ StatusRow _phoneRow(
   required bool loggedIn,
   required bool demo,
 }) {
+  final l10n = L10n.current;
   final where = _envPlace(env.environment);
-  if (demo) return StatusRow(where, '✓ 已連線（模擬）', StatusTone.ok);
+  final connected = l10n.connectionStatus_statusConnected;
+  final unreachable = l10n.connectionStatus_statusUnreachable;
+  if (demo) {
+    return StatusRow(
+      where,
+      l10n.connectionStatus_statusConnectedDemo,
+      StatusTone.ok,
+    );
+  }
   if (probe == null) {
     return loggedIn
-        ? StatusRow(where, '✓ 已連線', StatusTone.ok)
-        : StatusRow(where, '⏳ 檢查中…', StatusTone.pending);
+        ? StatusRow(where, connected, StatusTone.ok)
+        : StatusRow(
+            where,
+            l10n.connectionStatus_statusChecking,
+            StatusTone.pending,
+          );
   }
   switch (probe.outcome) {
     case ProbeOutcome.healthy:
-      return StatusRow(where, '✓ 已連線', StatusTone.ok);
+      return StatusRow(where, connected, StatusTone.ok);
     case ProbeOutcome.degraded:
-      return StatusRow(where, '⚠ 連上了，但資料庫還沒準備好', StatusTone.warn);
+      return StatusRow(
+        where,
+        l10n.connectionStatus_statusDbNotReady,
+        StatusTone.warn,
+      );
     case ProbeOutcome.unreachable:
     case ProbeOutcome.timeout:
       return loggedIn
-          ? StatusRow(where, '✓ 已連線', StatusTone.ok)
-          : StatusRow(where, '✗ 連不上', StatusTone.bad);
+          ? StatusRow(where, connected, StatusTone.ok)
+          : StatusRow(where, unreachable, StatusTone.bad);
     case ProbeOutcome.notBackend:
     case ProbeOutcome.httpError:
-      if (loggedIn) return StatusRow(where, '✓ 已連線', StatusTone.ok);
+      if (loggedIn) return StatusRow(where, connected, StatusTone.ok);
       // A local test host must answer /healthz; other sites may not have it.
       return env.environment == BackendEnv.local
-          ? StatusRow(where, '✗ 連不上', StatusTone.bad)
+          ? StatusRow(where, unreachable, StatusTone.bad)
           : StatusRow(where, '', StatusTone.neutral);
   }
 }
 
-String _probeText(ProbeResult? probe) => switch (probe?.outcome) {
-  null => '檢查中',
-  ProbeOutcome.healthy =>
-    '正常${probe!.version == null ? '' : '（版本 ${probe.version}）'}',
-  ProbeOutcome.degraded => '資料庫未就緒（HTTP 503）',
-  ProbeOutcome.notBackend => '不是本系統後端（HTTP ${probe!.status}）',
-  ProbeOutcome.httpError => 'HTTP ${probe!.status}',
-  ProbeOutcome.timeout => '逾時',
-  ProbeOutcome.unreachable =>
-    '無法連線${probe!.detail == null ? '' : '（${probe.detail}）'}',
-};
+String _probeText(ProbeResult? probe) {
+  final l10n = L10n.current;
+  return switch (probe?.outcome) {
+    null => l10n.connectionStatus_probeChecking,
+    ProbeOutcome.healthy =>
+      probe!.version == null
+          ? l10n.connectionStatus_probeHealthy
+          : l10n.connectionStatus_probeHealthyVersion(probe.version!),
+    ProbeOutcome.degraded => l10n.connectionStatus_probeDegraded,
+    ProbeOutcome.notBackend => l10n.connectionStatus_probeNotBackend(
+      '${probe!.status}',
+    ),
+    ProbeOutcome.httpError => 'HTTP ${probe!.status}',
+    ProbeOutcome.timeout => l10n.common_timeout,
+    ProbeOutcome.unreachable =>
+      probe!.detail == null
+          ? l10n.connectionStatus_probeUnreachable
+          : l10n.connectionStatus_probeUnreachableDetail(probe.detail!),
+  };
+}
 
 /// Builds the panel model. [probe] is the `/healthz` result of the APP
 /// backend (null while checking), [demo] the simulated system.
@@ -213,6 +255,7 @@ ConnectionStatus connectionStatus({
   bool demo = false,
   DateTime? now,
 }) {
+  final l10n = L10n.current;
   final app = env.uploadTarget;
   // The backend saw this gateway's heartbeat or data within the last 60 s.
   final seen = state.backendSeenAt;
@@ -245,36 +288,60 @@ ConnectionStatus connectionStatus({
   StatusRow gateway;
   String? hint;
   if (legacy) {
+    final production = l10n.backendEnvironment_labelProduction;
     gateway = need == SyncNeed.legacy
-        ? const StatusRow('正式站', '⚠ 送到別處', StatusTone.warn)
-        : const StatusRow('正式站', '', StatusTone.neutral);
+        ? StatusRow(
+            production,
+            l10n.connectionStatus_statusElsewhere,
+            StatusTone.warn,
+          )
+        : StatusRow(production, '', StatusTone.neutral);
     if (need == SyncNeed.legacy) hint = legacyTargetText(config['fw_version']);
   } else if (current == null) {
     gateway = polling
-        ? const StatusRow('確認中', '⏳ 確認中…', StatusTone.pending)
-        : StatusRow(unconfirmed ? '未確認' : '無法辨識', '？ 未確認', StatusTone.neutral);
+        ? StatusRow(
+            l10n.connectionStatus_whereChecking,
+            l10n.connectionStatus_statusConfirming,
+            StatusTone.pending,
+          )
+        : StatusRow(
+            unconfirmed
+                ? l10n.connectionStatus_whereUnconfirmed
+                : l10n.connectionStatus_whereUnknown,
+            l10n.connectionStatus_statusUnconfirmed,
+            StatusTone.neutral,
+          );
     // One action: 「同步」 settles it when the APP knows the target (no
     // reboot if it already matches); otherwise read it again.
     if (!polling) {
       hint = need == SyncNeed.sync
-          ? '還不確定閘道器把資料送到哪裡。按「同步」讓閘道器改送到'
-                '${placeOf(syncTarget!)}。'
-          : '還不確定閘道器把資料送到哪裡，請按「連線狀態」這一列最右邊的'
-                '重新讀取圖示（↻）。';
+          ? l10n.connectionStatus_hintUnknownSync(placeOf(syncTarget!))
+          : l10n.connectionStatus_hintUnknownReread;
     }
   } else if (need == SyncNeed.sync) {
-    gateway = StatusRow(placeOf(current), '⚠ 送到別處', StatusTone.warn);
-    hint = current.plainLabel == syncTarget!.plainLabel
-        // Same place, other port: the difference is in 技術細節.
-        ? '閘道器的上傳設定和手機不一致（見技術細節）。按「同步」讓閘道器改送到'
-              '${placeOf(syncTarget)}。'
-        : '閘道器把資料送到${current.plainLabel}，但手機連的是'
-              '${syncTarget.plainLabel}。按「同步」讓閘道器改送到'
-              '${placeOf(syncTarget)}。';
+    gateway = StatusRow(
+      placeOf(current),
+      l10n.connectionStatus_statusElsewhere,
+      StatusTone.warn,
+    );
+    // Same place (same [MqttTarget.plainLabel]: both production, or the
+    // same local host), other port: the difference is in 技術細節.
+    final samePlace =
+        current.kind == syncTarget!.kind &&
+        (!current.isLocal || current.host == syncTarget.host);
+    hint = samePlace
+        ? l10n.connectionStatus_hintPortMismatch(placeOf(syncTarget))
+        : l10n.connectionStatus_hintTargetMismatch(
+            current.plainLabel,
+            syncTarget.plainLabel,
+            placeOf(syncTarget),
+          );
   } else if (held) {
     gateway = StatusRow(
       placeOf(current),
-      state.testMode ? '⚠ 測試模式' : '⚠ 上傳已暫停',
+      state.testMode
+          ? l10n.connectionStatus_statusTestMode
+          : l10n.connectionStatus_statusUploadPaused,
       StatusTone.warn,
     );
   } else if (waitingJoin && (uploading || backendFresh)) {
@@ -283,19 +350,34 @@ ConnectionStatus connectionStatus({
   } else if (uploading || backendFresh) {
     // Round 28: 「先完成配置」 — uploading, but this pile's PTU is not
     // connected yet, so no PTU data so far.
+    gateway = state.ptuDeferred
+        ? StatusRow(placeOf(current), deferredUploadStatus, StatusTone.ok)
+        : StatusRow(
+            placeOf(current),
+            uploadingStatusText,
+            StatusTone.ok,
+            uploading: true,
+          );
+  } else if (polling) {
     gateway = StatusRow(
       placeOf(current),
-      state.ptuDeferred ? deferredUploadStatus : '✓ 資料上傳中',
-      StatusTone.ok,
+      l10n.connectionStatus_statusConnecting,
+      StatusTone.pending,
     );
-  } else if (polling) {
-    gateway = StatusRow(placeOf(current), '⏳ 連線中…', StatusTone.pending);
   } else if (config['mqtt_connected'] == false ||
       state.uploadWatch == UploadWatch.gaveUp ||
       state.uploadWatch == UploadWatch.linkLost) {
-    gateway = StatusRow(placeOf(current), '✗ 連不上', StatusTone.bad);
+    gateway = StatusRow(
+      placeOf(current),
+      l10n.connectionStatus_statusUnreachable,
+      StatusTone.bad,
+    );
   } else {
-    gateway = StatusRow(placeOf(current), '？ 未確認', StatusTone.neutral);
+    gateway = StatusRow(
+      placeOf(current),
+      l10n.connectionStatus_statusUnconfirmed,
+      StatusTone.neutral,
+    );
   }
 
   // The gateway's own address, when it reported one (get_net_status).
@@ -310,7 +392,11 @@ ConnectionStatus connectionStatus({
       (wifi == WifiVerdict.failed || wifi == WifiVerdict.notConfigured);
   if (noWifi) {
     if (current != null || legacy) {
-      gateway = StatusRow(gateway.where, '✗ Wi-Fi 沒連上', StatusTone.bad);
+      gateway = StatusRow(
+        gateway.where,
+        l10n.connectionStatus_statusWifiDown,
+        StatusTone.bad,
+      );
     }
     hint = wifiProblemHint(state);
   } else if (!legacy &&
@@ -326,11 +412,11 @@ ConnectionStatus connectionStatus({
       hint = subnet;
     } else if (gateway.tone == StatusTone.bad) {
       if (state.uploadWatch == UploadWatch.linkLost) {
-        hint = '手機和閘道器的藍牙斷了，請靠近閘道器後按「結束並重新選擇閘道器」重新連線。';
+        hint = l10n.connectionStatus_hintLinkLostReconnect;
       } else if (wifi == WifiVerdict.connecting) {
-        hint =
-            '閘道器還沒連上 Wi-Fi，請稍候；若一直連不上，請確認 Wi-Fi 名稱和密碼'
-            '（可用「改用其他 Wi-Fi」）。';
+        hint = l10n.connectionStatus_hintWifiConnecting(
+          l10n.connectionStatus_wifiActionOther,
+        );
       } else {
         hint = uploadCheckHint(current);
       }
@@ -344,7 +430,9 @@ ConnectionStatus connectionStatus({
     if (!noWifi) {
       gateway = StatusRow(
         gateway.where,
-        relinkBack(state) ? '？ 上傳狀態待確認' : '？ 藍牙已中斷，上傳狀態待確認',
+        relinkBack(state)
+            ? l10n.connectionStatus_statusUploadUnknown
+            : l10n.connectionStatus_statusLinkLostUploadUnknown,
         StatusTone.warn,
       );
     }
@@ -354,8 +442,8 @@ ConnectionStatus connectionStatus({
   }
   if (hint == null && phone.tone == StatusTone.bad) {
     hint = env.environment == BackendEnv.local
-        ? '手機連不到測試主機：請確認電腦上的測試主機是否開著，且手機和電腦連同一個 Wi-Fi。'
-        : '手機連不到${env.label}，請確認手機可以上網。';
+        ? l10n.connectionStatus_hintPhoneNoLocal
+        : l10n.connectionStatus_hintPhoneNoBackend(env.label);
   }
   // 其他網址 the APP cannot map: show the gateway as is, never claim a match.
   if (hint == null &&
@@ -363,7 +451,7 @@ ConnectionStatus connectionStatus({
       current != null &&
       app.target == null &&
       app.error == null) {
-    hint = 'APP 無法從這個網址判斷閘道器該送到哪裡，這裡只顯示閘道器目前的設定，不會自動切換。';
+    hint = l10n.connectionStatus_hintCustomUnknown;
   }
 
   final shipWarning = state.step >= 7 && current?.isLocal == true;
@@ -376,44 +464,84 @@ ConnectionStatus connectionStatus({
           gateway.tone == StatusTone.ok &&
           hint == null &&
           wifiWeak == null
-      ? '✓ ${env.label}：手機與閘道器都已連上'
+      ? l10n.connectionStatus_summary(env.label)
       : null;
   final disc = wifi == WifiVerdict.ok ? null : wifiDiscDetail(net);
   final bootCount = bootCountOf(net);
 
+  final unknown = l10n.common_unknown;
+  final rssi = net['rssi'];
+  final pauseReason = config['pause_reason'];
+  final mqtt = switch (config['mqtt_connected']) {
+    true => l10n.connectionStatus_mqttConnected,
+    false => l10n.connectionStatus_mqttDisconnected,
+    _ => unknown,
+  };
   final details = <String>[
-    '手機連線的後端：${env.base.isEmpty ? '（未設定）' : env.base}',
-    '後端健康檢查（GET /healthz）：${demo ? '模擬' : _probeText(probe)}',
+    l10n.connectionStatus_detailPhoneBackend(
+      env.base.isEmpty ? l10n.connectionStatus_detailNotSet : env.base,
+    ),
+    l10n.connectionStatus_detailHealth(
+      demo ? l10n.connectionStatus_detailDemo : _probeText(probe),
+    ),
     if (legacy)
-      '閘道器上傳目標：正式站（韌體 ${config['fw_version'] ?? '未知'} 不支援切換）'
+      l10n.connectionStatus_detailTargetLegacy(
+        '${config['fw_version'] ?? unknown}',
+      )
     else if (current != null)
-      '閘道器上傳目標：MQTT ${current.isLocal ? '本地' : '正式站'} '
-          '${current.host.isEmpty ? '' : current.host}:${current.port}（TLS）'
+      current.isLocal
+          ? l10n.connectionStatus_detailTargetLocal(
+              '${current.host}:${current.port}',
+            )
+          : l10n.connectionStatus_detailTargetProduction(
+              '${current.host}:${current.port}',
+            )
+    else if (unconfirmed)
+      l10n.connectionStatus_detailTargetUnconfirmed
     else
-      '閘道器上傳目標：${unconfirmed ? '未確認（切換結果尚未讀回）' : '無法辨識（${config['mqtt_target']}）'}',
-    '${state.uploadWatch == UploadWatch.linkLost ? '中斷前最後讀到的 MQTT 連線' : 'MQTT 連線'}：${switch (config['mqtt_connected']) {
-      true => '已連線',
-      false => '未連線',
-      _ => '未知',
-    }}',
+      l10n.connectionStatus_detailTargetUnknown('${config['mqtt_target']}'),
+    state.uploadWatch == UploadWatch.linkLost
+        ? l10n.connectionStatus_detailMqttLastRead(mqtt)
+        : l10n.connectionStatus_detailMqtt(mqtt),
     if (net.isNotEmpty || config['wifi_ssid'] != null)
-      '閘道器網路：Wi-Fi「${net['ssid'] ?? config['wifi_ssid'] ?? ''}」'
-          '${gatewayIp.isEmpty ? '' : ' · IP $gatewayIp'}'
-          '${net['rssi'] is num && net['rssi'] != 0 ? ' · 訊號 ${net['rssi']} dBm${isWeakWifiRssi(net['rssi']) ? '（偏弱）' : ''}' : ''}'
-          '${net['wifi_state'] == null ? '' : ' · ${wifiStateText(net['wifi_state'])}'}',
+      l10n.connectionStatus_detailGatewayNet(
+            '${net['ssid'] ?? config['wifi_ssid'] ?? ''}',
+          ) +
+          (gatewayIp.isEmpty ? '' : ' · IP $gatewayIp') +
+          (rssi is num && rssi != 0
+              ? l10n.connectionStatus_detailSignal('$rssi') +
+                    (isWeakWifiRssi(rssi)
+                        ? l10n.connectionStatus_detailSignalWeak
+                        : '')
+              : '') +
+          (net['wifi_state'] == null
+              ? ''
+              : ' · ${wifiStateText(net['wifi_state'])}'),
     ?disc,
     if (bootCount != null)
-      '閘道器開機次數：$bootCount'
-          '${net['reset_reason'] is String ? '（上次開機原因：${resetReasonText(net['reset_reason'])}）' : ''}',
-    '韌體版本：${config['fw_version'] ?? '未知'}',
+      l10n.connectionStatus_detailBootCount(bootCount) +
+          (net['reset_reason'] is String
+              ? l10n.connectionStatus_detailLastReset(
+                  resetReasonText(net['reset_reason']),
+                )
+              : ''),
+    l10n.connectionStatus_detailFirmware('${config['fw_version'] ?? unknown}'),
     if (config['mode'] != null)
-      '閘道器模式：${state.testMode ? '測試模式（只產生測試資料）' : '正常'}',
+      state.testMode
+          ? l10n.connectionStatus_detailModeTest
+          : l10n.connectionStatus_detailModeNormal,
     if (config['upload_paused'] is bool)
-      '資料上傳：${config['upload_paused'] == true ? '已暫停' : '開啟'}'
-          '${config['pause_reason'] is String && (config['pause_reason'] as String).isNotEmpty ? '（${config['pause_reason']}）' : ''}',
+      (config['upload_paused'] == true
+              ? l10n.connectionStatus_detailUploadPaused
+              : l10n.connectionStatus_detailUploadOn) +
+          (pauseReason is String && pauseReason.isNotEmpty
+              ? l10n.connectionStatus_detailPauseReason(pauseReason)
+              : ''),
     if (current?.isLocal == true)
-      '本地 MQTT 連不上時請確認：電腦防火牆已開放 TCP ${current!.port}、'
-          '本地 MQTT broker 已啟動，且 broker 憑證包含 ${current.host}。',
+      l10n.connectionStatus_detailLocalMqttCheck(
+        '${current!.port}',
+        current.host,
+      ),
     if (app.error != null) app.error!,
   ];
 

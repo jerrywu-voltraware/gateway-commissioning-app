@@ -1,0 +1,15 @@
+{
+  "@@locale": "en",
+  "connectionStatusPanel_expand": "Expand",
+  "connectionStatusPanel_title": "Connection status",
+  "connectionStatusPanel_collapse": "Collapse",
+  "connectionStatusPanel_reload": "Reload",
+  "connectionStatusPanel_phoneRow": "Phone → backend",
+  "connectionStatusPanel_gatewayRow": "Gateway → data upload",
+  "connectionStatusPanel_sync": "Sync",
+  "connectionStatusPanel_details": "Technical details",
+  "connectionStatusPanel_switchTitle": "Switch the gateway too?",
+  "connectionStatusPanel_switchBody": "The gateway will send its data to {target} and restart (about 1 min). Stay near the gateway.",
+  "connectionStatusPanel_notNow": "Not now",
+  "connectionStatusPanel_switchButton": "Switch"
+}

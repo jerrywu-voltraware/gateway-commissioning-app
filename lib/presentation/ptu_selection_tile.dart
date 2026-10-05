@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../core/assign_progress.dart';
 import '../core/ptu_rssi.dart';
+import '../l10n/l10n.dart';
 
 /// Compact selection row; technical detail is available without making every
 /// device row taller. RSSI zero is an unavailable reading, not a strong signal.
@@ -13,8 +14,8 @@ class PtuSelectionTile extends StatelessWidget {
     this.result,
     this.blocked = false,
     this.onReset,
-    this.blockedText = '已屬於其他閘道器',
-    this.resetLabel = '重置並納入',
+    this.blockedText,
+    this.resetLabel,
     this.status,
     this.statusText,
   });
@@ -36,15 +37,17 @@ class PtuSelectionTile extends StatelessWidget {
   final VoidCallback? onReset;
 
   /// [blocked] 時的說明：後端確認已登記才是「已屬於其他閘道器」；自動重置
-  /// 失敗時改為「重置失敗…」。
-  final String blockedText;
+  /// 失敗時改為「重置失敗…」。null＝預設「已屬於其他閘道器」（跟著語言）。
+  final String? blockedText;
 
-  /// [onReset] 按鈕文字（重置失敗時為「重試」）。
-  final String resetLabel;
+  /// [onReset] 按鈕文字（重置失敗時為「重試」）；null＝預設「重置並納入」。
+  final String? resetLabel;
 
   String get title {
     final id = (ptu['device_number'] as num?)?.toInt() ?? 0;
-    return id > 0 && id != 255 ? 'PTU #$id' : '未指派 PTU';
+    return id > 0 && id != 255
+        ? 'PTU #$id'
+        : L10n.current.ptuSelectionTile_unassigned;
   }
 
   void _showDetails(BuildContext context) {
@@ -57,51 +60,67 @@ class PtuSelectionTile extends StatelessWidget {
       constraints: BoxConstraints(
         maxHeight: MediaQuery.sizeOf(context).height * 0.85,
       ),
-      builder: (context) => SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(title, style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 16),
-              SelectableText('MAC：${ptu['mac']}'),
-              if (ptu['name'] != null) Text('名稱：${ptu['name']}'),
-              Text(ptu['connected'] == true ? '已連線至此閘道器' : '周邊未連線'),
-              Text('訊號：${rssi is num && rssi < 0 ? '$rssi dBm' : '尚無讀值'}'),
-              Text('讀值狀態：${ptuRssiText(ptu)}'),
-              const Text('此處為開啟時的讀值；動態數值請看清單。'),
-              if (statusText != null) Text('狀態：$statusText'),
-              if (result?.isNotEmpty == true && result != statusText)
-                Text(result!),
-              if (status?.detail?.isNotEmpty == true) ...[
-                const SizedBox(height: 8),
+      builder: (context) {
+        final l10n = context.l10n;
+        return SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(title, style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 16),
+                SelectableText(l10n.ptuSelectionTile_mac('${ptu['mac']}')),
+                if (ptu['name'] != null)
+                  Text(l10n.ptuSelectionTile_name('${ptu['name']}')),
                 Text(
-                  '詳細（最近一次失敗）',
-                  style: Theme.of(context).textTheme.labelMedium,
+                  ptu['connected'] == true
+                      ? l10n.ptuSelectionTile_connectedHere
+                      : l10n.ptuSelectionTile_peripheralNotConnected,
                 ),
-                SelectableText(
-                  status!.detail!,
-                  key: const Key('ptu-assign-detail'),
-                  style: Theme.of(context).textTheme.bodySmall,
+                Text(
+                  l10n.ptuSelectionTile_signal(
+                    rssi is num && rssi < 0
+                        ? '$rssi dBm'
+                        : l10n.ptuSelectionTile_noReading,
+                  ),
+                ),
+                Text(l10n.ptuSelectionTile_readingState(ptuRssiText(ptu))),
+                Text(l10n.ptuSelectionTile_snapshotNote),
+                if (statusText != null)
+                  Text(l10n.ptuSelectionTile_status(statusText!)),
+                if (result?.isNotEmpty == true && result != statusText)
+                  Text(result!),
+                if (status?.detail?.isNotEmpty == true) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    l10n.ptuSelectionTile_detailTitle,
+                    style: Theme.of(context).textTheme.labelMedium,
+                  ),
+                  SelectableText(
+                    status!.detail!,
+                    key: const Key('ptu-assign-detail'),
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+                const SizedBox(height: 16),
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: Text(l10n.common_close),
                 ),
               ],
-              const SizedBox(height: 16),
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('關閉'),
-              ),
-            ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     return Material(
       color: selected
           ? theme.colorScheme.primaryContainer.withValues(alpha: 0.25)
@@ -110,7 +129,10 @@ class PtuSelectionTile extends StatelessWidget {
         children: [
           Checkbox(
             value: selected,
-            semanticLabel: '選擇 $title，${ptu['mac']}',
+            semanticLabel: l10n.ptuSelectionTile_selectSemantic(
+              title,
+              '${ptu['mac']}',
+            ),
             onChanged: onChanged == null
                 ? null
                 : (value) => onChanged!(value ?? false),
@@ -135,7 +157,9 @@ class PtuSelectionTile extends StatelessWidget {
                           ),
                         ),
                         Text(
-                          ptu['connected'] == true ? '已連線' : '未連線',
+                          ptu['connected'] == true
+                              ? l10n.ptuSelectionTile_connected
+                              : l10n.ptuSelectionTile_notConnected,
                           style: theme.textTheme.bodySmall,
                         ),
                         Text(
@@ -154,7 +178,7 @@ class PtuSelectionTile extends StatelessWidget {
                         crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
                           Text(
-                            blockedText,
+                            blockedText ?? l10n.ptuSelectionTile_blocked,
                             style: theme.textTheme.bodySmall?.copyWith(
                               color: theme.colorScheme.error,
                             ),
@@ -167,7 +191,9 @@ class PtuSelectionTile extends StatelessWidget {
                                 minimumSize: const Size(0, 0),
                                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                               ),
-                              child: Text(resetLabel),
+                              child: Text(
+                                resetLabel ?? l10n.ptuSelectionTile_reset,
+                              ),
                             ),
                         ],
                       ),
@@ -181,7 +207,7 @@ class PtuSelectionTile extends StatelessWidget {
             ),
           ),
           IconButton(
-            tooltip: '$title 裝置資訊',
+            tooltip: l10n.ptuSelectionTile_infoTooltip(title),
             onPressed: () => _showDetails(context),
             icon: const Icon(Icons.info_outline, size: 20),
           ),

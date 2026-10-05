@@ -1,0 +1,22 @@
+{
+  "@@locale": "zh",
+  "connectionStatusPanel_expand": "展開",
+  "connectionStatusPanel_title": "連線狀態",
+  "connectionStatusPanel_collapse": "收合",
+  "connectionStatusPanel_reload": "重新讀取",
+  "connectionStatusPanel_phoneRow": "手機 → 後端",
+  "connectionStatusPanel_gatewayRow": "閘道器 → 資料上傳",
+  "connectionStatusPanel_sync": "同步",
+  "connectionStatusPanel_details": "技術細節",
+  "connectionStatusPanel_switchTitle": "同時切換閘道器？",
+  "connectionStatusPanel_switchBody": "閘道器會改把資料送到{target}，並重新開機約 1 分鐘，期間請留在閘道器旁。",
+  "@connectionStatusPanel_switchBody": {
+    "placeholders": {
+      "target": {
+        "type": "String"
+      }
+    }
+  },
+  "connectionStatusPanel_notNow": "先不要",
+  "connectionStatusPanel_switchButton": "切換"
+}

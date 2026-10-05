@@ -6,6 +6,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../data/wifi_scan.dart';
 import '../data/wifi_password_store.dart';
+import '../l10n/l10n.dart';
 import 'next_action_guide.dart';
 
 /// Phone Wi-Fi selection is local to this form: a result arriving after the
@@ -147,7 +148,10 @@ class _WifiCredentialsFormState extends State<WifiCredentialsForm>
     final timer = Timer(const Duration(seconds: 3), () {
       if (!current()) return;
       _passwordRequest++;
-      setState(() => _passwordMessage = '讀取已存密碼逾時，請手動輸入。');
+      setState(
+        () => _passwordMessage =
+            L10n.current.wifiCredentialsForm_readSavedTimeout,
+      );
     });
     _passwordReadTimer = timer;
     try {
@@ -161,12 +165,15 @@ class _WifiCredentialsFormState extends State<WifiCredentialsForm>
             revision == _passwordRevision) {
           widget.password.text = saved;
           _showPassword = false;
-          _passwordMessage = '已帶入這支手機記住的密碼，可按眼睛查看或手動修改。';
+          _passwordMessage = L10n.current.wifiCredentialsForm_savedFilled;
         }
       });
     } catch (_) {
       if (!current()) return;
-      setState(() => _passwordMessage = '暫時無法讀取已存密碼，請手動輸入。');
+      setState(
+        () =>
+            _passwordMessage = L10n.current.wifiCredentialsForm_readSavedFailed,
+      );
     } finally {
       timer.cancel();
       if (identical(_passwordReadTimer, timer)) _passwordReadTimer = null;
@@ -191,12 +198,12 @@ class _WifiCredentialsFormState extends State<WifiCredentialsForm>
         _hasStoredPassword = false;
         _rememberPassword = clearInput;
         if (clearInput) widget.password.clear();
-        _passwordMessage = '已忘記這個 Wi-Fi 的已存密碼。';
+        _passwordMessage = L10n.current.wifiCredentialsForm_forgotten;
       });
     } catch (_) {
       if (mounted && widget.ssid.text == ssid) {
         setState(() {
-          _passwordMessage = '舊密碼尚未刪除，請重試；本次不會記住新密碼。';
+          _passwordMessage = L10n.current.wifiCredentialsForm_forgetFailed;
           _rememberPassword = false;
         });
       }
@@ -243,12 +250,20 @@ class _WifiCredentialsFormState extends State<WifiCredentialsForm>
         } catch (_) {
           onStorageError?.call();
           if (mounted) {
-            setState(() => _passwordMessage = 'Wi-Fi 已連線，但無法記住密碼；下次請重新輸入。');
+            setState(
+              () => _passwordMessage =
+                  L10n.current.wifiCredentialsForm_rememberFailed,
+            );
           }
         }
       }
     } catch (_) {
-      if (mounted) setState(() => _passwordMessage = '連線尚未完成，未記住本次密碼。');
+      if (mounted) {
+        setState(
+          () =>
+              _passwordMessage = L10n.current.wifiCredentialsForm_notRemembered,
+        );
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -277,11 +292,11 @@ class _WifiCredentialsFormState extends State<WifiCredentialsForm>
       if (!_accepts(request)) return;
       setState(() {
         if (ssid == null) {
-          _message = '讀不到手機目前的 Wi-Fi。請先在手機的 Wi-Fi 設定連上現場網路，再回來重試，或手動輸入名稱。';
+          _message = L10n.current.wifiCredentialsForm_phoneWifiUnreadable;
         } else {
           _select(ssid);
           _manual = false;
-          _message = '已帶入手機的 Wi-Fi 名稱，請確認此網路支援 2.4 GHz，並確認下方密碼。';
+          _message = L10n.current.wifiCredentialsForm_phoneWifiFilled;
         }
       });
     } catch (error) {
@@ -297,14 +312,14 @@ class _WifiCredentialsFormState extends State<WifiCredentialsForm>
           'permission' ||
           'permission_permanently_denied' ||
           'precise_location' =>
-            '讀取 Wi-Fi 名稱需要定位權限及精確位置。請在 App 設定允許後重試，也可手動輸入名稱。',
-          'location_off' => '請開啟手機定位服務後重試，或手動輸入 Wi-Fi 名稱。',
-          'wifi_off' => '請先在手機的 Wi-Fi 設定連上現場網路，再回來重試，或手動輸入名稱。',
-          'unsupported' => '此平台無法讀取手機 Wi-Fi，請手動輸入名稱。',
+            L10n.current.wifiCredentialsForm_permissionNeeded,
+          'location_off' => L10n.current.wifiCredentialsForm_locationOff,
+          'wifi_off' => L10n.current.wifiCredentialsForm_wifiOff,
+          'unsupported' => L10n.current.wifiCredentialsForm_unsupported,
           _ =>
             error is TimeoutException
-                ? '讀取 Wi-Fi 逾時，請重試或手動輸入名稱。'
-                : '暫時無法讀取 Wi-Fi 名稱，請重試或手動輸入。',
+                ? L10n.current.wifiCredentialsForm_readWifiTimeout
+                : L10n.current.wifiCredentialsForm_readWifiFailed,
         };
       });
     } finally {
@@ -314,6 +329,7 @@ class _WifiCredentialsFormState extends State<WifiCredentialsForm>
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return ValueListenableBuilder<TextEditingValue>(
       valueListenable: widget.password,
       builder: (context, password, _) {
@@ -321,16 +337,20 @@ class _WifiCredentialsFormState extends State<WifiCredentialsForm>
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text('帶入手機目前的 Wi-Fi 名稱後，輸入密碼或使用已記住的密碼。'),
+            Text(l10n.wifiCredentialsForm_intro),
             const SizedBox(height: 8),
             NextActionGuide.button(
               active: !_manual && widget.ssid.text.isEmpty,
-              hint: '帶入手機目前的 Wi-Fi',
+              hint: l10n.wifiCredentialsForm_usePhoneHint,
               child: OutlinedButton.icon(
                 key: const Key('wifi-use-phone'),
                 onPressed: enabled ? _usePhoneWifi : null,
                 icon: const Icon(Icons.wifi),
-                label: Text(_reading ? '讀取中…' : '使用手機目前的 Wi-Fi'),
+                label: Text(
+                  _reading
+                      ? l10n.common_loading
+                      : l10n.wifiCredentialsForm_usePhoneButton,
+                ),
               ),
             ),
             if (_message != null)
@@ -341,11 +361,11 @@ class _WifiCredentialsFormState extends State<WifiCredentialsForm>
             if (_showSettings)
               TextButton(
                 onPressed: enabled ? openAppSettings : null,
-                child: const Text('開啟 App 權限設定'),
+                child: Text(l10n.wifiCredentialsForm_openAppSettings),
               ),
             const SizedBox(height: 8),
             Text(
-              '閘道器要使用的 Wi-Fi',
+              l10n.wifiCredentialsForm_gatewayWifiLabel,
               style: Theme.of(context).textTheme.labelMedium,
             ),
             if (_manual)
@@ -355,14 +375,18 @@ class _WifiCredentialsFormState extends State<WifiCredentialsForm>
                 enabled: enabled,
                 autocorrect: false,
                 enableSuggestions: false,
-                decoration: const InputDecoration(labelText: 'Wi-Fi 名稱（SSID）'),
+                decoration: InputDecoration(
+                  labelText: l10n.wifiCredentialsForm_ssidLabel,
+                ),
                 onChanged: (_) {
                   widget.onNetworkEdited();
                 },
               )
             else
               Text(
-                widget.ssid.text.isEmpty ? '尚未選擇 Wi-Fi' : widget.ssid.text,
+                widget.ssid.text.isEmpty
+                    ? l10n.wifiCredentialsForm_noneSelected
+                    : widget.ssid.text,
                 key: const Key('wifi-selected'),
               ),
             Wrap(
@@ -377,7 +401,7 @@ class _WifiCredentialsFormState extends State<WifiCredentialsForm>
                           _showSettings = false;
                         })
                       : null,
-                  child: const Text('手動輸入其他網路'),
+                  child: Text(l10n.wifiCredentialsForm_manualButton),
                 ),
               ],
             ),
@@ -387,7 +411,7 @@ class _WifiCredentialsFormState extends State<WifiCredentialsForm>
                   enabled &&
                   widget.ssid.text.isNotEmpty &&
                   password.text.isEmpty,
-              hint: '輸入 Wi-Fi 密碼；無密碼的網路可直接儲存',
+              hint: l10n.wifiCredentialsForm_passwordHint,
               child: TextField(
                 key: const Key('wifi-password'),
                 controller: widget.password,
@@ -396,10 +420,12 @@ class _WifiCredentialsFormState extends State<WifiCredentialsForm>
                 autocorrect: false,
                 enableSuggestions: false,
                 decoration: InputDecoration(
-                  labelText: 'Wi-Fi 密碼',
+                  labelText: l10n.wifiCredentialsForm_passwordLabel,
                   suffixIcon: IconButton(
                     key: const Key('wifi-password-visibility'),
-                    tooltip: _showPassword ? '隱藏密碼' : '顯示密碼',
+                    tooltip: _showPassword
+                        ? l10n.wifiCredentialsForm_hidePassword
+                        : l10n.wifiCredentialsForm_showPassword,
                     onPressed: enabled
                         ? () => setState(() => _showPassword = !_showPassword)
                         : null,
@@ -416,7 +442,7 @@ class _WifiCredentialsFormState extends State<WifiCredentialsForm>
               dense: true,
               visualDensity: VisualDensity.compact,
               controlAffinity: ListTileControlAffinity.leading,
-              title: const Text('記住密碼（僅限這支手機）'),
+              title: Text(l10n.wifiCredentialsForm_rememberPassword),
               value: _rememberPassword,
               onChanged: enabled
                   ? (value) {
@@ -439,15 +465,15 @@ class _WifiCredentialsFormState extends State<WifiCredentialsForm>
                   onPressed: enabled
                       ? () => _forgetPassword(clearInput: true)
                       : null,
-                  child: const Text('忘記已存密碼'),
+                  child: Text(l10n.wifiCredentialsForm_forgetButton),
                 ),
               ),
             const SizedBox(height: 22),
             if (enabled && _manual && widget.ssid.text.isEmpty)
-              const NextActionHint('輸入 Wi-Fi 名稱'),
+              NextActionHint(l10n.wifiCredentialsForm_ssidHint),
             NextActionGuide.button(
               active: widget.ssid.text.isNotEmpty && password.text.isNotEmpty,
-              hint: '確認 Wi-Fi 名稱與密碼後，點「${widget.saveLabel}」',
+              hint: l10n.wifiCredentialsForm_saveHint(widget.saveLabel),
               child: FilledButton(
                 key: const Key('wifi-save'),
                 onPressed: enabled && widget.canSave ? _save : null,

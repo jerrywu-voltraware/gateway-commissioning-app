@@ -7,6 +7,9 @@ import 'package:gateway_commissioning/application/local_backend_finder.dart';
 import 'package:gateway_commissioning/data/local_backend_probe.dart';
 import 'package:gateway_commissioning/application/backend_environment.dart';
 import 'package:gateway_commissioning/gateway_app.dart';
+import 'package:gateway_commissioning/l10n/l10n.dart';
+import 'package:gateway_commissioning/presentation/local_backend_field.dart';
+import 'support/l10n.dart';
 
 const healthy = ProbeResult(
   ProbeOutcome.healthy,
@@ -232,5 +235,34 @@ void main() {
     expect(field.keyboardType, TextInputType.url);
     expect(field.controller!.text, url);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('English (i18n B2): local back office field', (tester) async {
+    useLanguage(AppLanguage.en);
+    final host = TextEditingController(text: '192.168.1.187');
+    addTearDown(host.dispose);
+    await tester.pumpWidget(
+      ProviderScope(
+        child: wrapWithL10n(
+          Scaffold(
+            body: LocalBackendField(
+              hostController: host,
+              port: 18000,
+              onPortChanged: (_) {},
+              onHostPicked: () {},
+            ),
+          ),
+          language: AppLanguage.en,
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(find.text('Auto find'), findsOneWidget);
+    expect(find.text('Test connection'), findsOneWidget);
+    expect(find.text('Advanced: port 18000'), findsOneWidget);
+    expect(
+      find.text('Will connect to: http://192.168.1.187:18000'),
+      findsOneWidget,
+    );
   });
 }

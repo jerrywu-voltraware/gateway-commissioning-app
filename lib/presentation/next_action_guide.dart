@@ -2,6 +2,29 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../l10n/l10n.dart';
+
+/// 測試用開關：true 時提示文字不做無限重複的閃爍（等同系統「移除動畫」）。
+///
+/// APP 執行時永遠是 false，不改變畫面行為；`test/flutter_test_config.dart`
+/// 在所有測試前設成 true，避免 `pumpAndSettle` 被無限動畫卡到逾時
+/// （docs/i18n.md §8.5）。要測閃爍本身的測試可在該測試內設回 false。
+@visibleForTesting
+bool debugDisableHintPulse = false;
+
+// 提示列的固定說法（取代按鈕名）。呼叫端以 `caption:` 傳入，不再依按鈕中文
+// 反查（docs/i18n.md §8.2）。字串在 lib/l10n/parts/nextActionGuide_*.arb。
+
+/// 首頁〔檢查並開始〕上方的提示。
+String get nextActionStartCaption => L10n.current.nextActionGuide_captionStart;
+
+/// 閘道器卡片：選好目標、還沒連線時的提示（指向〔藍牙連線〕）。
+String get nextActionConnectCaption =>
+    L10n.current.nextActionGuide_captionConnect;
+
+/// 閘道器卡片：已連線、可以〔開始開通〕時的提示。
+String get nextActionBeginCaption => L10n.current.nextActionGuide_captionBegin;
+
 /// Visual guidance only: never changes focus, enabled state, or tap handling.
 class NextActionGuide extends StatefulWidget {
   const NextActionGuide({
@@ -9,20 +32,26 @@ class NextActionGuide extends StatefulWidget {
     required this.active,
     required this.child,
     this.hint,
+    this.caption,
   });
 
   factory NextActionGuide.button({
     required ButtonStyleButton child,
     bool active = true,
     String? hint,
+    String? caption,
   }) => NextActionGuide(
     active: active && child.onPressed != null,
     hint: hint,
+    caption: caption,
     child: child,
   );
 
   final bool active;
   final String? hint;
+
+  /// 提示列實際顯示的文字；null 時顯示 [hint]。
+  final String? caption;
   final Widget child;
 
   @override
@@ -62,7 +91,9 @@ class _NextActionGuideState extends State<NextActionGuide>
   @override
   void didUpdateWidget(NextActionGuide oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.active != widget.active || oldWidget.hint != widget.hint) {
+    if (oldWidget.active != widget.active ||
+        oldWidget.hint != widget.hint ||
+        oldWidget.caption != widget.caption) {
       _start();
     }
   }
@@ -115,7 +146,10 @@ class _NextActionGuideState extends State<NextActionGuide>
             maintainSize: true,
             maintainState: true,
             maintainAnimation: true,
-            child: NextActionHint(widget.hint!, active: widget.active),
+            child: NextActionHint(
+              widget.caption ?? widget.hint!,
+              active: widget.active,
+            ),
           ),
         action,
       ],
@@ -141,12 +175,8 @@ class NextActionHint extends StatelessWidget {
     final color = Theme.of(context).brightness == Brightness.dark
         ? const Color(0xFFFFD54F)
         : const Color(0xFFA66A00);
-    final caption = switch (text) {
-      '檢查並開始' => '從這裡開始',
-      '確認目標閘道器，再點「藍牙連線」' => '確認目標後，點下方連線',
-      '確認目標閘道器，再點「開始開通」' => '連線完成，可以開始開通',
-      _ => text,
-    };
+    // 顯示的就是 [text]；固定說法由呼叫端以 caption 傳入（不再比對中文）。
+    final caption = text;
     final arrow = Icon(Icons.arrow_downward_rounded, size: 18, color: color);
     return _HintPulse(
       active: active,
@@ -227,7 +257,9 @@ class _HintPulseState extends State<_HintPulse>
   void didChangeDependencies() {
     super.didChangeDependencies();
     _motionAllowed =
-        !MediaQuery.disableAnimationsOf(context) && TickerMode.of(context);
+        !debugDisableHintPulse &&
+        !MediaQuery.disableAnimationsOf(context) &&
+        TickerMode.of(context);
     _syncAnimation();
   }
 

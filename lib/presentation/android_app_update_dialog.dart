@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../application/android_app_update.dart';
 import '../data/android_app_update.dart';
+import '../l10n/l10n.dart';
 
 class AndroidAppUpdateDialog extends ConsumerStatefulWidget {
   const AndroidAppUpdateDialog({
@@ -74,11 +75,14 @@ class _AndroidAppUpdateDialogState extends ConsumerState<AndroidAppUpdateDialog>
       final outcome = await service.platform.install(release, _file!);
       if (!mounted) return;
       if (outcome == 'permission_required') {
-        setState(() => _message = '請允許安裝此來源的應用程式，返回後按「繼續安裝」。');
+        setState(
+          () =>
+              _message = L10n.current.androidAppUpdateDialog_permissionRequired,
+        );
       } else if (outcome == 'opened') {
         setState(() {
           _installerOpened = true;
-          _message = '請在系統畫面確認安裝。若已取消，可再按「繼續安裝」。';
+          _message = L10n.current.androidAppUpdateDialog_installerOpened;
         });
       } else {
         throw const AppUpdateException('install');
@@ -88,16 +92,20 @@ class _AndroidAppUpdateDialogState extends ConsumerState<AndroidAppUpdateDialog>
       setState(() {
         _error = true;
         if (error is PlatformException) {
+          final l10n = L10n.current;
           _message = switch (error.code) {
-            'update_verification_failed' => '更新檔的版本或簽章驗證失敗，請聯絡管理人員。',
-            'update_install_failed' => '無法開啟系統安裝畫面，請返回 APP 後重試。',
-            'update_prepare_failed' => '無法準備更新檔，請確認手機儲存空間後重試。',
-            _ => '無法啟動更新安裝，請聯絡管理人員。',
+            'update_verification_failed' =>
+              l10n.androidAppUpdateDialog_verificationFailed,
+            'update_install_failed' =>
+              l10n.androidAppUpdateDialog_installFailed,
+            'update_prepare_failed' =>
+              l10n.androidAppUpdateDialog_prepareFailed,
+            _ => l10n.androidAppUpdateDialog_startFailed,
           };
         } else {
           _message = error is AppUpdateException && error.code == 'integrity'
-              ? '更新檔驗證失敗，請重新下載。'
-              : '更新下載未完成，請確認網路後重試。';
+              ? L10n.current.androidAppUpdateDialog_integrityFailed
+              : L10n.current.androidAppUpdateDialog_downloadFailed;
         }
         _file = null;
       });
@@ -109,13 +117,14 @@ class _AndroidAppUpdateDialogState extends ConsumerState<AndroidAppUpdateDialog>
   @override
   Widget build(BuildContext context) {
     final release = widget.check.release!;
+    final l10n = context.l10n;
     return PopScope(
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) _cancellation?.cancel();
       },
       child: AlertDialog(
         key: const Key('android-app-update-dialog'),
-        title: const Text('有新版 APP'),
+        title: Text(l10n.androidAppUpdateDialog_title),
         content: SizedBox(
           width: 400,
           child: SingleChildScrollView(
@@ -124,19 +133,33 @@ class _AndroidAppUpdateDialogState extends ConsumerState<AndroidAppUpdateDialog>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '目前版本：${widget.check.installed.versionName}（${widget.check.installed.versionCode}）',
+                  l10n.androidAppUpdateDialog_currentVersion(
+                    widget.check.installed.versionName,
+                    '${widget.check.installed.versionCode}',
+                  ),
                 ),
-                Text('最新版本：${release.versionName}（${release.versionCode}）'),
+                Text(
+                  l10n.androidAppUpdateDialog_latestVersion(
+                    release.versionName,
+                    '${release.versionCode}',
+                  ),
+                ),
                 const SizedBox(height: 16),
-                Text(release.notes.isEmpty ? '改善 APP 使用體驗。' : release.notes),
+                Text(
+                  release.notes.isEmpty
+                      ? l10n.androidAppUpdateDialog_defaultNotes
+                      : release.notes,
+                ),
                 if (_busy) ...[
                   const SizedBox(height: 16),
                   LinearProgressIndicator(value: _received / release.sizeBytes),
                   const SizedBox(height: 8),
                   Text(
                     _received == release.sizeBytes
-                        ? '正在驗證更新檔…'
-                        : '正在下載 ${(100 * _received / release.sizeBytes).floor()}%',
+                        ? l10n.androidAppUpdateDialog_verifying
+                        : l10n.androidAppUpdateDialog_downloading(
+                            (100 * _received / release.sizeBytes).floor(),
+                          ),
                   ),
                 ],
                 if (_message != null) ...[
@@ -160,12 +183,24 @@ class _AndroidAppUpdateDialogState extends ConsumerState<AndroidAppUpdateDialog>
               _cancellation?.cancel();
               Navigator.pop(context);
             },
-            child: Text(_busy ? '取消下載' : (_installerOpened ? '關閉' : '稍後')),
+            child: Text(
+              _busy
+                  ? l10n.androidAppUpdateDialog_cancelDownload
+                  : (_installerOpened
+                        ? l10n.common_close
+                        : l10n.androidAppUpdateDialog_later),
+            ),
           ),
           FilledButton(
             key: const Key('android-app-update-install'),
             onPressed: _busy || !widget.isHomeSafe() ? null : _update,
-            child: Text(_file != null ? '繼續安裝' : (_error ? '重新下載' : '立即更新')),
+            child: Text(
+              _file != null
+                  ? l10n.androidAppUpdateDialog_continueInstall
+                  : (_error
+                        ? l10n.androidAppUpdateDialog_redownload
+                        : l10n.androidAppUpdateDialog_updateNow),
+            ),
           ),
         ],
       ),

@@ -1,0 +1,43 @@
+{
+  "@@locale": "zh",
+  "environmentSwitch_productionHint": "資料送到正式站。",
+  "environmentSwitch_productionSheetHint": "資料送到正式站",
+  "environmentSwitch_title": "切換連線環境",
+  "@environmentSwitch_title": {
+    "description": "Tooltip of the AppBar environment chip and title of the environment sheet."
+  },
+  "environmentSwitch_blocked": "正在進行「{task}」，完成或按「取消操作」後才能切換。",
+  "@environmentSwitch_blocked": {
+    "description": "task is the running operation's label; 「取消操作」 is the page's cancel-operation button.",
+    "placeholders": {
+      "task": {"type": "String"}
+    }
+  },
+  "environmentSwitch_blockedPrep": "正在進行「{task}」，完成後才能切換。",
+  "@environmentSwitch_blockedPrep": {
+    "placeholders": {
+      "task": {"type": "String"}
+    }
+  },
+  "environmentSwitch_sheetSubtitle": "手機和已連上的閘道器會一起切換。",
+  "environmentSwitch_localWithHost": "資料送到這台電腦上的測試主機（{host}）",
+  "@environmentSwitch_localWithHost": {
+    "placeholders": {
+      "host": {"type": "String", "example": "192.168.1.187"}
+    }
+  },
+  "environmentSwitch_localNoHost": "資料送到這台電腦上的測試主機（還沒設定電腦 IP）",
+  "environmentSwitch_editIp": "可修改測試主機的 IP：",
+  "environmentSwitch_noIp": "還沒有測試主機的 IP，請按「自動尋找」或直接輸入。",
+  "environmentSwitch_useLocal": "使用本地測試",
+  "environmentSwitch_changeIp": "變更電腦 IP",
+  "environmentSwitch_customNotSet": "使用自訂的後端網址（尚未設定）",
+  "environmentSwitch_customUrl": "使用自訂的後端網址：{url}",
+  "@environmentSwitch_customUrl": {
+    "placeholders": {
+      "url": {"type": "String", "example": "https://example.com"}
+    }
+  },
+  "environmentSwitch_urlLabel": "後端網址",
+  "environmentSwitch_useUrl": "使用這個網址"
+}

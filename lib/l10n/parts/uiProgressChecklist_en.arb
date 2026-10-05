@@ -1,0 +1,6 @@
+{
+  "@@locale": "en",
+  "uiProgressChecklist_running": "In progress…",
+  "uiProgressChecklist_runningNote": "In progress… {note}",
+  "uiProgressChecklist_doneAt": "Done {time}"
+}

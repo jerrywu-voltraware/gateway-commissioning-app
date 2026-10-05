@@ -3,6 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../application/commissioning_controller.dart';
 import '../core/gateway_identity.dart';
+import '../l10n/l10n.dart';
+
+/// 〔恢復上傳〕 card's hint (what resuming does).
+String get gatewayModeResumeHint => L10n.current.gatewayModeCard_resumeHint;
 
 /// Round 26 (multi-gateway field test): the connected gateway's state that
 /// stops the commissioning, each with its one way out —
@@ -36,7 +40,7 @@ class GatewayModeCard extends ConsumerWidget {
       action = controller.leaveTestMode;
     } else if (state.uploadPaused && !atCheck) {
       text = uploadPausedText;
-      hint = '恢復後閘道器立刻開始送出 PTU 資料，不會重新開機。';
+      hint = gatewayModeResumeHint;
       label = resumeUploadLabel;
       key = 'upload-paused';
       action = controller.resumeUpload;

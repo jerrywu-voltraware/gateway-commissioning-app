@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:universal_ble/universal_ble.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../core/protocol.dart';
+import '../l10n/l10n.dart';
 import 'contracts.dart';
 
 Object normalizeBleError(Object error) {
@@ -589,14 +590,16 @@ class BleGatewayLink
     // cache: a bare connect then fails with "Failed to connect" until the
     // APP restarts (round 6). Drop any stale client first, and before each
     // retry re-find the gateway with a short scan.
-    onStage?.call('清除舊連線');
+    onStage?.call(L10n.current.bleGatewayLink_stageClearing);
     await _dropStale(device);
     _firstConnectFailure = null;
     var ready = false;
     for (int attempt = 0; ; attempt++) {
       if (epoch != _epoch) throw const GatewayFailure('cancelled');
-      if (attempt > 0) onStage?.call('第 $attempt 次重試');
-      onStage?.call('正在連線閘道器');
+      if (attempt > 0) {
+        onStage?.call(L10n.current.bleGatewayLink_stageRetry(attempt));
+      }
+      onStage?.call(L10n.current.bleGatewayLink_stageConnecting);
       try {
         await UniversalBle.connect(device, timeout: connectTimeout);
         // Round 9: the first attempt includes the GATT setup — a 133
@@ -644,7 +647,7 @@ class BleGatewayLink
           }
         }
         if (attempt >= connectRetries) rethrow;
-        onStage?.call('找不到閘道器，重新掃描中');
+        onStage?.call(L10n.current.bleGatewayLink_stageRescanning);
         await _dropStale(device);
         await Future<void>.delayed(retryGap);
         if (epoch != _epoch) throw const GatewayFailure('cancelled');

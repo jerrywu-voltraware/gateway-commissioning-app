@@ -1,0 +1,19 @@
+{
+  "@@locale": "en",
+  "environmentSwitch_productionHint": "Data goes to production.",
+  "environmentSwitch_productionSheetHint": "Data goes to production",
+  "environmentSwitch_title": "Switch environment",
+  "environmentSwitch_blocked": "\"{task}\" is running. Switch after it finishes or after tapping [Cancel operation].",
+  "environmentSwitch_blockedPrep": "\"{task}\" is running. Switch after it finishes.",
+  "environmentSwitch_sheetSubtitle": "The phone and the connected gateway switch together.",
+  "environmentSwitch_localWithHost": "Data goes to the test server on this PC ({host})",
+  "environmentSwitch_localNoHost": "Data goes to the test server on this PC (PC IP not set)",
+  "environmentSwitch_editIp": "You can change the test server IP:",
+  "environmentSwitch_noIp": "No test server IP yet. Tap [Auto find] or enter it.",
+  "environmentSwitch_useLocal": "Use local test",
+  "environmentSwitch_changeIp": "Change PC IP",
+  "environmentSwitch_customNotSet": "Use a custom back office URL (not set)",
+  "environmentSwitch_customUrl": "Use a custom back office URL: {url}",
+  "environmentSwitch_urlLabel": "Back office URL",
+  "environmentSwitch_useUrl": "Use this URL"
+}

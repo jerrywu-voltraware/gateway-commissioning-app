@@ -1,0 +1,31 @@
+{
+  "@@locale": "zh",
+  "heartbeatActivity_paused": "確認暫停，請依提示重試",
+  "heartbeatActivity_confirmed": "已確認閘道器持續上線",
+  "heartbeatActivity_waitingStart": "等待開始確認",
+  "heartbeatActivity_notDone": "尚未完成心跳確認",
+  "heartbeatActivity_connectingBackend": "正在連上後台",
+  "heartbeatActivity_waitingFirst": "等待第 1 次心跳",
+  "heartbeatActivity_gotOne": "已收到 1 次，等待下一次心跳",
+  "heartbeatActivity_gotTwo": "已收到 2 次，正在確認上傳目標",
+  "heartbeatActivity_backOffice": "後台",
+  "heartbeatActivity_count": "心跳 {received}/2",
+  "@heartbeatActivity_count": {
+    "placeholders": {
+      "received": {
+        "type": "int"
+      }
+    }
+  },
+  "heartbeatActivity_announcement": "已收到 {received} 次心跳。{message}",
+  "@heartbeatActivity_announcement": {
+    "placeholders": {
+      "received": {
+        "type": "int"
+      },
+      "message": {
+        "type": "String"
+      }
+    }
+  }
+}

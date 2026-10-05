@@ -4,6 +4,7 @@ import '../application/backend_environment.dart';
 import '../application/commissioning_controller.dart';
 import '../application/connection_status.dart';
 import '../core/mqtt_target.dart';
+import '../l10n/l10n.dart';
 
 Color toneColor(BuildContext context, StatusTone tone) {
   final dark = Theme.of(context).brightness == Brightness.dark;
@@ -49,6 +50,7 @@ class _ConnectionStatusPanelState extends ConsumerState<ConnectionStatusPanel> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
+    final l10n = context.l10n;
     final base = widget.env.base;
     final probe = widget.demo
         ? null
@@ -82,7 +84,10 @@ class _ConnectionStatusPanelState extends ConsumerState<ConnectionStatusPanel> {
                     style: TextStyle(color: toneColor(context, StatusTone.ok)),
                   ),
                 ),
-                const Icon(Icons.expand_more, semanticLabel: '展開'),
+                Icon(
+                  Icons.expand_more,
+                  semanticLabel: l10n.connectionStatusPanel_expand,
+                ),
               ],
             ),
           ),
@@ -127,7 +132,7 @@ class _ConnectionStatusPanelState extends ConsumerState<ConnectionStatusPanel> {
           // 1.0.0+10: a card title (titleSmall w700).
           Expanded(
             child: Text(
-              '連線狀態',
+              l10n.connectionStatusPanel_title,
               style: theme.textTheme.titleSmall?.copyWith(
                 fontWeight: FontWeight.w700,
               ),
@@ -135,22 +140,22 @@ class _ConnectionStatusPanelState extends ConsumerState<ConnectionStatusPanel> {
           ),
           if (status.allOk)
             IconButton(
-              tooltip: '收合',
+              tooltip: l10n.connectionStatusPanel_collapse,
               visualDensity: VisualDensity.compact,
               onPressed: () => setState(() => _expanded = false),
               icon: const Icon(Icons.expand_less),
             ),
           IconButton(
             key: const Key('connection-status-refresh'),
-            tooltip: '重新讀取',
+            tooltip: l10n.connectionStatusPanel_reload,
             visualDensity: VisualDensity.compact,
             onPressed: enabled ? refresh : null,
             icon: const Icon(Icons.refresh),
           ),
         ],
       ),
-      row('手機 → 後端', status.phone),
-      row('閘道器 → 資料上傳', status.gateway),
+      row(l10n.connectionStatusPanel_phoneRow, status.phone),
+      row(l10n.connectionStatusPanel_gatewayRow, status.gateway),
       if (status.wifiWeak != null)
         Padding(
           padding: const EdgeInsets.only(top: 6),
@@ -182,7 +187,7 @@ class _ConnectionStatusPanelState extends ConsumerState<ConnectionStatusPanel> {
             width: double.infinity,
             child: FilledButton.tonal(
               onPressed: enabled ? widget.onSync : null,
-              child: const Text('同步'),
+              child: Text(l10n.connectionStatusPanel_sync),
             ),
           ),
         ),
@@ -208,7 +213,7 @@ class _ConnectionStatusPanelState extends ConsumerState<ConnectionStatusPanel> {
           childrenPadding: const EdgeInsets.only(bottom: 8),
           expandedCrossAxisAlignment: CrossAxisAlignment.start,
           title: Text(
-            '技術細節',
+            l10n.connectionStatusPanel_details,
             style: theme.textTheme.bodyMedium?.copyWith(
               color: colors.onSurfaceVariant,
             ),
@@ -243,22 +248,20 @@ Future<bool> confirmUploadTargetSwitch(
   BuildContext context, {
   required MqttTarget wanted,
 }) async {
+  final l10n = context.l10n;
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (context) => AlertDialog(
-      title: const Text('同時切換閘道器？'),
-      content: Text(
-        '閘道器會改把資料送到${wanted.plainLabel}，並重新開機約 1 分鐘，'
-        '期間請留在閘道器旁。',
-      ),
+      title: Text(l10n.connectionStatusPanel_switchTitle),
+      content: Text(l10n.connectionStatusPanel_switchBody(wanted.plainLabel)),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context, false),
-          child: const Text('先不要'),
+          child: Text(l10n.connectionStatusPanel_notNow),
         ),
         FilledButton(
           onPressed: () => Navigator.pop(context, true),
-          child: const Text('切換'),
+          child: Text(l10n.connectionStatusPanel_switchButton),
         ),
       ],
     ),

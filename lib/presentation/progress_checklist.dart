@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../application/connection_status.dart';
 import '../core/progress_checklist.dart';
+import '../l10n/l10n.dart';
 import 'connection_status_panel.dart';
 
 /// 09-28: an automatic step as a checklist that fills in one item at a
@@ -182,13 +183,16 @@ class ProgressChecklist extends StatelessWidget {
   /// result or the time it was done, or the reason it failed.
   static String noteText(CheckItem item) => switch (item.status) {
     CheckStatus.pending => '',
-    CheckStatus.running => item.note.isEmpty ? '進行中…' : '進行中… ${item.note}',
+    CheckStatus.running =>
+      item.note.isEmpty
+          ? L10n.current.uiProgressChecklist_running
+          : L10n.current.uiProgressChecklist_runningNote(item.note),
     CheckStatus.done =>
       item.note.isNotEmpty
           ? item.note
           : item.at == null
           ? ''
-          : '${_clock(item.at!)} 完成',
+          : L10n.current.uiProgressChecklist_doneAt(_clock(item.at!)),
     CheckStatus.failed => item.note,
   };
 

@@ -1,0 +1,30 @@
+{
+  "@@locale": "zh",
+  "backendEnvironment_localUnavailable": "正式版 APP 不能連本地測試站，請改用本地測試版 APK。",
+  "@backendEnvironment_localUnavailable": {
+    "description": "Why the local test backend cannot be used in a prod / prodtest build."
+  },
+  "backendEnvironment_localUnavailableLabel": "本地測試（此版本不可用）",
+  "backendEnvironment_labelProduction": "正式站",
+  "@backendEnvironment_labelProduction": {
+    "description": "The production back office (environment name / where data goes)."
+  },
+  "backendEnvironment_labelLocal": "本地測試",
+  "@backendEnvironment_labelLocal": {
+    "description": "Environment name: the local test backend on a PC."
+  },
+  "backendEnvironment_labelCustom": "其他網址",
+  "@backendEnvironment_labelCustom": {
+    "description": "Environment name: a custom backend URL."
+  },
+  "backendEnvironment_changeHint": "連線環境：{label}（沿用上次的設定，可在右上角切換）",
+  "@backendEnvironment_changeHint": {
+    "placeholders": {
+      "label": {"type": "String", "example": "正式站"}
+    }
+  },
+  "backendEnvironment_invalidUrl": "網址無效",
+  "@backendEnvironment_invalidUrl": {
+    "description": "Health check detail: the backend URL cannot be parsed."
+  }
+}

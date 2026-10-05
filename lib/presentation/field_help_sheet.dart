@@ -8,13 +8,14 @@ import '../application/commissioning_controller.dart';
 import '../application/field_report.dart';
 import '../application/topology_settings.dart';
 import '../core/gateway_identity.dart';
+import '../l10n/l10n.dart';
 import 'field_support_panel.dart';
 
 /// 「請後台協助」: the help button (red box, AppBar) and the sheet's title.
-const fieldHelpLabel = '請後台協助';
+String get fieldHelpLabel => L10n.current.fieldHelpSheet_label;
 
 /// The help report reached the back office.
-const fieldHelpSentText = '✓ 求助已送達後台';
+String get fieldHelpSentText => L10n.current.fieldHelpSheet_sent;
 
 /// Field rescue v1 (PLAN_2026-09-26_FIELD_RESCUE.md §5.3): asks the
 /// controller to send a help report and opens [FieldHelpSheet]. The sheet
@@ -49,6 +50,7 @@ class FieldHelpSheet extends ConsumerWidget {
     final topology = ref.watch(topologyProvider);
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
+    final l10n = context.l10n;
     final lines = fieldHelpLines(
       FieldInput(
         state: state,
@@ -63,21 +65,28 @@ class FieldHelpSheet extends ConsumerWidget {
     final (statusText, statusColor) = switch (help.phase) {
       FieldHelpPhase.sent => (fieldHelpSentText, colors.primary),
       FieldHelpPhase.queued => (
-        '⚠ 目前送不出去（${help.reason.isEmpty ? '沒有網路／尚未登入後台' : help.reason}），'
-            '後台暫時看不到。請在電話中直接唸下面的資訊。',
+        l10n.fieldHelpSheet_queued(
+          help.reason.isEmpty ? l10n.fieldHelpSheet_queuedNoReason : help.reason,
+        ),
         colors.error,
       ),
-      FieldHelpPhase.unsupported => ('後台版本還不支援線上通知，請直接唸下面的資訊。', colors.error),
+      FieldHelpPhase.unsupported => (
+        l10n.fieldHelpSheet_unsupported,
+        colors.error,
+      ),
       FieldHelpPhase.needsConnection => (
-        '已切換後台，請先連線到新的後台，再重新求助。',
+        l10n.fieldHelpSheet_needsConnection,
         colors.error,
       ),
       FieldHelpPhase.disabled => (
-        '示範模式不會傳送，請直接唸下面的資訊。',
+        l10n.fieldHelpSheet_demo,
         colors.onSurfaceVariant,
       ),
       FieldHelpPhase.idle ||
-      FieldHelpPhase.sending => ('正在通知後台…', colors.onSurfaceVariant),
+      FieldHelpPhase.sending => (
+        l10n.fieldHelpSheet_sending,
+        colors.onSurfaceVariant,
+      ),
     };
     return SingleChildScrollView(
       key: const Key('field-help-sheet'),
@@ -101,7 +110,7 @@ class FieldHelpSheet extends ConsumerWidget {
                 icon: const Icon(Icons.refresh, size: 20),
                 onPressed: () =>
                     ref.read(commissionProvider.notifier).resendHelp(),
-                label: const Text('重新傳送'),
+                label: Text(l10n.fieldHelpSheet_resend),
               ),
             ),
           if (help.phase == FieldHelpPhase.sent && help.sessionId != null)
@@ -118,7 +127,7 @@ class FieldHelpSheet extends ConsumerWidget {
             ),
           const SizedBox(height: 12),
           Text(
-            '請唸給後台：',
+            l10n.fieldHelpSheet_readOut,
             key: const Key('field-help-read'),
             // 1.0.0+10: a section title (titleSmall w600).
             style: theme.textTheme.titleSmall?.copyWith(
@@ -141,7 +150,10 @@ class FieldHelpSheet extends ConsumerWidget {
                 tilePadding: EdgeInsets.zero,
                 childrenPadding: const EdgeInsets.only(bottom: 4),
                 expandedAlignment: Alignment.centerLeft,
-                title: Text('詳細資訊', style: theme.textTheme.bodyMedium),
+                title: Text(
+                  l10n.fieldHelpSheet_details,
+                  style: theme.textTheme.bodyMedium,
+                ),
                 children: [
                   for (final line in details)
                     SelectableText(
@@ -157,14 +169,14 @@ class FieldHelpSheet extends ConsumerWidget {
             children: [
               Expanded(
                 child: Text(
-                  '不會傳送 Wi-Fi 密碼。',
+                  l10n.fieldHelpSheet_noPassword,
                   style: TextStyle(color: colors.onSurfaceVariant),
                 ),
               ),
               TextButton(
                 key: const Key('field-help-close'),
                 onPressed: () => Navigator.of(context).pop(),
-                child: const Text('關閉'),
+                child: Text(l10n.common_close),
               ),
             ],
           ),

@@ -8,6 +8,8 @@ import 'package:gateway_commissioning/data/contracts.dart';
 import 'package:gateway_commissioning/data/demo_system.dart';
 import 'package:gateway_commissioning/data/recent_gateways.dart';
 import 'package:gateway_commissioning/presentation/gateway_discovery.dart';
+import 'package:gateway_commissioning/l10n/l10n.dart';
+import 'support/l10n.dart';
 
 class LiveLink extends DemoSystem implements GatewayScanner {
   final events = StreamController<List<GatewayPeer>>();
@@ -195,6 +197,45 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
     expect(connected, isTrue);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+  testWidgets('English: list heading, group title and pick hint', (
+    tester,
+  ) async {
+    useLanguage(AppLanguage.en);
+    final link = LiveLink();
+    addTearDown(link.events.close);
+    tester.view.physicalSize = const Size(360, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [linkProvider.overrideWithValue(link)],
+        child: wrapWithL10n(
+          Scaffold(
+            body: SingleChildScrollView(
+              child: GatewayDiscovery(enabled: true, onConnect: (_) async {}),
+            ),
+          ),
+          language: AppLanguage.en,
+        ),
+      ),
+    );
+    await tester.pump();
+    link.events.add(const [
+      GatewayPeer('AA:BB:CC:DD:EE:01', 'GIOS-S80-GW01', -60),
+      GatewayPeer('AA:BB:CC:DD:EE:02', 'GIOS-S80-GW02', -62),
+    ]);
+    await tester.pump();
+    expect(find.text('Select a nearby gateway'), findsOneWidget);
+    expect(find.text('Nearby devices (2)'), findsOneWidget);
+    expect(
+      find.text('Select the gateway card to set up, then tap [Connect]'),
+      findsOneWidget,
+    );
+    expect(gatewayFoundCountText(2), '2 found');
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
   });

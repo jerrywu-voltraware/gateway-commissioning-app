@@ -1,0 +1,7 @@
+{
+  "@@locale": "zh",
+  "backendKey_missing": "此建置缺少後台憑證，請重新建置",
+  "@backendKey_missing": {
+    "description": "No trailing period: one caller appends a sentence end."
+  }
+}

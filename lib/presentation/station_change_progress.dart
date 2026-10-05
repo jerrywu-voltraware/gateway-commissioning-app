@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/station_change.dart';
+import '../l10n/l10n.dart';
 import 'progress_checklist.dart';
 
 /// A focused view of an intentional restart, driven by controller events.
@@ -19,11 +20,12 @@ class StationChangeProgress extends StatelessWidget {
       StationChangeStage.reconnecting => Icons.bluetooth_searching,
       StationChangeStage.confirming => Icons.fact_check_outlined,
     };
+    final l10n = context.l10n;
     final guidance = switch (progress.stage) {
-      StationChangeStage.applying => '套用站號後，閘道器會重新啟動。請保持靠近，APP 會自動重新連線。',
+      StationChangeStage.applying => l10n.stationChangeProgress_applying,
       StationChangeStage.restarting || StationChangeStage.reconnecting =>
-        '這是套用站號時的正常重啟，藍牙會短暫中斷。請保持靠近，APP 會自動重新連線。',
-      StationChangeStage.confirming => '已重新連線，正在確認新站號與 Wi-Fi。確認完成後會自動繼續。',
+        l10n.stationChangeProgress_restarting,
+      StationChangeStage.confirming => l10n.stationChangeProgress_confirming,
     };
     return Card(
       child: Padding(
@@ -53,7 +55,10 @@ class StationChangeProgress extends StatelessWidget {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    '站點 ${progress.site} · 閘道器 ${progress.gateway}',
+                    l10n.stationChangeProgress_target(
+                      progress.site,
+                      progress.gateway,
+                    ),
                     key: const Key('station-change-target'),
                     style: theme.textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w700,

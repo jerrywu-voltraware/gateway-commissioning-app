@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/direct_mode.dart';
+import '../l10n/l10n.dart';
 import 'wireless_charging_pad_icon.dart';
 
 /// The gateway's reported PTU pick, never an installer confirmation.
@@ -70,24 +71,29 @@ class _DirectPickActivityState extends State<DirectPickActivity>
     super.dispose();
   }
 
-  String get _message {
-    if (widget.unavailable) return '連線待確認，請依提示重試';
+  String _message(AppLocalizations l10n) {
+    if (widget.unavailable) return l10n.directPickActivity_unavailable;
     if (_picked) {
-      if (!widget.identifyAvailable) return '已找到 PTU，請確認是眼前此樁';
+      if (!widget.identifyAvailable) return l10n.directPickActivity_foundConfirm;
       if (widget.identifiedMac != null &&
           formatMac(widget.identifiedMac) ==
               formatMac(widget.direct!.pickedMac)) {
-        return '已送出辨識，請確認燈號';
+        return l10n.directPickActivity_identifySent;
       }
-      return widget.direct!.ambiguous ? '訊號相近，請辨識此樁' : '已找到 PTU，請辨識此樁';
+      return widget.direct!.ambiguous
+          ? l10n.directPickActivity_ambiguousIdentify
+          : l10n.directPickActivity_foundIdentify;
     }
     return switch (widget.direct?.state) {
-      DirectState.scanning => '閘道器正在搜尋 PTU',
-      DirectState.connecting => '閘道器正在連線 PTU',
-      DirectState.noCandidate => '尚未找到 PTU，請確認電源',
-      DirectState.boundMissing => '已綁定的 PTU 不在場',
-      DirectState.connected => '等待閘道器回報選中的 PTU',
-      null => widget.busy ? '正在讀取 PTU 狀態' : '尚未取得 PTU 狀態',
+      DirectState.scanning => l10n.directPickActivity_scanning,
+      DirectState.connecting => l10n.directPickActivity_connecting,
+      DirectState.noCandidate => l10n.directPickActivity_noCandidate,
+      DirectState.boundMissing => l10n.directPickActivity_boundMissing,
+      DirectState.connected => l10n.directPickActivity_connected,
+      null =>
+        widget.busy
+            ? l10n.directPickActivity_reading
+            : l10n.directPickActivity_noStatus,
     };
   }
 
@@ -112,7 +118,7 @@ class _DirectPickActivityState extends State<DirectPickActivity>
                 _endpoint(
                   context,
                   icon: Icons.router_outlined,
-                  label: '閘道器',
+                  label: context.l10n.directPickActivity_gatewayEndpoint,
                   color: _picked ? selectedColor : mutedColor,
                 ),
                 Expanded(
@@ -219,7 +225,7 @@ class _DirectPickActivityState extends State<DirectPickActivity>
         Semantics(
           liveRegion: true,
           child: Text(
-            _message,
+            _message(context.l10n),
             key: const Key('direct-pick-message'),
             textAlign: TextAlign.center,
             style: theme.textTheme.bodyMedium?.copyWith(

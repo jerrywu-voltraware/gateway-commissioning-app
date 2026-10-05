@@ -2,6 +2,8 @@
 /// PC's IPv4 address, the app composes `http://<ip>:<port>`.
 library;
 
+import '../l10n/l10n.dart';
+
 const defaultLocalPort = 18000;
 
 /// Parses a dotted-quad IPv4 literal strictly (no leading zeros, 0–255).
@@ -35,21 +37,22 @@ bool isPrivateIpv4(String text) {
 /// Loopback is rejected on purpose: on the phone 127.0.0.1 is the phone
 /// itself, and saved loopback URLs are migrated away on start-up anyway.
 String? localHostError(String input) {
+  final l10n = L10n.current;
   final text = input.trim();
-  if (text.isEmpty) return '請輸入電腦的 IP 位址';
+  if (text.isEmpty) return l10n.localBackendAddress_hostEmpty;
   final b = parseIpv4(text);
-  if (b == null) return '格式應為 4 組 0–255 的數字，例如 192.168.1.187';
-  if (b[0] == 127) return '127.x 是手機本身，請輸入電腦在區域網路的 IP';
-  if (!isPrivateIpv4(text)) {
-    return '只接受區域網路位址（10.x、172.16–31.x、192.168.x）';
-  }
-  if (b[3] == 0 || b[3] == 255) return '最後一組不可為 0 或 255';
+  if (b == null) return l10n.localBackendAddress_hostFormat;
+  if (b[0] == 127) return l10n.localBackendAddress_hostLoopback;
+  if (!isPrivateIpv4(text)) return l10n.localBackendAddress_hostNotPrivate;
+  if (b[3] == 0 || b[3] == 255) return l10n.localBackendAddress_hostLastOctet;
   return null;
 }
 
 String? localPortError(String input) {
   final port = int.tryParse(input.trim());
-  if (port == null || port < 1 || port > 65535) return '連接埠需為 1–65535';
+  if (port == null || port < 1 || port > 65535) {
+    return L10n.current.localBackendAddress_portRange;
+  }
   return null;
 }
 

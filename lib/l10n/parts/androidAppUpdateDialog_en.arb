@@ -1,0 +1,22 @@
+{
+  "@@locale": "en",
+  "androidAppUpdateDialog_permissionRequired": "Allow installing apps from this source, then come back and tap [Continue install].",
+  "androidAppUpdateDialog_installerOpened": "Confirm the install on the system screen. If you cancelled, tap [Continue install] again.",
+  "androidAppUpdateDialog_verificationFailed": "The update's version or signature check failed. Contact an administrator.",
+  "androidAppUpdateDialog_installFailed": "Can't open the system installer. Return to the app and retry.",
+  "androidAppUpdateDialog_prepareFailed": "Can't prepare the update file. Check phone storage and retry.",
+  "androidAppUpdateDialog_startFailed": "Can't start the update install. Contact an administrator.",
+  "androidAppUpdateDialog_integrityFailed": "Update file check failed. Download it again.",
+  "androidAppUpdateDialog_downloadFailed": "Download didn't finish. Check the network and retry.",
+  "androidAppUpdateDialog_title": "New app version available",
+  "androidAppUpdateDialog_currentVersion": "Current version: {name} ({code})",
+  "androidAppUpdateDialog_latestVersion": "Latest version: {name} ({code})",
+  "androidAppUpdateDialog_defaultNotes": "Improves the app experience.",
+  "androidAppUpdateDialog_verifying": "Verifying the update file…",
+  "androidAppUpdateDialog_downloading": "Downloading {percent}%",
+  "androidAppUpdateDialog_cancelDownload": "Cancel download",
+  "androidAppUpdateDialog_later": "Later",
+  "androidAppUpdateDialog_continueInstall": "Continue install",
+  "androidAppUpdateDialog_redownload": "Download again",
+  "androidAppUpdateDialog_updateNow": "Update now"
+}

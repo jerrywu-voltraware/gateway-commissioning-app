@@ -286,7 +286,7 @@ void main() {
 
   test('7. recent heartbeat skips 正在確認資料上傳', () {
     final now = DateTime(2026, 9, 25, 12);
-    const base = CommissionState(loggedIn: true, message: verifiedText);
+    final base = CommissionState(loggedIn: true, message: verifiedText);
     expect(showHealthPending(base, now: now), isTrue);
     expect(
       showHealthPending(

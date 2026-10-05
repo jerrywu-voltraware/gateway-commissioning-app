@@ -3,5 +3,16 @@
   "settings_language": "語言",
   "@settings_language": {
     "description": "More menu item and dialog title for choosing the APP language."
-  }
+  },
+  "settings_more": "更多",
+  "@settings_more": {
+    "description": "AppBar overflow menu tooltip."
+  },
+  "settings_appearance": "外觀",
+  "@settings_appearance": {
+    "description": "More menu item and dialog title for the theme."
+  },
+  "settings_themeSystem": "跟隨系統",
+  "settings_themeLight": "淺色",
+  "settings_themeDark": "深色"
 }

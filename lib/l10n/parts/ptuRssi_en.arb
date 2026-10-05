@@ -1,0 +1,6 @@
+{
+  "@@locale": "en",
+  "ptuRssi_last": "Last {rssi} dBm",
+  "ptuRssi_scan": "Scan {rssi} dBm",
+  "ptuRssi_cached": "Cached {rssi} dBm"
+}

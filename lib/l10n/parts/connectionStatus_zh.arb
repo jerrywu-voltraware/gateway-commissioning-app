@@ -1,0 +1,281 @@
+{
+  "@@locale": "zh",
+  "connectionStatus_placeLocal": "本地測試主機",
+  "@connectionStatus_placeLocal": {
+    "description": "Where data goes / the phone connects: the local test backend on a PC (status row name)."
+  },
+  "connectionStatus_whereChecking": "確認中",
+  "@connectionStatus_whereChecking": {
+    "description": "Gateway row name while its upload target is being read."
+  },
+  "connectionStatus_whereUnconfirmed": "未確認",
+  "@connectionStatus_whereUnconfirmed": {
+    "description": "Gateway row name: a target switch was sent but not read back."
+  },
+  "connectionStatus_whereUnknown": "無法辨識",
+  "@connectionStatus_whereUnknown": {
+    "description": "Gateway row name: the firmware reported an unknown target."
+  },
+  "connectionStatus_statusConnectedDemo": "✓ 已連線（模擬）",
+  "connectionStatus_statusConnected": "✓ 已連線",
+  "connectionStatus_statusChecking": "⏳ 檢查中…",
+  "connectionStatus_statusDbNotReady": "⚠ 連上了，但資料庫還沒準備好",
+  "connectionStatus_statusUnreachable": "✗ 連不上",
+  "connectionStatus_statusElsewhere": "⚠ 送到別處",
+  "@connectionStatus_statusElsewhere": {
+    "description": "The gateway uploads to another backend than the phone uses."
+  },
+  "connectionStatus_statusConfirming": "⏳ 確認中…",
+  "connectionStatus_statusUnconfirmed": "？ 未確認",
+  "connectionStatus_statusTestMode": "⚠ 測試模式",
+  "connectionStatus_statusUploadPaused": "⚠ 上傳已暫停",
+  "connectionStatus_statusUploading": "✓ 資料上傳中",
+  "connectionStatus_statusConnecting": "⏳ 連線中…",
+  "connectionStatus_statusWifiDown": "✗ Wi-Fi 沒連上",
+  "connectionStatus_statusUploadUnknown": "？ 上傳狀態待確認",
+  "connectionStatus_statusLinkLostUploadUnknown": "？ 藍牙已中斷，上傳狀態待確認",
+  "connectionStatus_wifiActionOther": "改用其他 Wi-Fi",
+  "@connectionStatus_wifiActionOther": {
+    "description": "Button name quoted inside hints (choose another Wi-Fi network)."
+  },
+  "connectionStatus_wifiActionSet": "設定 Wi-Fi",
+  "@connectionStatus_wifiActionSet": {
+    "description": "Button name quoted inside hints (gateway has no Wi-Fi yet)."
+  },
+  "connectionStatus_wifiActionReset": "重設 Wi-Fi",
+  "@connectionStatus_wifiActionReset": {
+    "description": "Button name quoted inside hints (change the gateway's Wi-Fi)."
+  },
+  "connectionStatus_subnetHint": "閘道器目前在 {subnet}.x 網段，可能連不到測試主機 {host}。請確認閘道器和這台電腦連同一個 Wi-Fi（可用「{action}」）。",
+  "@connectionStatus_subnetHint": {
+    "placeholders": {
+      "subnet": {"type": "String", "example": "192.168.1"},
+      "host": {"type": "String", "example": "192.168.0.12"},
+      "action": {"type": "String", "example": "改用其他 Wi-Fi"}
+    }
+  },
+  "connectionStatus_uploadCheckLocal": "請確認電腦上的測試主機是否開著，以及閘道器是否連上和這台電腦同一個 Wi-Fi。",
+  "connectionStatus_uploadCheckProduction": "請確認閘道器所在的 Wi-Fi 可以上網。",
+  "connectionStatus_wifiLinkLostRelinking": "手機和閘道器的藍牙也斷了，{relinking}",
+  "@connectionStatus_wifiLinkLostRelinking": {
+    "description": "Second line under a Wi-Fi problem while the automatic reconnect runs.",
+    "placeholders": {
+      "relinking": {"type": "String", "example": "正在自動重新連線…"}
+    }
+  },
+  "connectionStatus_wifiLinkLostReconnect": "手機和閘道器的藍牙也斷了：請靠近閘道器，按「結束並重新選擇閘道器」重新連線，再按「{action}」。",
+  "@connectionStatus_wifiLinkLostReconnect": {
+    "placeholders": {
+      "action": {"type": "String", "example": "重設 Wi-Fi"}
+    }
+  },
+  "connectionStatus_wifiFixHere": "請按「{action}」，改成現場的 2.4 GHz Wi-Fi。",
+  "@connectionStatus_wifiFixHere": {
+    "placeholders": {
+      "action": {"type": "String", "example": "重設 Wi-Fi"}
+    }
+  },
+  "connectionStatus_wifiFixReconnect": "請按「結束並重新選擇閘道器」重新連線，在網路體檢按「{action}」。",
+  "@connectionStatus_wifiFixReconnect": {
+    "placeholders": {
+      "action": {"type": "String", "example": "重設 Wi-Fi"}
+    }
+  },
+  "connectionStatus_linkBack": "手機已重新連上閘道器，{reload}",
+  "@connectionStatus_linkBack": {
+    "placeholders": {
+      "reload": {"type": "String", "example": "重新讀取 PTU 列表…"}
+    }
+  },
+  "connectionStatus_linkLostRelinking": "手機和閘道器的藍牙已中斷，{relinking}",
+  "@connectionStatus_linkLostRelinking": {
+    "placeholders": {
+      "relinking": {"type": "String", "example": "正在自動重新連線…"}
+    }
+  },
+  "connectionStatus_tapButton": "請按「{button}」。",
+  "@connectionStatus_tapButton": {
+    "placeholders": {
+      "button": {"type": "String", "example": "重新連線並繼續"}
+    }
+  },
+  "connectionStatus_reconnectThenCheck": "請重新連線閘道器後再確認。",
+  "connectionStatus_linkLostCannotRead": "手機和閘道器的藍牙已中斷，無法讀取目前狀態。{action}",
+  "@connectionStatus_linkLostCannotRead": {
+    "placeholders": {
+      "action": {"type": "String", "example": "請按「重新連線並繼續」。"}
+    }
+  },
+  "connectionStatus_probeChecking": "檢查中",
+  "connectionStatus_probeHealthy": "正常",
+  "connectionStatus_probeHealthyVersion": "正常（版本 {version}）",
+  "@connectionStatus_probeHealthyVersion": {
+    "placeholders": {
+      "version": {"type": "String", "example": "1.35.2"}
+    }
+  },
+  "connectionStatus_probeDegraded": "資料庫未就緒（HTTP 503）",
+  "connectionStatus_probeNotBackend": "不是本系統後端（HTTP {status}）",
+  "@connectionStatus_probeNotBackend": {
+    "placeholders": {
+      "status": {"type": "String", "example": "404"}
+    }
+  },
+  "connectionStatus_probeUnreachable": "無法連線",
+  "connectionStatus_probeUnreachableDetail": "無法連線（{detail}）",
+  "@connectionStatus_probeUnreachableDetail": {
+    "placeholders": {
+      "detail": {"type": "String", "example": "Connection refused"}
+    }
+  },
+  "connectionStatus_hintUnknownSync": "還不確定閘道器把資料送到哪裡。按「同步」讓閘道器改送到{place}。",
+  "@connectionStatus_hintUnknownSync": {
+    "placeholders": {
+      "place": {"type": "String", "example": "正式站"}
+    }
+  },
+  "connectionStatus_hintUnknownReread": "還不確定閘道器把資料送到哪裡，請按「連線狀態」這一列最右邊的重新讀取圖示（↻）。",
+  "connectionStatus_hintPortMismatch": "閘道器的上傳設定和手機不一致（見技術細節）。按「同步」讓閘道器改送到{place}。",
+  "@connectionStatus_hintPortMismatch": {
+    "placeholders": {
+      "place": {"type": "String", "example": "本地測試主機"}
+    }
+  },
+  "connectionStatus_hintTargetMismatch": "閘道器把資料送到{current}，但手機連的是{wanted}。按「同步」讓閘道器改送到{place}。",
+  "@connectionStatus_hintTargetMismatch": {
+    "placeholders": {
+      "current": {"type": "String", "example": "正式站"},
+      "wanted": {"type": "String", "example": "本地測試主機（192.168.0.12）"},
+      "place": {"type": "String", "example": "本地測試主機"}
+    }
+  },
+  "connectionStatus_hintLinkLostReconnect": "手機和閘道器的藍牙斷了，請靠近閘道器後按「結束並重新選擇閘道器」重新連線。",
+  "connectionStatus_hintWifiConnecting": "閘道器還沒連上 Wi-Fi，請稍候；若一直連不上，請確認 Wi-Fi 名稱和密碼（可用「{action}」）。",
+  "@connectionStatus_hintWifiConnecting": {
+    "placeholders": {
+      "action": {"type": "String", "example": "改用其他 Wi-Fi"}
+    }
+  },
+  "connectionStatus_hintPhoneNoLocal": "手機連不到測試主機：請確認電腦上的測試主機是否開著，且手機和電腦連同一個 Wi-Fi。",
+  "connectionStatus_hintPhoneNoBackend": "手機連不到{label}，請確認手機可以上網。",
+  "@connectionStatus_hintPhoneNoBackend": {
+    "placeholders": {
+      "label": {"type": "String", "example": "正式站"}
+    }
+  },
+  "connectionStatus_hintCustomUnknown": "APP 無法從這個網址判斷閘道器該送到哪裡，這裡只顯示閘道器目前的設定，不會自動切換。",
+  "connectionStatus_summary": "✓ {label}：手機與閘道器都已連上",
+  "@connectionStatus_summary": {
+    "placeholders": {
+      "label": {"type": "String", "example": "正式站"}
+    }
+  },
+  "connectionStatus_detailPhoneBackend": "手機連線的後端：{base}",
+  "@connectionStatus_detailPhoneBackend": {
+    "placeholders": {
+      "base": {"type": "String", "example": "https://46.250.255.172"}
+    }
+  },
+  "connectionStatus_detailNotSet": "（未設定）",
+  "connectionStatus_detailHealth": "後端健康檢查（GET /healthz）：{result}",
+  "@connectionStatus_detailHealth": {
+    "placeholders": {
+      "result": {"type": "String", "example": "正常"}
+    }
+  },
+  "connectionStatus_detailDemo": "模擬",
+  "connectionStatus_detailTargetLegacy": "閘道器上傳目標：正式站（韌體 {version} 不支援切換）",
+  "@connectionStatus_detailTargetLegacy": {
+    "placeholders": {
+      "version": {"type": "String", "example": "1.7.2"}
+    }
+  },
+  "connectionStatus_detailTargetLocal": "閘道器上傳目標：MQTT 本地 {hostPort}（TLS）",
+  "@connectionStatus_detailTargetLocal": {
+    "placeholders": {
+      "hostPort": {"type": "String", "example": "192.168.0.12:8883"}
+    }
+  },
+  "connectionStatus_detailTargetProduction": "閘道器上傳目標：MQTT 正式站 {hostPort}（TLS）",
+  "@connectionStatus_detailTargetProduction": {
+    "placeholders": {
+      "hostPort": {"type": "String", "example": "46.250.255.172:8883"}
+    }
+  },
+  "connectionStatus_detailTargetUnconfirmed": "閘道器上傳目標：未確認（切換結果尚未讀回）",
+  "connectionStatus_detailTargetUnknown": "閘道器上傳目標：無法辨識（{value}）",
+  "@connectionStatus_detailTargetUnknown": {
+    "placeholders": {
+      "value": {"type": "String", "example": "null"}
+    }
+  },
+  "connectionStatus_detailMqtt": "MQTT 連線：{state}",
+  "@connectionStatus_detailMqtt": {
+    "placeholders": {
+      "state": {"type": "String", "example": "已連線"}
+    }
+  },
+  "connectionStatus_detailMqttLastRead": "中斷前最後讀到的 MQTT 連線：{state}",
+  "@connectionStatus_detailMqttLastRead": {
+    "placeholders": {
+      "state": {"type": "String", "example": "已連線"}
+    }
+  },
+  "connectionStatus_mqttConnected": "已連線",
+  "connectionStatus_mqttDisconnected": "未連線",
+  "connectionStatus_detailGatewayNet": "閘道器網路：Wi-Fi「{ssid}」",
+  "@connectionStatus_detailGatewayNet": {
+    "description": "Start of the gateway network line; technical tails (· IP …, · signal …) follow.",
+    "placeholders": {
+      "ssid": {"type": "String", "example": "Site-2G"}
+    }
+  },
+  "connectionStatus_detailSignal": " · 訊號 {rssi} dBm",
+  "@connectionStatus_detailSignal": {
+    "description": "Technical tail of the gateway network line (keep the leading ' · ').",
+    "placeholders": {
+      "rssi": {"type": "String", "example": "-67"}
+    }
+  },
+  "connectionStatus_detailSignalWeak": "（偏弱）",
+  "@connectionStatus_detailSignalWeak": {
+    "description": "Appended right after the dBm value when the signal is weak."
+  },
+  "connectionStatus_detailBootCount": "閘道器開機次數：{count}",
+  "@connectionStatus_detailBootCount": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "connectionStatus_detailLastReset": "（上次開機原因：{reason}）",
+  "@connectionStatus_detailLastReset": {
+    "description": "Appended right after the boot count.",
+    "placeholders": {
+      "reason": {"type": "String", "example": "電源中斷"}
+    }
+  },
+  "connectionStatus_detailFirmware": "韌體版本：{version}",
+  "@connectionStatus_detailFirmware": {
+    "placeholders": {
+      "version": {"type": "String", "example": "1.7.44"}
+    }
+  },
+  "connectionStatus_detailModeTest": "閘道器模式：測試模式（只產生測試資料）",
+  "connectionStatus_detailModeNormal": "閘道器模式：正常",
+  "connectionStatus_detailUploadPaused": "資料上傳：已暫停",
+  "connectionStatus_detailUploadOn": "資料上傳：開啟",
+  "connectionStatus_detailPauseReason": "（{reason}）",
+  "@connectionStatus_detailPauseReason": {
+    "description": "Gateway-reported pause reason appended to the data upload line.",
+    "placeholders": {
+      "reason": {"type": "String", "example": "app"}
+    }
+  },
+  "connectionStatus_detailLocalMqttCheck": "本地 MQTT 連不上時請確認：電腦防火牆已開放 TCP {port}、本地 MQTT broker 已啟動，且 broker 憑證包含 {host}。",
+  "@connectionStatus_detailLocalMqttCheck": {
+    "placeholders": {
+      "port": {"type": "String", "example": "8883"},
+      "host": {"type": "String", "example": "192.168.0.12"}
+    }
+  }
+}

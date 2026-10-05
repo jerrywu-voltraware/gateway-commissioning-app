@@ -1,3 +1,4 @@
+import '../l10n/l10n.dart';
 import 'protocol.dart';
 
 /// The APP's own preference default (2026-10-01: 4, so the PTU packet is
@@ -24,7 +25,7 @@ const maxIdentifySeconds = 10;
 const maxIdentifyAckSeconds = 255;
 
 const identifySecondsPreference = 'identify_seconds';
-const identifySecondsError = '請輸入 0（關燈）或 2–10 的整數秒數（1 秒會讓 PTU 燈恆亮，不提供）';
+String get identifySecondsError => L10n.current.identify_secondsError;
 
 /// 0 (light off) or 2..10 (timed). 1 is the constant-on packet, so no.
 bool isValidIdentifySeconds(int seconds) =>
@@ -86,9 +87,13 @@ int identifySecondsOf(Map<String, dynamic> ack) {
 }
 
 String gatewayIdentifyText(Map<String, dynamic> ack) {
-  if (ack['target'] == 'ptu') return '僅處理 PTU，閘道器燈號未變更';
-  if (ack['gateway_led'] == 'unavailable') return '閘道器燈效無法使用';
-  return identifySecondsOf(ack) == 0
-      ? '閘道器已停止辨識，恢復正常燈號'
-      : '閘道器雙閃 ${identifySecondsOf(ack)} 秒';
+  final l10n = L10n.current;
+  if (ack['target'] == 'ptu') return l10n.identify_ptuOnly;
+  if (ack['gateway_led'] == 'unavailable') {
+    return l10n.identify_gatewayLedUnavailable;
+  }
+  final seconds = identifySecondsOf(ack);
+  return seconds == 0
+      ? l10n.identify_gatewayStopped
+      : l10n.identify_gatewayBlink(seconds);
 }

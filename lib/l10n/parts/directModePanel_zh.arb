@@ -1,0 +1,127 @@
+{
+  "@@locale": "zh",
+  "directModePanel_pickedTitle": "閘道器選中的 PTU",
+  "directModePanel_readingPick": "正在讀取閘道器的選台結果…",
+  "directModePanel_noPick": "尚未取得閘道器的選台結果，請按「重新搜尋」。",
+  "directModePanel_macLabel": "裝置編號（MAC）",
+  "directModePanel_signalLabel": "訊號",
+  "directModePanel_reason": "選台依據：{reason}",
+  "@directModePanel_reason": {
+    "description": "Why the gateway picked this PTU; reason comes from the gateway's select_reason text.",
+    "placeholders": {
+      "reason": {"type": "String", "example": "訊號最強"}
+    }
+  },
+  "directModePanel_keep": "保留",
+  "directModePanel_release": "解除",
+  "directModePanel_threshold": "門檻 {min} dBm",
+  "@directModePanel_threshold": {
+    "placeholders": {
+      "min": {"type": "int"}
+    }
+  },
+  "directModePanel_unbound": "未綁定",
+  "directModePanel_bound": "已綁定 {mac}",
+  "@directModePanel_bound": {
+    "placeholders": {
+      "mac": {"type": "String", "example": "90:5F:E8:9A:96:00"}
+    }
+  },
+  "directModePanel_unbind": "解除綁定",
+  "directModePanel_searchAgain": "重新搜尋",
+  "directModePanel_pickOther": "改選其他 PTU",
+  "directModePanel_askBackOffice": "請後台協助",
+  "directModePanel_noPtuTitle": "找不到本樁 PTU：可能原因與處理",
+  "directModePanel_causeBound": "已綁定 PTU {mac}：閘道器只連這台。若本樁已更換 PTU，請按「解除綁定」後重新搜尋。",
+  "@directModePanel_causeBound": {
+    "placeholders": {
+      "mac": {"type": "String", "example": "90:5F:E8:9A:96:00"}
+    }
+  },
+  "directModePanel_causeWeak": "附近 PTU 訊號太弱（{rssi} dBm，門檻 {min}）：PTU {mac} 可能是鄰近樁的 PTU——請不要為了連上而放寬門檻。",
+  "@directModePanel_causeWeak": {
+    "placeholders": {
+      "rssi": {"type": "String", "example": "-82"},
+      "min": {"type": "int"},
+      "mac": {"type": "String", "example": "90:5F:E8:9A:96:00"}
+    }
+  },
+  "directModePanel_causeDenied": "附近的 PTU 已綁定給其他充電樁（已自動略過）；本樁 PTU 可能尚未上電。",
+  "directModePanel_causeNone": "沒有聽到任何 PTU，請確認本樁 PTU 電源（門檻 {min} dBm）。",
+  "@directModePanel_causeNone": {
+    "placeholders": {
+      "min": {"type": "int"}
+    }
+  },
+  "directModePanel_causePower": "本樁 PTU 沒有上電：確認 PTU 電源開啟、指示燈有亮。",
+  "directModePanel_causeHousing": "擺放或機殼遮蔽：PTU 要和閘道器裝在同一個機殼內；金屬外殼、天線被擋住都會讓訊號變弱。",
+  "directModePanel_causeHelp": "仍找不到：按「請後台協助」，後台可看到閘道器狀態協助判斷。",
+  "directModePanel_causeDefer": "PTU 暫時不在場（尚未安裝或斷電）：按「{label}」，閘道器照常加入運作，PTU 上電後會自動連上。",
+  "@directModePanel_causeDefer": {
+    "description": "label is the finish-without-PTU button name.",
+    "placeholders": {
+      "label": {"type": "String", "example": "先完成配置"}
+    }
+  },
+  "directModePanel_candidatesHint": "附近候選（{count}）：點選後閘道器會綁定並改連那一台，再按「辨識此樁」確認。",
+  "@directModePanel_candidatesHint": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "directModePanel_currentPick": "目前選中",
+  "directModePanel_switchToThis": "改連這台",
+  "directModePanel_collecting": "閘道器正在重新收集附近的 PTU，約需 5–10 秒…",
+  "directModePanel_notThis": "不是這台？",
+  "directModePanel_gatewayBusy": "閘道器處理中，請稍候…",
+  "directModePanel_noCandidates": "閘道器目前沒有回報附近候選，請按「重新搜尋」或稍後再試。",
+  "directModePanel_identifyDetailTitle": "辨識訊息",
+  "directModePanel_notLinked": "閘道器尚未連上 PTU",
+  "directModePanel_watchLights": "按下後請看樁上 PTU 與閘道器的燈號",
+  "directModePanel_hintConfirm": "確認閃燈的是這台 PTU，再開始監控",
+  "directModePanel_hintIdentify": "點「辨識此樁」，確認現場燈號",
+  "directModePanel_identifyThis": "辨識此樁",
+  "@directModePanel_identifyThis": {
+    "description": "Button: blink this charger's PTU and gateway."
+  },
+  "directModePanel_cancelAction": "取消操作",
+  "directModePanel_moreActions": "更多操作",
+  "directModePanel_settingsTitle": "直連進階設定",
+  "directModePanel_autoThreshold": "自動連線門檻：{value} dBm（預設 {defaultValue}）",
+  "@directModePanel_autoThreshold": {
+    "placeholders": {
+      "value": {"type": "int"},
+      "defaultValue": {"type": "int"}
+    }
+  },
+  "directModePanel_thresholdHelp": "閘道器只自動連線訊號強於門檻的 PTU；數值越大（越接近 -20）要越靠近。",
+  "directModePanel_calibrateButton": "{title}（現場取樣 {seconds} 秒）",
+  "@directModePanel_calibrateButton": {
+    "placeholders": {
+      "title": {"type": "String", "example": "校正門檻"},
+      "seconds": {"type": "int"}
+    }
+  },
+  "directModePanel_bindCurrent": "綁定目前 PTU",
+  "directModePanel_boundOnly": "已綁定 {mac}，只連這台",
+  "@directModePanel_boundOnly": {
+    "placeholders": {
+      "mac": {"type": "String", "example": "90:5F:E8:9A:96:00"}
+    }
+  },
+  "directModePanel_linkedNow": "目前連線：{mac}",
+  "@directModePanel_linkedNow": {
+    "placeholders": {
+      "mac": {"type": "String", "example": "90:5F:E8:9A:96:00"}
+    }
+  },
+  "directModePanel_cannotBind": "尚未連上 PTU，無法綁定",
+  "directModePanel_bindOnConfirm": "確認後綁定 PTU",
+  "directModePanel_bindOnConfirmOn": "按「{label}」時把該 PTU 的 MAC 存進閘道器，之後只連這台",
+  "@directModePanel_bindOnConfirmOn": {
+    "placeholders": {
+      "label": {"type": "String", "example": "是這台，開始配置"}
+    }
+  },
+  "directModePanel_bindOnConfirmOff": "關閉後不會鎖定 MAC：本樁 PTU 關機或斷線時，閘道器可能改連鄰近樁的 PTU"
+}

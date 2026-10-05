@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../core/protocol.dart';
+import '../l10n/l10n.dart';
 import 'cert_pin.dart';
 import 'contracts.dart';
 import 'android_app_update.dart';
@@ -329,8 +330,14 @@ String networkErrorText(IOException error) {
 }
 
 /// Short, user-facing label for a backend base URL (never includes secrets).
-String describeBackend(Uri? base) {
-  if (base == null) return '（尚未設定後端網址）';
+///
+/// i18n：也寫進安裝報告（「驗證後端：…」，上傳後台、分享），報告端傳
+/// `l10n: L10n.zh`；畫面（錯誤訊息、測試連線結果）用預設的 [L10n.current]。
+String describeBackend(Uri? base, {AppLocalizations? l10n}) {
+  final t = l10n ?? L10n.current;
+  if (base == null) return t.dashboardApi_backendUnset;
   final origin = base.hasAuthority ? base.origin : base.toString();
-  return isLocalApiHost(base.host) ? '區域網路／本機後端 $origin' : '後端 $origin';
+  return isLocalApiHost(base.host)
+      ? t.dashboardApi_backendLocal(origin)
+      : t.dashboardApi_backend(origin);
 }

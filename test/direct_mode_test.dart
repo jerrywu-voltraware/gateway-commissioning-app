@@ -4,6 +4,8 @@ import 'support/direct_pick_actions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gateway_commissioning/l10n/l10n.dart';
+import 'support/l10n.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:gateway_commissioning/application/commissioning_controller.dart';
 import 'package:gateway_commissioning/application/topology_settings.dart';
@@ -217,6 +219,31 @@ void main() {
       // Round 15: unbound, the gateway connects the nearest PTU by itself.
       expect(c.directConnectedMac, 'AA:BB:CC:00:00:01');
     });
+  });
+
+  testWidgets('English: panel title and unbind button', (tester) async {
+    useLanguage(AppLanguage.en);
+    final fake = DirectGateway();
+    fake.config['direct_bind_mac'] = 'FF:FF:FF:FF:FF:FF';
+    late ProviderContainer container;
+    await tester.runAsync(() async {
+      (container, _) = await _connect(fake);
+    });
+    addTearDown(container.dispose);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: wrapWithL10n(
+          const Scaffold(
+            body: SingleChildScrollView(child: DirectStatusPanel()),
+          ),
+          language: AppLanguage.en,
+        ),
+      ),
+    );
+    expect(find.text('PTU picked by the gateway'), findsOneWidget);
+    expect(find.text('Unbind'), findsOneWidget);
+    expect(directNoPtuTitle, "This charger's PTU not found: causes and fixes");
   });
 
   group('direct settings', () {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/progress_checklist.dart';
+import '../l10n/l10n.dart';
 
 /// Decorative motion while waiting; receipt marks only follow backend events.
 class HeartbeatActivity extends StatefulWidget {
@@ -67,16 +68,20 @@ class _HeartbeatActivityState extends State<HeartbeatActivity>
     super.dispose();
   }
 
-  String _message(Checklist? checklist, int received) {
-    if (checklist?.failed == true) return '確認暫停，請依提示重試';
-    if (_confirmed(checklist)) return '已確認閘道器持續上線';
+  String _message(AppLocalizations l10n, Checklist? checklist, int received) {
+    if (checklist?.failed == true) return l10n.heartbeatActivity_paused;
+    if (_confirmed(checklist)) return l10n.heartbeatActivity_confirmed;
     if (!widget.busy || checklist == null) {
-      return received == 0 ? '等待開始確認' : '尚未完成心跳確認';
+      return received == 0
+          ? l10n.heartbeatActivity_waitingStart
+          : l10n.heartbeatActivity_notDone;
     }
-    if (!checklist.isDone(onlineItemBackend)) return '正在連上後台';
-    if (received == 0) return '等待第 1 次心跳';
-    if (received == 1) return '已收到 1 次，等待下一次心跳';
-    return '已收到 2 次，正在確認上傳目標';
+    if (!checklist.isDone(onlineItemBackend)) {
+      return l10n.heartbeatActivity_connectingBackend;
+    }
+    if (received == 0) return l10n.heartbeatActivity_waitingFirst;
+    if (received == 1) return l10n.heartbeatActivity_gotOne;
+    return l10n.heartbeatActivity_gotTwo;
   }
 
   @override
@@ -89,7 +94,8 @@ class _HeartbeatActivityState extends State<HeartbeatActivity>
       checklist?.isDone(onlineItemBeat2) == true,
     ];
     final received = receipts.where((done) => done).length;
-    final message = _message(checklist, received);
+    final l10n = context.l10n;
+    final message = _message(l10n, checklist, received);
     final success = theme.brightness == Brightness.dark
         ? Colors.green.shade300
         : Colors.green.shade800;
@@ -102,7 +108,11 @@ class _HeartbeatActivityState extends State<HeartbeatActivity>
             height: 56,
             child: Row(
               children: [
-                _endpoint(context, Icons.router_outlined, '閘道器'),
+                _endpoint(
+                  context,
+                  Icons.router_outlined,
+                  l10n.directPickActivity_gatewayEndpoint,
+                ),
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(10, 0, 10, 16),
@@ -117,7 +127,11 @@ class _HeartbeatActivityState extends State<HeartbeatActivity>
                     ),
                   ),
                 ),
-                _endpoint(context, Icons.cloud_outlined, '後台'),
+                _endpoint(
+                  context,
+                  Icons.cloud_outlined,
+                  l10n.heartbeatActivity_backOffice,
+                ),
               ],
             ),
           ),
@@ -138,7 +152,7 @@ class _HeartbeatActivityState extends State<HeartbeatActivity>
               ],
               const SizedBox(width: 4),
               Text(
-                '心跳 $received/2',
+                l10n.heartbeatActivity_count(received),
                 key: const Key('heartbeat-count'),
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: colors.onSurfaceVariant,
@@ -151,7 +165,7 @@ class _HeartbeatActivityState extends State<HeartbeatActivity>
         Semantics(
           key: const Key('heartbeat-announcement'),
           liveRegion: true,
-          label: '已收到 $received 次心跳。$message',
+          label: l10n.heartbeatActivity_announcement(received, message),
           child: ExcludeSemantics(
             child: Text(
               message,
@@ -178,7 +192,16 @@ class _HeartbeatActivityState extends State<HeartbeatActivity>
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(icon, size: 30, color: theme.colorScheme.primary),
-          Text(label, style: theme.textTheme.labelSmall),
+          // 英文（Back office）比 58 dp 寬：一行縮小顯示，不換行撐高；
+          // 中文放得下時 scaleDown 不改變大小。
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              label,
+              maxLines: 1,
+              style: theme.textTheme.labelSmall,
+            ),
+          ),
         ],
       ),
     );

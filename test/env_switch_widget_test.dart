@@ -16,6 +16,8 @@ import 'package:gateway_commissioning/data/local_backend_probe.dart';
 import 'package:gateway_commissioning/gateway_app.dart';
 import 'package:gateway_commissioning/presentation/environment_switch.dart';
 import 'support/pick_gateway.dart';
+import 'support/l10n.dart';
+import 'package:gateway_commissioning/l10n/l10n.dart';
 
 const _debug = EnvSwitchPolicy(
   autoSyncDefault: true,
@@ -773,5 +775,25 @@ void main() {
     expect(fake.logins, isEmpty);
     expect(find.textContaining('HTTPS'), findsNothing);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('English (i18n B2): environment sheet follows the app language', (
+    tester,
+  ) async {
+    useLanguage(AppLanguage.en);
+    await _pumpApp(
+      tester,
+      SimGateway(),
+      prefs: {..._productionPrefs, 'app_locale': 'en'},
+    );
+    expect(find.byTooltip('Switch environment'), findsOneWidget);
+    await tester.tap(_chip);
+    await tester.pumpAndSettle();
+    expect(find.text('Switch environment'), findsOneWidget);
+    expect(find.text('Data goes to production'), findsOneWidget);
+    expect(
+      find.text('The phone and the connected gateway switch together.'),
+      findsOneWidget,
+    );
   });
 }

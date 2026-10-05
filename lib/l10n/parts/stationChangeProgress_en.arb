@@ -1,0 +1,7 @@
+{
+  "@@locale": "en",
+  "stationChangeProgress_applying": "After the site number is applied, the gateway restarts. Stay close; the APP reconnects by itself.",
+  "stationChangeProgress_restarting": "This is the normal restart after applying the site number; Bluetooth drops briefly. Stay close; the APP reconnects by itself.",
+  "stationChangeProgress_confirming": "Reconnected. Checking the new site number and Wi-Fi; it continues by itself when done.",
+  "stationChangeProgress_target": "Site {site} · Gateway {gateway}"
+}

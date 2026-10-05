@@ -9,9 +9,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../application/field_report.dart';
 import '../application/install_report.dart';
+import '../l10n/l10n.dart';
 
 /// 〔重送〕 of a queued / failed install report.
-const installReportResendLabel = '重送';
+String get installReportResendLabel => L10n.current.installReportPanel_resend;
 
 class InstallReportStatusLine extends ConsumerStatefulWidget {
   const InstallReportStatusLine({
@@ -86,7 +87,7 @@ class _InstallReportStatusLineState
               key: const Key('install-report-resend'),
               icon: const Icon(Icons.refresh, size: 18),
               onPressed: widget.enabled && !_resending ? _resend : null,
-              label: const Text(installReportResendLabel),
+              label: Text(installReportResendLabel),
             ),
         ],
       ),

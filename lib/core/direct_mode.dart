@@ -7,6 +7,7 @@ library;
 
 import 'dart:math' show max;
 
+import '../l10n/l10n.dart';
 import 'identify.dart';
 
 /// PTU number used for every direct-mode PTU (the firmware ignores the
@@ -60,8 +61,9 @@ class DirectCandidate {
   final int? rssiMed;
 
   /// Round 17: 0 (not read yet) is no reading either.
-  String get rssiText =>
-      rssiPeak == null || rssiPeak! >= 0 ? 'RSSI —' : '峰值 $rssiPeak dBm';
+  String get rssiText => rssiPeak == null || rssiPeak! >= 0
+      ? 'RSSI —'
+      : L10n.current.directMode_rssiPeak(rssiPeak!);
 }
 
 /// Round 19 (firmware 1.7.27): another PTU the gateway hears while it is
@@ -97,10 +99,10 @@ String rssiLabel(Object? rssi) =>
 bool _validRssi(Object? rssi) => rssi is num && rssi < 0 && rssi >= -127;
 
 /// Round 28: the pick's signal while the gateway has no link reading yet.
-const directRssiReadingText = '訊號讀取中…';
+String get directRssiReadingText => L10n.current.directMode_rssiReading;
 
 /// Round 28: the pick's advertising RSSI shown meanwhile.
-String directAdvRssiText(int rssi) => '廣播 $rssi dBm（連線訊號讀取中）';
+String directAdvRssiText(int rssi) => L10n.current.directMode_advRssi(rssi);
 
 /// Round 28 (field round 28: 「RSSI —」 for about 70 s after the gateway
 /// connected its pick — `ptu_rssi` stayed 0 until a re-evaluation read
@@ -126,7 +128,7 @@ String directPickRssiText(
 
 /// r31: the link RSSI still unread after [directLinkRssiWait]: the last
 /// pick / advertising RSSI, marked as such (not 「讀取中」 forever).
-String directAdvStaleText(int rssi) => '$rssi dBm（廣播值）';
+String directAdvStaleText(int rssi) => L10n.current.directMode_advStale(rssi);
 
 /// r31: how long 「連線訊號讀取中」 may show before [directAdvStaleText].
 const directLinkRssiWait = Duration(seconds: 15);
@@ -168,17 +170,17 @@ enum DirectState {
   /// ambiguous pick is only the strongest); the installer confirms with
   /// 「辨識此樁」.
   String get label => switch (this) {
-    DirectState.connected => '已連上 PTU',
-    DirectState.connecting => '正在連線 PTU',
-    DirectState.noCandidate => '找不到夠近的 PTU',
-    DirectState.scanning => '正在尋找最近的 PTU',
-    DirectState.boundMissing => '已綁定的 PTU 不在場',
+    DirectState.connected => L10n.current.directMode_stateConnected,
+    DirectState.connecting => L10n.current.directMode_stateConnecting,
+    DirectState.noCandidate => L10n.current.directMode_stateNoCandidate,
+    DirectState.scanning => L10n.current.directMode_stateScanning,
+    DirectState.boundMissing => L10n.current.directMode_stateBoundMissing,
   };
 
   /// Field guidance; null when nothing needs doing.
   String? get hint => switch (this) {
-    DirectState.noCandidate => '請靠近／確認同樁 PTU 已上電',
-    DirectState.boundMissing => '已綁定的 PTU 不在場，請確認其電源；若已更換 PTU，請解除綁定',
+    DirectState.noCandidate => L10n.current.directMode_hintNoCandidate,
+    DirectState.boundMissing => L10n.current.directMode_hintBoundMissing,
     _ => null,
   };
 }
@@ -316,12 +318,12 @@ class DirectStatus {
 /// yet) and unknown values. `bound` is the APP's own key for a pick equal
 /// to the bound MAC.
 String? directReasonText(String reason) => switch (reason) {
-  'ok' => '訊號最強且明確',
-  'ambiguous' => '附近訊號相近，閘道器暫選最強的一台',
-  'bound' => '已綁定這台，閘道器只連它',
-  'resume' => '延續既有連線',
-  'none' => '找不到夠近的 PTU',
-  'bound_missing' => '已綁定的 PTU 不在場',
+  'ok' => L10n.current.directMode_reasonOk,
+  'ambiguous' => L10n.current.directMode_reasonAmbiguous,
+  'bound' => L10n.current.directMode_reasonBound,
+  'resume' => L10n.current.directMode_reasonResume,
+  'none' => L10n.current.directMode_stateNoCandidate,
+  'bound_missing' => L10n.current.directMode_stateBoundMissing,
   _ => null,
 };
 
@@ -403,54 +405,58 @@ String shortenMacIn(String text, Iterable<Object?> others) {
 
 /// Step 7 direct flow: 「是這台」 button label until the shown PTU is
 /// identified.
-const directIdentifyFirstLabel = '請先按「辨識此樁」確認';
+String get directIdentifyFirstLabel =>
+    L10n.current.directMode_identifyFirstLabel;
 
 /// The direct pick's main button (09-28: 「開始配置」 — binding, joining the
 /// fleet and the data check all follow by themselves).
-const directConfirmLabel = '是這台，開始配置';
+String get directConfirmLabel => L10n.current.directMode_confirmLabel;
 
 /// 「是這台」 pressed without identifying the shown PTU.
-const directIdentifyFirstText = '請先按「辨識此樁」確認是眼前這台，再按「$directConfirmLabel」。';
+String get directIdentifyFirstText =>
+    L10n.current.directMode_identifyFirstText(directConfirmLabel);
 
 /// The gateway now connects a PTU other than the one identified.
 String directSwitchedText(Object? mac) =>
-    '閘道器已切換到另一顆 PTU（${formatMac(mac)}），請重新辨識';
+    L10n.current.directMode_switched(formatMac(mac));
 
 /// Entering step 7: the gateway is bound to a PTU this APP never confirmed.
-String directStrayBindText(Object? mac) => '閘道器目前綁定 PTU ${formatMac(mac)}';
+String directStrayBindText(Object? mac) =>
+    L10n.current.directMode_strayBind(formatMac(mac));
 
-const directStrayBindHint = '這個綁定不是在本機確認過的：保留則閘道器只連這台；解除則恢復自動選最近的 PTU。';
+String get directStrayBindHint => L10n.current.directMode_strayBindHint;
 
 /// 取消 / 結束 could not undo the temporary binding of 「不是這台？」
 /// ([mac]); [restore] is the binding it should have gone back to (null:
 /// none).
 String directUnbindFailedText(Object? mac, [Object? restore]) => restore == null
-    ? '已取消，但閘道器的暫時綁定（PTU ${formatMac(mac)}）未能解除；'
-          '下次進入第 7 步會再詢問是否解除。'
+    ? L10n.current.directMode_unbindFailed(formatMac(mac))
     // 1.0.0+10: 〔更換 PTU〕 left the gateway unbound (no temporary MAC).
     : (mac?.toString() ?? '').isEmpty
-    ? '已取消，但閘道器的 PTU 綁定未能還原成原本的 ${formatMac(restore)}；'
-          '請重新連線這台閘道器確認綁定。'
-    : '已取消，但閘道器的暫時綁定（PTU ${formatMac(mac)}）未能還原成原本的'
-          '綁定 ${formatMac(restore)}；下次進入第 7 步會再詢問。';
+    ? L10n.current.directMode_unbindRestoreFailed(formatMac(restore))
+    : L10n.current.directMode_unbindTempRestoreFailed(
+        formatMac(mac),
+        formatMac(restore),
+      );
 
 /// Step 7 direct flow: shown when the gateway's pick is ambiguous.
-const directAmbiguousText = '附近有訊號相近的 PTU，請按「辨識此樁」確認是否為眼前這台';
+String get directAmbiguousText => L10n.current.directMode_ambiguous;
 
 /// Beside 「辨識此樁」 right after the tap, before the ack.
-const identifySentText = '已送出，請看樁上燈號';
+String get identifySentText => L10n.current.directMode_identifySent;
 
 /// Round 16: [identifySentText] as the one-line bottom bar form.
-const identifySentLine = '已送出 · 請看樁上燈號';
+String get identifySentLine => L10n.current.directMode_identifySentLine;
 
 /// Round 19: beside 「辨識此樁」 (and in the bottom bar) from the tap until
 /// the gateway command ack. PTU a2_seconds has no application reply.
 /// Older gateway confirmations remain parseable for compatibility.
-const identifyPendingText = '已送出，等待閘道器回應…';
+String get identifyPendingText => L10n.current.directMode_identifyPending;
 
 /// Round 19: [identifyPendingText] for firmware that blinks the gateway
 /// only (no PTU to wait for).
-const identifyPendingGatewayText = '已送出，等待閘道器回應…';
+String get identifyPendingGatewayText =>
+    L10n.current.directMode_identifyPending;
 
 /// Historical firmware 1.7.25..1.7.44 reported PTU confirmation.
 /// (`ptu_confirmed`, `ptu_confirm` ok | unsupported_pattern | timeout,
@@ -474,20 +480,23 @@ IdentifyConfirm identifyConfirmOf(Map<String, dynamic> ack) {
 }
 
 /// Round 18: `ptu_confirmed:true`.
-const identifyConfirmedText = 'PTU 已確認亮燈';
+String get identifyConfirmedText => L10n.current.directMode_identifyConfirmed;
 
 /// A legacy gateway timeout does not prove the PTU lacks support.
-const identifyConfirmTimeoutText = '閘道器已送出；舊版閘道器未取得 PTU 確認，請看樁上燈號';
+String get identifyConfirmTimeoutText =>
+    L10n.current.directMode_identifyConfirmTimeout;
 
 /// Round 18: `ptu_confirm:"unsupported_pattern"`.
-const identifyUnsupportedPatternText = '閘道器已送出；PTU 不支援此燈效，請看樁上燈號';
+String get identifyUnsupportedPatternText =>
+    L10n.current.directMode_identifyUnsupportedPattern;
 
 /// Round 18: the head of the one-line bottom bar form per [IdentifyConfirm].
 String _identifyLineHead(Map<String, dynamic> ack) =>
     switch (identifyConfirmOf(ack)) {
       IdentifyConfirm.confirmed => identifyConfirmedText,
-      IdentifyConfirm.timeout => '已送出 · PTU 未回應確認 · 請看樁上燈號',
-      IdentifyConfirm.unsupportedPattern => '已送出 · PTU 不支援此燈效 · 請看樁上燈號',
+      IdentifyConfirm.timeout => L10n.current.directMode_lineTimeout,
+      IdentifyConfirm.unsupportedPattern =>
+        L10n.current.directMode_lineUnsupportedPattern,
       IdentifyConfirm.legacy || IdentifyConfirm.sent => identifySentLine,
     };
 
@@ -499,11 +508,11 @@ String identifyLineText(Map<String, dynamic> ack) {
   final ptuWrite = ack['ptu_write'];
   if (identifySecondsOf(ack) == 0) {
     return ptuWrite != null && ptuWrite != 'ok'
-        ? '閘道器已停止辨識 · PTU 關燈未送出'
-        : '已送出關燈指令';
+        ? L10n.current.directMode_lineStopPtuNotSent
+        : L10n.current.directMode_lineOffSent;
   }
   if (ptuWrite != null && ptuWrite != 'ok') {
-    return '已送出 · 只有閘道器閃燈，PTU 未收到';
+    return L10n.current.directMode_lineGatewayOnly;
   }
   final mac = ack['mac'];
   if (mac == null) return '$identifySentLine · ${gatewayIdentifyText(ack)}';
@@ -520,14 +529,24 @@ String identifyNoteText(Map<String, dynamic> ack) {
   final ptuWrite = ack['ptu_write'];
   if (identifySecondsOf(ack) == 0) {
     return ptuWrite != null && ptuWrite != 'ok'
-        ? '${gatewayIdentifyText(ack)}；PTU 關燈未送出（${ptuWriteReasonText(ptuWrite)}）'
-        : '已送出關燈指令；${gatewayIdentifyText(ack)}。PTU 不回覆，請查看燈號。';
+        ? L10n.current.directMode_noteStopPtuNotSent(
+            gatewayIdentifyText(ack),
+            ptuWriteReasonText(ptuWrite),
+          )
+        : L10n.current.directMode_noteOffSent(gatewayIdentifyText(ack));
   }
   if (ptuWrite != null && ptuWrite != 'ok') {
-    return '已送出：只有閘道器在閃燈，PTU 未收到（${ptuWriteReasonText(ptuWrite)}）';
+    return L10n.current.directMode_noteGatewayOnly(
+      ptuWriteReasonText(ptuWrite),
+    );
   }
   final mac = ack['mac'];
-  if (mac == null) return '$identifySentText（${gatewayIdentifyText(ack)}）';
+  if (mac == null) {
+    return L10n.current.directMode_noteWithDetail(
+      identifySentText,
+      gatewayIdentifyText(ack),
+    );
+  }
   final rssi = ack['rssi'];
   final ptu =
       'PTU ${formatMac(mac)}${rssi is num ? ' · ${rssiLabel(rssi)}' : ''}';
@@ -537,17 +556,17 @@ String identifyNoteText(Map<String, dynamic> ack) {
     IdentifyConfirm.unsupportedPattern => identifyUnsupportedPatternText,
     IdentifyConfirm.legacy || IdentifyConfirm.sent => identifySentText,
   };
-  return '$head（$ptu）';
+  return L10n.current.directMode_noteWithDetail(head, ptu);
 }
 
 /// Round 24: a firmware `ptu_write` reason in words — the raw code
 /// (`ambiguous_target`, `not_connected`…) never reaches the screen (field
 /// round 24: 「PTU 未收到（ambiguous_target）」).
 String ptuWriteReasonText(Object? reason) => switch (reason) {
-  'not_connected' => '閘道器尚未連上 PTU',
-  'ambiguous_target' => '閘道器連著多台 PTU，沒有指定哪一台',
-  'write_failed' => '閘道器寫入 PTU 失敗',
-  _ => 'PTU 沒有收到指令',
+  'not_connected' => L10n.current.directMode_ptuWriteNotConnected,
+  'ambiguous_target' => L10n.current.directMode_ptuWriteAmbiguousTarget,
+  'write_failed' => L10n.current.directMode_ptuWriteFailed,
+  _ => L10n.current.directMode_ptuWriteOther,
 };
 
 /// Round 19: the result of an identify ack in a few words (「PTU 已確認亮燈」,
@@ -557,15 +576,20 @@ String ptuWriteReasonText(Object? reason) => switch (reason) {
 String? identifyResultText(Map<String, dynamic> ack) {
   final ptuWrite = ack['ptu_write'];
   if (ptuWrite != null && ptuWrite != 'ok') {
-    return '只有閘道器閃燈（${ptuWriteReasonText(ptuWrite)}）';
+    return L10n.current.directMode_resultGatewayOnly(
+      ptuWriteReasonText(ptuWrite),
+    );
   }
   return switch (identifyConfirmOf(ack)) {
     IdentifyConfirm.confirmed => identifyConfirmedText,
-    IdentifyConfirm.timeout => '舊版閘道器未取得 PTU 確認',
-    IdentifyConfirm.unsupportedPattern => 'PTU 不支援此燈效',
+    IdentifyConfirm.timeout => L10n.current.directMode_resultTimeout,
+    IdentifyConfirm.unsupportedPattern =>
+      L10n.current.directMode_resultUnsupportedPattern,
     IdentifyConfirm.legacy || IdentifyConfirm.sent =>
       ptuWrite == 'ok'
-          ? (identifySecondsOf(ack) == 0 ? 'PTU 關燈指令已送出' : 'PTU 辨識指令已送出')
+          ? (identifySecondsOf(ack) == 0
+                ? L10n.current.directMode_resultOffSent
+                : L10n.current.directMode_resultIdentifySent)
           : null,
   };
 }
@@ -615,7 +639,7 @@ String? identifyPtuLabel(
 }
 
 /// Round 24: [remoteIdentifyText] when only the gateway blinked.
-const remoteIdentifyGatewayText = '後台讓閘道器閃燈（請看閘道器上的燈）';
+String get remoteIdentifyGatewayText => L10n.current.directMode_remoteGateway;
 
 /// Round 19: an identify ack the gateway relayed to the phone that answers
 /// no request of this APP — the back office made the pile blink (backend
@@ -646,14 +670,16 @@ String remoteIdentifyText(
 }) {
   if (identifySecondsOf(ack) == 0) {
     return identifyWrotePtu(ack)
-        ? '後台已送出 PTU 關燈指令；${gatewayIdentifyText(ack)}'
-        : '後台：${gatewayIdentifyText(ack)}；PTU 關燈未送出';
+        ? L10n.current.directMode_remoteOffSent(gatewayIdentifyText(ack))
+        : L10n.current.directMode_remoteOffNotSent(gatewayIdentifyText(ack));
   }
   if (!identifyWrotePtu(ack)) return remoteIdentifyGatewayText;
   final label = identifyPtuLabel(ack, ptus: ptus);
   final rssi = ack['rssi'];
   return [
-    '後台已送出 PTU${label == null ? '' : ' $label'} 辨識指令（請看樁上燈號）',
+    label == null
+        ? L10n.current.directMode_remoteSentPtuUnnamed
+        : L10n.current.directMode_remoteSentPtu(label),
     ?identifyResultText(ack),
     if (rssi is num && rssi < 0) rssiLabel(rssi),
   ].join(' · ');
@@ -667,33 +693,45 @@ String remoteIdentifyText(
 /// at 1.3. [remoteIdentifyText] stays the full text (details, snack bar).
 String remoteIdentifyHeadText(Map<String, dynamic> ack) {
   if (identifySecondsOf(ack) == 0) {
-    return identifyWrotePtu(ack) ? '後台已送出關燈指令' : '後台已停止閘道器辨識';
+    return identifyWrotePtu(ack)
+        ? L10n.current.directMode_remoteHeadOffSent
+        : L10n.current.directMode_remoteHeadStopped;
   }
   final ptuWrite = ack['ptu_write'];
-  if (ptuWrite != null && ptuWrite != 'ok') return remoteIdentifyHeads[4];
+  final l10n = L10n.current;
+  if (ptuWrite != null && ptuWrite != 'ok') {
+    return l10n.directMode_remoteHeadGatewayOnly;
+  }
   return switch (identifyConfirmOf(ack)) {
-    IdentifyConfirm.confirmed => remoteIdentifyHeads[0],
-    IdentifyConfirm.timeout => remoteIdentifyHeads[1],
-    IdentifyConfirm.unsupportedPattern => remoteIdentifyHeads[2],
+    IdentifyConfirm.confirmed => l10n.directMode_remoteHeadConfirmed,
+    IdentifyConfirm.timeout => l10n.directMode_remoteHeadTimeout,
+    IdentifyConfirm.unsupportedPattern =>
+      l10n.directMode_remoteHeadUnsupportedPattern,
     IdentifyConfirm.legacy || IdentifyConfirm.sent =>
-      ptuWrite == 'ok' ? remoteIdentifyHeads[3] : remoteIdentifyHeads[5],
+      ptuWrite == 'ok'
+          ? l10n.directMode_remoteHeadPtuSent
+          : l10n.directMode_remoteHeadSent,
   };
 }
 
 /// Round 21: every [remoteIdentifyHeadText] (the direct bar sizes its
-/// identify line for the longest).
-const remoteIdentifyHeads = [
-  '後台已讓此樁閃燈 · PTU 已確認',
-  '後台已送出 · 舊版未取得確認',
-  '後台已送出 · PTU 不支援燈效',
-  '後台已送出 PTU 辨識指令',
-  '後台已讓閘道器閃燈 · PTU 未收到',
-  '後台已送出 · 請查看燈號',
-  '後台已送出關燈指令',
-  '後台已停止閘道器辨識',
-];
+/// identify line for the longest), in the current language.
+List<String> get remoteIdentifyHeads {
+  final l10n = L10n.current;
+  return [
+    l10n.directMode_remoteHeadConfirmed,
+    l10n.directMode_remoteHeadTimeout,
+    l10n.directMode_remoteHeadUnsupportedPattern,
+    l10n.directMode_remoteHeadPtuSent,
+    l10n.directMode_remoteHeadGatewayOnly,
+    l10n.directMode_remoteHeadSent,
+    l10n.directMode_remoteHeadOffSent,
+    l10n.directMode_remoteHeadStopped,
+  ];
+}
 
-/// Round 21: longest [remoteIdentifyHeads] entry, in characters.
+/// Round 21: longest [remoteIdentifyHeads] entry in 繁中, in characters
+/// (English heads are longer; the bar measures the real text width).
 const remoteIdentifyHeadMax = 20;
 
 /// Round 21: the notice's second line — the PTU's MAC and RSSI (「PTU
@@ -711,15 +749,15 @@ String remoteIdentifyPtuText(Map<String, dynamic> ack) {
 /// connected is still being set up (field round 17: an identify 0.9 s
 /// after the connect came back `ptu_write:not_connected`, one 2.7 s after
 /// it read 0 dBm).
-const directSettlingLabel = '連線建立中…';
+String get directSettlingLabel => L10n.current.directMode_settlingLabel;
 
 /// Round 17: the bottom bar's main button while the gateway has no pick
 /// (e.g. while it switches to the PTU chosen under 「不是這台？」).
-const directWaitingLabel = '等待閘道器連上 PTU';
+String get directWaitingLabel => L10n.current.directMode_waitingLabel;
 
 /// identify on firmware 1.7.20+ when target=ptu itself fails outright
 /// (no PTU connected): the APP falls back to blinking the gateway only.
-const identifyNoPtuText = '閘道器雙閃 4 秒；閘道器尚未連上 PTU，PTU 不會閃燈。';
+String get identifyNoPtuText => L10n.current.directMode_identifyNoPtu;
 
 /// identify ack → text for the installer, when the PTU write itself
 /// succeeded (`ptu_write` absent — bare/gateway-only ack — or `"ok"`).
@@ -730,7 +768,13 @@ String identifyAckText(Map<String, dynamic> ack) {
   final note = identifyNoteText(ack);
   if (ack['mac'] == null || identifySecondsOf(ack) == 0) return note;
   final number = ack['device_number'];
-  return '$note${number is num ? '（#$number）' : ''}；${gatewayIdentifyText(ack)}。';
+  return number is num
+      ? L10n.current.directMode_ackWithNumber(
+          note,
+          '$number',
+          gatewayIdentifyText(ack),
+        )
+      : L10n.current.directMode_ackPlain(note, gatewayIdentifyText(ack));
 }
 
 /// identify ack (target both, firmware 1.7.20+) with the gateway LED lit
@@ -745,8 +789,11 @@ String identifyPtuFailedText(
   String reason, {
   int seconds = defaultIdentifySeconds,
 }) => seconds == 0
-    ? '閘道器已停止辨識；PTU 關燈未送出（${ptuWriteReasonText(reason)}）。'
-    : '閘道器正在閃燈（$seconds 秒）；PTU 指令未送出（${ptuWriteReasonText(reason)}）。';
+    ? L10n.current.directMode_ptuFailedStop(ptuWriteReasonText(reason))
+    : L10n.current.directMode_ptuFailedBlinking(
+        seconds,
+        ptuWriteReasonText(reason),
+      );
 
 /// 1.0.0+22: why the list's 〔辨識〕 blinked the gateway only (its
 /// `ptu_write` was `not_connected`), read from one get_status right after

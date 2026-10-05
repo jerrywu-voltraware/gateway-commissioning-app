@@ -1,0 +1,45 @@
+{
+  "@@locale": "zh",
+  "fieldSupportPanel_notConnected": "請先連線到目前選擇的後台，再查看協助回覆。",
+  "fieldSupportPanel_fetchFailed": "暫時無法取得後台回覆；以下若有內容是上次收到的，請重新整理或電話聯絡。",
+  "fieldSupportPanel_confirmFailed": "尚未確認回覆結果，請重新整理；若指引更新，請看完後再回覆。",
+  "fieldSupportPanel_statePending": "等待後台接手",
+  "fieldSupportPanel_stateHandling": "後台已接手，處理中",
+  "fieldSupportPanel_stateWaitingField": "後台已提供指引，請操作後回覆",
+  "fieldSupportPanel_stateResolved": "你已確認解決",
+  "fieldSupportPanel_stateCallSupport": "請電話聯絡後台協助",
+  "fieldSupportPanel_stateLoading": "正在取得協助狀態…",
+  "fieldSupportPanel_unavailable": "目前無法在 APP 查看文字回覆，請將下方設備與步驟資訊告知後台。",
+  "fieldSupportPanel_instructionHeader": "後台指引 · 當時第 {step} 步",
+  "@fieldSupportPanel_instructionHeader": {
+    "description": "step is the commissioning step the installer was on when the back office replied.",
+    "placeholders": {
+      "step": {"type": "String", "example": "8"}
+    }
+  },
+  "fieldSupportPanel_instructionHeaderAt": "後台指引 · 當時第 {step} 步 · {time}",
+  "@fieldSupportPanel_instructionHeaderAt": {
+    "description": "time is already formatted as HH:mm.",
+    "placeholders": {
+      "step": {"type": "String", "example": "8"},
+      "time": {"type": "String", "example": "14:03"}
+    }
+  },
+  "fieldSupportPanel_instructionTarget": "指引對象：站 {site} / 閘道器 {gateway} · MAC {mac}",
+  "@fieldSupportPanel_instructionTarget": {
+    "placeholders": {
+      "site": {"type": "String", "example": "81"},
+      "gateway": {"type": "String", "example": "1"},
+      "mac": {"type": "String", "example": "AA:BB:CC:DD:EE:FF"}
+    }
+  },
+  "fieldSupportPanel_checkFirst": "請先核對目前畫面與設備，再依指引操作。",
+  "fieldSupportPanel_otherGateway": "這是其他閘道器的協助紀錄，請勿照做；請更新求助資訊，讓後台確認目前設備。",
+  "fieldSupportPanel_updateRequest": "更新求助資訊",
+  "fieldSupportPanel_replying": "回覆中…",
+  "fieldSupportPanel_resolved": "已解決",
+  "fieldSupportPanel_stillHelp": "仍需協助",
+  "fieldSupportPanel_askAgain": "再次求助",
+  "fieldSupportPanel_refresh": "重新整理回覆",
+  "fieldSupportPanel_reopenHint": "關閉後可點頂部「請後台協助」再次查看回覆。"
+}

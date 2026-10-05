@@ -1,0 +1,17 @@
+{
+  "@@locale": "zh",
+  "bleGatewayLink_stageClearing": "清除舊連線",
+  "@bleGatewayLink_stageClearing": {
+    "description": "Connect progress stage."
+  },
+  "bleGatewayLink_stageRetry": "第 {attempt} 次重試",
+  "@bleGatewayLink_stageRetry": {
+    "placeholders": {
+      "attempt": {
+        "type": "int"
+      }
+    }
+  },
+  "bleGatewayLink_stageConnecting": "正在連線閘道器",
+  "bleGatewayLink_stageRescanning": "找不到閘道器，重新掃描中"
+}

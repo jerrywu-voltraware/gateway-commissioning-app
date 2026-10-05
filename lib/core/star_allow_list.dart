@@ -1,3 +1,4 @@
+import '../l10n/l10n.dart';
 import 'protocol.dart';
 
 /// Star-mode MAC allow list (`star_macs`, firmware 1.7.36, cmd_contract.md
@@ -268,37 +269,37 @@ enum StarListStatus {
   failed,
 }
 
-const starListWritingText = '正在寫入 PTU 綁定名單';
+String get starListWritingText => L10n.current.starAllowList_writing;
 
 /// Completion page, the write failed after its retries (never blocks the
 /// completion itself).
-const starListFailedText =
-    'PTU 綁定名單未寫入，請重試。'
-    '未寫入前閘道器只看編號，附近帶相同編號的其他 PTU 仍可能被連走。';
+String get starListFailedText => L10n.current.starAllowList_failed;
 
-const starListRetryLabel = '重試寫入綁定名單';
+String get starListRetryLabel => L10n.current.starAllowList_retryButton;
 
 /// Step 8, direct → star: the list sent right after the switch failed; the
 /// verified list is written again when the data verification passes.
-const starListSwitchFailedText = '切回星狀後 PTU 綁定名單未寫入，資料驗證完成後會再寫一次。';
+String get starListSwitchFailedText => L10n.current.starAllowList_switchFailed;
 
 /// Round 27: step 8, the list sent before the first assign failed after
 /// its retries; the assignment goes on (never blocked by it).
-const starListBeforeFailedText =
-    'PTU 綁定名單未寫入，繼續配置。'
-    '若附近有編號相同的其他 PTU 佔住連線，部分 PTU 可能指派失敗；資料驗證完成後會再寫一次。';
+String get starListBeforeFailedText => L10n.current.starAllowList_beforeFailed;
 
 /// Completion page after a successful write ([ids]: the listed numbers).
-String starListWrittenText(List<int> ids) =>
-    'PTU 綁定名單已寫入：${ids.map((id) => '#$id').join('、')}'
-    '（閘道器只連這幾台，附近編號相同的其他 PTU 不會被連走）';
+String starListWrittenText(List<int> ids) => L10n.current.starAllowList_written(
+  ids.map((id) => '#$id').join(L10n.current.starAllowList_idSeparator),
+);
 
 /// Install report line; null when this run wrote no list.
+///
+/// i18n：安裝報告上傳後台、分享、複製，固定中文（docs/i18n.md §6）。
 String? starListReportText(StarListStatus status, List<int> ids) =>
     switch (status) {
+      // i18n-keep-zh-begin
       StarListStatus.written =>
         'PTU 綁定名單：已寫入 ${ids.map((id) => '#$id').join('、')}',
       StarListStatus.failed => 'PTU 綁定名單：未寫入（請在完成頁重試）',
+      // i18n-keep-zh-end
       _ => null,
     };
 
@@ -309,9 +310,10 @@ String? starListReportText(StarListStatus status, List<int> ids) =>
 /// both are 0. Never shows firmware codes.
 String? foreignPtuText({required int foreign, required int unlisted}) {
   if (foreign <= 0 && unlisted <= 0) return null;
+  final l10n = L10n.current;
   return [
-    if (foreign > 0) '附近有 $foreign 台編號相同的其他 PTU，已被閘道器忽略（不會連線）。',
-    if (unlisted > 0) '有 $unlisted 台已連線的 PTU 不在這台閘道器的綁定名單，閘道器會自動斷開。',
-    '若其中有這台閘道器要接的 PTU，請勾選它後重新配置。',
-  ].join();
+    if (foreign > 0) l10n.starAllowList_foreignIgnored(foreign),
+    if (unlisted > 0) l10n.starAllowList_unlistedDropped(unlisted),
+    l10n.starAllowList_reselectHint,
+  ].join(l10n.starAllowList_sentenceSeparator);
 }

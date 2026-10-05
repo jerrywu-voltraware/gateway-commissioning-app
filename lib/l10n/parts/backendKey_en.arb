@@ -1,0 +1,4 @@
+{
+  "@@locale": "en",
+  "backendKey_missing": "This build has no back office credential. Rebuild it"
+}

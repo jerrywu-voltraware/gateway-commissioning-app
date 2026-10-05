@@ -1,0 +1,17 @@
+{
+  "@@locale": "zh",
+  "stationChangeProgress_applying": "套用站號後，閘道器會重新啟動。請保持靠近，APP 會自動重新連線。",
+  "stationChangeProgress_restarting": "這是套用站號時的正常重啟，藍牙會短暫中斷。請保持靠近，APP 會自動重新連線。",
+  "stationChangeProgress_confirming": "已重新連線，正在確認新站號與 Wi-Fi。確認完成後會自動繼續。",
+  "stationChangeProgress_target": "站點 {site} · 閘道器 {gateway}",
+  "@stationChangeProgress_target": {
+    "placeholders": {
+      "site": {
+        "type": "int"
+      },
+      "gateway": {
+        "type": "int"
+      }
+    }
+  }
+}

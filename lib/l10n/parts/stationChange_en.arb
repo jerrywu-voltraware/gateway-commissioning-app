@@ -1,0 +1,12 @@
+{
+  "@@locale": "en",
+  "stationChange_titleApplying": "Applying the station number, please wait",
+  "stationChange_titleRestarting": "Gateway restarting, please wait",
+  "stationChange_titleReconnecting": "Reconnecting to the gateway",
+  "stationChange_titleConfirming": "Checking the station number and Wi-Fi",
+  "stationChange_itemApply": "Apply site settings",
+  "stationChange_itemRestart": "Restart and reconnect",
+  "stationChange_noteWaitBoot": "Waiting for the gateway to start",
+  "stationChange_noteReconnecting": "Reconnecting automatically",
+  "stationChange_itemConfirm": "Check the station number and Wi-Fi"
+}

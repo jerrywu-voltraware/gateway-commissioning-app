@@ -1,0 +1,15 @@
+{
+  "@@locale": "zh",
+  "identify_secondsError": "請輸入 0（關燈）或 2–10 的整數秒數（1 秒會讓 PTU 燈恆亮，不提供）",
+  "identify_ptuOnly": "僅處理 PTU，閘道器燈號未變更",
+  "identify_gatewayLedUnavailable": "閘道器燈效無法使用",
+  "identify_gatewayStopped": "閘道器已停止辨識，恢復正常燈號",
+  "identify_gatewayBlink": "{seconds, plural, other{閘道器雙閃 {seconds} 秒}}",
+  "@identify_gatewayBlink": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  }
+}

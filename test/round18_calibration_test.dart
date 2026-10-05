@@ -15,6 +15,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gateway_commissioning/l10n/l10n.dart';
+import 'support/l10n.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:gateway_commissioning/application/commissioning_controller.dart';
 import 'package:gateway_commissioning/application/topology_settings.dart';
@@ -235,6 +237,19 @@ void main() {
       expect(find.textContaining(calibrationSavedText), findsOneWidget);
       expect(find.text('完成'), findsOneWidget);
       expect(directMinRssiOf(container.read(commissionProvider).config), -43);
+    });
+
+    testWidgets('English: sampling result and suggestion', (tester) async {
+      useLanguage(AppLanguage.en);
+      await open(tester);
+      await sampleAll(tester);
+      expect(find.textContaining('Sampling done'), findsOneWidget);
+      expect(find.text('Peak ${dbm(-49)}'), findsOneWidget);
+      expect(
+        find.textContaining('Suggested threshold: -43 dBm (now -55 dBm)'),
+        findsOneWidget,
+      );
+      expect(find.text('Cancel'), findsOneWidget);
     });
 
     testWidgets('取消 closes the sheet and writes nothing', (tester) async {

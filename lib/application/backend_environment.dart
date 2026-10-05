@@ -6,6 +6,7 @@ import '../core/backend_key.dart';
 import '../core/local_backend_address.dart';
 import '../core/mqtt_target.dart';
 import '../data/local_backend_probe.dart';
+import '../l10n/l10n.dart';
 import 'local_backend_finder.dart';
 
 /// Which backend the APP talks to. The names are the persisted values
@@ -51,10 +52,12 @@ class EnvSwitchPolicy {
 }
 
 /// r32: why 「本地測試」 cannot be used in a prod / prodtest build.
-const localUnavailableText = '正式版 APP 不能連本地測試站，請改用本地測試版 APK。';
+String get localUnavailableText =>
+    L10n.current.backendEnvironment_localUnavailable;
 
 /// Label of 「本地測試」 where the build cannot use it.
-const localUnavailableLabel = '本地測試（此版本不可用）';
+String get localUnavailableLabel =>
+    L10n.current.backendEnvironment_localUnavailableLabel;
 
 /// Built with `--dart-define=LOCAL_DEVELOPMENT=true` (field test APKs).
 const localDevelopmentBuild = bool.fromEnvironment('LOCAL_DEVELOPMENT');
@@ -125,9 +128,9 @@ class BackendEnvState {
 }
 
 String envLabel(BackendEnv env) => switch (env) {
-  BackendEnv.production => '正式站',
-  BackendEnv.local => '本地測試',
-  BackendEnv.custom => '其他網址',
+  BackendEnv.production => L10n.current.backendEnvironment_labelProduction,
+  BackendEnv.local => L10n.current.backendEnvironment_labelLocal,
+  BackendEnv.custom => L10n.current.backendEnvironment_labelCustom,
 };
 
 /// Snack text shown at start when the saved choice differs from the build
@@ -142,7 +145,7 @@ String? environmentChangeHint(
   if (!previous.loaded && next.loaded) {
     return next.environment == buildDefault
         ? null
-        : '連線環境：${next.label}（沿用上次的設定，可在右上角切換）';
+        : L10n.current.backendEnvironment_changeHint(next.label);
   }
   return null;
 }
@@ -248,7 +251,10 @@ final backendProbeProvider = FutureProvider.autoDispose
     .family<ProbeResult, String>((ref, base) async {
       final uri = Uri.tryParse(base.trim());
       if (uri == null || !uri.hasAuthority) {
-        return const ProbeResult(ProbeOutcome.unreachable, detail: '網址無效');
+        return ProbeResult(
+          ProbeOutcome.unreachable,
+          detail: L10n.current.backendEnvironment_invalidUrl,
+        );
       }
       try {
         return await ref.read(localBackendProberProvider).probe(uri);

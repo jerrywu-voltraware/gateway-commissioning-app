@@ -8,6 +8,7 @@ library;
 import '../core/gateway_identity.dart';
 import '../core/gateway_net.dart';
 import '../core/mqtt_target.dart';
+import '../l10n/l10n.dart';
 import 'backend_environment.dart';
 import 'commissioning_controller.dart';
 import 'connection_status.dart';
@@ -16,18 +17,27 @@ import 'connection_status.dart';
 /// step numbers (0–7); [displayStep] maps them here: the network check is
 /// step 2 before the station choice, and the old 確認上線 (step 3) is the
 /// backend side of 確認資料上傳.
-const stepLabels = [
-  '準備',
-  '找到閘道器',
-  '閘道器網路體檢',
-  '對準上傳目標',
-  '確認資料上傳',
-  '站點選擇',
-  '選擇 PTU',
-  '開始監控',
-  '驗證資料',
-  '完成',
+///
+/// i18n：畫面用 [stepLabels]（目前語言）；上傳後台的 field `step_label`
+/// 用 `stepLabelsIn(L10n.zh)`（docs/i18n.md §6）。
+List<String> get stepLabels => stepLabelsIn(L10n.current);
+
+/// [stepLabels] in [l10n].
+List<String> stepLabelsIn(AppLocalizations l10n) => [
+  l10n.networkCheck_stepPrepare,
+  l10n.networkCheck_stepFindGateway,
+  l10n.networkCheck_stepNetworkCheck,
+  l10n.networkCheck_stepAlignTarget,
+  l10n.networkCheck_stepConfirmUpload,
+  l10n.networkCheck_stepChooseSite,
+  l10n.networkCheck_stepChoosePtu,
+  l10n.networkCheck_stepStartMonitoring,
+  l10n.networkCheck_stepVerifyData,
+  l10n.networkCheck_stepDone,
 ];
+
+/// The 「not sure」 mark of a [CheckLine] (a symbol, not a word).
+const _unsureMark = '？'; // i18n-keep-zh（全形問號是符號，不翻）
 
 enum CheckStage { wifi, target, upload }
 
@@ -103,14 +113,14 @@ class NetworkCheck {
   String? get reuseBlockedReason => ready
       ? null
       : testMode
-      ? '閘道器在測試模式'
+      ? L10n.current.networkCheck_reuseTestMode
       : uploadPaused && wifiOk && targetOk
-      ? '閘道器的資料上傳已暫停'
+      ? L10n.current.networkCheck_reuseUploadPaused
       : !wifiOk
-      ? '閘道器還沒連上 Wi-Fi'
+      ? L10n.current.networkCheck_reuseNoWifi
       : !targetOk
-      ? '閘道器的資料還沒送到手機連的地方'
-      : '閘道器還沒開始上傳資料';
+      ? L10n.current.networkCheck_reuseTargetMismatch
+      : L10n.current.networkCheck_reuseNotUploading;
 }
 
 NetworkCheck networkCheck({
@@ -125,15 +135,17 @@ NetworkCheck networkCheck({
   final verdict = supported ? state.wifi : WifiVerdict.unknown;
   final ssid = gatewaySsid(state.net, config['wifi_ssid']);
   final polling = state.uploadWatch == UploadWatch.polling;
+  final l10n = L10n.current;
 
   // 1. Wi-Fi.
   final CheckLine wifi;
   final bool wifiOk;
   if (!supported) {
     wifi = CheckLine(
-      '？',
-      'APP 無法讀取這台閘道器的 Wi-Fi（韌體 ${config['fw_version'] ?? '未知'} '
-          '較舊），最後的資料驗證會再確認。',
+      _unsureMark,
+      l10n.networkCheck_wifiUnsupported(
+        '${config['fw_version'] ?? l10n.networkCheck_fwUnknown}',
+      ),
       StatusTone.neutral,
     );
     wifiOk = true;
@@ -141,7 +153,7 @@ NetworkCheck networkCheck({
     wifiOk = verdict == WifiVerdict.ok;
     wifi = switch (verdict) {
       WifiVerdict.ok => CheckLine('✓', wifiOkText(ssid), StatusTone.ok),
-      WifiVerdict.connecting => const CheckLine(
+      WifiVerdict.connecting => CheckLine(
         '⏳',
         wifiConnectingText,
         StatusTone.pending,
@@ -153,10 +165,10 @@ NetworkCheck networkCheck({
       ),
       WifiVerdict.unknown =>
         polling
-            ? const CheckLine('⏳', '正在讀取閘道器的網路狀態…', StatusTone.pending)
-            : const CheckLine(
-                '？',
-                '還沒讀到閘道器的網路狀態，請按「重新檢查」。',
+            ? CheckLine('⏳', l10n.networkCheck_wifiReading, StatusTone.pending)
+            : CheckLine(
+                _unsureMark,
+                l10n.networkCheck_wifiNotRead,
                 StatusTone.neutral,
               ),
     };
@@ -170,19 +182,25 @@ NetworkCheck networkCheck({
       targetOk = false;
       target = current == null
           ? CheckLine(
-              '？',
-              '還不確定閘道器把資料送到哪裡，要讓它改送到${placeOf(syncTarget!)}。',
+              _unsureMark,
+              l10n.networkCheck_targetUnknownSync(placeOf(syncTarget!)),
               StatusTone.warn,
             )
           : CheckLine(
               '⚠',
-              '閘道器把資料送到${current.plainLabel}，但手機連的是'
-                  '${syncTarget!.plainLabel}。',
+              l10n.networkCheck_targetMismatch(
+                current.plainLabel,
+                syncTarget!.plainLabel,
+              ),
               StatusTone.warn,
             );
     case SyncNeed.invalid:
       targetOk = false;
-      target = CheckLine('✗', '${app.error}請點右上角的環境按鈕修正。', StatusTone.bad);
+      target = CheckLine(
+        '✗',
+        l10n.networkCheck_targetInvalid('${app.error}'),
+        StatusTone.bad,
+      );
     case SyncNeed.legacy:
       // Cannot be switched; the data verification decides.
       targetOk = true;
@@ -194,23 +212,27 @@ NetworkCheck networkCheck({
     case SyncNeed.none:
       targetOk = true;
       if (!reportsMqttTarget(config)) {
-        target = const CheckLine('✓', '閘道器的資料送到正式站', StatusTone.ok);
+        target = CheckLine(
+          '✓',
+          l10n.networkCheck_targetProductionFixed,
+          StatusTone.ok,
+        );
       } else if (current == null) {
-        target = const CheckLine(
-          '？',
-          '還不確定閘道器把資料送到哪裡。',
+        target = CheckLine(
+          _unsureMark,
+          l10n.networkCheck_targetUnknown,
           StatusTone.neutral,
         );
       } else if (app.target == null) {
         target = CheckLine(
-          '？',
-          '閘道器的資料送到${current.plainLabel}；APP 無法從這個網址判斷是否一致。',
+          _unsureMark,
+          l10n.networkCheck_targetUndecidable(current.plainLabel),
           StatusTone.neutral,
         );
       } else {
         target = CheckLine(
           '✓',
-          '閘道器的資料送到${current.plainLabel}，和手機一致',
+          l10n.networkCheck_targetMatch(current.plainLabel),
           StatusTone.ok,
         );
       }
@@ -229,16 +251,20 @@ NetworkCheck networkCheck({
   final CheckLine upload;
   bool uploadOk = false;
   if (state.uploadWatch == UploadWatch.linkLost) {
-    upload = const CheckLine('✗', '手機和閘道器的藍牙斷了，無法確認。', StatusTone.bad);
-    hint = '請靠近閘道器，按「結束並重新選擇閘道器」重新連線。';
+    upload = CheckLine('✗', l10n.networkCheck_uploadLinkLost, StatusTone.bad);
+    hint = l10n.networkCheck_uploadLinkLostHint;
   } else if (state.testMode) {
     // Round 26 (field: 「✓ 資料上傳中」 from a gateway in test mode).
-    upload = const CheckLine('⚠', testModeUploadText, StatusTone.warn);
+    upload = CheckLine('⚠', testModeUploadText, StatusTone.warn);
   } else if (state.uploadPaused) {
     // Round 26 (field: 「✓ 資料上傳中」 with the upload paused, 0 rows).
-    upload = const CheckLine('⚠', uploadPausedText, StatusTone.warn);
+    upload = CheckLine('⚠', uploadPausedText, StatusTone.warn);
   } else if (!supported) {
-    upload = const CheckLine('？', '無法確認，最後的資料驗證會再確認。', StatusTone.neutral);
+    upload = CheckLine(
+      _unsureMark,
+      l10n.networkCheck_uploadUnsupported,
+      StatusTone.neutral,
+    );
     uploadOk = true;
   } else if (uploading &&
       state.uploadWatch != UploadWatch.linkLost &&
@@ -247,37 +273,53 @@ NetworkCheck networkCheck({
     // read 「✓ 資料上傳中」): connected to the broker is heartbeats only
     // until the commissioning sends join_fleet; on purpose, so the check
     // passes, in words that say so.
-    upload = const CheckLine('✓', uploadHeldText, StatusTone.ok);
+    upload = CheckLine('✓', uploadHeldText, StatusTone.ok);
     uploadOk = true;
   } else if (uploading && state.uploadWatch != UploadWatch.linkLost) {
-    upload = const CheckLine('✓', '資料上傳中', StatusTone.ok);
+    upload = CheckLine('✓', l10n.networkCheck_uploading, StatusTone.ok);
     uploadOk = true;
   } else if (!wifiOk) {
-    upload = const CheckLine(
+    upload = CheckLine(
       '—',
-      '等閘道器連上 Wi-Fi 後再確認',
+      l10n.networkCheck_uploadAfterWifi,
       StatusTone.neutral,
     );
   } else if (!targetOk) {
-    upload = const CheckLine('—', '對準上傳目標後再確認', StatusTone.neutral);
+    upload = CheckLine(
+      '—',
+      l10n.networkCheck_uploadAfterTarget,
+      StatusTone.neutral,
+    );
   } else if (late) {
-    upload = const CheckLine('✗', '閘道器還沒開始上傳資料。', StatusTone.bad);
+    upload = CheckLine('✗', l10n.networkCheck_uploadNotStarted, StatusTone.bad);
     final place = current ?? const MqttTarget.production();
     hint =
-        subnetHint(place, gatewayIp, wifiAction: '重設 Wi-Fi') ??
+        subnetHint(
+          place,
+          gatewayIp,
+          wifiAction: l10n.networkCheck_wifiResetAction,
+        ) ??
         uploadCheckHint(place);
   } else if (polling) {
-    upload = const CheckLine(
+    upload = CheckLine(
       '⏳',
-      '等待閘道器開始上傳資料…（最多約 1 分鐘）',
+      l10n.networkCheck_uploadWaiting,
       StatusTone.pending,
     );
     // Another subnet is only a guess, so it waits like the status panel.
     if (state.uploadSlow && current != null) {
-      hint = subnetHint(current, gatewayIp, wifiAction: '重設 Wi-Fi');
+      hint = subnetHint(
+        current,
+        gatewayIp,
+        wifiAction: l10n.networkCheck_wifiResetAction,
+      );
     }
   } else {
-    upload = const CheckLine('？', '還沒確認資料上傳，請按「重新檢查」。', StatusTone.neutral);
+    upload = CheckLine(
+      _unsureMark,
+      l10n.networkCheck_uploadNotConfirmed,
+      StatusTone.neutral,
+    );
   }
 
   final pending =

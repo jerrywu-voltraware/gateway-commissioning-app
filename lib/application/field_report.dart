@@ -35,6 +35,7 @@ import '../data/contracts.dart';
 import '../data/android_app_update.dart';
 import '../data/ios_app_version.dart';
 import '../data/network_watch.dart';
+import '../l10n/l10n.dart';
 import 'backend_environment.dart';
 import 'commissioning_controller.dart';
 import 'field_journal.dart';
@@ -64,8 +65,9 @@ Future<Map<String, dynamic>> installedFieldAppInfo() async {
 }
 
 /// 09-28: `error_message` of the `status` report sent when 〔查看最近資料〕
-/// opens ([FieldReporter.noteRecentDataViewed]).
-const recentDataReportText = '查看最近資料';
+/// opens ([FieldReporter.noteRecentDataViewed]). Uploaded only: stays
+/// Chinese (docs/i18n.md §6).
+const recentDataReportText = '查看最近資料'; // i18n-keep-zh
 
 /// §6.3 fault injection (`scan_timeout_once`), only in debug and
 /// LOCAL_DEVELOPMENT builds.
@@ -279,6 +281,39 @@ bool networkCheckFailed(FieldInput i) {
   return [check.wifi, check.target, check.upload].any((l) => l.mark == '✗');
 }
 
+/// The step 1 message after a scan found no gateway (「未找到閘道器，…」).
+///
+/// 2026-10-05 (i18n): replaces `message.startsWith('未找到閘道器')`. The
+/// message follows the screen language, so its start is compared in every
+/// supported language ([AppLocalizations.fieldReport_gatewayNotFoundPrefix]
+/// must match the controller's scan message in each language); a message
+/// written before a language switch is still recognised.
+bool isGatewayNotFoundMessage(String message) {
+  if (message.isEmpty) return false;
+  for (final language in AppLanguage.values) {
+    final prefix = lookupAppLocalizations(
+      language.locale,
+    ).fieldReport_gatewayNotFoundPrefix;
+    if (message.startsWith(prefix)) return true;
+  }
+  return false;
+}
+
+/// A PTU row result that says the number was sent and waits for the
+/// read-back ([pendingReadbackText], 「已送出 #n，待回讀確認」).
+///
+/// 2026-10-05 (i18n): replaces `contains('待回讀確認')`. The row's own number
+/// is read from the text and the text compared with [pendingReadbackText]
+/// for it, so it works in whatever language the controller wrote it.
+bool isPendingReadbackResult(String? result) {
+  if (result == null || result.isEmpty) return false;
+  for (final m in RegExp(r'#(\d+)').allMatches(result)) {
+    final id = int.tryParse(m.group(1)!);
+    if (id != null && pendingReadbackText(id) == result) return true;
+  }
+  return false;
+}
+
 /// §3.1 「沒有紅框、但要回報的情況」 (STEP_STUCK / HELP_ONLY are the
 /// reporter's own).
 RescueCode? sessionRescueCode(FieldInput i) {
@@ -286,7 +321,7 @@ RescueCode? sessionRescueCode(FieldInput i) {
   if (s.step == 1 &&
       !s.busy &&
       s.peers.isEmpty &&
-      s.message.startsWith('未找到閘道器')) {
+      isGatewayNotFoundMessage(s.message)) {
     return RescueCode.gwNotFound;
   }
   if (inNetworkCheck(s)) {
@@ -422,7 +457,8 @@ Map<String, dynamic> buildSessionReport({
     'phone': phone,
     ...fieldIdentity(input),
     'step': step,
-    'step_label': _cut(stepLabels[step - 1], 32),
+    // §6: uploaded, stays Chinese.
+    'step_label': _cut(stepLabelsIn(L10n.zh)[step - 1], 32),
     'ctl_step': s.step.clamp(0, 7),
     'status': status,
     'busy_label': s.busy ? _cut(s.message, 120) : null,
@@ -487,7 +523,7 @@ const gatewayConfigKeys = [
 ];
 
 String _assignOf(CommissionState s, String mac) {
-  if (s.results[mac]?.contains('待回讀確認') == true) return 'pending_readback';
+  if (isPendingReadbackResult(s.results[mac])) return 'pending_readback';
   final a = s.assignStatus[mac];
   if (a != null) {
     return switch (a.phase) {
@@ -658,7 +694,8 @@ Map<String, dynamic> buildDiagnostics({
     'client_ts': isoWithOffset(now),
     'queued_ms': 0,
     'step': step,
-    'step_label': stepLabels[step - 1],
+    // §6: uploaded, stays Chinese.
+    'step_label': stepLabelsIn(L10n.zh)[step - 1],
     'ctl_step': s.step,
     'busy': s.busy,
     'run_label': _cut(failure?.runLabel ?? (s.busy ? s.message : null), 120),
@@ -760,25 +797,39 @@ List<String> fieldHelpLines(FieldInput i, {String? errorCode}) {
   // derived from the Bluetooth MAC; the same tail as the gateway list.
   final wifi = gatewayWifiMac(uid: s.config['gateway_uid'], bleId: s.peer?.id);
   final tail = wifi?.substring(8);
+  final l10n = L10n.current;
   final lines = <String>[];
   if (s.peer != null && site != null && gw != null) {
-    lines.add('站 $site / 閘道器 $gw${tail == null ? '' : '（MAC 後 4 碼 $tail）'}');
+    lines.add(
+      tail == null
+          ? l10n.fieldReport_helpStationGateway('$site', '$gw')
+          : l10n.fieldReport_helpStationGatewayMac('$site', '$gw', tail),
+    );
   } else if (s.peer != null) {
-    lines.add('閘道器 ${s.peer!.name}${tail == null ? '' : '（MAC 後 4 碼 $tail）'}');
+    final name = s.peer!.name;
+    lines.add(
+      tail == null
+          ? l10n.fieldReport_helpGatewayName(name)
+          : l10n.fieldReport_helpGatewayNameMac(name, tail),
+    );
   } else {
-    lines.add('還沒連上閘道器');
+    lines.add(l10n.fieldReport_helpNoGateway);
   }
   final step = fieldStep(i);
-  lines.add('目前第 $step 步：${stepLabels[step - 1]}');
+  lines.add(l10n.fieldReport_helpStep(step, stepLabels[step - 1]));
   final code = RescueCode.ofWire(errorCode);
   if (s.error != null) {
-    lines.add('錯誤：${s.error!.split('\n').first}');
+    lines.add(l10n.fieldReport_helpError(s.error!.split('\n').first));
   } else if (code != null) {
-    lines.add('狀況：${code.label}');
+    lines.add(l10n.fieldReport_helpCondition(code.label));
   }
   if (s.peer != null) {
-    final fw = id['fw_version'] ?? '未知';
-    lines.add('韌體 $fw · ${i.directMode ? '直連' : '星狀 ${i.targetCount} 台'}');
+    final fw = '${id['fw_version'] ?? l10n.fieldReport_fwUnknown}';
+    lines.add(
+      i.directMode
+          ? l10n.fieldReport_helpFirmwareDirect(fw)
+          : l10n.fieldReport_helpFirmwareStar(fw, i.targetCount),
+    );
   }
   return lines;
 }
@@ -787,7 +838,8 @@ List<String> fieldHelpLines(FieldInput i, {String? errorCode}) {
 /// back office (read out when the upload did not go through); empty
 /// without one.
 List<String> fieldHelpDetailLines({String? errorCode}) => [
-  if (errorCode != null && errorCode.isNotEmpty) '狀況代碼：$errorCode',
+  if (errorCode != null && errorCode.isNotEmpty)
+    L10n.current.fieldReport_helpCode(errorCode),
 ];
 
 // ---- Session and outbox ----
@@ -1974,7 +2026,7 @@ class FieldReporter {
         InstallReportStatus(
           phase: InstallReportPhase.failed,
           reportId: id,
-          reason: '已切換後台，報告沒有送出',
+          reason: L10n.current.fieldReport_backendSwitched,
         ),
       );
     }
@@ -2018,7 +2070,10 @@ class FieldReporter {
       _setHelp(_helpOutcome());
     } catch (_) {
       _setHelp(
-        _help.copyWith(phase: FieldHelpPhase.queued, reason: '沒有網路或後台沒有回應'),
+        _help.copyWith(
+          phase: FieldHelpPhase.queued,
+          reason: L10n.current.fieldReport_noNetwork,
+        ),
       );
     }
   }
@@ -2050,7 +2105,9 @@ class FieldReporter {
     final noLogin = api is SessionInfo && !(api as SessionInfo).hasSession;
     return _help.copyWith(
       phase: FieldHelpPhase.queued,
-      reason: noLogin ? '尚未登入後台' : '沒有網路或後台沒有回應',
+      reason: noLogin
+          ? L10n.current.fieldReport_notLoggedIn
+          : L10n.current.fieldReport_noNetwork,
     );
   }
 
@@ -2150,7 +2207,7 @@ class FieldReporter {
       return InstallReportStatus(
         phase: InstallReportPhase.failed,
         reportId: id,
-        reason: '已從手機的待送清單移除',
+        reason: L10n.current.fieldReport_removedFromOutbox,
       );
     }
     final until = _disabledUntil[_originKey];
@@ -2158,7 +2215,7 @@ class FieldReporter {
       return InstallReportStatus(
         phase: InstallReportPhase.failed,
         reportId: id,
-        reason: '後台尚未支援（請更新後台）',
+        reason: L10n.current.fieldReport_backendUnsupported,
       );
     }
     final api = _api;
@@ -2166,7 +2223,9 @@ class FieldReporter {
     return InstallReportStatus(
       phase: InstallReportPhase.queued,
       reportId: id,
-      reason: noLogin ? '尚未登入後台' : '沒有網路或後台沒有回應',
+      reason: noLogin
+          ? L10n.current.fieldReport_notLoggedIn
+          : L10n.current.fieldReport_noNetwork,
     );
   }
 
@@ -2329,7 +2388,10 @@ class FieldReporter {
         // refuses only this one; the rescue uploads keep going.
         if (item.kind == 'install' && f.code == 'api' && f.status == 404) {
           _items.remove(item);
-          _installAnswered(item, reason: '後台尚未支援（請更新後台）');
+          _installAnswered(
+            item,
+            reason: L10n.current.fieldReport_backendUnsupported,
+          );
           continue;
         }
         if (f.code == 'api' && f.status == 404) {
@@ -2342,7 +2404,10 @@ class FieldReporter {
           _items.remove(item);
           debugPrint('FIELD dropped ${item.kind}: HTTP ${f.status}');
           if (item.kind == 'install') {
-            _installAnswered(item, reason: '後台拒收（HTTP ${f.status}）');
+            _installAnswered(
+              item,
+              reason: L10n.current.fieldReport_backendRefused('${f.status}'),
+            );
           }
           continue;
         }

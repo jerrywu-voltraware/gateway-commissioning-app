@@ -12,6 +12,8 @@ import 'package:gateway_commissioning/data/contracts.dart';
 import 'package:gateway_commissioning/data/demo_system.dart';
 import 'package:gateway_commissioning/gateway_app.dart';
 import 'android_app_update_test.dart' show updateResponse, installedBuild20;
+import 'support/l10n.dart';
+import 'package:gateway_commissioning/l10n/l10n.dart';
 
 class _Api implements GatewayApi, AndroidUpdateDownload {
   Map<String, dynamic> response = updateResponse();
@@ -81,8 +83,9 @@ Future<ProviderContainer> _pump(
   _Api api,
   _Platform platform, {
   bool android = true,
+  Map<String, Object> prefs = const {},
 }) async {
-  SharedPreferences.setMockInitialValues({});
+  SharedPreferences.setMockInitialValues(prefs);
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -245,5 +248,18 @@ void main() {
     expect(find.byKey(const Key('app-update-menu')), findsNothing);
     expect(platform.reads, 0);
     expect(api.checks, 0);
+  });
+
+  testWidgets('English (i18n B2): update dialog follows the app language', (
+    tester,
+  ) async {
+    useLanguage(AppLanguage.en);
+    await _pump(tester, _Api(), _Platform(), prefs: {'app_locale': 'en'});
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pumpAndSettle();
+    expect(find.text('New app version available'), findsOneWidget);
+    expect(find.text('Current version: 1.0.0 (20)'), findsOneWidget);
+    expect(find.text('Update now'), findsOneWidget);
+    expect(find.text('Later'), findsOneWidget);
   });
 }

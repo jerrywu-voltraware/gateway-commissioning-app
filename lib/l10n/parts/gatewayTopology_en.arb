@@ -1,0 +1,7 @@
+{
+  "@@locale": "en",
+  "gatewayTopology_directShort": "One-to-one mode",
+  "gatewayTopology_starShort": "Star mode",
+  "gatewayTopology_directLabel": "One-to-one mode (1 gateway : 1 PTU)",
+  "gatewayTopology_starLabel": "Star mode (1 gateway : several PTUs)"
+}

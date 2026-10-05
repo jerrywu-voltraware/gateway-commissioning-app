@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import '../core/local_backend_address.dart';
 import '../core/protocol.dart';
+import '../l10n/l10n.dart';
 import 'dashboard_api.dart';
 
 enum ProbeOutcome {
@@ -93,10 +94,17 @@ class HttpLocalBackendProber implements LocalBackendProber {
       final body = await _readLimited(res).timeout(responseTimeout);
       return classifyHealthz(res.statusCode, body);
     } on TimeoutException {
-      return const ProbeResult(ProbeOutcome.timeout, detail: '逾時');
+      // A code, not words (the message is built by [connectionTestMessage]).
+      return const ProbeResult(
+        ProbeOutcome.timeout,
+        detail: networkTimeoutDetail,
+      );
     } on SocketException catch (error) {
       if (error.message.contains('timed out')) {
-        return const ProbeResult(ProbeOutcome.timeout, detail: '逾時');
+        return const ProbeResult(
+          ProbeOutcome.timeout,
+          detail: networkTimeoutDetail,
+        );
       }
       return ProbeResult(
         ProbeOutcome.unreachable,
@@ -138,27 +146,39 @@ Future<String?> phoneWifiIpv4() async {
   }
 }
 
-const localBackendHint =
-    '請確認：手機與電腦在同一個 Wi-Fi、電腦已啟動 Docker 本地後端、'
-    '電腦防火牆已執行 allow_local_api_lan.ps1。';
+String get localBackendHint => L10n.current.localBackendProbe_hint;
 
 /// User-facing result of 「測試連線」.
 String connectionTestMessage(ProbeResult result, Uri base) {
   final backend = describeBackend(base);
   const endpoint = 'GET /healthz';
+  final l10n = L10n.current;
+  final version = result.version;
   return switch (result.outcome) {
     ProbeOutcome.healthy =>
-      '✓ 已連上本地後端'
-          '${result.version == null ? '' : '（版本 ${result.version}）'}',
-    ProbeOutcome.degraded =>
-      '✗ 已連到本地後端，但資料庫尚未就緒（HTTP 503）。請等 Docker 本地後端完全啟動後重試。',
-    ProbeOutcome.notBackend =>
-      '✗ 回應不是本地後端（HTTP ${result.status}）。這個 IP／連接埠上是其他服務，請確認電腦 IP。',
-    ProbeOutcome.httpError =>
-      '✗ 回應不是本地後端（HTTP ${result.status}）。請確認電腦 IP 與連接埠。',
-    ProbeOutcome.timeout =>
-      '✗ 逾時：${GatewayFailure.network(endpoint: endpoint, detail: networkTimeoutDetail, backend: backend).message}',
-    ProbeOutcome.unreachable =>
-      '✗ 無法連線：${GatewayFailure.network(endpoint: endpoint, detail: result.detail, backend: backend).message}',
+      version == null
+          ? l10n.localBackendProbe_healthy
+          : l10n.localBackendProbe_healthyVersion(version),
+    ProbeOutcome.degraded => l10n.localBackendProbe_degraded,
+    ProbeOutcome.notBackend => l10n.localBackendProbe_notBackend(
+      '${result.status}',
+    ),
+    ProbeOutcome.httpError => l10n.localBackendProbe_httpError(
+      '${result.status}',
+    ),
+    ProbeOutcome.timeout => l10n.localBackendProbe_timeout(
+      GatewayFailure.network(
+        endpoint: endpoint,
+        detail: networkTimeoutDetail,
+        backend: backend,
+      ).message,
+    ),
+    ProbeOutcome.unreachable => l10n.localBackendProbe_unreachable(
+      GatewayFailure.network(
+        endpoint: endpoint,
+        detail: result.detail,
+        backend: backend,
+      ).message,
+    ),
   };
 }

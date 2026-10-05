@@ -1,3 +1,4 @@
+import '../l10n/l10n.dart';
 import 'progress_checklist.dart';
 
 /// An intentional identity update; never inferred from a generic link loss.
@@ -20,44 +21,50 @@ class StationChange {
       stage == StationChangeStage.restarting ||
       stage == StationChangeStage.reconnecting;
 
-  String get title => switch (stage) {
-    StationChangeStage.applying => '正在套用站號，請稍候',
-    StationChangeStage.restarting => '閘道器重新啟動中，請稍候',
-    StationChangeStage.reconnecting => '正在重新連線閘道器',
-    StationChangeStage.confirming => '正在確認站號與 Wi-Fi',
-  };
+  String get title {
+    final l10n = L10n.current;
+    return switch (stage) {
+      StationChangeStage.applying => l10n.stationChange_titleApplying,
+      StationChangeStage.restarting => l10n.stationChange_titleRestarting,
+      StationChangeStage.reconnecting => l10n.stationChange_titleReconnecting,
+      StationChangeStage.confirming => l10n.stationChange_titleConfirming,
+    };
+  }
 
-  List<CheckItem> get items => [
-    CheckItem(
-      'station-apply',
-      '套用站點設定',
-      status: stage == StationChangeStage.applying
-          ? CheckStatus.running
-          : CheckStatus.done,
-    ),
-    // Waiting for the restart and reconnecting share a row. Elapsed time
-    // alone must never turn the restart into a claimed success.
-    CheckItem(
-      'station-restart',
-      '重新啟動並連線',
-      status: switch (stage) {
-        StationChangeStage.applying => CheckStatus.pending,
-        StationChangeStage.restarting ||
-        StationChangeStage.reconnecting => CheckStatus.running,
-        StationChangeStage.confirming => CheckStatus.done,
-      },
-      note: stage == StationChangeStage.restarting
-          ? '等待閘道器啟動'
-          : stage == StationChangeStage.reconnecting
-          ? '正在自動重新連線'
-          : '',
-    ),
-    CheckItem(
-      'station-confirm',
-      '確認站號與 Wi-Fi',
-      status: stage == StationChangeStage.confirming
-          ? CheckStatus.running
-          : CheckStatus.pending,
-    ),
-  ];
+  List<CheckItem> get items {
+    final l10n = L10n.current;
+    return [
+      CheckItem(
+        'station-apply',
+        l10n.stationChange_itemApply,
+        status: stage == StationChangeStage.applying
+            ? CheckStatus.running
+            : CheckStatus.done,
+      ),
+      // Waiting for the restart and reconnecting share a row. Elapsed time
+      // alone must never turn the restart into a claimed success.
+      CheckItem(
+        'station-restart',
+        l10n.stationChange_itemRestart,
+        status: switch (stage) {
+          StationChangeStage.applying => CheckStatus.pending,
+          StationChangeStage.restarting ||
+          StationChangeStage.reconnecting => CheckStatus.running,
+          StationChangeStage.confirming => CheckStatus.done,
+        },
+        note: stage == StationChangeStage.restarting
+            ? l10n.stationChange_noteWaitBoot
+            : stage == StationChangeStage.reconnecting
+            ? l10n.stationChange_noteReconnecting
+            : '',
+      ),
+      CheckItem(
+        'station-confirm',
+        l10n.stationChange_itemConfirm,
+        status: stage == StationChangeStage.confirming
+            ? CheckStatus.running
+            : CheckStatus.pending,
+      ),
+    ];
+  }
 }

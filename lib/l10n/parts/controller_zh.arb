@@ -1,0 +1,1087 @@
+{
+  "@@locale": "zh",
+  "controller_identifyPeerLabel": "辨識閘道器（閃燈）",
+  "controller_identityConflict": "ID 衝突：偵測到多台實體設備使用相同 Site {site} / 閘道器 {gw}。",
+  "@controller_identityConflict": {
+    "placeholders": {
+      "site": {
+        "type": "int"
+      },
+      "gw": {
+        "type": "int"
+      }
+    }
+  },
+  "controller_gatewayBusy": "閘道器忙碌中，等待…",
+  "controller_wifiFirstRunLabel": "設定 Wi-Fi",
+  "controller_wifiFirstDone": "網路已正常，接著設定站號。",
+  "controller_wifiFirstCheck": "Wi-Fi 已連上。網路體檢還有項目沒通過，請依下方提示處理。",
+  "controller_wifiKept": "閘道器已連上 {ssid}，沿用",
+  "@controller_wifiKept": {
+    "placeholders": {
+      "ssid": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_wifiKeptDone": "沿用 Wi-Fi {ssid}（未重新連線），下一步確認後端看得到閘道器",
+  "@controller_wifiKeptDone": {
+    "placeholders": {
+      "ssid": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_reuseBlocked": "閘道器還沒連上 Wi-Fi 或還沒開始上傳資料，暫時不能使用此站點。請先按「改用其他 Wi-Fi」，或回到網路體檢確認。",
+  "controller_rejoining": "正在重新加入後台",
+  "controller_uploadNotReady": "要等閘道器連上 Wi-Fi 並開始上傳資料，才能繼續選擇 PTU。請等「確認資料上傳」出現 ✓，或再重設一次 Wi-Fi。",
+  "controller_wifiUpdatedChooseStation": "Wi-Fi 已更新，資料上傳正常。請確認站點：這台閘道器目前的站點若不是這裡，請選「改用其他站號」。",
+  "controller_backendSwitchedDone": "已切換連線環境，資料要在新的環境重新確認。",
+  "controller_backendSwitchedVerify": "已切換連線環境，請按「開始資料驗證」重新確認。",
+  "controller_resetFailed": "重置失敗（連線逾時），請靠近後重試",
+  "controller_summary": "掃到 {scanned} 台，本機配置 {configured} 台",
+  "@controller_summary": {
+    "description": "Done page summary; the two optional clauses below are appended.",
+    "placeholders": {
+      "scanned": {
+        "type": "int"
+      },
+      "configured": {
+        "type": "int"
+      }
+    }
+  },
+  "controller_summaryOtherGateways": "{count, plural, other{，{count} 台屬於其他閘道器}}",
+  "@controller_summaryOtherGateways": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "controller_summaryResetFailed": "{count, plural, other{，{count} 台重置失敗}}",
+  "@controller_summaryResetFailed": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "controller_resumeWithoutLogin": "未登入時無法自動收編殘留編號，將以手動模式繼續",
+  "controller_ptuConnectFailed": "PTU 連線失敗，請確認 PTU 電源與距離",
+  "controller_ptuNoResponse": "PTU 沒有回應",
+  "controller_ptuNotFound": "閘道器找不到這台 PTU，請重新掃描",
+  "controller_ptuSetupIncomplete": "PTU 設定未完成，請靠近後重試",
+  "controller_firstConnectFailure": "第一次連線失敗：{failure}",
+  "@controller_firstConnectFailure": {
+    "placeholders": {
+      "failure": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_reconnecting": "正在重新連線閘道器",
+  "controller_linkConfirming": "藍牙已連線，正在確認閘道器回應與設定…",
+  "controller_connectingAttempt": "連線中（第 {attempt} 次）",
+  "@controller_connectingAttempt": {
+    "placeholders": {
+      "attempt": {
+        "type": "int"
+      }
+    }
+  },
+  "controller_reconnectFailedAttempts": "{attempts, plural, other{重新連線失敗（已嘗試 {attempts} 次），請靠近閘道器後再按一次}}",
+  "@controller_reconnectFailedAttempts": {
+    "placeholders": {
+      "attempts": {
+        "type": "int"
+      }
+    }
+  },
+  "controller_waitingBluetooth": "等待藍牙就緒",
+  "controller_healthPending": "正在確認資料上傳…",
+  "controller_wrongDevice": "指派到錯誤裝置，請重試",
+  "controller_ackNumberMismatch": "裝置回報編號 #{reported} 與指派 #{wanted} 不符，請重試",
+  "@controller_ackNumberMismatch": {
+    "placeholders": {
+      "reported": {
+        "type": "String"
+      },
+      "wanted": {
+        "type": "int"
+      }
+    }
+  },
+  "controller_pendingReadback": "已送出 #{id}，待回讀確認",
+  "@controller_pendingReadback": {
+    "description": "Step 8 PTU row result; use CommissionState.pendingReadback instead of matching this text.",
+    "placeholders": {
+      "id": {
+        "type": "int"
+      }
+    }
+  },
+  "controller_readbackMismatch": "回讀編號為 #{actual}，不是指派的 #{wanted}，請重試",
+  "@controller_readbackMismatch": {
+    "placeholders": {
+      "actual": {
+        "type": "int"
+      },
+      "wanted": {
+        "type": "int"
+      }
+    }
+  },
+  "controller_savedStepFind": "第 2 步（找到閘道器）",
+  "controller_savedStepNetCheck": "第 3 步（閘道器網路體檢）",
+  "controller_savedStepUpload": "第 5 步（確認資料上傳）",
+  "controller_savedStepSelect": "第 7 步（選擇 PTU）",
+  "controller_savedStepMonitor": "第 8 步（開始監控）",
+  "controller_savedStepVerify": "第 9 步（驗證資料）",
+  "controller_reconnectContinueRest": "{count, plural, other{重新連線並繼續（剩 {count} 台）}}",
+  "@controller_reconnectContinueRest": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "controller_startVerify": "開始驗證",
+  "controller_resumeMonitoring": "恢復監控",
+  "controller_configureRest": "{count, plural, other{配置剩餘 {count} 台並開始監控}}",
+  "@controller_configureRest": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "controller_configureCount": "{count, plural, other{配置 {count} 台並開始監控}}",
+  "@controller_configureCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "controller_assigningLabel": "配置中… {done}/{total}",
+  "@controller_assigningLabel": {
+    "placeholders": {
+      "done": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "controller_selectedOfTarget": "已選 {selected} / {target} 台",
+  "@controller_selectedOfTarget": {
+    "placeholders": {
+      "selected": {
+        "type": "int"
+      },
+      "target": {
+        "type": "int"
+      }
+    }
+  },
+  "controller_selectedDoneRest": "已選 {selected} 台 · 已完成 {done} 台 · 將配置 {rest} 台",
+  "@controller_selectedDoneRest": {
+    "placeholders": {
+      "selected": {
+        "type": "int"
+      },
+      "done": {
+        "type": "int"
+      },
+      "rest": {
+        "type": "int"
+      }
+    }
+  },
+  "controller_ptuListLoading": "讀取中…（目標 {target} 台）",
+  "@controller_ptuListLoading": {
+    "placeholders": {
+      "target": {
+        "type": "int"
+      }
+    }
+  },
+  "controller_ptuCounts": "已連線 {connected} 台／周邊未連線 {nearby} 台",
+  "@controller_ptuCounts": {
+    "placeholders": {
+      "connected": {
+        "type": "int"
+      },
+      "nearby": {
+        "type": "int"
+      }
+    }
+  },
+  "controller_ptuListBusyWithCounts": "{busy}（下面是上一次的列表：{counts}）",
+  "@controller_ptuListBusyWithCounts": {
+    "placeholders": {
+      "busy": {
+        "type": "String"
+      },
+      "counts": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_ptuListBusy": "閘道器忙碌，列表暫時無法更新",
+  "controller_ptuCountReading": "讀取中…",
+  "controller_ptuCountUnread": "尚未讀取 PTU 列表",
+  "controller_starApply": "閘道器目前只連 {limit} 台；按下「配置」後，閘道器會切換為星狀並連線全部 PTU。",
+  "@controller_starApply": {
+    "placeholders": {
+      "limit": {
+        "type": "int"
+      }
+    }
+  },
+  "controller_topologyRelistReading": "{reason}，重新讀取 PTU 列表…",
+  "@controller_topologyRelistReading": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_topologyRelistPending": "{reason}，PTU 列表需重新讀取",
+  "@controller_topologyRelistPending": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_topologySwitched": "已切換為{mode}",
+  "@controller_topologySwitched": {
+    "placeholders": {
+      "mode": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_scanningLabel": "掃描中…",
+  "controller_rescanLabel": "重新掃描",
+  "controller_relinkingLabel": "重新連線中…",
+  "controller_relistingLabel": "讀取列表中…",
+  "controller_relinkReconnect": "手機與閘道器重新連線中…",
+  "controller_relinkReload": "重新讀取 PTU 列表…",
+  "controller_autoRelinking": "正在自動重新連線…",
+  "controller_backendRetry": "後端暫時無回應，自動重試中（{attempt}）",
+  "@controller_backendRetry": {
+    "placeholders": {
+      "attempt": {
+        "type": "int"
+      }
+    }
+  },
+  "controller_rescanAfterLossLabel": "重新連線並繼續",
+  "controller_step7Retry": "藍牙連線又中斷，{seconds} 秒後自動重新連線（第 {retry}/{total} 次重試）",
+  "@controller_step7Retry": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      },
+      "retry": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "controller_directSwitchPending": "閘道器仍在改連 PTU {mac}，連上後畫面會自動更新；也可改選其他 PTU。",
+  "@controller_directSwitchPending": {
+    "placeholders": {
+      "mac": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_directSwitchDone": "閘道器已改連 PTU {mac}（已綁定），請按「辨識此樁」確認是眼前這台。",
+  "@controller_directSwitchDone": {
+    "placeholders": {
+      "mac": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_directPicking": "閘道器正在選擇最近的 PTU，請稍候",
+  "controller_directFreshWindow": "閘道器正在重新收集附近的 PTU，請稍候",
+  "controller_endFlowLabel": "結束並重新選擇閘道器",
+  "controller_leaveListLabel": "結束配置",
+  "controller_leaveListConfirmTitle": "結束這次配置並回首頁？",
+  "controller_endFlowConfirmTitle": "結束目前配置？",
+  "controller_endFlowRestoreDone": "{count, plural, other{結束後會把閘道器的 PTU 綁定還原為改選前的狀態；已完成的 {count} 台保留。}}",
+  "@controller_endFlowRestoreDone": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "controller_endFlowRestoreNone": "結束後會把閘道器的 PTU 綁定還原為改選前的狀態；目前尚未完成任何 PTU。",
+  "controller_endFlowKeepDone": "{count, plural, other{已完成的 {count} 台會保留在閘道器。}}",
+  "@controller_endFlowKeepDone": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "controller_endFlowNoneDone": "目前尚未完成任何 PTU。",
+  "controller_directBoundNote": "已綁定 PTU MAC：{mac}（閘道器只連這台）",
+  "@controller_directBoundNote": {
+    "description": "Done page line; the install report always uses the zh text.",
+    "placeholders": {
+      "mac": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_directPickedAmbiguous": "閘道器選中 PTU {mac}，但附近有訊號相近的 PTU，請按「辨識此樁」確認",
+  "@controller_directPickedAmbiguous": {
+    "placeholders": {
+      "mac": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_directPicked": "閘道器選中 PTU {mac}，請按「辨識此樁」確認是眼前這台",
+  "@controller_directPicked": {
+    "placeholders": {
+      "mac": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_directNoCandidate": "閘道器找不到夠近的 PTU：請確認同樁 PTU 已上電並靠近，再按「重新搜尋」。",
+  "controller_directBoundMissing": "閘道器綁定的 PTU 不在場：請確認它已上電，或解除綁定後按「重新搜尋」。",
+  "controller_directNoReport": "閘道器尚未回報選台結果，請按「重新搜尋」。",
+  "controller_directStillSearching": "閘道器仍在尋找 PTU，請稍候再按「重新搜尋」。",
+  "controller_deferFinishLabel": "先完成配置",
+  "controller_deferring": "正在完成閘道器配置（本樁 PTU 尚未連線）",
+  "controller_deferConfirmTitle": "先完成配置，稍後 PTU 上電自動連線？",
+  "controller_deferConfirm": "閘道器會照常完成配置：加入運作、恢復上傳，維持一對一模式與目前門檻（{threshold} dBm），但不綁定 PTU。\n本樁 PTU 上電後，閘道器會自動連上它；綁定需之後到現場按〔辨識〕確認。",
+  "@controller_deferConfirm": {
+    "placeholders": {
+      "threshold": {
+        "type": "int"
+      }
+    }
+  },
+  "controller_deferredDoneTitle": "閘道器配置完成",
+  "controller_deferredDone": "本樁 PTU 尚未連線。PTU 上電後會自動連線，之後到現場按〔辨識〕確認綁定。",
+  "controller_deferredDetail": "閘道器已加入運作並恢復上傳，維持一對一模式（門檻 {threshold} dBm），尚未綁定 PTU。",
+  "@controller_deferredDetail": {
+    "description": "Done page line; the install report always uses the zh text.",
+    "placeholders": {
+      "threshold": {
+        "type": "int"
+      }
+    }
+  },
+  "controller_deferredLater": "之後補做綁定：PTU 上電後，用 APP 重新連上這台閘道器，會出現〔辨識並綁定〕。人還在現場且 PTU 已上電，可直接按下方按鈕。",
+  "controller_deferredBindNowLabel": "PTU 已上電：辨識並綁定",
+  "controller_deferredUploadStatus": "✓ 已恢復上傳（等本樁 PTU 連上）",
+  "controller_deferredSummary": "本樁 PTU 尚未連線（上電後自動連上）",
+  "controller_endFlowHeldUpload": "注意：這台閘道器還沒加入運作（資料上傳暫停），結束後不會上傳任何資料。",
+  "controller_endFlowDeferHint": "本樁 PTU 不在場時，請改按「{label}」。",
+  "@controller_endFlowDeferHint": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_bindLaterTitle": "這台閘道器已連上 PTU {mac}，但尚未綁定",
+  "@controller_bindLaterTitle": {
+    "placeholders": {
+      "mac": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_bindLaterWaitingTitle": "上次配置時本樁 PTU 尚未連線，閘道器目前仍未連上 PTU",
+  "controller_bindLaterHint": "請按〔辨識並綁定〕：到選擇 PTU 時按「辨識此樁」確認是眼前這台，再按「是這台，開始配置」即會綁定並把它編為 #1。",
+  "controller_bindLaterWaitingHint": "請確認本樁 PTU 已上電、與閘道器放在同一個機殼內；連上後按〔辨識並綁定〕。",
+  "controller_bindLaterLabel": "辨識並綁定",
+  "controller_ptuMissingTitle": "本樁 PTU 不在場（綁定 MAC 後 4 碼 {tail}）",
+  "@controller_ptuMissingTitle": {
+    "placeholders": {
+      "tail": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_ptuMissingHint": "請確認原 PTU 已上電。一般情況可透過手機藍牙更換，原 PTU 不需在場。後台同步與資料驗證仍需閘道器上網，且手機可連到後台。若只是更換網路，可先重設 Wi-Fi，不需 PTU 在場。",
+  "controller_ptuBackTitle": "PTU 已連線（{mac}）",
+  "@controller_ptuBackTitle": {
+    "placeholders": {
+      "mac": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_ptuBackHint": "閘道器已連上綁定的 PTU，不需要更換。",
+  "controller_replacePtuLabel": "更換 PTU",
+  "controller_recheckPtuLabel": "PTU 已上電，重新檢查",
+  "controller_replacePtuConfirmTitle": "更換 PTU：解除綁定並重新配對？",
+  "controller_replacePtuConfirm": "會解除閘道器對 PTU {mac} 的綁定（站點與 Wi-Fi 不變），通過裝置安全檢查後，透過手機藍牙在本機搜尋新的 PTU，原 PTU 不需在場。新綁定確認前取消或失敗會還原原綁定；藍牙中斷時請重新連線完成還原。後台同步與資料驗證仍需網路，尚未驗證前不算開通完成。",
+  "@controller_replacePtuConfirm": {
+    "placeholders": {
+      "mac": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_replacingPtu": "正在解除 PTU 綁定",
+  "controller_recheckingPtu": "正在重新檢查 PTU",
+  "controller_gatewayStatusBusy": "配置進行中不可用",
+  "controller_gatewayStatusMenu": "查看上傳資料…",
+  "controller_gatewayStatusMenuBusy": "查看上傳資料（{reason}）",
+  "@controller_gatewayStatusMenuBusy": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_ptuSearchingTitle": "正在尋找本樁 PTU…",
+  "controller_ptuSearchingHint": "閘道器剛開機或狀態剛變化，正在連線綁定的 PTU（MAC 後 4 碼 {tail}），通常 1 分鐘內會連上；請稍候再按〔{label}〕。",
+  "@controller_ptuSearchingHint": {
+    "placeholders": {
+      "tail": {
+        "type": "String"
+      },
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_ptuSearchingRecheckLabel": "重新檢查",
+  "controller_ptuOtherTitle": "連到的不是綁定的 PTU（綁定 MAC 後 4 碼 {bound}，目前連 {other}）",
+  "@controller_ptuOtherTitle": {
+    "placeholders": {
+      "bound": {
+        "type": "String"
+      },
+      "other": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_bindLaterBlocked": "目前無法進入「選擇 PTU」，請先完成網路體檢後再按一次。",
+  "controller_bindLaterNoStation": "這台閘道器目前不能沿用站點，請先完成站點與 Wi-Fi 設定。",
+  "controller_busyTryAgain": "另一個動作還在進行，請等它結束後再按一次。",
+  "controller_replaceRestoreFailed": "無法進入「選擇 PTU」，且閘道器的 PTU 綁定未能還原成 {mac}：請重新連線這台閘道器確認綁定。",
+  "@controller_replaceRestoreFailed": {
+    "placeholders": {
+      "mac": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_verified": "開通驗證通過，已恢復自動監控",
+  "controller_lastDone": "上一台已完成：站 {site} 閘道器 {gateway}",
+  "@controller_lastDone": {
+    "placeholders": {
+      "site": {
+        "type": "String"
+      },
+      "gateway": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_lastDoneDeferred": "上一台已完成：站 {site} 閘道器 {gateway}（本樁 PTU 尚未連線，上電後自動連上）",
+  "@controller_lastDoneDeferred": {
+    "placeholders": {
+      "site": {
+        "type": "String"
+      },
+      "gateway": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_prepared": "準備完成",
+  "controller_nextGateway": "請選擇下一台閘道器；新的閘道器會預設沿用站 {site}。",
+  "@controller_nextGateway": {
+    "placeholders": {
+      "site": {
+        "type": "int"
+      }
+    }
+  },
+  "controller_doneFinishLabel": "完成",
+  "controller_doneNextLabel": "配置下一台",
+  "controller_doneBusy": "正在處理，完成後再按〔完成〕。",
+  "controller_devShipNote": "開發環境提示（本地測試版才會出現，現場人員不用處理）：這台閘道器目前上傳到本地測試站，出貨前需由開發人員把手機和閘道器一起切回正式站。",
+  "controller_devShipSwitchLabel": "切回正式站",
+  "controller_stepWhere": "第 {step} 步（{label}）",
+  "@controller_stepWhere": {
+    "placeholders": {
+      "step": {
+        "type": "int"
+      },
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_resumeUnknown": "已保留先前進度，請重新連線以核對裝置現況。",
+  "controller_listSeparator": "、",
+  "@controller_listSeparator": {
+    "description": "Separator between list items (PTU numbers) on screen."
+  },
+  "controller_resumeNoneDone": "尚未完成任何 PTU",
+  "controller_resumeDone": "已完成 {count} 台（{list}）",
+  "@controller_resumeDone": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "list": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_resumeInflight": "，{list} 指派中斷、重新連線後以閘道器核對為準",
+  "@controller_resumeInflight": {
+    "placeholders": {
+      "list": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_resumePending": "，尚有 {count} 台未配置",
+  "@controller_resumePending": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "controller_resume": "上次中斷於{where}，{done}{inflight}{pending}。閘道器仍在運作，不需重新上電。",
+  "@controller_resume": {
+    "placeholders": {
+      "where": {
+        "type": "String"
+      },
+      "done": {
+        "type": "String"
+      },
+      "inflight": {
+        "type": "String"
+      },
+      "pending": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_verifySkipped": "PTU #{id} 未驗證（已略過）",
+  "@controller_verifySkipped": {
+    "placeholders": {
+      "id": {
+        "type": "int"
+      }
+    }
+  },
+  "controller_verifyNoData": "PTU #{id} 尚無資料",
+  "@controller_verifyNoData": {
+    "placeholders": {
+      "id": {
+        "type": "int"
+      }
+    }
+  },
+  "controller_verifyProgress": "資料驗證 {line}",
+  "@controller_verifyProgress": {
+    "placeholders": {
+      "line": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_absentSelection": "{count, plural, other{{count} 台在本次掃描未出現，已取消勾選}}",
+  "@controller_absentSelection": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "controller_starOwnerUnknown": "無法確認閘道器登記狀態，請手動重置",
+  "controller_doneBefore": "先前已完成",
+  "controller_alreadyMonitoring": "已在監控",
+  "controller_ptuJoinedDirect": "PTU 已連上閘道器",
+  "controller_ptuJoinedCount": "{count, plural, other{{count} 台 PTU 已連上}}",
+  "@controller_ptuJoinedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "controller_assignCount": "{done}/{total} 台",
+  "@controller_assignCount": {
+    "placeholders": {
+      "done": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "controller_assignedPtu": "已指派 PTU #{id}",
+  "@controller_assignedPtu": {
+    "placeholders": {
+      "id": {
+        "type": "int"
+      }
+    }
+  },
+  "controller_boundPtu": "已綁定 PTU #{id}",
+  "@controller_boundPtu": {
+    "placeholders": {
+      "id": {
+        "type": "int"
+      }
+    }
+  },
+  "controller_assignFailedCount": "{count, plural, other{{count} 台指派失敗}}",
+  "@controller_assignFailedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "controller_connectLogDetail": "連線失敗紀錄：{log}",
+  "@controller_connectLogDetail": {
+    "placeholders": {
+      "log": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_monitorUnconfirmedCheck": "尚未確認閘道器已恢復監控，請重新連線核對設定。",
+  "controller_verifyFailed": "資料驗證未通過：\n{detail}",
+  "@controller_verifyFailed": {
+    "placeholders": {
+      "detail": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_replaceUnfinished": "上次更換 PTU 尚未完成，請重新連線核對並還原原綁定。",
+  "controller_replaceJournalUnreadable": "更換 PTU 的恢復紀錄無法讀取，請聯絡維護人員。",
+  "controller_replaceMustRestore": "請先重新連線還原上次更換 PTU 的綁定，不能略過恢復紀錄。",
+  "controller_gatewayFallbackName": "閘道器",
+  "controller_reconnectedRescan": "已重新連線，由閘道器重新掃描 PTU。",
+  "controller_prepareRun": "檢查藍牙與後端連線",
+  "controller_offlineMode": "離線模式：最後仍需登入驗證資料",
+  "controller_scanRun": "搜尋附近的閘道器",
+  "controller_noGatewayFound": "未找到閘道器，請靠近並確認電源後重掃。",
+  "@controller_noGatewayFound": {
+    "description": "Use CommissionState.noGatewayFound instead of matching this text."
+  },
+  "controller_chooseGateway": "請選擇要開通的閘道器",
+  "controller_identifyRun": "辨識閘道器",
+  "controller_bleConnectIncomplete": "藍牙連線未完成，請重試。",
+  "controller_bleCleanupIncomplete": "藍牙清理未完成，請重試斷開。",
+  "controller_connectingPeer": "正在連線 {name}，請保持靠近",
+  "@controller_connectingPeer": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_replaceNotRestored": "上次更換 PTU 尚未還原，請使用「{label}」先核對原綁定。",
+  "@controller_replaceNotRestored": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_firmwareNote": "韌體 {version}",
+  "@controller_firmwareNote": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_connectedHasStation": "已連線，此閘道器已有站點設定。先做網路體檢，再選擇沿用或設定新站。",
+  "controller_connectedNew": "已連線。先做網路體檢，再設定身份與 Wi-Fi。",
+  "controller_checkFailedStation": "網路體檢未通過：可重設 Wi-Fi 或設定新站點；沿用要等網路正常。",
+  "controller_checkPassedStation": "網路體檢通過，請選擇站點。",
+  "controller_checkFailedNew": "網路體檢未通過，仍可設定新站點；之後會再確認資料上傳。",
+  "controller_checkPassedNew": "網路體檢通過，請設定身份與 Wi-Fi。",
+  "controller_keepStationResetWifi": "保留目前站點與 PTU，只重設 Wi-Fi。請選 2.4 GHz 的 Wi-Fi。",
+  "controller_wifiFirstPrompt": "請先設定 Wi-Fi（閘道器只能用 2.4 GHz），網路正常後再設定站號。",
+  "controller_netCheckIntro": "網路體檢：確認閘道器的 Wi-Fi 與資料上傳。",
+  "controller_chooseStationWaitUpload": "請選擇站點。沿用要等閘道器開始上傳資料。",
+  "controller_newStationPrompt": "請輸入新的站點 ID 與 Wi-Fi；儲存後才會變更閘道器。",
+  "controller_wifiOnlyPrompt": "保留目前站點與 PTU，僅更新 Wi-Fi。",
+  "controller_reuseStationPrompt": "使用此站點，由閘道器搜尋 PTU，請確認要監控的裝置。",
+  "controller_wifiUpdatedKeepStation": "Wi-Fi 已更新，站點與 PTU 設定保留。接著確認資料有上傳。",
+  "controller_wifiConnectedNext": "WiFi 已連線，下一步確認後端看得到閘道器",
+  "controller_configureWifiRun": "設定身份與 WiFi",
+  "controller_onlineRun": "確認閘道器持續上線",
+  "controller_backendUnconfirmed": "後端尚未確認；完成配置後仍需驗證",
+  "controller_uploadElsewhere": "閘道器的資料送到別的後台",
+  "controller_heartbeatNote": "心跳 {n}/2",
+  "@controller_heartbeatNote": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "controller_onlineReady": "閘道器持續上線，可搜尋 PTU",
+  "controller_scanLinkLost": "閘道器掃描未完成：藍牙連線已中斷。請靠近閘道器，再按「{label}」。",
+  "@controller_scanLinkLost": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_scanTestMode": "閘道器在測試模式，不會掃描 PTU。請按「{label}」，切換後 APP 會自動重新掃描。",
+  "@controller_scanTestMode": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_directPickIncomplete": "閘道器選台未完成，請查看錯誤後按「重新搜尋」。",
+  "controller_scanIncomplete": "閘道器掃描未完成，請查看錯誤後按「{label}」。",
+  "@controller_scanIncomplete": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_scanningPtus": "閘道器正在掃描周邊 PTU，請稍候",
+  "controller_resettingStale": "{count, plural, other{發現 {count} 台殘留編號的 PTU，自動重置中}}",
+  "@controller_resettingStale": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "controller_ptusReturned": "閘道器已回傳 {count} 台 PTU，請選擇要監控的裝置，最多 {target} 台",
+  "@controller_ptusReturned": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "target": {
+        "type": "int"
+      }
+    }
+  },
+  "controller_checkingMonitor": "正在確認閘道器監控狀態",
+  "controller_gatewayFull": "本機已滿，請連另一台閘道器。",
+  "controller_resetNumberRun": "重置編號，準備重新掃描",
+  "controller_assignFailedReason": "指派失敗：{reason}",
+  "@controller_assignFailedReason": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_assignedWaiting": "已指派 #{id}，等待連線",
+  "@controller_assignedWaiting": {
+    "placeholders": {
+      "id": {
+        "type": "int"
+      }
+    }
+  },
+  "controller_connectedNumber": "已連線 #{id}",
+  "@controller_connectedNumber": {
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_configureRun": "逐台編號並開始監控",
+  "controller_assignedNumber": "已指派 #{id}",
+  "@controller_assignedNumber": {
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_writingThreshold": "正在寫入門檻 {dbm} dBm",
+  "@controller_writingThreshold": {
+    "placeholders": {
+      "dbm": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_thresholdReadback": "寫入 {wanted}，回讀 {readBack}",
+  "@controller_thresholdReadback": {
+    "placeholders": {
+      "wanted": {
+        "type": "String"
+      },
+      "readBack": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_noneValue": "（無）",
+  "controller_updatingDirect": "正在更新直連設定",
+  "controller_assigningDirect": "正在指派 #{id} 並開始監控",
+  "@controller_assigningDirect": {
+    "placeholders": {
+      "id": {
+        "type": "int"
+      }
+    }
+  },
+  "controller_notIdentifiedPick": "閘道器目前連的是 PTU {mac}，請先按「辨識此樁」確認是眼前這台，再按「是這台，開始配置」。",
+  "@controller_notIdentifiedPick": {
+    "placeholders": {
+      "mac": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_replaceSetupRestored": "PTU 配置未完成，已還原原綁定；請重新開始更換。",
+  "controller_replaceNotReadBack": "新 PTU 綁定尚未讀回確認，已停止更換。",
+  "controller_switchingPick": "正在讓閘道器改連 PTU {mac}",
+  "@controller_switchingPick": {
+    "placeholders": {
+      "mac": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_tempUnbindFailed": "暫時綁定 {temp} 未能解除：{failure}",
+  "@controller_tempUnbindFailed": {
+    "placeholders": {
+      "temp": {
+        "type": "String"
+      },
+      "failure": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_tempRestoreFailed": "暫時綁定 {temp} 未能還原成 {restore}：{failure}",
+  "@controller_tempRestoreFailed": {
+    "placeholders": {
+      "temp": {
+        "type": "String"
+      },
+      "restore": {
+        "type": "String"
+      },
+      "failure": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_replaceChanged": "閘道器或綁定已改變，請重新確認要更換的 PTU。",
+  "controller_replacePending": "上次更換尚未還原，請先取消並還原原綁定。",
+  "controller_replaceBindChanged": "閘道器的 PTU 綁定已改變，請重新連線核對；尚未變更綁定。",
+  "controller_replaceBleOff": "閘道器的 PTU 藍牙尚未啟用，請先確認裝置狀態；尚未變更綁定。",
+  "controller_replaceUnbindUnconfirmed": "閘道器尚未確認解除綁定，已停止更換。",
+  "controller_replaceSearching": "正在本機搜尋新 PTU；後台同步與資料驗證仍需網路。",
+  "controller_replaceIdentityMismatch": "閘道器身分、站點或一對一設定無法核對，請重新連線確認；未變更綁定。",
+  "controller_replaceJournalSaveFailed": "無法保存 PTU 更換恢復紀錄，未變更綁定。",
+  "controller_replaceJournalNotCleared": "PTU 綁定已讀回，恢復紀錄尚未清除，請重新連線核對。",
+  "controller_restoringBind": "正在核對並還原原 PTU 綁定",
+  "controller_restoredBind": "已核對並還原原 PTU 綁定。網路尚需重新檢查。",
+  "controller_unbindingRun": "正在解除閘道器的 PTU 綁定",
+  "controller_replaceOtherBinding": "閘道器已有另一筆 PTU 綁定，未覆寫；請重新連線核對。",
+  "controller_continueAssign": "{count, plural, other{繼續指派 {count} 台}}",
+  "@controller_continueAssign": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "controller_configuredVerify": "配置完成，請驗證後端資料",
+  "controller_monitorSkipped": "已略過監控確認，請在資料驗證確認各台是否上傳。",
+  "controller_retryAssignRun": "重試指派失敗的 PTU",
+  "controller_allAssignFailed": "{count, plural, other{{count} 台都指派失敗，閘道器設定未變更；請確認 PTU 後按「重試這 {count} 台」。}}",
+  "@controller_allAssignFailed": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "controller_topologyStar": "星狀",
+  "controller_topologyDirect": "一對一",
+  "controller_partialAssign": "{failed, plural, other{已先讓 {ok} 台上線；{failed} 台指派失敗，可按「重試這 {failed} 台」。}}",
+  "@controller_partialAssign": {
+    "placeholders": {
+      "ok": {
+        "type": "int"
+      },
+      "failed": {
+        "type": "int"
+      }
+    }
+  },
+  "controller_directNoData": "閘道器還沒收到這台 PTU 的資料，請確認 PTU 電源後再按「是這台，開始配置」重試；閘道器仍維持監控。",
+  "controller_noPtuConnected": "未連上任何 PTU，請確認 PTU 電源與距離後重試；閘道器仍維持監控。",
+  "controller_adjustedTo": "{count, plural, other{已調整為 {count} 台；請重新選擇已連線裝置或修復缺少的 PTU。}}",
+  "@controller_adjustedTo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "controller_verifyRun": "確認每台 PTU 的資料持續進入後端",
+  "controller_noChange": "不需變更",
+  "controller_ptuCount": "{count, plural, other{{count} 台}}",
+  "@controller_ptuCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "controller_listNotWritten": "名單沒有寫入，指派照常進行",
+  "controller_ptuUnnumbered": "PTU {mac}：PTU 未取得裝置編號（device_number=0）",
+  "@controller_ptuUnnumbered": {
+    "placeholders": {
+      "mac": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_loginRun": "登入後端",
+  "controller_uploadStarted": "閘道器已開始上傳資料。",
+  "controller_uploadConnecting": "閘道器正在連線，APP 會自動確認（最多約 2 分鐘）。",
+  "controller_rereadStatusRun": "重新讀取閘道器狀態",
+  "controller_reread": "已重新讀取。{status}",
+  "@controller_reread": {
+    "placeholders": {
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_switchingTarget": "正在把閘道器切到{target}（會重新開機，約 1 分鐘）",
+  "@controller_switchingTarget": {
+    "placeholders": {
+      "target": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_targetUnchanged": "不用切換：閘道器本來就送到{target}（沒有重新開機）。{status}",
+  "@controller_targetUnchanged": {
+    "placeholders": {
+      "target": {
+        "type": "String"
+      },
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_targetSwitched": "已把閘道器切到{target}，閘道器已重新開機並重新連上。{next}",
+  "@controller_targetSwitched": {
+    "placeholders": {
+      "target": {
+        "type": "String"
+      },
+      "next": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_nextSetWifi": "接著設定 Wi-Fi。",
+  "controller_connectingStage": "{attempt}：{stage}",
+  "@controller_connectingStage": {
+    "placeholders": {
+      "attempt": {
+        "type": "String"
+      },
+      "stage": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_notReported": "（未回報）",
+  "controller_unreadable": "（無法讀取）",
+  "controller_healthAbnormal": "資料有異常，請檢查 PTU 與網路。",
+  "controller_dataStreaming": "資料持續更新",
+  "@controller_dataStreaming": {
+    "description": "Done page health result; use CommissionState.dataStreaming instead of matching this text."
+  },
+  "controller_dataStale": "資料暫未更新",
+  "controller_healthUnknown": "無法確認最新資料，請檢查網路",
+  "controller_repairRun": "重新連接閘道器",
+  "controller_repairRequested": "已要求重新連線，請重新確認上線與資料",
+  "controller_monitorUnconfirmedResume": "尚未確認閘道器已恢復監控，請按「{label}」核對。",
+  "@controller_monitorUnconfirmedResume": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_stoppedStep8": "{count, plural, other{已停止。已完成的 {count} 台保留，可按「{label}」接續。}}",
+  "@controller_stoppedStep8": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_verifyStopped": "已停止驗證，可調整勾選後重新配置。",
+  "controller_reconnectLinkRun": "重新連線閘道器",
+  "controller_cancelRestoreRetry": "{failure} 請保持靠近並再次取消以重試還原，或重開 APP 後重新連線。",
+  "@controller_cancelRestoreRetry": {
+    "placeholders": {
+      "failure": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_monitorUnconfirmedRecheck": "尚未確認閘道器已恢復監控，請重新連線核對。",
+  "controller_cancelled": "已取消。請重新連線核對進度；未成功恢復的監控會話最晚於到期時恢復。",
+  "controller_disconnecting": "正在斷開藍牙…",
+  "controller_bleCleanupDone": "藍牙清理未完成，請按「{done}」或「{next}」重試斷開。",
+  "@controller_bleCleanupDone": {
+    "placeholders": {
+      "done": {
+        "type": "String"
+      },
+      "next": {
+        "type": "String"
+      }
+    }
+  }
+}
