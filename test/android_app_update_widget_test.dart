@@ -225,7 +225,7 @@ void main() {
     );
     expect(item.enabled, isFalse);
     expect(find.text('返回首頁且結束配置後可用'), findsOneWidget);
-    expect(find.byType(PopupMenuItem<String>), findsNWidgets(4));
+    expect(find.byType(PopupMenuItem<String>), findsNWidgets(5));
     final first = tester.getRect(
       find.byKey(const Key('topology-settings-menu')),
     );

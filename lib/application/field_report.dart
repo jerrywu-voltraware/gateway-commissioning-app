@@ -304,7 +304,7 @@ RescueCode? sessionRescueCode(FieldInput i) {
     return RescueCode.ptuResidual;
   }
   if (s.step == 5 && s.assignFailed.isNotEmpty) {
-    return ptuAssignRescueCode(s.assignFailed.values.first);
+    return s.assignFailCodeOf(s.assignFailed.keys.first);
   }
   // Round 28 (field round 28: 〔請後台協助〕 at 「找不到夠近的 PTU」 reached the
   // back office as STEP_STUCK with no text): the direct step 7 settled
@@ -1564,7 +1564,7 @@ class FieldReporter {
       _diagnose(
         'error',
         i,
-        cur.code ?? ptuAssignRescueCode(s.assignFailed.values.first),
+        cur.code ?? s.assignFailCodeOf(s.assignFailed.keys.first),
       );
     }
     _assignFailed = assignFailed;
@@ -1719,7 +1719,7 @@ class FieldReporter {
       rebooted: rebooted,
       safe: safe,
       ctlStep: ctlStep,
-      assignFailTexts: i.state.assignFailed.values,
+      assignFailCodes: i.state.assignFailCodeList,
     );
     if (code == null) {
       // Rule 27: the installer's own cancel — its red box is not reported

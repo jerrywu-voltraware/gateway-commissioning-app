@@ -3,6 +3,8 @@
 // firmware review fix — Wi-Fi reason 2 (AUTH_EXPIRE) is not a wrong
 // password.
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gateway_commissioning/application/commissioning_controller.dart'
+    show ptuFailRescueCode, CommissionState;
 import 'package:gateway_commissioning/core/gateway_net.dart';
 import 'package:gateway_commissioning/core/protocol.dart';
 import 'package:gateway_commissioning/core/rescue_code.dart';
@@ -52,13 +54,13 @@ String? _code(
   bool rebooted = false,
   bool? safe = true,
   int ctlStep = 4,
-  List<String> assign = const [],
+  List<RescueCode> assign = const [],
 }) => rescueCodeOf(
   f,
   rebooted: rebooted,
   safe: safe,
   ctlStep: ctlStep,
-  assignFailTexts: assign,
+  assignFailCodes: assign,
 )?.wire;
 
 void main() {
@@ -238,29 +240,58 @@ void main() {
       expect(_code(const GatewayFailure('timeout'), ctlStep: 4), 'CMD_TIMEOUT');
       expect(_code(const GatewayFailure('timeout'), ctlStep: 5), 'CMD_TIMEOUT');
     });
-    test('25 step 8 PTU failures by their row text', () {
+    // 2026-10-05 (i18n): the code is recorded with the failure, no longer
+    // guessed from the (now translatable) row text.
+    test('25 step 8 PTU failures by their recorded code', () {
       expect(
         _code(
           const GatewayFailure('timeout'),
           ctlStep: 5,
-          assign: ['PTU 連線失敗，請確認 PTU 電源與距離'],
+          assign: [RescueCode.ptuConnectFail],
         ),
         'PTU_CONNECT_FAIL',
-      );
-      expect(ptuAssignRescueCode('PTU 沒有回應'), RescueCode.ptuNoResponse);
-      expect(ptuAssignRescueCode('指派到錯誤裝置，請重試'), RescueCode.ptuWrongDevice);
-      expect(
-        ptuAssignRescueCode('回讀編號為 #3，不是指派的 #2，請重試'),
-        RescueCode.ptuWrongDevice,
       );
       expect(
         _code(
           const GatewayFailure.gateway('write refused'),
           ctlStep: 5,
-          assign: ['PTU 沒有回應'],
+          assign: [RescueCode.ptuNoResponse],
         ),
         'PTU_NO_RESPONSE',
       );
+      expect(
+        _code(
+          const GatewayFailure.gateway('write refused'),
+          ctlStep: 5,
+          assign: [RescueCode.ptuWrongDevice, RescueCode.ptuNoResponse],
+        ),
+        'PTU_WRONG_DEVICE',
+      );
+      // The same failures the old row texts stood for.
+      expect(
+        ptuFailRescueCode(const GatewayFailure('timeout')),
+        RescueCode.ptuNoResponse,
+      );
+      expect(ptuFailRescueCode('gatt error 133'), RescueCode.ptuConnectFail);
+      expect(
+        ptuFailRescueCode(const GatewayFailure.gateway('connect_fail')),
+        RescueCode.ptuConnectFail,
+      );
+      expect(ptuFailRescueCode(null), RescueCode.ptuNoResponse);
+      // A phone link loss is not the PTU's connect failure.
+      expect(
+        ptuFailRescueCode(const GatewayFailure('disconnected')),
+        RescueCode.ptuNoResponse,
+      );
+      // State: unrecorded MACs count as no response; order follows assignFailed.
+      final s = CommissionState(
+        assignFailed: const {'a': 'x', 'b': 'y'},
+        assignFailCodes: const {'b': RescueCode.ptuWrongDevice},
+      );
+      expect(s.assignFailCodeList, [
+        RescueCode.ptuNoResponse,
+        RescueCode.ptuWrongDevice,
+      ]);
     });
     test('26–28 gateway refusal, cancel, anything else', () {
       expect(_code(const GatewayFailure.gateway('bad_param')), 'GW_REJECTED');

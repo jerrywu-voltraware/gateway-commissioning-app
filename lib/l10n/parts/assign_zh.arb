@@ -1,0 +1,14 @@
+{
+  "@@locale": "zh",
+  "assign_notAssignedLink": "尚未指派（手機與閘道器斷線）",
+  "@assign_notAssignedLink": {
+    "description": "Step 8 PTU row result after the phone lost the gateway; recognised by assignResultKindOf in every locale."
+  },
+  "assign_assigningResult": "正在指派 #{id}",
+  "@assign_assigningResult": {
+    "description": "Step 8 PTU row result while its number is being written; recognised by assignResultKindOf in every locale.",
+    "placeholders": {
+      "id": {"type": "int"}
+    }
+  }
+}

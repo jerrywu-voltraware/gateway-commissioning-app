@@ -35,8 +35,11 @@ import 'package:gateway_commissioning/data/local_backend_probe.dart';
 import 'package:gateway_commissioning/data/nearby_gateway_scan.dart';
 import 'package:gateway_commissioning/data/recent_commissions.dart';
 import 'package:gateway_commissioning/gateway_app.dart';
+import 'package:gateway_commissioning/l10n/l10n.dart';
 import 'package:gateway_commissioning/presentation/gateway_status_page.dart';
 import 'package:gateway_commissioning/presentation/recent_data_page.dart';
+
+import 'support/l10n.dart';
 
 /// The backend as the page sees it: [mode] `data` answers [fleet],
 /// `empty` no gateways, `network` fails; the recent-data endpoint answers
@@ -163,8 +166,11 @@ Future<void> _pumpPage(
   DateTime now, {
   Map<String, Object> prefs = const {},
   _Scanner? scanner,
+  AppLanguage? language,
 }) async {
   SharedPreferences.setMockInitialValues(prefs);
+  if (language != null) useLanguage(language);
+  final page = GatewayStatusPage(now: () => now);
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -173,7 +179,9 @@ Future<void> _pumpPage(
         backendKeyProvider.overrideWithValue('build-key'),
         nearbyScannerProvider.overrideWithValue(scanner ?? _Scanner()),
       ],
-      child: MaterialApp(home: GatewayStatusPage(now: () => now)),
+      child: language == null
+          ? MaterialApp(home: page)
+          : wrapWithL10n(page, language: language),
     ),
   );
   await tester.pumpAndSettle();
@@ -495,6 +503,59 @@ void main() {
       },
     );
 
+    // 2026-10-05 i18n template page: the same list in English.
+    testWidgets('English: titles, rows and lines follow the language', (
+      tester,
+    ) async {
+      final now = DateTime(2026, 9, 28, 13, 0, 10);
+      final api = _Api('data')
+        ..fleet = [
+          _gw(
+            56,
+            1,
+            dataAt: now.subtract(const Duration(seconds: 7)).toIso8601String(),
+          ),
+          _gw(80, 2, online: false, ble: 0),
+        ];
+      await _pumpPage(
+        tester,
+        api,
+        now,
+        language: AppLanguage.en,
+        prefs: {
+          'demo_recent_commissions':
+              '[{"site":56,"gateway":1,"gateway_name":"GW-56A",'
+              '"done_at":"2026-09-28T12:30:00"}]',
+        },
+        scanner: _Scanner(),
+      );
+      expect(find.text('View uploaded data'), findsOneWidget);
+      expect(find.text('Recent setups (this phone)'), findsOneWidget);
+      expect(find.text('Nearby gateways (Bluetooth scan)'), findsOneWidget);
+      expect(find.text('Gateways in the back office'), findsOneWidget);
+      expect(find.text('Done 09-28 12:30'), findsOneWidget);
+      expect(find.text('Site 56 Gateway 1'), findsNWidgets(2));
+      expect(
+        find.text('No gateway found nearby. Move closer and tap [Rescan].'),
+        findsOneWidget,
+      );
+      expect(find.text('Rescan'), findsOneWidget);
+      expect(
+        find.text("Tap a row to see that gateway's recent data."),
+        findsOneWidget,
+      );
+      expect(
+        tester.widget<Text>(find.byKey(const Key('gs-fleet-56-1-line'))).data,
+        startsWith('Online · PTU connected · '),
+      );
+      expect(
+        tester.widget<Text>(find.byKey(const Key('gs-fleet-80-2-line'))).data,
+        'Offline · PTU not connected · No data yet',
+      );
+      expect(find.byTooltip('Refresh'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('empty: both sections say so', (tester) async {
       final now = DateTime(2026, 9, 28, 13, 0, 10);
       await _pumpPage(tester, _Api('empty'), now);
@@ -613,7 +674,8 @@ void main() {
       expect(find.byKey(const Key('gs-recent-empty')), findsOneWidget);
       // 1.0.0+7: 練習模式 scans the demo link's list.
       expect(find.byKey(const Key('gs-nearby-demo-gateway')), findsOneWidget);
-      await tester.pageBack();
+      // GatewayApp 的 Material 字串是繁中（返回），pageBack() 找的是 'Back'。
+      await tester.tap(find.byType(BackButton));
       await tester.pumpAndSettle();
       expect(find.byType(GatewayStatusPage), findsNothing);
       // (a) the topology menu's item.
@@ -624,7 +686,8 @@ void main() {
       await tester.tap(item);
       await tester.pumpAndSettle();
       expect(find.byType(GatewayStatusPage), findsOneWidget);
-      await tester.pageBack();
+      // GatewayApp 的 Material 字串是繁中（返回），pageBack() 找的是 'Back'。
+      await tester.tap(find.byType(BackButton));
       await tester.pumpAndSettle();
       // The flow is where it was.
       expect(find.text('檢查並開始'), findsOneWidget);
@@ -731,6 +794,8 @@ void main() {
       final word = RegExp(r'(?<![A-Za-z0-9_])Gateway(?![A-Za-z0-9_])');
       for (final f in Directory('lib').listSync(recursive: true)) {
         if (f is! File || !f.path.endsWith('.dart')) continue;
+        // 2026-10-05: the English translation says 「Gateway」 on purpose.
+        if (f.uri.pathSegments.last == 'app_localizations_en.dart') continue;
         for (final line in f.readAsLinesSync()) {
           final code = line.trimLeft();
           if (code.startsWith('//') || code.startsWith('*')) continue;

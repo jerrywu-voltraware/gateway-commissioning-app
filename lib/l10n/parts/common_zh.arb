@@ -1,0 +1,32 @@
+{
+  "@@locale": "zh",
+  "common_ok": "確定",
+  "common_cancel": "取消",
+  "common_close": "關閉",
+  "common_retry": "重試",
+  "common_refresh": "重新整理",
+  "common_back": "返回",
+  "common_continue": "繼續",
+  "common_confirm": "確認",
+  "common_done": "完成",
+  "common_settings": "設定",
+  "common_loading": "讀取中…",
+  "common_copy": "複製",
+  "common_unknown": "未知",
+  "common_timeout": "逾時",
+  "@common_timeout": {
+    "description": "Network request timed out; also shown inside [endpoint · detail] brackets."
+  },
+  "common_dotSeparator": "・",
+  "@common_dotSeparator": {
+    "description": "Joins short status parts on one line (e.g. Online・PTU connected)."
+  },
+  "common_languageZhHant": "繁體中文",
+  "@common_languageZhHant": {
+    "description": "Language name, always written in that language (same text in every locale)."
+  },
+  "common_languageEnglish": "English",
+  "@common_languageEnglish": {
+    "description": "Language name, always written in that language (same text in every locale)."
+  }
+}

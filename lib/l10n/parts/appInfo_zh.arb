@@ -1,0 +1,7 @@
+{
+  "@@locale": "zh",
+  "appInfo_title": "GIOS 設備助手",
+  "@appInfo_title": {
+    "description": "APP name; keep equal to android res/values*/strings.xml app_name and iOS InfoPlist.strings CFBundleDisplayName."
+  }
+}

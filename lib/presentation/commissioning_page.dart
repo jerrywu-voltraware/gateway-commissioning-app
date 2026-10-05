@@ -45,9 +45,11 @@ import 'gateway_swap_sheet.dart';
 import 'verify_live_panel.dart';
 import 'android_app_update_dialog.dart';
 import '../core/gateway_swap.dart';
+import '../l10n/l10n.dart';
 
 /// The AppBar title (1.0.0+8: shown whole at 360 dp, never 「GIOS …」).
-const appBarTitle = 'GIOS 設備助手';
+/// Same name as the Android label / iOS display name (appInfo_title).
+String get appBarTitle => L10n.current.appInfo_title;
 
 enum _AutomaticAction { wifiReset, networkCheck, online, verify }
 
@@ -56,9 +58,17 @@ class CommissioningPage extends ConsumerStatefulWidget {
     super.key,
     required this.themeMode,
     required this.onThemeChanged,
+    this.language = AppLanguage.zh,
+    this.onLanguageChanged,
   });
   final ThemeMode themeMode;
   final ValueChanged<ThemeMode> onThemeChanged;
+
+  /// 目前畫面語言（[GatewayApp] 持有並存 prefs `app_locale`）。
+  final AppLanguage language;
+
+  /// 選了另一個語言；null 時「更多」選單不顯示「語言」。
+  final ValueChanged<AppLanguage>? onLanguageChanged;
   @override
   ConsumerState<CommissioningPage> createState() => _CommissioningPageState();
 }
@@ -1477,6 +1487,52 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     if (mounted && picked != null) widget.onThemeChanged(picked);
   }
 
+  /// 語言名稱一律用該語言原文（繁體中文／English），不隨目前語言翻譯。
+  String _languageLabel(AppLanguage language) => switch (language) {
+    AppLanguage.zh => context.l10n.common_languageZhHant,
+    AppLanguage.en => context.l10n.common_languageEnglish,
+  };
+
+  /// 「更多」→「語言」：仿「外觀」對話框；選了就立即生效並記住。
+  Future<void> _openLanguageOptions() async {
+    final picked = await showDialog<AppLanguage>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        key: const Key('language-options'),
+        title: Text(dialogContext.l10n.settings_language),
+        scrollable: true,
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final language in AppLanguage.values)
+                ListTile(
+                  key: ValueKey('language-option-${language.name}'),
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(_languageLabel(language)),
+                  selected: widget.language == language,
+                  trailing: widget.language == language
+                      ? const Icon(Icons.check)
+                      : null,
+                  onTap: () => Navigator.pop(dialogContext, language),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(dialogContext.l10n.common_close),
+          ),
+        ],
+      ),
+    );
+    if (mounted && picked != null && picked != widget.language) {
+      widget.onLanguageChanged?.call(picked);
+    }
+  }
+
   Widget _moreMenuRow({
     required IconData icon,
     required String title,
@@ -1579,12 +1635,12 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         appBar: AppBar(
           // Keep the full title beside help, environment and menu actions.
           // Fit the actual platform font to the remaining toolbar width.
-          title: const FittedBox(
+          title: FittedBox(
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
             child: Text(
-              appBarTitle,
-              key: Key('appbar-title'),
+              context.l10n.appInfo_title,
+              key: const Key('appbar-title'),
               maxLines: 1,
               softWrap: false,
             ),
@@ -1618,6 +1674,8 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                   _checkAppUpdate(manual: true);
                 } else if (value == 'theme-settings') {
                   _openThemeOptions();
+                } else if (value == 'language-settings') {
+                  _openLanguageOptions();
                 }
               },
               itemBuilder: (context) {
@@ -1740,6 +1798,17 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                       opensOptions: true,
                     ),
                   ),
+                  if (widget.onLanguageChanged != null)
+                    PopupMenuItem<String>(
+                      key: const Key('language-settings-menu'),
+                      value: 'language-settings',
+                      child: _moreMenuRow(
+                        icon: Icons.language,
+                        title: context.l10n.settings_language,
+                        subtitle: _languageLabel(widget.language),
+                        opensOptions: true,
+                      ),
+                    ),
                 ];
               },
             ),
@@ -2966,7 +3035,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       enabled: enabled,
       minVerticalPadding: 12,
       leading: const Icon(Icons.cloud_done_outlined, size: 20),
-      title: const Text(gatewayStatusLabel),
+      title: Text(gatewayStatusLabel),
       subtitle: Text(
         gatewayStatusHomeCaption,
         key: const Key('home-gateway-status-caption'),

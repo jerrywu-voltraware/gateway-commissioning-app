@@ -18,47 +18,58 @@ import '../data/contracts.dart' show GatewayPeer;
 import '../data/fleet_status_api.dart';
 import '../data/recent_commissions.dart';
 import '../data/recent_data_api.dart' show recentDataErrorText;
+import '../l10n/l10n.dart';
 import 'gateway_discovery.dart' show GatewayMark, gatewayNearestColor;
 import 'recent_data_page.dart';
 
+// i18n 範本（docs/i18n.md）：其他檔與測試引用的 top-level 文字維持同名，
+// 由 const 改成讀 [L10n.current] 的 getter；本頁 build 內直接用
+// `context.l10n`。字串在 lib/l10n/parts/gatewayStatus_*.arb。
+
 /// Title of the page and of its entries (the start page's button, the
 /// topology menu's item).
-const gatewayStatusLabel = '查看上傳資料';
-const gatewayStatusHomeCaption = '架設完後，看資料有沒有正常送到後台';
-const gatewayStatusRecentTitle = '最近配置（這支手機）';
-const gatewayStatusNearbyTitle = '附近閘道器（藍牙掃描）';
-const gatewayStatusFleetTitle = '後台在線閘道器';
-const gatewayStatusRecentEmptyText = '這支手機尚未用此版本完成過配置';
-const gatewayStatusNearbyEmptyText = '附近沒有掃到閘道器，請靠近後按〔重新掃描〕';
-const gatewayStatusNearbyScanningText = '正在掃描附近閘道器（約 8 秒）…';
-const gatewayStatusNearbyUnnamedText = '尚未設定站號，無法查看資料';
-const gatewayStatusRescanLabel = '重新掃描';
-const gatewayStatusSettingsLabel = '開啟權限設定';
-const gatewayStatusFleetEmptyText = '後台目前沒有任何閘道器。';
-const gatewayStatusLoadingText = '正在向後台查詢…';
-const gatewayStatusRefreshLabel = '重新整理';
-const gatewayStatusRetryLabel = '重試';
-const gatewayStatusHint = '點一列即可查看該閘道器的最近資料。';
+String get gatewayStatusLabel => L10n.current.gatewayStatus_label;
+String get gatewayStatusHomeCaption => L10n.current.gatewayStatus_homeCaption;
+String get gatewayStatusRecentTitle => L10n.current.gatewayStatus_recentTitle;
+String get gatewayStatusNearbyTitle => L10n.current.gatewayStatus_nearbyTitle;
+String get gatewayStatusFleetTitle => L10n.current.gatewayStatus_fleetTitle;
+String get gatewayStatusRecentEmptyText =>
+    L10n.current.gatewayStatus_recentEmpty;
+String get gatewayStatusNearbyEmptyText =>
+    L10n.current.gatewayStatus_nearbyEmpty;
+String get gatewayStatusNearbyScanningText =>
+    L10n.current.gatewayStatus_nearbyScanning;
+String get gatewayStatusNearbyUnnamedText =>
+    L10n.current.gatewayStatus_nearbyUnnamed;
+String get gatewayStatusRescanLabel => L10n.current.gatewayStatus_rescan;
+String get gatewayStatusSettingsLabel => L10n.current.gatewayStatus_openSettings;
+String get gatewayStatusFleetEmptyText => L10n.current.gatewayStatus_fleetEmpty;
+String get gatewayStatusLoadingText => L10n.current.gatewayStatus_loading;
+String get gatewayStatusRefreshLabel => L10n.current.common_refresh;
+String get gatewayStatusRetryLabel => L10n.current.common_retry;
+String get gatewayStatusHint => L10n.current.gatewayStatus_hint;
 
 /// 「站 56 閘道器 1」.
-String gatewayStatusName(int site, int gateway) => '站 $site 閘道器 $gateway';
+String gatewayStatusName(int site, int gateway) =>
+    L10n.current.gatewayStatus_name(site, gateway);
 
 /// 「-61 dBm・GIOS-S56-GW01」 (a nearby row's second line). 1.0.0+10
 /// (phone: the line broke at 「GIOS-S81-」): no 「RSSI」 word, and the name
 /// with non-breaking hyphens (U+2011) so it moves to the next line whole.
 String gatewayStatusNearbyLine(GatewayPeer p) =>
-    '${p.rssi} dBm・${unbrokenName(p.name)}';
+    '${p.rssi} dBm${L10n.current.common_dotSeparator}${unbrokenName(p.name)}';
 
 /// [name] with its hyphens non-breaking (U+2011): a line never breaks
 /// inside 「GIOS-S81-GW01」.
 String unbrokenName(String name) => name.replaceAll('-', '\u2011');
 
 /// 1.0.0+10: the strongest nearby gateway's mark (as on the gateway list).
-const gatewayStatusNearestLabel = '最近';
+String get gatewayStatusNearestLabel => L10n.current.gatewayStatus_nearest;
 
 /// 1.0.0+12: a nearby gateway known not to be configured's second line —
 /// no station or number (an old identity may be left in its name).
-const gatewayStatusNearbyUnconfiguredText = '尚未配置，無法查看資料';
+String get gatewayStatusNearbyUnconfiguredText =>
+    L10n.current.gatewayStatus_nearbyUnconfigured;
 
 /// 1.0.0+12: a nearby gateway known not to be configured — its name is the
 /// factory 1/1, or the back office's list ([fleet]; null: not read) has no
@@ -73,33 +84,41 @@ bool nearbyKnownUnconfigured(String name, List<FleetGateway>? fleet) {
 
 /// Words for a failed nearby scan: the link's own (「需要藍牙權限…」, 「請開啟
 /// 手機藍牙後重試。」…) or a generic one.
-String gatewayStatusNearbyErrorText(Object error) =>
-    error is GatewayFailure ? error.message : '掃描失敗，請確認藍牙、定位與附近裝置權限後重試。';
+String gatewayStatusNearbyErrorText(Object error) => error is GatewayFailure
+    ? error.message
+    : L10n.current.gatewayStatus_nearbyScanFailed;
 
 /// 「09-28 14:03 完成」.
 String gatewayStatusDoneText(DateTime doneAt) {
   String two(int v) => v.toString().padLeft(2, '0');
-  return '${two(doneAt.month)}-${two(doneAt.day)} '
-      '${two(doneAt.hour)}:${two(doneAt.minute)} 完成';
+  return L10n.current.gatewayStatus_doneAt(
+    '${two(doneAt.month)}-${two(doneAt.day)} '
+    '${two(doneAt.hour)}:${two(doneAt.minute)}',
+  );
 }
 
 /// 「在線・PTU 已連線・7 秒前」 (the newest data; 「離線」, 「PTU 未連線」,
 /// 「心跳 N 秒前」 when the PTUs sent nothing yet, 「尚無資料」 when
 /// neither). 1.0.0+10 (phone: 「最近資料 7 秒前」 wrapped): shorter.
 String gatewayStatusLine(FleetGateway g, DateTime now) {
+  final l10n = L10n.current;
   final parts = <String>[
-    g.online ? '在線' : '離線',
-    g.ptuConnected ? 'PTU 已連線' : 'PTU 未連線',
+    g.online ? l10n.gatewayStatus_online : l10n.gatewayStatus_offline,
+    g.ptuConnected
+        ? l10n.gatewayStatus_ptuConnected
+        : l10n.gatewayStatus_ptuDisconnected,
   ];
   final data = g.lastData, hb = g.lastHeartbeat;
   if (data != null) {
-    parts.add('${recentAgeText(now.difference(data))}前');
+    parts.add(l10n.gatewayStatus_dataAgo(recentAgeText(now.difference(data))));
   } else if (hb != null) {
-    parts.add('心跳 ${recentAgeText(now.difference(hb))}前');
+    parts.add(
+      l10n.gatewayStatus_heartbeatAgo(recentAgeText(now.difference(hb))),
+    );
   } else {
-    parts.add('尚無資料');
+    parts.add(l10n.gatewayStatus_noData);
   }
-  return parts.join('・');
+  return parts.join(l10n.common_dotSeparator);
 }
 
 /// 1.0.0+5 「閘道器狀態」: the gateways this phone finished (top, kept on
@@ -220,13 +239,14 @@ class _GatewayStatusPageState extends ConsumerState<GatewayStatusPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return Scaffold(
       appBar: AppBar(
-        title: const Text(gatewayStatusLabel, maxLines: 1, softWrap: false),
+        title: Text(l10n.gatewayStatus_label, maxLines: 1, softWrap: false),
         actions: [
           IconButton(
             key: const Key('gs-refresh'),
-            tooltip: gatewayStatusRefreshLabel,
+            tooltip: l10n.common_refresh,
             icon: const Icon(Icons.refresh),
             onPressed: _loading ? null : _load,
           ),
@@ -249,18 +269,18 @@ class _GatewayStatusPageState extends ConsumerState<GatewayStatusPage> {
               key: const Key('gs-body'),
               padding: const EdgeInsets.only(bottom: 24),
               children: [
-                _Header(gatewayStatusRecentTitle),
+                _Header(l10n.gatewayStatus_recentTitle),
                 ..._recentSection(context),
                 const SizedBox(height: 8),
-                _Header(gatewayStatusNearbyTitle),
+                _Header(l10n.gatewayStatus_nearbyTitle),
                 ..._nearbySection(context),
                 const SizedBox(height: 8),
-                _Header(gatewayStatusFleetTitle),
+                _Header(l10n.gatewayStatus_fleetTitle),
                 ..._fleetSection(context),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                   child: Text(
-                    gatewayStatusHint,
+                    l10n.gatewayStatus_hint,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
@@ -277,9 +297,9 @@ class _GatewayStatusPageState extends ConsumerState<GatewayStatusPage> {
   List<Widget> _recentSection(BuildContext context) {
     if (_recent.isEmpty) {
       return [
-        const _Note(
-          key: Key('gs-recent-empty'),
-          text: gatewayStatusRecentEmptyText,
+        _Note(
+          key: const Key('gs-recent-empty'),
+          text: context.l10n.gatewayStatus_recentEmpty,
         ),
       ];
     }
@@ -351,7 +371,7 @@ class _GatewayStatusPageState extends ConsumerState<GatewayStatusPage> {
     key: const Key('gs-nearby-rescan'),
     onPressed: _scanning ? null : _scan,
     icon: const Icon(Icons.bluetooth_searching, size: 20),
-    label: const Text(gatewayStatusRescanLabel),
+    label: Text(context.l10n.gatewayStatus_rescan),
   );
 
   Widget _rescanRow({double top = 0}) => Padding(
@@ -361,20 +381,22 @@ class _GatewayStatusPageState extends ConsumerState<GatewayStatusPage> {
 
   List<Widget> _nearbySection(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final l10n = context.l10n;
     if (_scanning) {
+      // l10n 字串不是編譯期常數：外層不能再加 const（docs/i18n.md 陷阱）。
       return [
-        const Padding(
-          key: Key('gs-nearby-scanning'),
-          padding: EdgeInsets.all(24),
+        Padding(
+          key: const Key('gs-nearby-scanning'),
+          padding: const EdgeInsets.all(24),
           child: Row(
             children: [
-              SizedBox(
+              const SizedBox(
                 width: 22,
                 height: 22,
                 child: CircularProgressIndicator(strokeWidth: 2),
               ),
-              SizedBox(width: 12),
-              Expanded(child: Text(gatewayStatusNearbyScanningText)),
+              const SizedBox(width: 12),
+              Expanded(child: Text(l10n.gatewayStatus_nearbyScanning)),
             ],
           ),
         ),
@@ -403,7 +425,7 @@ class _GatewayStatusPageState extends ConsumerState<GatewayStatusPage> {
                   TextButton(
                     key: const Key('gs-nearby-settings'),
                     onPressed: openAppSettings,
-                    child: const Text(gatewayStatusSettingsLabel),
+                    child: Text(l10n.gatewayStatus_openSettings),
                   ),
                   _rescanButton(),
                 ],
@@ -416,9 +438,9 @@ class _GatewayStatusPageState extends ConsumerState<GatewayStatusPage> {
     final nearby = _nearby ?? const <GatewayPeer>[];
     if (nearby.isEmpty) {
       return [
-        const _Note(
-          key: Key('gs-nearby-empty'),
-          text: gatewayStatusNearbyEmptyText,
+        _Note(
+          key: const Key('gs-nearby-empty'),
+          text: l10n.gatewayStatus_nearbyEmpty,
         ),
         _rescanRow(),
       ];
@@ -440,10 +462,11 @@ class _GatewayStatusPageState extends ConsumerState<GatewayStatusPage> {
     ColorScheme colors, {
     bool nearest = false,
   }) {
+    final l10n = context.l10n;
     final id = parseGatewayName(p.name);
     final mark = nearest
         ? GatewayMark(
-            gatewayStatusNearestLabel,
+            l10n.gatewayStatus_nearest,
             key: Key('gs-nearby-nearest-${p.id}'),
             color: gatewayNearestColor,
             filled: true,
@@ -457,7 +480,9 @@ class _GatewayStatusPageState extends ConsumerState<GatewayStatusPage> {
         key: Key('gs-nearby-${p.id}'),
         leading: Icon(Icons.bluetooth, color: colors.onSurfaceVariant),
         title: p.name,
-        line: '${p.rssi} dBm・$gatewayStatusNearbyUnnamedText',
+        line:
+            '${p.rssi} dBm${l10n.common_dotSeparator}'
+            '${l10n.gatewayStatus_nearbyUnnamed}',
         lineKey: Key('gs-nearby-${p.id}-line'),
         mark: mark,
       );
@@ -471,7 +496,9 @@ class _GatewayStatusPageState extends ConsumerState<GatewayStatusPage> {
         key: Key('gs-nearby-${p.id}'),
         leading: Icon(Icons.bluetooth, color: colors.onSurfaceVariant),
         title: unconfiguredGatewayTitle(gatewayTailText(bleId: p.id)),
-        line: '${p.rssi} dBm・$gatewayStatusNearbyUnconfiguredText',
+        line:
+            '${p.rssi} dBm${l10n.common_dotSeparator}'
+            '${l10n.gatewayStatus_nearbyUnconfigured}',
         lineKey: Key('gs-nearby-${p.id}-line'),
         mark: mark,
       );
@@ -512,7 +539,7 @@ class _GatewayStatusPageState extends ConsumerState<GatewayStatusPage> {
                   key: const Key('gs-retry'),
                   onPressed: _loading ? null : _load,
                   icon: const Icon(Icons.refresh, size: 20),
-                  label: const Text(gatewayStatusRetryLabel),
+                  label: Text(context.l10n.common_retry),
                 ),
               ),
             ],
@@ -522,18 +549,18 @@ class _GatewayStatusPageState extends ConsumerState<GatewayStatusPage> {
     }
     if (fleet == null) {
       return [
-        const Padding(
-          key: Key('gs-loading'),
-          padding: EdgeInsets.all(24),
+        Padding(
+          key: const Key('gs-loading'),
+          padding: const EdgeInsets.all(24),
           child: Row(
             children: [
-              SizedBox(
+              const SizedBox(
                 width: 22,
                 height: 22,
                 child: CircularProgressIndicator(strokeWidth: 2),
               ),
-              SizedBox(width: 12),
-              Text(gatewayStatusLoadingText),
+              const SizedBox(width: 12),
+              Text(context.l10n.gatewayStatus_loading),
             ],
           ),
         ),
@@ -541,9 +568,9 @@ class _GatewayStatusPageState extends ConsumerState<GatewayStatusPage> {
     }
     if (fleet.isEmpty) {
       return [
-        const _Note(
-          key: Key('gs-fleet-empty'),
-          text: gatewayStatusFleetEmptyText,
+        _Note(
+          key: const Key('gs-fleet-empty'),
+          text: context.l10n.gatewayStatus_fleetEmpty,
         ),
       ];
     }

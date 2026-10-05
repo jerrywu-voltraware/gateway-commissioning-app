@@ -1,0 +1,6 @@
+/* 繁體中文：桌面名稱與權限說明（與 Info.plist 預設值相同）。 */
+"CFBundleDisplayName" = "GIOS 設備助手";
+"NSBluetoothAlwaysUsageDescription" = "此 APP 需要使用藍牙搜尋並連線 IoT Gateway 進行現場配置。";
+"NSBluetoothPeripheralUsageDescription" = "此 APP 需要使用藍牙搜尋並連線 IoT Gateway 進行現場配置。";
+"NSLocalNetworkUsageDescription" = "此 APP 需要連線到區域網路內的測試後端與 IoT Gateway 服務來完成配置驗證。";
+"NSLocationWhenInUseUsageDescription" = "允許精確位置權限，才能讀取手機目前連線的 Wi-Fi 名稱，並帶入閘道器設定；不會取得或儲存您的位置。";

@@ -259,7 +259,7 @@ class DashboardApi
     } on TimeoutException {
       throw GatewayFailure.network(
         endpoint: endpoint,
-        detail: '逾時',
+        detail: networkTimeoutDetail,
         backend: backend,
       );
     } on IOException catch (error) {

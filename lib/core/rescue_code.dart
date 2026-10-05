@@ -83,26 +83,17 @@ RescueCode wifiRescueCode(int? reason) => switch (wifiFailKindOf(reason)) {
   null => RescueCode.wifiUnknown,
 };
 
-/// Rule 25: a step 8 PTU that failed after its automatic retries, from the
-/// text on its row (the controller's `ptuFailureText`, `wrongDeviceText`,
-/// read-back mismatch …) — the gateway could not connect to it, it did not
-/// answer, or the number went to / read back from the wrong device.
-RescueCode ptuAssignRescueCode(String text) {
-  final lower = text.toLowerCase();
-  if (lower.contains('錯誤裝置') ||
-      lower.contains('回讀編號') ||
-      lower.contains('裝置回報編號')) {
-    return RescueCode.ptuWrongDevice;
-  }
-  if (lower.contains('連線失敗') ||
-      lower.contains('133') ||
-      lower.contains('connect') ||
-      lower.contains('discovery') ||
-      lower.contains('gatt')) {
-    return RescueCode.ptuConnectFail;
-  }
-  return RescueCode.ptuNoResponse;
-}
+/// Rule 25: the codes a step 8 PTU that failed after its automatic retries
+/// can carry — the gateway could not connect to it, it did not answer, or
+/// the number went to / read back from the wrong device. 2026-10-05 (i18n):
+/// the controller records the code with the failure
+/// (`CommissionState.assignFailCodes`); it is no longer guessed from the
+/// Chinese row text (`contains('錯誤裝置')` …).
+const ptuAssignRescueCodes = {
+  RescueCode.ptuWrongDevice,
+  RescueCode.ptuConnectFail,
+  RescueCode.ptuNoResponse,
+};
 
 const _linkDropCodes = {'phone_link_lost', 'disconnected', 'not_connected'};
 const _authRefusedCodes = {
@@ -140,14 +131,15 @@ const _backendDownCodes = {
 /// [rebooted]: the gateway restarted during this run (the controller's
 /// `_rebootedAfterTimeout()`, or a restart notice that appeared meanwhile).
 /// [safe]: `_safeStop()` (false: monitoring not confirmed back on).
-/// [ctlStep]: the controller's step (0–7). [assignFailTexts]: step 8 PTU
-/// rows that failed (rule 25).
+/// [ctlStep]: the controller's step (0–7). [assignFailCodes]: the rescue
+/// codes of the step 8 PTUs that failed (rule 25, one of
+/// [ptuAssignRescueCodes]; `CommissionState.assignFailCodeList`).
 RescueCode? rescueCodeOf(
   GatewayFailure f, {
   required bool rebooted,
   required bool? safe,
   required int ctlStep,
-  Iterable<String> assignFailTexts = const [],
+  Iterable<RescueCode> assignFailCodes = const [],
 }) {
   final code = f.code;
   if (code == 'cancelled') return null;
@@ -207,13 +199,13 @@ RescueCode? rescueCodeOf(
   }
   if (code == 'timeout' && !f.fromGateway) {
     if (ctlStep == 3) return RescueCode.uploadNotStarted;
-    if (ctlStep == 5 && assignFailTexts.isNotEmpty) {
-      return ptuAssignRescueCode(assignFailTexts.first);
+    if (ctlStep == 5 && assignFailCodes.isNotEmpty) {
+      return assignFailCodes.first;
     }
     return RescueCode.cmdTimeout;
   }
-  if (ctlStep == 5 && assignFailTexts.isNotEmpty) {
-    return ptuAssignRescueCode(assignFailTexts.first);
+  if (ctlStep == 5 && assignFailCodes.isNotEmpty) {
+    return assignFailCodes.first;
   }
   if (f.fromGateway) return RescueCode.gwRejected;
   return RescueCode.appUnexpected;

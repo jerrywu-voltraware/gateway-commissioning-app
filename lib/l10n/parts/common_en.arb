@@ -1,0 +1,20 @@
+{
+  "@@locale": "en",
+  "common_ok": "OK",
+  "common_cancel": "Cancel",
+  "common_close": "Close",
+  "common_retry": "Retry",
+  "common_refresh": "Refresh",
+  "common_back": "Back",
+  "common_continue": "Continue",
+  "common_confirm": "Confirm",
+  "common_done": "Done",
+  "common_settings": "Settings",
+  "common_loading": "Loading…",
+  "common_copy": "Copy",
+  "common_unknown": "unknown",
+  "common_timeout": "timed out",
+  "common_dotSeparator": " · ",
+  "common_languageZhHant": "繁體中文",
+  "common_languageEnglish": "English"
+}

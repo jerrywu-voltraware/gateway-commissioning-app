@@ -1,0 +1,7 @@
+{
+  "@@locale": "zh",
+  "settings_language": "語言",
+  "@settings_language": {
+    "description": "More menu item and dialog title for choosing the APP language."
+  }
+}

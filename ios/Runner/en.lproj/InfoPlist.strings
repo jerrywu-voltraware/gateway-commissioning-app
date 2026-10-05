@@ -1,0 +1,6 @@
+/* English: home screen name and permission prompts. */
+"CFBundleDisplayName" = "GIOS Device Assistant";
+"NSBluetoothAlwaysUsageDescription" = "This app uses Bluetooth to find and connect to IoT gateways for on-site setup.";
+"NSBluetoothPeripheralUsageDescription" = "This app uses Bluetooth to find and connect to IoT gateways for on-site setup.";
+"NSLocalNetworkUsageDescription" = "This app connects to the test backend and IoT gateway services on your local network to verify the setup.";
+"NSLocationWhenInUseUsageDescription" = "Allow precise location so the app can read the name of the Wi-Fi your phone is on and fill it into the gateway settings. Your location is never collected or stored.";

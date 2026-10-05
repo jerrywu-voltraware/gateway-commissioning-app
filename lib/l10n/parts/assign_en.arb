@@ -1,0 +1,5 @@
+{
+  "@@locale": "en",
+  "assign_notAssignedLink": "Not assigned (phone lost the gateway)",
+  "assign_assigningResult": "Assigning #{id}"
+}

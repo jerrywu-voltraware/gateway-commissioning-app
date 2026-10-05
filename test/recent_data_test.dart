@@ -897,7 +897,8 @@ void main() {
       expect(find.byKey(const Key('recent-trend')), findsNothing);
       expect(find.byKey(const Key('recent-trend-chart')), findsNothing);
       // Back: the done page, its buttons untouched.
-      await tester.pageBack();
+      // GatewayApp 的 Material 字串是繁中（返回），pageBack() 找的是 'Back'。
+      await tester.tap(find.byType(BackButton));
       await tester.pumpAndSettle();
       expect(find.byType(RecentDataPage), findsNothing);
       expect(find.byKey(const Key('done-finish')), findsOneWidget);

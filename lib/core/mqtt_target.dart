@@ -3,9 +3,15 @@
 /// Pure Dart: parsing of `get_config` / `get_net_status` / `set_mqtt_target`
 /// payloads, mapping of the APP backend environment to the target the gateway
 /// should upload to, and the user-facing texts shared by UI and controller.
+///
+/// i18n 範本（無 context 層，docs/i18n.md）：畫面文字用 [L10n.current]；
+/// 安裝報告（上傳後台、分享、複製）的 [reportTargetText] 固定用 [L10n.zh]。
+/// 字串在 lib/l10n/parts/mqttTarget_*.arb。
 library;
 
 import 'dart:convert';
+
+import '../l10n/l10n.dart';
 
 const defaultMqttPort = 8883;
 
@@ -50,14 +56,23 @@ class MqttTarget {
   bool get isLocal => kind == MqttTargetKind.local;
 
   /// 正式站 / 本地 host:port
-  String get label => isLocal ? '本地 $host:$port' : '正式站';
+  String get label => labelIn(L10n.current);
+
+  /// [label] in [l10n] (the install report always uses [L10n.zh]).
+  String labelIn(AppLocalizations l10n) => isLocal
+      ? l10n.mqttTarget_localHostPort(host, '$port')
+      : l10n.mqttTarget_production;
 
   /// 正式站 / 本地 host (button text).
-  String get shortLabel => isLocal ? '本地 $host' : '正式站';
+  String get shortLabel => isLocal
+      ? L10n.current.mqttTarget_localHost(host)
+      : L10n.current.mqttTarget_production;
 
   /// Plain wording for non-developers: 正式站 / 本地測試主機（host）. The
   /// port is technical detail and never shown here.
-  String get plainLabel => isLocal ? '本地測試主機（$host）' : '正式站';
+  String get plainLabel => isLocal
+      ? L10n.current.mqttTarget_plainLocal(host)
+      : L10n.current.mqttTarget_plainProduction;
 
   /// `params` of the `set_mqtt_target` request.
   Map<String, dynamic> get params => isLocal
@@ -189,19 +204,17 @@ AppUploadTarget desiredUploadTarget(String environment, String baseUrl) {
   }
   final host = _host(baseUrl);
   if (environment == 'local') {
+    final l10n = L10n.current;
     if (host.isEmpty) {
       return AppUploadTarget.invalid(
         baseUrl.trim().isEmpty
-            ? '尚未輸入本地測試站網址，無法決定閘道器的上傳目標。'
-            : '本地測試站網址「${baseUrl.trim()}」無法解析主機位址，'
-                  '請輸入如 http://192.168.1.10:18000 的網址。',
+            ? l10n.mqttTarget_localUrlEmpty
+            : l10n.mqttTarget_localUrlUnparsable(baseUrl.trim()),
       );
     }
     if (!isPrivateIpv4Literal(host)) {
       return AppUploadTarget.invalid(
-        '本地測試站網址的主機「$host」不是區網私有 IPv4 位址'
-        '（10.x.x.x、172.16–31.x.x、192.168.x.x），閘道器無法上傳到此後端。'
-        '請把網址改成電腦的區網 IP。',
+        l10n.mqttTarget_localHostNotPrivate(host),
       );
     }
     return AppUploadTarget.known(MqttTarget.local(host));
@@ -216,28 +229,35 @@ AppUploadTarget desiredUploadTarget(String environment, String baseUrl) {
 }
 
 /// Step 7 warning when the gateway still uploads to a local test backend.
-const localTargetShipWarning = '此閘道器目前上傳到本地測試站，出貨前請切回正式站。';
+String get localTargetShipWarning => L10n.current.mqttTarget_shipWarning;
 
-/// Upload-target lines of the install report.
+/// Upload-target lines of the install report. The report goes to the back
+/// office (and is shared / copied), so it stays in Chinese ([L10n.zh])
+/// whatever the screen language (docs/i18n.md 「上傳後台維持中文」).
 String reportTargetText(Map<String, dynamic> config) {
+  final zh = L10n.zh;
   final target = parseMqttTarget(config);
   if (target == null) {
     return reportsMqttTarget(config)
-        ? '資料上傳目標：未確認'
-        : '資料上傳目標：正式站（韌體 ${config['fw_version'] ?? '未知'} 固定）';
+        ? zh.mqttTarget_reportUnconfirmed
+        : zh.mqttTarget_reportLegacy(
+            '${config['fw_version'] ?? zh.common_unknown}',
+          );
   }
   final where = target.isLocal || target.host.isEmpty
-      ? target.label
-      : '正式站 ${target.host}:${target.port}';
+      ? target.labelIn(zh)
+      : zh.mqttTarget_productionHostPort(target.host, '${target.port}');
+  final line = zh.mqttTarget_reportLine(where);
   return target.isLocal
-      ? '資料上傳目標：$where\n注意：$localTargetShipWarning'
-      : '資料上傳目標：$where';
+      ? '$line\n${zh.mqttTarget_reportNote(zh.mqttTarget_shipWarning)}'
+      : line;
 }
 
 String legacyTargetText(Object? version) {
   final v = version?.toString() ?? '';
-  return '這台閘道器韌體太舊（版本 ${v.isEmpty ? '未知' : v}），'
-      '只能送到正式站，請更新到 1.7.3 以上。';
+  return L10n.current.mqttTarget_legacyFirmware(
+    v.isEmpty ? L10n.current.common_unknown : v,
+  );
 }
 
 /// First three octets of a dotted-quad IPv4 (`192.168.0`), null otherwise.
@@ -251,29 +271,26 @@ String? ipv4Prefix24(String ip) {
 
 /// Fail codes of `set_mqtt_target` (docs/mqtt_target.md §2).
 String uploadTargetFailureText(String code) {
+  final l10n = L10n.current;
   final text = switch (code) {
-    'invalid_params' => '閘道器拒絕切換：指令參數格式錯誤。請更新 APP 後重試。',
-    'invalid_target' => '閘道器拒絕切換：上傳目標名稱無效。請更新 APP 後重試。',
-    'invalid_host' =>
-      '閘道器拒絕切換：本地後端位址必須是區網私有 IPv4'
-          '（10.x、172.16–31.x、192.168.x），不可使用主機名稱或公網 IP。',
-    'invalid_port' => '閘道器拒絕切換：MQTT 連接埠必須是 1–65535 的整數。',
-    'ota_in_progress' => '閘道器正在更新韌體（OTA），更新完成前無法切換上傳目標，請稍後重試。',
-    'nvs_write_failed' => '閘道器儲存設定失敗，上傳目標未變更、也沒有重新開機。請重試；若持續失敗請回報。',
-    'ble_only' => '上傳目標只能在現場透過藍牙切換，不接受遠端指令。',
-    'otp_required' => '此閘道器已啟用一次性密碼（OTP），切換上傳目標需要 OTP，請聯絡管理員。',
-    'otp_invalid' => '一次性密碼（OTP）錯誤，閘道器拒絕切換。',
-    'otp_reused' => '此一次性密碼已使用過，請等下一組 OTP 後重試。',
-    'otp_locked' => 'OTP 錯誤次數過多，閘道器暫時鎖定，請稍後再試。',
-    'time_not_synced' =>
-      '閘道器已啟用 OTP 但時間尚未同步（NTP），無法驗證。'
-          '若目前 Wi-Fi 無法連到網際網路，請先改用可連外的網路。',
-    'not_ready' => '閘道器仍在開機初始化，請稍候數秒後重試。',
-    'busy' => '閘道器正在處理其他指令，請稍候重試。',
-    'invalid req_id' => 'APP 送出的指令編號無效，請重新連線後重試。',
-    'unknown op' => '閘道器韌體不支援切換上傳目標，需更新至 1.7.3 以上。',
-    '' => '閘道器拒絕切換上傳目標（未提供原因）。',
-    _ => '閘道器拒絕切換上傳目標。',
+    'invalid_params' => l10n.mqttTarget_failInvalidParams,
+    'invalid_target' => l10n.mqttTarget_failInvalidTarget,
+    'invalid_host' => l10n.mqttTarget_failInvalidHost,
+    'invalid_port' => l10n.mqttTarget_failInvalidPort,
+    'ota_in_progress' => l10n.mqttTarget_failOtaInProgress,
+    'nvs_write_failed' => l10n.mqttTarget_failNvsWrite,
+    'ble_only' => l10n.mqttTarget_failBleOnly,
+    'otp_required' => l10n.mqttTarget_failOtpRequired,
+    'otp_invalid' => l10n.mqttTarget_failOtpInvalid,
+    'otp_reused' => l10n.mqttTarget_failOtpReused,
+    'otp_locked' => l10n.mqttTarget_failOtpLocked,
+    'time_not_synced' => l10n.mqttTarget_failTimeNotSynced,
+    'not_ready' => l10n.mqttTarget_failNotReady,
+    'busy' => l10n.mqttTarget_failBusy,
+    'invalid req_id' => l10n.mqttTarget_failInvalidReqId,
+    'unknown op' => l10n.mqttTarget_failUnknownOp,
+    '' => l10n.mqttTarget_failNoReason,
+    _ => l10n.mqttTarget_failOther,
   };
   return '$text\n[set_mqtt_target · ${code.isEmpty ? '—' : code}]';
 }

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 手機系統語言為英文時的桌面名稱。與 appInfo_en.arb 的 appInfo_title 相同。 -->
+<resources>
+    <string name="app_name">GIOS Device Assistant</string>
+</resources>

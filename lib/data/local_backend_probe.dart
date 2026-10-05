@@ -157,7 +157,7 @@ String connectionTestMessage(ProbeResult result, Uri base) {
     ProbeOutcome.httpError =>
       '✗ 回應不是本地後端（HTTP ${result.status}）。請確認電腦 IP 與連接埠。',
     ProbeOutcome.timeout =>
-      '✗ 逾時：${GatewayFailure.network(endpoint: endpoint, detail: '逾時', backend: backend).message}',
+      '✗ 逾時：${GatewayFailure.network(endpoint: endpoint, detail: networkTimeoutDetail, backend: backend).message}',
     ProbeOutcome.unreachable =>
       '✗ 無法連線：${GatewayFailure.network(endpoint: endpoint, detail: result.detail, backend: backend).message}',
   };

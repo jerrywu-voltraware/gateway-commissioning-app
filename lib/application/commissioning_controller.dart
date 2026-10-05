@@ -28,6 +28,7 @@ import '../data/written_identities.dart';
 import '../data/dashboard_api.dart';
 import '../data/demo_system.dart';
 import '../data/ptu_inventory.dart';
+import '../l10n/l10n.dart';
 import 'backend_environment.dart';
 import 'field_report.dart';
 import 'network_check.dart';
@@ -384,8 +385,17 @@ AssignPhase assignRetryPhase(Object? error) {
   return isPtuConnectFailure(error) ? AssignPhase.linkRetry : AssignPhase.retry;
 }
 
-/// PTU tile text when step 8 stopped because the phone lost the gateway.
-const notAssignedLinkText = '尚未指派（手機與閘道器斷線）';
+/// PTU tile text when step 8 stopped because the phone lost the gateway
+/// (recognised by [assignResultKindOf] in every language).
+String get notAssignedLinkText => L10n.current.assign_notAssignedLink;
+
+/// Field rescue rule 25 for a failed PTU assignment, decided from the
+/// failure itself when its row text is written (2026-10-05 i18n: no longer
+/// guessed back from the Chinese row text). A wrong device / read-back
+/// mismatch is [RescueCode.ptuWrongDevice], set where it is detected.
+RescueCode ptuFailRescueCode(Object? error) => isPtuConnectFailure(error)
+    ? RescueCode.ptuConnectFail
+    : RescueCode.ptuNoResponse;
 
 /// Appends the link's first connect failure type (round 8 analysis aid).
 String withFirstFailure(String detail, Object link) {
@@ -1601,6 +1611,7 @@ class CommissionState {
     this.backendSeenAt,
     this.starNotice = '',
     this.assignFailed = const {},
+    this.assignFailCodes = const {},
     this.errorDetail,
     this.absentNotice = '',
     this.unassigned = const {},
@@ -1953,6 +1964,21 @@ class CommissionState {
   /// 第 8 步：重試後仍指派失敗的 PTU（MAC → 人話原因）。
   final Map<String, String> assignFailed;
 
+  /// 第 8 步：指派失敗 PTU 的現場救援代碼（MAC → ptuWrongDevice／
+  /// ptuConnectFail／ptuNoResponse），寫入 [assignFailed] 時一起記；只看
+  /// [assignFailed] 仍有的 MAC（多出的舊項不影響）。取代以前從中文原因
+  /// 文字反推（2026-10-05 i18n）。
+  final Map<String, RescueCode> assignFailCodes;
+
+  /// [mac] 的救援代碼；沒記到的視為 PTU 沒回應。
+  RescueCode assignFailCodeOf(String mac) =>
+      assignFailCodes[mac] ?? RescueCode.ptuNoResponse;
+
+  /// [assignFailed] 依序對應的救援代碼（field_report 規則 25 用）。
+  List<RescueCode> get assignFailCodeList => [
+    for (final mac in assignFailed.keys) assignFailCodeOf(mac),
+  ];
+
   /// 錯誤原始內容（放在橫幅的「詳細資訊」裡）；只跟著 [error] 存在。
   final String? errorDetail;
 
@@ -2075,6 +2101,7 @@ class CommissionState {
     DateTime? backendSeenAt,
     String? starNotice,
     Map<String, String>? assignFailed,
+    Map<String, RescueCode>? assignFailCodes,
     String? errorDetail,
     String? absentNotice,
     Set<String>? unassigned,
@@ -2221,6 +2248,7 @@ class CommissionState {
     savedResume: savedResume ?? this.savedResume,
     savedProgress: savedProgress ?? this.savedProgress,
     assignFailed: assignFailed ?? this.assignFailed,
+    assignFailCodes: assignFailCodes ?? this.assignFailCodes,
     errorDetail: error == null ? null : (errorDetail ?? this.errorDetail),
     absentNotice: absentNotice ?? this.absentNotice,
     resetFailed: resetFailed ?? this.resetFailed,
@@ -6864,6 +6892,7 @@ class CommissioningController extends Notifier<CommissionState> {
   /// [_assignDetail] for the details sheet. Retries unchanged.
   Future<String?> _assignOne(int generation, String mac, int id) async {
     String? reason;
+    _assignFailCode[mac] = RescueCode.ptuNoResponse;
     void failedTry(int attempt, Object? error, String detail) {
       _assignDetail[mac] = detail;
       if (attempt >= assignRetries) return; // no retry follows
@@ -6905,11 +6934,13 @@ class CommissioningController extends Notifier<CommissionState> {
             if (ackNeedsReadback(result)) _pendingReadback.add(mac);
             return null;
           }
+          _assignFailCode[mac] = RescueCode.ptuWrongDevice;
           failedTry(attempt, null, jsonEncode(result));
           continue;
         }
         final error = result['error'] ?? result['result'];
         reason = ptuFailureText(error);
+        _assignFailCode[mac] = ptuFailRescueCode(error);
         failedTry(attempt, error, jsonEncode(result));
       } catch (e) {
         if (e is GatewayFailure && e.code == 'cancelled') rethrow;
@@ -6917,6 +6948,7 @@ class CommissioningController extends Notifier<CommissionState> {
         // Phone↔gateway link down: not this PTU's fault, stop retrying.
         if (isPhoneLinkFailure(e)) rethrow;
         reason = ptuFailureText(e);
+        _assignFailCode[mac] = ptuFailRescueCode(e);
         failedTry(attempt, e, e.toString());
       }
     }
@@ -6926,6 +6958,10 @@ class CommissioningController extends Notifier<CommissionState> {
   /// Round 21: the last raw failure per PTU of the current assignment run
   /// (details sheet only).
   final Map<String, String> _assignDetail = {};
+
+  /// The rescue code of [_assignOne]'s last failure per PTU (copied to
+  /// [CommissionState.assignFailCodes] with the reason).
+  final Map<String, RescueCode> _assignFailCode = {};
 
   /// Round 21: one PTU row's assignment status.
   void _setAssign(String mac, AssignStatus status) {
@@ -7023,7 +7059,7 @@ class CommissioningController extends Notifier<CommissionState> {
               orElse: () => throw const GatewayFailure('gateway_full'),
             );
       used.add(id);
-      results[mac] = '正在指派 #$id';
+      results[mac] = L10n.current.assign_assigningResult(id);
       state = state.copy(
         results: Map.of(results),
         assignStatus: {
@@ -7067,6 +7103,10 @@ class CommissioningController extends Notifier<CommissionState> {
         state = state.copy(
           results: Map.of(results),
           assignFailed: {...state.assignFailed, mac: reason},
+          assignFailCodes: {
+            ...state.assignFailCodes,
+            mac: _assignFailCode[mac] ?? RescueCode.ptuNoResponse,
+          },
           assignStatus: {
             ...state.assignStatus,
             mac: AssignStatus(
@@ -7155,6 +7195,10 @@ class CommissioningController extends Notifier<CommissionState> {
     state = state.copy(
       results: Map.of(results),
       assignFailed: {...state.assignFailed, ...failed},
+      assignFailCodes: {
+        ...state.assignFailCodes,
+        for (final mac in mismatched) mac: RescueCode.ptuWrongDevice,
+      },
       assignedOk: state.assignedOk.difference(mismatched),
       assignStatus: {
         ...state.assignStatus,
@@ -11322,7 +11366,7 @@ class CommissioningController extends Notifier<CommissionState> {
       } else if (failure == null) {
         status = error is TimeoutException ? 'timeout' : 'error';
       } else if (failure.code == 'network') {
-        status = failure.detail == '逾時' ? 'timeout' : 'error';
+        status = failure.isNetworkTimeout ? 'timeout' : 'error';
       } else if (const {
         'api',
         'authentication',

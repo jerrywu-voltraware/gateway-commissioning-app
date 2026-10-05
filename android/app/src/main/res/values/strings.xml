@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 預設（繁體中文）。與 lib/l10n/parts/appInfo_zh.arb 的 appInfo_title 相同。 -->
+<resources>
+    <string name="app_name">GIOS 設備助手</string>
+</resources>

@@ -3,6 +3,11 @@ import 'backend_key.dart';
 import 'gateway_identity.dart';
 import 'gateway_net.dart';
 import 'mqtt_target.dart';
+import '../l10n/l10n.dart';
+
+/// [GatewayFailure.network] `detail` for a timed-out request (a code, not
+/// words: the screen shows `common_timeout`; see [GatewayFailure.isNetworkTimeout]).
+const networkTimeoutDetail = 'timeout';
 
 const nusService = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
 const nusRx = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
@@ -93,6 +98,12 @@ class GatewayFailure implements Exception {
 
   /// Fail ack sent by the gateway firmware over BLE; [detail] keeps the raw
   /// ack result when it was not a plain string.
+  /// [GatewayFailure.network] whose request timed out: [detail] is the
+  /// language-neutral [networkTimeoutDetail] (was the word 「逾時」, which
+  /// logic compared against; 2026-10-05 i18n).
+  bool get isNetworkTimeout =>
+      code == 'network' && detail == networkTimeoutDetail;
+
   const GatewayFailure.gateway(String text, {this.detail})
     : code = text,
       status = null,
@@ -226,7 +237,7 @@ class GatewayFailure implements Exception {
       'network' =>
         '無法連到 $_backendText。請確認手機與後端電腦在同一個 Wi-Fi 網段、'
             '電腦防火牆允許該連接埠，以及後端網址是否正確。\n'
-            '[$endpoint${detail == null ? '' : ' · $detail'}]',
+            '[$endpoint${detail == null ? '' : ' · ${isNetworkTimeout ? L10n.current.common_timeout : detail}'}]',
       'bad_response' =>
         '後端回應格式無法解析（$_backendText）。\n'
             '[${endpoint ?? ''}${detail == null ? '' : ' · $detail'}]',

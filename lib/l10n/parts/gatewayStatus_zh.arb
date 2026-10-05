@@ -1,0 +1,55 @@
+{
+  "@@locale": "zh",
+  "gatewayStatus_label": "查看上傳資料",
+  "gatewayStatus_homeCaption": "架設完後，看資料有沒有正常送到後台",
+  "gatewayStatus_recentTitle": "最近配置（這支手機）",
+  "gatewayStatus_nearbyTitle": "附近閘道器（藍牙掃描）",
+  "gatewayStatus_fleetTitle": "後台在線閘道器",
+  "gatewayStatus_recentEmpty": "這支手機尚未用此版本完成過配置",
+  "gatewayStatus_nearbyEmpty": "附近沒有掃到閘道器，請靠近後按〔重新掃描〕",
+  "gatewayStatus_nearbyScanning": "正在掃描附近閘道器（約 8 秒）…",
+  "gatewayStatus_nearbyUnnamed": "尚未設定站號，無法查看資料",
+  "gatewayStatus_nearbyUnconfigured": "尚未配置，無法查看資料",
+  "gatewayStatus_nearbyScanFailed": "掃描失敗，請確認藍牙、定位與附近裝置權限後重試。",
+  "gatewayStatus_rescan": "重新掃描",
+  "gatewayStatus_openSettings": "開啟權限設定",
+  "gatewayStatus_fleetEmpty": "後台目前沒有任何閘道器。",
+  "gatewayStatus_loading": "正在向後台查詢…",
+  "gatewayStatus_hint": "點一列即可查看該閘道器的最近資料。",
+  "gatewayStatus_nearest": "最近",
+  "@gatewayStatus_nearest": {
+    "description": "Mark on the strongest (closest) nearby gateway."
+  },
+  "gatewayStatus_name": "站 {site} 閘道器 {gateway}",
+  "@gatewayStatus_name": {
+    "placeholders": {
+      "site": {"type": "int"},
+      "gateway": {"type": "int"}
+    }
+  },
+  "gatewayStatus_doneAt": "{time} 完成",
+  "@gatewayStatus_doneAt": {
+    "description": "A recent setup row; time is already formatted as MM-dd HH:mm.",
+    "placeholders": {
+      "time": {"type": "String", "example": "09-28 14:03"}
+    }
+  },
+  "gatewayStatus_online": "在線",
+  "gatewayStatus_offline": "離線",
+  "gatewayStatus_ptuConnected": "PTU 已連線",
+  "gatewayStatus_ptuDisconnected": "PTU 未連線",
+  "gatewayStatus_dataAgo": "{age}前",
+  "@gatewayStatus_dataAgo": {
+    "description": "Age of the newest data; age comes from recentAgeText (e.g. 7 秒 / 7 s).",
+    "placeholders": {
+      "age": {"type": "String", "example": "7 秒"}
+    }
+  },
+  "gatewayStatus_heartbeatAgo": "心跳 {age}前",
+  "@gatewayStatus_heartbeatAgo": {
+    "placeholders": {
+      "age": {"type": "String", "example": "7 秒"}
+    }
+  },
+  "gatewayStatus_noData": "尚無資料"
+}

@@ -1,0 +1,240 @@
+{
+  "@@locale": "en",
+  "appInfo_title": "GIOS Device Assistant",
+  "@appInfo_title": {
+    "description": "APP name; keep equal to android res/values*/strings.xml app_name and iOS InfoPlist.strings CFBundleDisplayName."
+  },
+  "assign_assigningResult": "Assigning #{id}",
+  "@assign_assigningResult": {
+    "description": "Step 8 PTU row result while its number is being written; recognised by assignResultKindOf in every locale.",
+    "placeholders": {
+      "id": {
+        "type": "int"
+      }
+    }
+  },
+  "assign_notAssignedLink": "Not assigned (phone lost the gateway)",
+  "@assign_notAssignedLink": {
+    "description": "Step 8 PTU row result after the phone lost the gateway; recognised by assignResultKindOf in every locale."
+  },
+  "common_back": "Back",
+  "common_cancel": "Cancel",
+  "common_close": "Close",
+  "common_confirm": "Confirm",
+  "common_continue": "Continue",
+  "common_copy": "Copy",
+  "common_done": "Done",
+  "common_dotSeparator": " · ",
+  "@common_dotSeparator": {
+    "description": "Joins short status parts on one line (e.g. Online・PTU connected)."
+  },
+  "common_languageEnglish": "English",
+  "@common_languageEnglish": {
+    "description": "Language name, always written in that language (same text in every locale)."
+  },
+  "common_languageZhHant": "繁體中文",
+  "@common_languageZhHant": {
+    "description": "Language name, always written in that language (same text in every locale)."
+  },
+  "common_loading": "Loading…",
+  "common_ok": "OK",
+  "common_refresh": "Refresh",
+  "common_retry": "Retry",
+  "common_settings": "Settings",
+  "common_timeout": "timed out",
+  "@common_timeout": {
+    "description": "Network request timed out; also shown inside [endpoint · detail] brackets."
+  },
+  "common_unknown": "unknown",
+  "gatewayStatus_dataAgo": "{age} ago",
+  "@gatewayStatus_dataAgo": {
+    "description": "Age of the newest data; age comes from recentAgeText (e.g. 7 秒 / 7 s).",
+    "placeholders": {
+      "age": {
+        "type": "String",
+        "example": "7 秒"
+      }
+    }
+  },
+  "gatewayStatus_doneAt": "Done {time}",
+  "@gatewayStatus_doneAt": {
+    "description": "A recent setup row; time is already formatted as MM-dd HH:mm.",
+    "placeholders": {
+      "time": {
+        "type": "String",
+        "example": "09-28 14:03"
+      }
+    }
+  },
+  "gatewayStatus_fleetEmpty": "The back office has no gateways yet.",
+  "gatewayStatus_fleetTitle": "Gateways in the back office",
+  "gatewayStatus_heartbeatAgo": "Heartbeat {age} ago",
+  "@gatewayStatus_heartbeatAgo": {
+    "placeholders": {
+      "age": {
+        "type": "String",
+        "example": "7 秒"
+      }
+    }
+  },
+  "gatewayStatus_hint": "Tap a row to see that gateway's recent data.",
+  "gatewayStatus_homeCaption": "After setup, check that data reaches the back office",
+  "gatewayStatus_label": "View uploaded data",
+  "gatewayStatus_loading": "Checking the back office…",
+  "gatewayStatus_name": "Site {site} Gateway {gateway}",
+  "@gatewayStatus_name": {
+    "placeholders": {
+      "site": {
+        "type": "int"
+      },
+      "gateway": {
+        "type": "int"
+      }
+    }
+  },
+  "gatewayStatus_nearbyEmpty": "No gateway found nearby. Move closer and tap [Rescan].",
+  "gatewayStatus_nearbyScanFailed": "Scan failed. Check Bluetooth, Location and Nearby devices permissions, then retry.",
+  "gatewayStatus_nearbyScanning": "Scanning for nearby gateways (about 8 s)…",
+  "gatewayStatus_nearbyTitle": "Nearby gateways (Bluetooth scan)",
+  "gatewayStatus_nearbyUnconfigured": "Not set up yet, no data to view",
+  "gatewayStatus_nearbyUnnamed": "No site number yet, no data to view",
+  "gatewayStatus_nearest": "Nearest",
+  "@gatewayStatus_nearest": {
+    "description": "Mark on the strongest (closest) nearby gateway."
+  },
+  "gatewayStatus_noData": "No data yet",
+  "gatewayStatus_offline": "Offline",
+  "gatewayStatus_online": "Online",
+  "gatewayStatus_openSettings": "Open permission settings",
+  "gatewayStatus_ptuConnected": "PTU connected",
+  "gatewayStatus_ptuDisconnected": "PTU not connected",
+  "gatewayStatus_recentEmpty": "No setup finished on this phone with this version yet",
+  "gatewayStatus_recentTitle": "Recent setups (this phone)",
+  "gatewayStatus_rescan": "Rescan",
+  "mqttTarget_failBleOnly": "The upload target can only be switched on site over Bluetooth, not by remote command.",
+  "mqttTarget_failBusy": "The gateway is busy with another command. Wait and retry.",
+  "mqttTarget_failInvalidHost": "Gateway refused the switch: the local backend address must be a private LAN IPv4 (10.x, 172.16–31.x, 192.168.x), not a host name or public IP.",
+  "mqttTarget_failInvalidParams": "Gateway refused the switch: bad command parameters. Update the APP and retry.",
+  "mqttTarget_failInvalidPort": "Gateway refused the switch: the MQTT port must be a whole number from 1 to 65535.",
+  "mqttTarget_failInvalidReqId": "The APP sent an invalid command number. Reconnect and retry.",
+  "mqttTarget_failInvalidTarget": "Gateway refused the switch: invalid upload target name. Update the APP and retry.",
+  "mqttTarget_failNoReason": "The gateway refused to switch the upload target (no reason given).",
+  "mqttTarget_failNotReady": "The gateway is still starting up. Wait a few seconds and retry.",
+  "mqttTarget_failNvsWrite": "The gateway could not save the setting. The upload target did not change and it did not restart. Retry; report it if this keeps failing.",
+  "mqttTarget_failOtaInProgress": "The gateway is updating its firmware (OTA). The upload target cannot change until it finishes. Retry later.",
+  "mqttTarget_failOther": "The gateway refused to switch the upload target.",
+  "mqttTarget_failOtpInvalid": "Wrong one-time password (OTP); the gateway refused the switch.",
+  "mqttTarget_failOtpLocked": "Too many wrong OTPs; the gateway is locked for a while. Try again later.",
+  "mqttTarget_failOtpRequired": "This gateway has one-time passwords (OTP) on. Switching the upload target needs an OTP; contact your admin.",
+  "mqttTarget_failOtpReused": "This one-time password was already used. Wait for the next OTP and retry.",
+  "mqttTarget_failTimeNotSynced": "The gateway has OTP on but its clock is not synced (NTP), so it cannot check the OTP. If this Wi-Fi has no internet, switch to a network that does.",
+  "mqttTarget_failUnknownOp": "This gateway firmware cannot switch the upload target. Update it to 1.7.3 or later.",
+  "mqttTarget_legacyFirmware": "This gateway's firmware is too old (version {version}) and can only send to production. Update it to 1.7.3 or later.",
+  "@mqttTarget_legacyFirmware": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "mqttTarget_localHost": "Local {host}",
+  "@mqttTarget_localHost": {
+    "placeholders": {
+      "host": {
+        "type": "String",
+        "example": "192.168.0.12"
+      }
+    }
+  },
+  "mqttTarget_localHostNotPrivate": "The host \"{host}\" in the local test server URL is not a private LAN IPv4 address (10.x.x.x, 172.16–31.x.x, 192.168.x.x), so the gateway cannot upload to it. Use the computer's LAN IP in the URL.",
+  "@mqttTarget_localHostNotPrivate": {
+    "placeholders": {
+      "host": {
+        "type": "String"
+      }
+    }
+  },
+  "mqttTarget_localHostPort": "Local {host}:{port}",
+  "@mqttTarget_localHostPort": {
+    "placeholders": {
+      "host": {
+        "type": "String",
+        "example": "192.168.0.12"
+      },
+      "port": {
+        "type": "String",
+        "example": "8883"
+      }
+    }
+  },
+  "mqttTarget_localUrlEmpty": "No local test server URL entered, so the gateway's upload target cannot be decided.",
+  "mqttTarget_localUrlUnparsable": "Cannot read a host from the local test server URL \"{url}\". Enter a URL like http://192.168.1.10:18000.",
+  "@mqttTarget_localUrlUnparsable": {
+    "placeholders": {
+      "url": {
+        "type": "String"
+      }
+    }
+  },
+  "mqttTarget_plainLocal": "the local test server ({host})",
+  "@mqttTarget_plainLocal": {
+    "description": "Local test backend inside a sentence; no port.",
+    "placeholders": {
+      "host": {
+        "type": "String",
+        "example": "192.168.0.12"
+      }
+    }
+  },
+  "mqttTarget_plainProduction": "the production server",
+  "@mqttTarget_plainProduction": {
+    "description": "Production target inside a sentence for non-developers (e.g. 'sends data to …')."
+  },
+  "mqttTarget_production": "Production",
+  "@mqttTarget_production": {
+    "description": "The production back office as an upload target (button / label)."
+  },
+  "mqttTarget_productionHostPort": "Production {host}:{port}",
+  "@mqttTarget_productionHostPort": {
+    "placeholders": {
+      "host": {
+        "type": "String",
+        "example": "46.250.255.172"
+      },
+      "port": {
+        "type": "String",
+        "example": "8883"
+      }
+    }
+  },
+  "mqttTarget_reportLegacy": "Upload target: production (fixed by firmware {version})",
+  "@mqttTarget_reportLegacy": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "mqttTarget_reportLine": "Upload target: {where}",
+  "@mqttTarget_reportLine": {
+    "placeholders": {
+      "where": {
+        "type": "String"
+      }
+    }
+  },
+  "mqttTarget_reportNote": "Note: {warning}",
+  "@mqttTarget_reportNote": {
+    "placeholders": {
+      "warning": {
+        "type": "String"
+      }
+    }
+  },
+  "mqttTarget_reportUnconfirmed": "Upload target: not confirmed",
+  "mqttTarget_shipWarning": "This gateway uploads to a local test server. Switch it back to production before shipping.",
+  "settings_language": "Language",
+  "@settings_language": {
+    "description": "More menu item and dialog title for choosing the APP language."
+  }
+}

@@ -1,0 +1,7 @@
+# flutter gen-l10n 設定（docs/i18n.md）。app_zh.arb／app_en.arb 由
+# tools/merge_l10n.py 從 lib/l10n/parts/ 合併產生，不要直接編輯。
+arb-dir: lib/l10n
+template-arb-file: app_zh.arb
+output-localization-file: app_localizations.dart
+output-class: AppLocalizations
+nullable-getter: false

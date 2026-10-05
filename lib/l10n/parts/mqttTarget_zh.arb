@@ -1,0 +1,95 @@
+{
+  "@@locale": "zh",
+  "mqttTarget_production": "正式站",
+  "@mqttTarget_production": {
+    "description": "The production back office as an upload target (button / label)."
+  },
+  "mqttTarget_localHostPort": "本地 {host}:{port}",
+  "@mqttTarget_localHostPort": {
+    "placeholders": {
+      "host": {"type": "String", "example": "192.168.0.12"},
+      "port": {"type": "String", "example": "8883"}
+    }
+  },
+  "mqttTarget_localHost": "本地 {host}",
+  "@mqttTarget_localHost": {
+    "placeholders": {
+      "host": {"type": "String", "example": "192.168.0.12"}
+    }
+  },
+  "mqttTarget_plainProduction": "正式站",
+  "@mqttTarget_plainProduction": {
+    "description": "Production target inside a sentence for non-developers (e.g. 'sends data to …')."
+  },
+  "mqttTarget_plainLocal": "本地測試主機（{host}）",
+  "@mqttTarget_plainLocal": {
+    "description": "Local test backend inside a sentence; no port.",
+    "placeholders": {
+      "host": {"type": "String", "example": "192.168.0.12"}
+    }
+  },
+  "mqttTarget_productionHostPort": "正式站 {host}:{port}",
+  "@mqttTarget_productionHostPort": {
+    "placeholders": {
+      "host": {"type": "String", "example": "46.250.255.172"},
+      "port": {"type": "String", "example": "8883"}
+    }
+  },
+  "mqttTarget_localUrlEmpty": "尚未輸入本地測試站網址，無法決定閘道器的上傳目標。",
+  "mqttTarget_localUrlUnparsable": "本地測試站網址「{url}」無法解析主機位址，請輸入如 http://192.168.1.10:18000 的網址。",
+  "@mqttTarget_localUrlUnparsable": {
+    "placeholders": {
+      "url": {"type": "String"}
+    }
+  },
+  "mqttTarget_localHostNotPrivate": "本地測試站網址的主機「{host}」不是區網私有 IPv4 位址（10.x.x.x、172.16–31.x.x、192.168.x.x），閘道器無法上傳到此後端。請把網址改成電腦的區網 IP。",
+  "@mqttTarget_localHostNotPrivate": {
+    "placeholders": {
+      "host": {"type": "String"}
+    }
+  },
+  "mqttTarget_shipWarning": "此閘道器目前上傳到本地測試站，出貨前請切回正式站。",
+  "mqttTarget_reportUnconfirmed": "資料上傳目標：未確認",
+  "mqttTarget_reportLegacy": "資料上傳目標：正式站（韌體 {version} 固定）",
+  "@mqttTarget_reportLegacy": {
+    "placeholders": {
+      "version": {"type": "String"}
+    }
+  },
+  "mqttTarget_reportLine": "資料上傳目標：{where}",
+  "@mqttTarget_reportLine": {
+    "placeholders": {
+      "where": {"type": "String"}
+    }
+  },
+  "mqttTarget_reportNote": "注意：{warning}",
+  "@mqttTarget_reportNote": {
+    "placeholders": {
+      "warning": {"type": "String"}
+    }
+  },
+  "mqttTarget_legacyFirmware": "這台閘道器韌體太舊（版本 {version}），只能送到正式站，請更新到 1.7.3 以上。",
+  "@mqttTarget_legacyFirmware": {
+    "placeholders": {
+      "version": {"type": "String"}
+    }
+  },
+  "mqttTarget_failInvalidParams": "閘道器拒絕切換：指令參數格式錯誤。請更新 APP 後重試。",
+  "mqttTarget_failInvalidTarget": "閘道器拒絕切換：上傳目標名稱無效。請更新 APP 後重試。",
+  "mqttTarget_failInvalidHost": "閘道器拒絕切換：本地後端位址必須是區網私有 IPv4（10.x、172.16–31.x、192.168.x），不可使用主機名稱或公網 IP。",
+  "mqttTarget_failInvalidPort": "閘道器拒絕切換：MQTT 連接埠必須是 1–65535 的整數。",
+  "mqttTarget_failOtaInProgress": "閘道器正在更新韌體（OTA），更新完成前無法切換上傳目標，請稍後重試。",
+  "mqttTarget_failNvsWrite": "閘道器儲存設定失敗，上傳目標未變更、也沒有重新開機。請重試；若持續失敗請回報。",
+  "mqttTarget_failBleOnly": "上傳目標只能在現場透過藍牙切換，不接受遠端指令。",
+  "mqttTarget_failOtpRequired": "此閘道器已啟用一次性密碼（OTP），切換上傳目標需要 OTP，請聯絡管理員。",
+  "mqttTarget_failOtpInvalid": "一次性密碼（OTP）錯誤，閘道器拒絕切換。",
+  "mqttTarget_failOtpReused": "此一次性密碼已使用過，請等下一組 OTP 後重試。",
+  "mqttTarget_failOtpLocked": "OTP 錯誤次數過多，閘道器暫時鎖定，請稍後再試。",
+  "mqttTarget_failTimeNotSynced": "閘道器已啟用 OTP 但時間尚未同步（NTP），無法驗證。若目前 Wi-Fi 無法連到網際網路，請先改用可連外的網路。",
+  "mqttTarget_failNotReady": "閘道器仍在開機初始化，請稍候數秒後重試。",
+  "mqttTarget_failBusy": "閘道器正在處理其他指令，請稍候重試。",
+  "mqttTarget_failInvalidReqId": "APP 送出的指令編號無效，請重新連線後重試。",
+  "mqttTarget_failUnknownOp": "閘道器韌體不支援切換上傳目標，需更新至 1.7.3 以上。",
+  "mqttTarget_failNoReason": "閘道器拒絕切換上傳目標（未提供原因）。",
+  "mqttTarget_failOther": "閘道器拒絕切換上傳目標。"
+}

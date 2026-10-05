@@ -6,6 +6,57 @@
 /// failure for the PTU's details sheet.
 library;
 
+import '../l10n/l10n.dart';
+
+/// What a step 8 PTU row's result text (`CommissionState.results`) says,
+/// for [assignStatusText]. 2026-10-05 (i18n): replaces
+/// `startsWith('尚未指派')` / `startsWith('正在指派')`, which broke once the
+/// texts follow the screen language.
+enum AssignResultKind {
+  /// The run stopped on a phone link loss ([AppLocalizations.assign_notAssignedLink]).
+  notAssigned,
+
+  /// The number is being written ([AppLocalizations.assign_assigningResult]).
+  assigning,
+
+  /// Anything else (「已連線 #3」, 「已指派 #3，等待連線」…).
+  other,
+}
+
+/// The kind of [result]. Compares with the fixed texts of every supported
+/// language (not only the current one), so a row written before a language
+/// switch is still recognised.
+AssignResultKind assignResultKindOf(String? result) {
+  if (result == null || result.isEmpty) return AssignResultKind.other;
+  for (final language in AppLanguage.values) {
+    final l10n = lookupAppLocalizations(language.locale);
+    if (result == l10n.assign_notAssignedLink) {
+      return AssignResultKind.notAssigned;
+    }
+    if (_matchesIdTemplate(result, l10n.assign_assigningResult)) {
+      return AssignResultKind.assigning;
+    }
+  }
+  return AssignResultKind.other;
+}
+
+/// [text] is [template] filled with some integer id.
+bool _matchesIdTemplate(String text, String Function(int id) template) {
+  const probe = 987654321;
+  final filled = template(probe);
+  final at = filled.indexOf('$probe');
+  if (at < 0) return text == filled;
+  final prefix = filled.substring(0, at);
+  final suffix = filled.substring(at + '$probe'.length);
+  if (text.length <= prefix.length + suffix.length ||
+      !text.startsWith(prefix) ||
+      !text.endsWith(suffix)) {
+    return false;
+  }
+  final id = text.substring(prefix.length, text.length - suffix.length);
+  return int.tryParse(id) != null;
+}
+
 /// Where one PTU's step 8 assignment stands.
 enum AssignPhase {
   /// Not started yet (another PTU goes first).
@@ -76,13 +127,17 @@ String assignStatusText(
   String? failure,
 }) => switch (status.phase) {
   AssignPhase.waiting =>
-    result != null && result.startsWith('尚未指派') ? result : '等待中',
+    assignResultKindOf(result) == AssignResultKind.notAssigned
+        ? result!
+        : '等待中',
   AssignPhase.assigning => status.id == null ? '指派中' : '指派中 #${status.id}',
   AssignPhase.linkRetry => '藍牙連線失敗，自動重試 ${status.retry}/${status.retries}',
   AssignPhase.retry => '未完成，自動重試 ${status.retry}/${status.retries}',
   AssignPhase.busy => '閘道器忙碌，稍後重試',
   AssignPhase.done =>
-    result != null && result.isNotEmpty && !result.startsWith('正在指派')
+    result != null &&
+            result.isNotEmpty &&
+            assignResultKindOf(result) != AssignResultKind.assigning
         ? '完成 · $result'
         : status.id == null
         ? '完成'

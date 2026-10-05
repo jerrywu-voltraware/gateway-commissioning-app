@@ -144,7 +144,7 @@ void main() {
       await _open(tester);
       expect(find.text('App 版本'), findsOneWidget);
       expect(find.text('版本 1.0.11 · Build 21.3'), findsOneWidget);
-      expect(find.byType(PopupMenuItem<String>), findsNWidgets(4));
+      expect(find.byType(PopupMenuItem<String>), findsNWidgets(5));
       expect(find.byKey(const Key('app-update-menu')), findsNothing);
       expect(find.text('返回首頁且結束配置後可用'), findsNothing);
       final item = tester.widget<PopupMenuItem<String>>(
@@ -240,7 +240,7 @@ void main() {
         expect(find.text('版本 1.0.11 · Build 31'), findsOneWidget);
         expect(find.text('返回首頁且結束配置後可用'), findsOneWidget);
         expect(_updateItem(tester).enabled, isFalse);
-        expect(find.byType(PopupMenuItem<String>), findsNWidgets(4));
+        expect(find.byType(PopupMenuItem<String>), findsNWidgets(5));
         for (final key in [
           'topology-settings-menu',
           'gateway-status-menu',
@@ -275,7 +275,7 @@ void main() {
     await _open(tester);
     expect(_updateItem(tester).enabled, isTrue);
     expect(find.byKey(const Key('app-installed-version')), findsNothing);
-    expect(find.byType(PopupMenuItem<String>), findsNWidgets(4));
+    expect(find.byType(PopupMenuItem<String>), findsNWidgets(5));
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.byKey(const Key('app-installed-version')), findsNothing);
     platform.pending!.complete(
@@ -324,7 +324,7 @@ void main() {
       expect(find.byKey(const Key('app-installed-version')), findsNothing);
       expect(find.text('返回首頁且結束配置後可用'), findsOneWidget);
       expect(_updateItem(tester).enabled, isFalse);
-      expect(find.byType(PopupMenuItem<String>), findsNWidgets(4));
+      expect(find.byType(PopupMenuItem<String>), findsNWidgets(5));
       expect(gateway.updateChecks, 0);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
@@ -348,7 +348,7 @@ void main() {
     expect(_updateItem(tester).enabled, isFalse);
     expect(find.text('返回首頁且結束配置後可用'), findsOneWidget);
     expect(find.text('操作完成後可切換'), findsOneWidget);
-    expect(find.byType(PopupMenuItem<String>), findsNWidgets(4));
+    expect(find.byType(PopupMenuItem<String>), findsNWidgets(5));
     expect(gateway.updateChecks, 0);
     gateway.scanning!.complete();
     await tester.pump();
