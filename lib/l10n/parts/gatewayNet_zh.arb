@@ -67,5 +67,5 @@
   "gatewayNet_setFailedPassword": "新 Wi-Fi 連線未成功：密碼可能錯誤，請確認密碼（含大小寫）後重試。",
   "gatewayNet_setFailedNotFound": "新 Wi-Fi 連線未成功：閘道器找不到這個 Wi-Fi。請確認名稱正確、是 2.4 GHz（不支援 5 GHz），且基地台就在附近。",
   "gatewayNet_setFailedWeak": "新 Wi-Fi 連線未成功：可能是訊號太弱或基地台暫時拒絕連線，請把閘道器移近基地台後重試。",
-  "gatewayNet_setFailedUnknown": "新 WiFi 連線未成功，請檢查密碼與訊號後重試。"
+  "gatewayNet_setFailedUnknown": "新 Wi-Fi 連線未成功，請檢查密碼與訊號後重試。"
 }

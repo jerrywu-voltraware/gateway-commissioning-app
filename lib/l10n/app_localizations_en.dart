@@ -888,7 +888,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get commissioning_starAssignTaskTitle =>
-      'Configuring PTUs and starting monitoring';
+      'Setting up PTUs and starting monitoring';
 
   @override
   String commissioning_starCountChanged(int count) {
@@ -1018,7 +1018,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'Available after the action ends';
 
   @override
-  String get commissioning_topologyMenuDirect => 'Direct · one-to-one';
+  String get commissioning_topologyMenuDirect => 'One-to-one';
 
   @override
   String get commissioning_topologyMenuStar => 'Star · one-to-many';
@@ -1757,7 +1757,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get controller_checkFailedNew =>
-      'Network check failed. You can still set a new site; the upload is confirmed later.';
+      'Network check failed. You can still set up a new site; the upload is confirmed later.';
 
   @override
   String get controller_checkFailedStation =>
@@ -2044,7 +2044,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String controller_firstConnectFailure(String failure) {
-    return 'First connect failure: $failure';
+    return 'First connection failed: $failure';
   }
 
   @override
@@ -2282,7 +2282,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get controller_ptuMissingHint =>
-      'Make sure the original PTU is powered. Normally it can be replaced over the phone\'s Bluetooth without the original PTU. Backend sync and the data check still need the gateway online and the phone able to reach the backend. To change only the network, reset the Wi-Fi first; no PTU is needed.';
+      'Make sure the original PTU is powered. Normally it can be replaced over the phone\'s Bluetooth without the original PTU. Back office sync and the data check still need the gateway online and the phone able to reach the back office. To change only the network, reset the Wi-Fi first; no PTU is needed.';
 
   @override
   String controller_ptuMissingTitle(String tail) {
@@ -2443,7 +2443,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String controller_replacePtuConfirm(String mac) {
-    return 'The gateway\'s binding to PTU $mac is removed (site and Wi-Fi unchanged). After the device safety check, a new PTU is searched for over the phone\'s Bluetooth; the original PTU need not be here. Cancelling or failing before the new binding is confirmed restores the old one; if Bluetooth drops, reconnect to finish restoring. Backend sync and the data check still need the network; setup is not complete until verified.';
+    return 'The gateway\'s binding to PTU $mac is removed (site and Wi-Fi unchanged). After the device safety check, a new PTU is searched for over the phone\'s Bluetooth; the original PTU need not be here. Cancelling or failing before the new binding is confirmed restores the old one; if Bluetooth drops, reconnect to finish restoring. Back office sync and the data check still need the network; setup is not complete until verified.';
   }
 
   @override
@@ -2460,7 +2460,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get controller_replaceSearching =>
-      'Searching for a new PTU here; backend sync and the data check still need the network.';
+      'Searching for a new PTU here; back office sync and the data check still need the network.';
 
   @override
   String get controller_replaceSetupRestored =>
@@ -2977,10 +2977,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'Not reported by the gateway';
 
   @override
-  String get directCalibrationSheet_ownAdv => 'Own advertising';
+  String get directCalibrationSheet_ownAdv => 'This charger\'s advertising';
 
   @override
-  String get directCalibrationSheet_ownLink => 'Own link signal';
+  String get directCalibrationSheet_ownLink => 'This charger\'s link signal';
 
   @override
   String directCalibrationSheet_ownLinkValue(
@@ -3056,12 +3056,18 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String directCalibrationSheet_tiesAll(int count, int db) {
-    return '$count within $db dB, all listed';
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count PTUs within $db dB, all listed',
+      one: '1 PTU within $db dB, listed',
+    );
+    return '$_temp0';
   }
 
   @override
   String directCalibrationSheet_tiesListed(int ties, int db, int listed) {
-    return '$ties within $db dB, $listed listed';
+    return '$ties PTUs within $db dB, $listed listed';
   }
 
   @override
@@ -3082,7 +3088,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String directCalibration_ambiguous(int db) {
-    return 'This charger and a neighbour advertise less than $db dB apart: the pick may be ambiguous. A binding is not affected.';
+    return 'This charger and a neighbour advertise less than $db dB apart: the pick may be ambiguous. Once the PTU is bound, this no longer matters.';
   }
 
   @override
@@ -3273,7 +3279,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get directModePanel_causePower =>
-      'PTU not powered: check the PTU power is on and its light is lit.';
+      'This charger\'s PTU not powered: check its power is on and its light is lit.';
 
   @override
   String directModePanel_causeWeak(String rssi, int min, String mac) {
@@ -3299,7 +3305,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'Tap [Identify this charger] and check the lights';
 
   @override
-  String get directModePanel_identifyDetailTitle => 'Identify message';
+  String get directModePanel_identifyDetailTitle => 'Identify details';
 
   @override
   String get directModePanel_identifyThis => 'Identify this charger';
@@ -3420,7 +3426,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get directMode_identifyConfirmTimeout =>
-      'Gateway sent it; older gateway got no PTU confirmation. Watch the charger lights';
+      'Sent. This older gateway can\'t confirm the PTU; watch the charger lights';
 
   @override
   String get directMode_identifyConfirmed => 'PTU confirmed its light is on';
@@ -3445,7 +3451,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get directMode_identifySent => 'Sent. Watch the lights on the charger';
 
   @override
-  String get directMode_identifySentLine => 'Sent · watch the charger lights';
+  String get directMode_identifySentLine => 'Sent · check lights';
 
   @override
   String get directMode_identifyUnsupportedPattern =>
@@ -3463,12 +3469,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'Gateway stopped identify · PTU lights-off not sent';
 
   @override
-  String get directMode_lineTimeout =>
-      'Sent · PTU did not confirm · watch the charger lights';
+  String get directMode_lineTimeout => 'Sent · PTU unconfirmed';
 
   @override
-  String get directMode_lineUnsupportedPattern =>
-      'Sent · PTU lacks this light pattern · watch the charger lights';
+  String get directMode_lineUnsupportedPattern => 'Sent · PTU lacks pattern';
 
   @override
   String directMode_noteGatewayOnly(String reason) {
@@ -3631,7 +3635,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get directMode_strayBindHint =>
-      'This binding was not confirmed on this phone. Keep: the gateway connects only to this PTU. Unbind: it picks the nearest PTU again.';
+      'This binding was not confirmed on this phone. [Keep]: the gateway connects only to this PTU. [Release]: it picks the nearest PTU again.';
 
   @override
   String directMode_switched(String mac) {
@@ -3766,14 +3770,14 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get fieldHelpSheet_demo =>
-      'Demo mode does not send. Read the info below.';
+      'Demo mode sends nothing. Read the info below aloud.';
 
   @override
   String get fieldHelpSheet_label => 'Ask back office';
 
   @override
   String get fieldHelpSheet_needsConnection =>
-      'Back office switched. Connect to the new back office first, then ask again.';
+      'You switched back office. Connect to the new one first, then ask again.';
 
   @override
   String get fieldHelpSheet_noPassword => 'The Wi-Fi password is never sent.';
@@ -3801,7 +3805,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get fieldHelpSheet_unsupported =>
-      'This back office version has no online notice. Read the info below.';
+      'The back office can\'t receive online requests yet. Read the info below to the back office by phone.';
 
   @override
   String fieldReport_backendRefused(String status) {
@@ -3933,17 +3937,17 @@ class AppLocalizationsEn extends AppLocalizations {
       'This help record is for another gateway; don\'t follow it. Update the help request so the back office can confirm the current device.';
 
   @override
-  String get fieldSupportPanel_refresh => 'Refresh reply';
+  String get fieldSupportPanel_refresh => 'Refresh replies';
 
   @override
   String get fieldSupportPanel_reopenHint =>
-      'After closing, tap the help button at the top to see replies again.';
+      'After closing, tap [Ask back office] at the top to see replies again.';
 
   @override
   String get fieldSupportPanel_replying => 'Replying…';
 
   @override
-  String get fieldSupportPanel_resolved => 'Solved';
+  String get fieldSupportPanel_resolved => 'Resolved';
 
   @override
   String get fieldSupportPanel_stateCallSupport =>
@@ -3963,7 +3967,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get fieldSupportPanel_stateWaitingField =>
-      'Instructions received; follow them, then reply';
+      'Back office sent instructions; follow them, then reply';
 
   @override
   String get fieldSupportPanel_stillHelp => 'Still need help';
@@ -5040,7 +5044,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String mqttTarget_localHostNotPrivate(String host) {
-    return 'The host \"$host\" in the local test server URL is not a private LAN IPv4 address (10.x.x.x, 172.16–31.x.x, 192.168.x.x), so the gateway cannot upload to it. Use the computer\'s LAN IP in the URL.';
+    return 'The host \"$host\" in the local test host URL is not a private LAN IPv4 address (10.x.x.x, 172.16–31.x.x, 192.168.x.x), so the gateway cannot upload to it. Use the computer\'s LAN IP in the URL.';
   }
 
   @override
@@ -5477,7 +5481,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String protocol_testModeStuck(String button) {
-    return 'The gateway is still in test mode after restarting. Tap [$button] again; if that still fails, tap Help.';
+    return 'The gateway is still in test mode after restarting. Tap [$button] again; if that still fails, tap [Ask back office].';
   }
 
   @override
@@ -5495,7 +5499,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String protocol_uploadPaused(String button) {
-    return 'The gateway still reports uploads paused. Tap [$button] again; if that still fails, tap Help.';
+    return 'The gateway still reports uploads paused. Tap [$button] again; if that still fails, tap [Ask back office].';
   }
 
   @override
@@ -5726,7 +5730,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get recentDataPage_shortCooling => 'Cooling';
 
   @override
-  String get recentDataPage_shortExceeded => 'Range';
+  String get recentDataPage_shortExceeded => 'Out rng';
 
   @override
   String get recentDataPage_shortFault => 'Fault';
@@ -5738,7 +5742,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get recentDataPage_shortLowPower => 'Low pwr';
 
   @override
-  String get recentDataPage_shortPowerSave => 'Saving';
+  String get recentDataPage_shortPowerSave => 'PwrSave';
 
   @override
   String get recentDataPage_stateConfiguration => 'Configuring';
@@ -5854,21 +5858,24 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get recentGateways_unknownConflict =>
-      'Backend status unknown · identity conflict flagged';
+      'Backend status unknown · back office flags an identity conflict';
 
   @override
   String recentGateways_unknownDuplicates(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: 'Backend status unknown · $count records with the same MAC',
+      other:
+          'Backend status unknown · back office has $count records with the same MAC',
+      one:
+          'Backend status unknown · back office has 1 record with the same MAC',
     );
     return '$_temp0';
   }
 
   @override
   String get recentGateways_unknownNoHeartbeat =>
-      'Backend status unknown · no heartbeat from this MAC';
+      'Backend status unknown · back office has no heartbeat from this MAC';
 
   @override
   String get recentGateways_unknownUnverified =>
@@ -6018,7 +6025,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get starAllowList_failed =>
-      'PTU binding list not written. Retry. Until it is written the gateway only checks numbers, so another PTU nearby with the same number may still be connected.';
+      'PTU binding list not written. Retry. Until it is written the gateway only checks numbers, so the gateway may still connect to another PTU nearby with the same number.';
 
   @override
   String starAllowList_foreignIgnored(int count) {
@@ -6035,7 +6042,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get starAllowList_reselectHint =>
-      'If one of them belongs to this gateway, select it and configure again.';
+      'If one of them belongs to this gateway, select it and set up again.';
 
   @override
   String get starAllowList_retryButton => 'Retry writing the binding list';

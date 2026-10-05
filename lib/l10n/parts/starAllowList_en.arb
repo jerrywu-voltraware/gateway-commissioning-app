@@ -1,13 +1,13 @@
 {
   "@@locale": "en",
   "starAllowList_writing": "Writing the PTU binding list",
-  "starAllowList_failed": "PTU binding list not written. Retry. Until it is written the gateway only checks numbers, so another PTU nearby with the same number may still be connected.",
+  "starAllowList_failed": "PTU binding list not written. Retry. Until it is written the gateway only checks numbers, so the gateway may still connect to another PTU nearby with the same number.",
   "starAllowList_retryButton": "Retry writing the binding list",
   "starAllowList_switchFailed": "PTU binding list not written after switching back to star; it is written again after the data check.",
   "starAllowList_beforeFailed": "PTU binding list not written; continuing. If another PTU nearby with the same number holds the connection, some PTUs may fail to be assigned. The list is written again after the data check.",
   "starAllowList_written": "PTU binding list written: {ids} (the gateway connects only these; other PTUs nearby with the same numbers are ignored)",
   "starAllowList_foreignIgnored": "{count, plural, =1{1 other PTU nearby has the same number and is ignored by the gateway (no connection).} other{{count} other PTUs nearby have the same numbers and are ignored by the gateway (no connection).}}",
   "starAllowList_unlistedDropped": "{count, plural, =1{1 connected PTU is not on this gateway's binding list; the gateway drops it.} other{{count} connected PTUs are not on this gateway's binding list; the gateway drops them.}}",
-  "starAllowList_reselectHint": "If one of them belongs to this gateway, select it and configure again.",
+  "starAllowList_reselectHint": "If one of them belongs to this gateway, select it and set up again.",
   "starAllowList_sentenceSeparator": " "
 }

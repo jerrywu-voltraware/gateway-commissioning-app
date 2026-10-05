@@ -4040,7 +4040,7 @@ class AppLocalizationsZh extends AppLocalizations {
       '新 Wi-Fi 連線未成功：密碼可能錯誤，請確認密碼（含大小寫）後重試。';
 
   @override
-  String get gatewayNet_setFailedUnknown => '新 WiFi 連線未成功，請檢查密碼與訊號後重試。';
+  String get gatewayNet_setFailedUnknown => '新 Wi-Fi 連線未成功，請檢查密碼與訊號後重試。';
 
   @override
   String get gatewayNet_setFailedWeak =>
@@ -5071,7 +5071,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String protocol_testModeStuck(String button) {
-    return '閘道器重新開機後仍在測試模式，請再按一次「$button」；若仍不行，請按求助。';
+    return '閘道器重新開機後仍在測試模式，請再按一次「$button」；若仍不行，請按「請後台協助」。';
   }
 
   @override
@@ -5087,7 +5087,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String protocol_uploadPaused(String button) {
-    return '閘道器仍回報資料上傳暫停，請再按一次「$button」；若仍不行，請按求助。';
+    return '閘道器仍回報資料上傳暫停，請再按一次「$button」；若仍不行，請按「請後台協助」。';
   }
 
   @override

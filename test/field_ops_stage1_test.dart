@@ -424,7 +424,7 @@ void main() {
     test('set_wifi failure text per cause, trusted only for this attempt', () {
       expect(
         const GatewayFailure('wifi_failed').message,
-        '新 WiFi 連線未成功，請檢查密碼與訊號後重試。',
+        '新 Wi-Fi 連線未成功，請檢查密碼與訊號後重試。',
       );
       String message(Map<String, dynamic> net) => wifiFailedFrom(
         net,
@@ -454,7 +454,7 @@ void main() {
         }),
         contains('密碼可能錯誤'),
       );
-      const generic = '新 WiFi 連線未成功，請檢查密碼與訊號後重試。';
+      const generic = '新 Wi-Fi 連線未成功，請檢查密碼與訊號後重試。';
       // Back on an old Wi-Fi that is gone too: the reason may be about it.
       expect(
         message({
@@ -501,9 +501,9 @@ void main() {
         );
         expect(
           await run({'wifi_last_disc_reason': 201}, oldGone: true),
-          '新 WiFi 連線未成功，請檢查密碼與訊號後重試。',
+          '新 Wi-Fi 連線未成功，請檢查密碼與訊號後重試。',
         );
-        expect(await run({}), '新 WiFi 連線未成功，請檢查密碼與訊號後重試。');
+        expect(await run({}), '新 Wi-Fi 連線未成功，請檢查密碼與訊號後重試。');
       },
     );
   });

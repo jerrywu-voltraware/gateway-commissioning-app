@@ -1,9 +1,9 @@
 {
   "@@locale": "en",
   "recentGateways_unknownUnverified": "Backend status unknown · identity checked after connecting",
-  "recentGateways_unknownNoHeartbeat": "Backend status unknown · no heartbeat from this MAC",
-  "recentGateways_unknownDuplicates": "{count, plural, other{Backend status unknown · {count} records with the same MAC}}",
-  "recentGateways_unknownConflict": "Backend status unknown · identity conflict flagged",
+  "recentGateways_unknownNoHeartbeat": "Backend status unknown · back office has no heartbeat from this MAC",
+  "recentGateways_unknownDuplicates": "{count, plural, =1{Backend status unknown · back office has 1 record with the same MAC} other{Backend status unknown · back office has {count} records with the same MAC}}",
+  "recentGateways_unknownConflict": "Backend status unknown · back office flags an identity conflict",
   "recentGateways_reportedOnline": "Backend reports online",
   "recentGateways_reportedOffline": "Backend reports offline",
   "recentGateways_unknown": "Backend status unknown",

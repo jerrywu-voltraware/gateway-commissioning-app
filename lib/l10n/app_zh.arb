@@ -4036,7 +4036,7 @@
   },
   "gatewayNet_setFailedNotFound": "新 Wi-Fi 連線未成功：閘道器找不到這個 Wi-Fi。請確認名稱正確、是 2.4 GHz（不支援 5 GHz），且基地台就在附近。",
   "gatewayNet_setFailedPassword": "新 Wi-Fi 連線未成功：密碼可能錯誤，請確認密碼（含大小寫）後重試。",
-  "gatewayNet_setFailedUnknown": "新 WiFi 連線未成功，請檢查密碼與訊號後重試。",
+  "gatewayNet_setFailedUnknown": "新 Wi-Fi 連線未成功，請檢查密碼與訊號後重試。",
   "gatewayNet_setFailedWeak": "新 Wi-Fi 連線未成功：可能是訊號太弱或基地台暫時拒絕連線，請把閘道器移近基地台後重試。",
   "gatewayNet_ssidNamed": "Wi-Fi「{ssid}」",
   "@gatewayNet_ssidNamed": {
@@ -4958,7 +4958,7 @@
     }
   },
   "protocol_targetReconnect": "閘道器已收到切換指令並重新開機，但 45 秒內未能重新連上藍牙。請靠近閘道器，按「結束並重新選擇閘道器」重新連線後看「連線狀態」。",
-  "protocol_testModeStuck": "閘道器重新開機後仍在測試模式，請再按一次「{button}」；若仍不行，請按求助。",
+  "protocol_testModeStuck": "閘道器重新開機後仍在測試模式，請再按一次「{button}」；若仍不行，請按「請後台協助」。",
   "@protocol_testModeStuck": {
     "description": "{button} is the leave-test-mode button name.",
     "placeholders": {
@@ -4977,7 +4977,7 @@
       }
     }
   },
-  "protocol_uploadPaused": "閘道器仍回報資料上傳暫停，請再按一次「{button}」；若仍不行，請按求助。",
+  "protocol_uploadPaused": "閘道器仍回報資料上傳暫停，請再按一次「{button}」；若仍不行，請按「請後台協助」。",
   "@protocol_uploadPaused": {
     "description": "{button} is the resume-upload button name.",
     "placeholders": {

@@ -153,7 +153,7 @@
   "protocol_wifiPasswordNeeded": "閘道器目前沒有連上這個 Wi-Fi，無法沿用。請輸入 Wi-Fi 密碼後再按「儲存並繼續」。",
   "protocol_noDevices": "未找到 PTU。請確認已上電並靠近閘道器後重掃。",
   "protocol_ptuIdentityMismatch": "後台資料的 PTU 身分與本次選擇不符，或缺少 MAC，尚未完成驗證。請返回確認本樁 PTU；若仍不符，請後台協助。",
-  "protocol_testModeStuck": "閘道器重新開機後仍在測試模式，請再按一次「{button}」；若仍不行，請按求助。",
+  "protocol_testModeStuck": "閘道器重新開機後仍在測試模式，請再按一次「{button}」；若仍不行，請按「請後台協助」。",
   "@protocol_testModeStuck": {
     "description": "{button} is the leave-test-mode button name.",
     "placeholders": {
@@ -162,7 +162,7 @@
       }
     }
   },
-  "protocol_uploadPaused": "閘道器仍回報資料上傳暫停，請再按一次「{button}」；若仍不行，請按求助。",
+  "protocol_uploadPaused": "閘道器仍回報資料上傳暫停，請再按一次「{button}」；若仍不行，請按「請後台協助」。",
   "@protocol_uploadPaused": {
     "description": "{button} is the resume-upload button name.",
     "placeholders": {

@@ -7,8 +7,9 @@
 // - 文字沒有超出螢幕右緣（可左右捲的表格除外）。
 //
 // 畫面：首頁、「更多」選單與語言對話框、模式設定、閘道器清單（找到／沒找到）、
-// 網路體檢與站點、PTU 清單、資料驗證（離線等待）、完成頁與其詳細、請後台協助
-// 面板（紅框）、最近資料頁。中文版面由 layout_smoke_test.dart 等既有測試負責。
+// 網路體檢與站點、PTU 清單、一對一選 PTU 與辨識後單行、資料驗證（離線等待）、
+// 完成頁與其詳細、請後台協助面板（紅框）、最近資料頁。
+// 中文版面由 layout_smoke_test.dart 等既有測試負責。
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -280,7 +281,12 @@ class _RecentApi implements GatewayApi {
               'seq': 200 - i,
               'device_id': 1,
               'ptu_mac': '90:5F:E8:9A:96:00',
-              'ptu_state': i % 7 == 3 ? 'EXCEEDED_RANGE' : 'POWER_TRANSFER',
+              'ptu_state': switch (i % 7) {
+                3 => 'EXCEEDED_RANGE',
+                5 => 'POWER_SAVE',
+                6 => 'LOW_POWER',
+                _ => 'POWER_TRANSFER',
+              },
               'input_mv': 53200 + i * 10,
               'input_ma': i == 0 ? 12345 : 2720,
               'bus_mv': 53000,
@@ -408,6 +414,79 @@ void main() {
     await _checkPage(tester, 'one-to-one pick');
     await tester.pumpWidget(const SizedBox());
   });
+
+  // 一對一按〔辨識此樁〕後底部單行（direct-identify-note）：英文 @1.3 不能被截斷，
+  // MAC 尾碼與 RSSI（dBm）都要看得到（i18n 驗收 2026-10-06 #1）。
+  for (final (confirm, head) in [
+    (null, () => L10n.current.directMode_identifySentLine),
+    ('timeout', () => L10n.current.directMode_lineTimeout),
+    (
+      'unsupported_pattern',
+      () => L10n.current.directMode_lineUnsupportedPattern,
+    ),
+  ]) {
+    testWidgets(
+      'one-to-one: identify line after the ack (${confirm ?? 'sent'})',
+      (tester) async {
+        final fake = PickGateway()..identifyPtuConfirm = confirm;
+        final container = await _pumpApp(tester, fake);
+        await _run(tester, container, (c) async {
+          final topo = container.read(topologyProvider.notifier);
+          await topo.ready;
+          await topo.setTopology(GatewayTopology.direct);
+          await c.prepare('https://example.invalid', '', offline: true);
+          await c.scan();
+          await c.connect(container.read(commissionProvider).peers.single);
+          await c.chooseStation(newStation: false);
+          await c.identify();
+        });
+        final s = container.read(commissionProvider);
+        expect(s.identifyLine, startsWith(head()));
+        final mac = (s.direct?.pickedMac ?? '')
+            .replaceAll(':', '')
+            .toUpperCase();
+        expect(mac, hasLength(12));
+        final rssi = fake.devices.firstWhere(
+          (d) => '${d['mac']}'.replaceAll(':', '').toUpperCase() == mac,
+        )['rssi'];
+        for (final scale in _scales) {
+          tester.platformDispatcher.textScaleFactorTestValue = scale;
+          await _frames(tester);
+          final note = find.byKey(const Key('direct-identify-note'));
+          expect(note, findsOneWidget, reason: '@$scale');
+          final rich = find.descendant(
+            of: note,
+            matching: find.byType(RichText),
+          );
+          final p = tester.renderObject<RenderParagraph>(
+            rich.evaluate().isEmpty ? note : rich.first,
+          );
+          final shown = p.text.toPlainText();
+          final where =
+              '${confirm ?? 'sent'} @$scale: "$shown" '
+              '(${p.getMaxIntrinsicWidth(double.infinity).toStringAsFixed(1)} '
+              'in ${p.size.width.toStringAsFixed(1)})';
+          if (_realFonts) {
+            expect(p.didExceedMaxLines, isFalse, reason: '$where cut');
+            expect(
+              p.getMaxIntrinsicWidth(double.infinity),
+              lessThanOrEqualTo(p.size.width + 0.5),
+              reason: '$where wider than its box',
+            );
+          }
+          expect(shown, startsWith(head()), reason: where);
+          expect(shown, endsWith('$rssi dBm'), reason: where);
+          expect(
+            shown.replaceAll(':', '').toUpperCase(),
+            contains(mac.substring(10)),
+            reason: '$where: MAC tail',
+          );
+        }
+        await _checkPage(tester, 'one-to-one identify (${confirm ?? 'sent'})');
+        await tester.pumpWidget(const SizedBox());
+      },
+    );
+  }
 
   testWidgets('red box and the 〔Ask back office〕 help panel', (tester) async {
     final fake = _FailingGateway();

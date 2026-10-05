@@ -8,7 +8,7 @@
   "mqttTarget_productionHostPort": "Production {host}:{port}",
   "mqttTarget_localUrlEmpty": "No local test server URL entered, so the gateway's upload target cannot be decided.",
   "mqttTarget_localUrlUnparsable": "Cannot read a host from the local test server URL \"{url}\". Enter a URL like http://192.168.1.10:18000.",
-  "mqttTarget_localHostNotPrivate": "The host \"{host}\" in the local test server URL is not a private LAN IPv4 address (10.x.x.x, 172.16–31.x.x, 192.168.x.x), so the gateway cannot upload to it. Use the computer's LAN IP in the URL.",
+  "mqttTarget_localHostNotPrivate": "The host \"{host}\" in the local test host URL is not a private LAN IPv4 address (10.x.x.x, 172.16–31.x.x, 192.168.x.x), so the gateway cannot upload to it. Use the computer's LAN IP in the URL.",
   "mqttTarget_shipWarning": "This gateway uploads to a local test server. Switch it back to production before shipping.",
   "mqttTarget_reportUnconfirmed": "Upload target: not confirmed",
   "mqttTarget_reportLegacy": "Upload target: production (fixed by firmware {version})",

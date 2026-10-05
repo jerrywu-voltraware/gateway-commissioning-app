@@ -5,7 +5,7 @@
   "fieldSupportPanel_confirmFailed": "Reply not confirmed. Refresh; if the instructions changed, read them before replying.",
   "fieldSupportPanel_statePending": "Waiting for the back office",
   "fieldSupportPanel_stateHandling": "Back office is on it",
-  "fieldSupportPanel_stateWaitingField": "Instructions received; follow them, then reply",
+  "fieldSupportPanel_stateWaitingField": "Back office sent instructions; follow them, then reply",
   "fieldSupportPanel_stateResolved": "You confirmed it's solved",
   "fieldSupportPanel_stateCallSupport": "Call the back office for help",
   "fieldSupportPanel_stateLoading": "Getting help status…",
@@ -17,9 +17,9 @@
   "fieldSupportPanel_otherGateway": "This help record is for another gateway; don't follow it. Update the help request so the back office can confirm the current device.",
   "fieldSupportPanel_updateRequest": "Update help request",
   "fieldSupportPanel_replying": "Replying…",
-  "fieldSupportPanel_resolved": "Solved",
+  "fieldSupportPanel_resolved": "Resolved",
   "fieldSupportPanel_stillHelp": "Still need help",
   "fieldSupportPanel_askAgain": "Ask for help again",
-  "fieldSupportPanel_refresh": "Refresh reply",
-  "fieldSupportPanel_reopenHint": "After closing, tap the help button at the top to see replies again."
+  "fieldSupportPanel_refresh": "Refresh replies",
+  "fieldSupportPanel_reopenHint": "After closing, tap [Ask back office] at the top to see replies again."
 }

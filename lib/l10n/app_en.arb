@@ -800,7 +800,7 @@
   "commissioning_skipStationNote": "The current site can't be kept until the network check passes. Reset Wi-Fi or set a new site.",
   "commissioning_skipThisPtu": "Skip this one",
   "commissioning_sortBySignal": "Sort by signal",
-  "commissioning_starAssignTaskTitle": "Configuring PTUs and starting monitoring",
+  "commissioning_starAssignTaskTitle": "Setting up PTUs and starting monitoring",
   "commissioning_starCountChanged": "{count, plural, =1{Star mode now uses 1 PTU per gateway} other{Star mode now uses {count} PTUs per gateway}}",
   "@commissioning_starCountChanged": {
     "placeholders": {
@@ -900,7 +900,7 @@
     }
   },
   "commissioning_topologyMenuBusy": "Available after the action ends",
-  "commissioning_topologyMenuDirect": "Direct · one-to-one",
+  "commissioning_topologyMenuDirect": "One-to-one",
   "commissioning_topologyMenuStar": "Star · one-to-many",
   "commissioning_topologyTitle": "Connection mode",
   "commissioning_updateAfterHome": "Available on the home page when no setup is running",
@@ -1641,7 +1641,7 @@
     }
   },
   "controller_cancelled": "Cancelled. Reconnect to check progress; any unrestored monitoring session resumes by its expiry.",
-  "controller_checkFailedNew": "Network check failed. You can still set a new site; the upload is confirmed later.",
+  "controller_checkFailedNew": "Network check failed. You can still set up a new site; the upload is confirmed later.",
   "controller_checkFailedStation": "Network check failed. You can reset the Wi-Fi or set a new site; keeping the site needs a working network.",
   "controller_checkPassedNew": "Network check passed. Set the identity and Wi-Fi.",
   "controller_checkPassedStation": "Network check passed. Choose the site.",
@@ -1855,7 +1855,7 @@
       }
     }
   },
-  "controller_firstConnectFailure": "First connect failure: {failure}",
+  "controller_firstConnectFailure": "First connection failed: {failure}",
   "@controller_firstConnectFailure": {
     "placeholders": {
       "failure": {
@@ -2051,7 +2051,7 @@
       }
     }
   },
-  "controller_ptuMissingHint": "Make sure the original PTU is powered. Normally it can be replaced over the phone's Bluetooth without the original PTU. Backend sync and the data check still need the gateway online and the phone able to reach the backend. To change only the network, reset the Wi-Fi first; no PTU is needed.",
+  "controller_ptuMissingHint": "Make sure the original PTU is powered. Normally it can be replaced over the phone's Bluetooth without the original PTU. Back office sync and the data check still need the gateway online and the phone able to reach the back office. To change only the network, reset the Wi-Fi first; no PTU is needed.",
   "controller_ptuMissingTitle": "This charger's PTU is missing (bound MAC ends {tail})",
   "@controller_ptuMissingTitle": {
     "placeholders": {
@@ -2164,7 +2164,7 @@
   },
   "controller_replaceOtherBinding": "The gateway already has another PTU binding; not overwritten. Reconnect to check.",
   "controller_replacePending": "The last replacement is not restored yet. Cancel and restore the original binding first.",
-  "controller_replacePtuConfirm": "The gateway's binding to PTU {mac} is removed (site and Wi-Fi unchanged). After the device safety check, a new PTU is searched for over the phone's Bluetooth; the original PTU need not be here. Cancelling or failing before the new binding is confirmed restores the old one; if Bluetooth drops, reconnect to finish restoring. Backend sync and the data check still need the network; setup is not complete until verified.",
+  "controller_replacePtuConfirm": "The gateway's binding to PTU {mac} is removed (site and Wi-Fi unchanged). After the device safety check, a new PTU is searched for over the phone's Bluetooth; the original PTU need not be here. Cancelling or failing before the new binding is confirmed restores the old one; if Bluetooth drops, reconnect to finish restoring. Back office sync and the data check still need the network; setup is not complete until verified.",
   "@controller_replacePtuConfirm": {
     "placeholders": {
       "mac": {
@@ -2182,7 +2182,7 @@
       }
     }
   },
-  "controller_replaceSearching": "Searching for a new PTU here; backend sync and the data check still need the network.",
+  "controller_replaceSearching": "Searching for a new PTU here; back office sync and the data check still need the network.",
   "controller_replaceSetupRestored": "PTU setup not finished; the original binding was restored. Start the replacement again.",
   "controller_replaceUnbindUnconfirmed": "The gateway did not confirm the unbinding; replacement stopped.",
   "controller_replaceUnfinished": "The last PTU replacement did not finish. Reconnect to check and restore the original binding.",
@@ -2686,8 +2686,8 @@
   "directCalibrationSheet_noNeighbor": "No neighbouring PTU heard",
   "directCalibrationSheet_notRead": "Not read yet",
   "directCalibrationSheet_notReported": "Not reported by the gateway",
-  "directCalibrationSheet_ownAdv": "Own advertising",
-  "directCalibrationSheet_ownLink": "Own link signal",
+  "directCalibrationSheet_ownAdv": "This charger's advertising",
+  "directCalibrationSheet_ownLink": "This charger's link signal",
   "directCalibrationSheet_ownLinkValue": "Median {median} · weakest {weakest} ({count, plural, =1{1 row} other{{count} rows}})",
   "@directCalibrationSheet_ownLinkValue": {
     "description": "median and weakest are already formatted with dBm.",
@@ -2781,7 +2781,7 @@
       }
     }
   },
-  "directCalibrationSheet_tiesAll": "{count} within {db} dB, all listed",
+  "directCalibrationSheet_tiesAll": "{count, plural, =1{1 PTU within {db} dB, listed} other{{count} PTUs within {db} dB, all listed}}",
   "@directCalibrationSheet_tiesAll": {
     "placeholders": {
       "count": {
@@ -2792,7 +2792,7 @@
       }
     }
   },
-  "directCalibrationSheet_tiesListed": "{ties} within {db} dB, {listed} listed",
+  "directCalibrationSheet_tiesListed": "{ties} PTUs within {db} dB, {listed} listed",
   "@directCalibrationSheet_tiesListed": {
     "placeholders": {
       "ties": {
@@ -2830,7 +2830,7 @@
     }
   },
   "directCalibrationSheet_writing": "Writing…",
-  "directCalibration_ambiguous": "This charger and a neighbour advertise less than {db} dB apart: the pick may be ambiguous. A binding is not affected.",
+  "directCalibration_ambiguous": "This charger and a neighbour advertise less than {db} dB apart: the pick may be ambiguous. Once the PTU is bound, this no longer matters.",
   "@directCalibration_ambiguous": {
     "placeholders": {
       "db": {
@@ -3091,7 +3091,7 @@
       }
     }
   },
-  "directModePanel_causePower": "PTU not powered: check the PTU power is on and its light is lit.",
+  "directModePanel_causePower": "This charger's PTU not powered: check its power is on and its light is lit.",
   "directModePanel_causeWeak": "Nearby PTU too weak ({rssi} dBm, threshold {min}): PTU {mac} may belong to a neighbouring charger. Do not loosen the threshold just to connect.",
   "@directModePanel_causeWeak": {
     "placeholders": {
@@ -3113,7 +3113,7 @@
   "directModePanel_gatewayBusy": "Gateway working, please wait…",
   "directModePanel_hintConfirm": "Check this PTU is the one blinking, then start monitoring",
   "directModePanel_hintIdentify": "Tap [Identify this charger] and check the lights",
-  "directModePanel_identifyDetailTitle": "Identify message",
+  "directModePanel_identifyDetailTitle": "Identify details",
   "directModePanel_identifyThis": "Identify this charger",
   "@directModePanel_identifyThis": {
     "description": "Button: blink this charger's PTU and gateway."
@@ -3221,7 +3221,7 @@
   },
   "directMode_hintBoundMissing": "Bound PTU not found. Check its power; if the PTU was replaced, unbind it",
   "directMode_hintNoCandidate": "Move closer / check this charger's PTU is powered",
-  "directMode_identifyConfirmTimeout": "Gateway sent it; older gateway got no PTU confirmation. Watch the charger lights",
+  "directMode_identifyConfirmTimeout": "Sent. This older gateway can't confirm the PTU; watch the charger lights",
   "directMode_identifyConfirmed": "PTU confirmed its light is on",
   "directMode_identifyFirstLabel": "Tap [Identify this charger] first",
   "@directMode_identifyFirstLabel": {
@@ -3239,7 +3239,7 @@
   "directMode_identifyNoPtu": "Gateway double-blinks for 4 s; it has no PTU yet, so no PTU will blink.",
   "directMode_identifyPending": "Sent, waiting for the gateway…",
   "directMode_identifySent": "Sent. Watch the lights on the charger",
-  "directMode_identifySentLine": "Sent · watch the charger lights",
+  "directMode_identifySentLine": "Sent · check lights",
   "@directMode_identifySentLine": {
     "description": "One-line bottom bar form of directMode_identifySent."
   },
@@ -3247,8 +3247,8 @@
   "directMode_lineGatewayOnly": "Sent · only the gateway blinks, PTU did not get it",
   "directMode_lineOffSent": "Lights-off command sent",
   "directMode_lineStopPtuNotSent": "Gateway stopped identify · PTU lights-off not sent",
-  "directMode_lineTimeout": "Sent · PTU did not confirm · watch the charger lights",
-  "directMode_lineUnsupportedPattern": "Sent · PTU lacks this light pattern · watch the charger lights",
+  "directMode_lineTimeout": "Sent · PTU unconfirmed",
+  "directMode_lineUnsupportedPattern": "Sent · PTU lacks pattern",
   "directMode_noteGatewayOnly": "Sent: only the gateway is blinking, the PTU did not get it ({reason})",
   "@directMode_noteGatewayOnly": {
     "placeholders": {
@@ -3409,7 +3409,7 @@
       }
     }
   },
-  "directMode_strayBindHint": "This binding was not confirmed on this phone. Keep: the gateway connects only to this PTU. Unbind: it picks the nearest PTU again.",
+  "directMode_strayBindHint": "This binding was not confirmed on this phone. [Keep]: the gateway connects only to this PTU. [Release]: it picks the nearest PTU again.",
   "directMode_switched": "Gateway switched to another PTU ({mac}). Identify again",
   "@directMode_switched": {
     "placeholders": {
@@ -3514,9 +3514,9 @@
   "environmentSwitch_urlLabel": "Backend URL",
   "environmentSwitch_useLocal": "Use local test",
   "environmentSwitch_useUrl": "Use this URL",
-  "fieldHelpSheet_demo": "Demo mode does not send. Read the info below.",
+  "fieldHelpSheet_demo": "Demo mode sends nothing. Read the info below aloud.",
   "fieldHelpSheet_label": "Ask back office",
-  "fieldHelpSheet_needsConnection": "Back office switched. Connect to the new back office first, then ask again.",
+  "fieldHelpSheet_needsConnection": "You switched back office. Connect to the new one first, then ask again.",
   "fieldHelpSheet_noPassword": "The Wi-Fi password is never sent.",
   "fieldHelpSheet_queued": "⚠ Cannot send now ({reason}); the back office cannot see it yet. Read the info below over the phone.",
   "@fieldHelpSheet_queued": {
@@ -3531,7 +3531,7 @@
   "fieldHelpSheet_resend": "Resend",
   "fieldHelpSheet_sending": "Notifying the back office…",
   "fieldHelpSheet_sent": "✓ Help request reached the back office",
-  "fieldHelpSheet_unsupported": "This back office version has no online notice. Read the info below.",
+  "fieldHelpSheet_unsupported": "The back office can't receive online requests yet. Read the info below to the back office by phone.",
   "fieldReport_backendRefused": "Back office refused it (HTTP {status})",
   "@fieldReport_backendRefused": {
     "placeholders": {
@@ -3695,16 +3695,16 @@
   },
   "fieldSupportPanel_notConnected": "Connect to the selected back office first, then check for replies.",
   "fieldSupportPanel_otherGateway": "This help record is for another gateway; don't follow it. Update the help request so the back office can confirm the current device.",
-  "fieldSupportPanel_refresh": "Refresh reply",
-  "fieldSupportPanel_reopenHint": "After closing, tap the help button at the top to see replies again.",
+  "fieldSupportPanel_refresh": "Refresh replies",
+  "fieldSupportPanel_reopenHint": "After closing, tap [Ask back office] at the top to see replies again.",
   "fieldSupportPanel_replying": "Replying…",
-  "fieldSupportPanel_resolved": "Solved",
+  "fieldSupportPanel_resolved": "Resolved",
   "fieldSupportPanel_stateCallSupport": "Call the back office for help",
   "fieldSupportPanel_stateHandling": "Back office is on it",
   "fieldSupportPanel_stateLoading": "Getting help status…",
   "fieldSupportPanel_statePending": "Waiting for the back office",
   "fieldSupportPanel_stateResolved": "You confirmed it's solved",
-  "fieldSupportPanel_stateWaitingField": "Instructions received; follow them, then reply",
+  "fieldSupportPanel_stateWaitingField": "Back office sent instructions; follow them, then reply",
   "fieldSupportPanel_stillHelp": "Still need help",
   "fieldSupportPanel_unavailable": "Text replies can't be shown in the app now. Tell the back office the device and step info below.",
   "fieldSupportPanel_updateRequest": "Update help request",
@@ -4615,7 +4615,7 @@
       }
     }
   },
-  "mqttTarget_localHostNotPrivate": "The host \"{host}\" in the local test server URL is not a private LAN IPv4 address (10.x.x.x, 172.16–31.x.x, 192.168.x.x), so the gateway cannot upload to it. Use the computer's LAN IP in the URL.",
+  "mqttTarget_localHostNotPrivate": "The host \"{host}\" in the local test host URL is not a private LAN IPv4 address (10.x.x.x, 172.16–31.x.x, 192.168.x.x), so the gateway cannot upload to it. Use the computer's LAN IP in the URL.",
   "@mqttTarget_localHostNotPrivate": {
     "placeholders": {
       "host": {
@@ -4958,7 +4958,7 @@
     }
   },
   "protocol_targetReconnect": "The gateway got the switch command and restarted, but Bluetooth did not reconnect within 45 seconds. Move closer to the gateway, tap [End and choose another gateway], reconnect, then check [Connection status].",
-  "protocol_testModeStuck": "The gateway is still in test mode after restarting. Tap [{button}] again; if that still fails, tap Help.",
+  "protocol_testModeStuck": "The gateway is still in test mode after restarting. Tap [{button}] again; if that still fails, tap [Ask back office].",
   "@protocol_testModeStuck": {
     "description": "{button} is the leave-test-mode button name.",
     "placeholders": {
@@ -4977,7 +4977,7 @@
       }
     }
   },
-  "protocol_uploadPaused": "The gateway still reports uploads paused. Tap [{button}] again; if that still fails, tap Help.",
+  "protocol_uploadPaused": "The gateway still reports uploads paused. Tap [{button}] again; if that still fails, tap [Ask back office].",
   "@protocol_uploadPaused": {
     "description": "{button} is the resume-upload button name.",
     "placeholders": {
@@ -5244,11 +5244,11 @@
     "description": "Short PTU state for a narrow table column (about 4 CJK characters / 8 Latin characters wide)."
   },
   "recentDataPage_shortCooling": "Cooling",
-  "recentDataPage_shortExceeded": "Range",
+  "recentDataPage_shortExceeded": "Out rng",
   "recentDataPage_shortFault": "Fault",
   "recentDataPage_shortIdle": "Idle",
   "recentDataPage_shortLowPower": "Low pwr",
-  "recentDataPage_shortPowerSave": "Saving",
+  "recentDataPage_shortPowerSave": "PwrSave",
   "recentDataPage_stateConfiguration": "Configuring",
   "@recentDataPage_stateConfiguration": {
     "description": "PTU state CONFIGURATION (firmware ptu_state)."
@@ -5328,8 +5328,8 @@
   },
   "recentGateways_shortUnknown": "Backend unknown",
   "recentGateways_unknown": "Backend status unknown",
-  "recentGateways_unknownConflict": "Backend status unknown · identity conflict flagged",
-  "recentGateways_unknownDuplicates": "{count, plural, other{Backend status unknown · {count} records with the same MAC}}",
+  "recentGateways_unknownConflict": "Backend status unknown · back office flags an identity conflict",
+  "recentGateways_unknownDuplicates": "{count, plural, =1{Backend status unknown · back office has 1 record with the same MAC} other{Backend status unknown · back office has {count} records with the same MAC}}",
   "@recentGateways_unknownDuplicates": {
     "placeholders": {
       "count": {
@@ -5337,7 +5337,7 @@
       }
     }
   },
-  "recentGateways_unknownNoHeartbeat": "Backend status unknown · no heartbeat from this MAC",
+  "recentGateways_unknownNoHeartbeat": "Backend status unknown · back office has no heartbeat from this MAC",
   "recentGateways_unknownUnverified": "Backend status unknown · identity checked after connecting",
   "@recentGateways_unknownUnverified": {
     "description": "Gateway list: back-office status of a gateway; the part after the dot says why it is unknown."
@@ -5397,7 +5397,7 @@
   "settings_themeLight": "Light",
   "settings_themeSystem": "System default",
   "starAllowList_beforeFailed": "PTU binding list not written; continuing. If another PTU nearby with the same number holds the connection, some PTUs may fail to be assigned. The list is written again after the data check.",
-  "starAllowList_failed": "PTU binding list not written. Retry. Until it is written the gateway only checks numbers, so another PTU nearby with the same number may still be connected.",
+  "starAllowList_failed": "PTU binding list not written. Retry. Until it is written the gateway only checks numbers, so the gateway may still connect to another PTU nearby with the same number.",
   "@starAllowList_failed": {
     "description": "Completion page: the star allow list (PTU binding list) could not be written."
   },
@@ -5409,7 +5409,7 @@
       }
     }
   },
-  "starAllowList_reselectHint": "If one of them belongs to this gateway, select it and configure again.",
+  "starAllowList_reselectHint": "If one of them belongs to this gateway, select it and set up again.",
   "starAllowList_retryButton": "Retry writing the binding list",
   "starAllowList_sentenceSeparator": " ",
   "@starAllowList_sentenceSeparator": {

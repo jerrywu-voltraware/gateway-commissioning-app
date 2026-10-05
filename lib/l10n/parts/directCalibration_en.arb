@@ -3,7 +3,7 @@
   "directCalibration_title": "Calibrate threshold",
   "directCalibration_tooClose": "A neighbour charger is too strong to tell apart by threshold. Bind this PTU after confirming it",
   "directCalibration_outOfRange": "This charger's readings are outside the gateway's range (-100 to -20 dBm). Sample again",
-  "directCalibration_ambiguous": "This charger and a neighbour advertise less than {db} dB apart: the pick may be ambiguous. A binding is not affected.",
+  "directCalibration_ambiguous": "This charger and a neighbour advertise less than {db} dB apart: the pick may be ambiguous. Once the PTU is bound, this no longer matters.",
   "directCalibration_saved": "Written to the gateway (kept after reboot)",
   "directCalibration_noOwn": "No link signal from this charger's PTU (the gateway is not linked to the confirmed PTU), so no threshold can be suggested. Check this charger's PTU is connected, then sample again.",
   "directCalibration_noNeighbor": "No neighbour PTU heard (connected PTUs do not advertise), so a looser threshold cannot be proven safe. Keep {hold} dBm.",

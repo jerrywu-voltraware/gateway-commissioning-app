@@ -215,7 +215,7 @@ void main() {
     final fake = SupportFake();
     await showPanel(tester, fake);
     expect(find.text('Waiting for the back office'), findsOneWidget);
-    expect(find.text('Refresh reply'), findsOneWidget);
+    expect(find.text('Refresh replies'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
 }

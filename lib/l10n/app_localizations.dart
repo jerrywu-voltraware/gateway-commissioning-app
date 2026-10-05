@@ -6388,7 +6388,7 @@ abstract class AppLocalizations {
   /// No description provided for @gatewayNet_setFailedUnknown.
   ///
   /// In zh, this message translates to:
-  /// **'新 WiFi 連線未成功，請檢查密碼與訊號後重試。'**
+  /// **'新 Wi-Fi 連線未成功，請檢查密碼與訊號後重試。'**
   String get gatewayNet_setFailedUnknown;
 
   /// No description provided for @gatewayNet_setFailedWeak.
@@ -8072,7 +8072,7 @@ abstract class AppLocalizations {
   /// {button} is the leave-test-mode button name.
   ///
   /// In zh, this message translates to:
-  /// **'閘道器重新開機後仍在測試模式，請再按一次「{button}」；若仍不行，請按求助。'**
+  /// **'閘道器重新開機後仍在測試模式，請再按一次「{button}」；若仍不行，請按「請後台協助」。'**
   String protocol_testModeStuck(String button);
 
   /// No description provided for @protocol_timeNotSynced.
@@ -8096,7 +8096,7 @@ abstract class AppLocalizations {
   /// {button} is the resume-upload button name.
   ///
   /// In zh, this message translates to:
-  /// **'閘道器仍回報資料上傳暫停，請再按一次「{button}」；若仍不行，請按求助。'**
+  /// **'閘道器仍回報資料上傳暫停，請再按一次「{button}」；若仍不行，請按「請後台協助」。'**
   String protocol_uploadPaused(String button);
 
   /// No description provided for @protocol_wifiPasswordNeeded.
