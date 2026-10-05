@@ -1,7 +1,7 @@
 # AGENTS.md — APP_v2（前線配置 APP，Flutter／Android）
 
 先讀 `..\HANDBOOK_CODEX.md`（唯一正式版手冊：§3.2 本 repo 指令、§5.4 對帳規則、§5.8 一對一流程、§6 紅線、§7.4.5 建置安裝；目前狀態以手冊最底的日期段為準，§0 是 09-27 狀況）與 `..\AGENTS.md`。`..\HANDBOOK_CODEX_2026-09-27.md` 已被取代，只供歷史查閱。
-現況（2026-10-03 更新：原為 `wip/network-check`／1.0.0+19）：唯一日常 APP 工作目錄為 `APP_v2`，本機與 GitHub 預設分支均為 **`main`**，追蹤 `origin/main`；remote `origin`＝GitHub `jerrywu-voltraware/gateway-commissioning-app`。已發布 **1.0.11 Build 42**，來源以本 repo 的 `android-v1.0.11-b42` 標籤固定於 `b997b7b`；後續文件提交不改變該發布來源。最新實際狀態仍以手冊最底日期段為準；手機版本須實際查詢，不沿用舊紀錄。
+現況（2026-10-03 更新：原為 `wip/network-check`／1.0.0+19）：唯一日常 APP 工作目錄為 `APP_v2`，本機與 GitHub 預設分支均為 **`main`**，追蹤 `origin/main`；remote `origin`＝GitHub `jerrywu-voltraware/gateway-commissioning-app`。已發布 **1.0.11 Build 52**（2026-10-06，中英語系切換；來源標籤 `android-v1.0.11-b52`＝`0a94090`；更早：b51＝`3b320c7`、b42＝`b997b7b`）；後續文件提交不改變已發布來源。**字串一律走 `lib/l10n/parts/*.arb`，規範見 `docs/i18n.md`**（預設繁中；上傳後台的正式報告固定中文）。最新實際狀態仍以手冊最底日期段為準；手機版本須實際查詢，不沿用舊紀錄。
 
 ## 主線與發布來源（使用者於 2026-10-03 確認）
 
