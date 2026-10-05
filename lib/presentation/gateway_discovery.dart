@@ -2010,6 +2010,15 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
         (selected || (_selectedId == null && _shown.length == 1));
     final guideStart = _canStartPeer(peer, holdEpoch);
     const padding = EdgeInsets.symmetric(horizontal: 10);
+    final bluetoothLabel = !release
+        ? '藍牙連線'
+        : hold == _Hold.disconnecting
+        ? '斷開中…'
+        : hold == _Hold.connecting
+        ? '取消連線'
+        : hold == _Hold.cleanupFailed
+        ? '重試斷開'
+        : '斷開';
     final bluetooth = release
         ? OutlinedButton.icon(
             key: const Key('gateway-disconnect'),
@@ -2025,15 +2034,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
                   }
                 : null,
             icon: const Icon(Icons.bluetooth_disabled, size: 20),
-            label: Text(
-              hold == _Hold.disconnecting
-                  ? '斷開中…'
-                  : hold == _Hold.connecting
-                  ? '取消連線'
-                  : hold == _Hold.cleanupFailed
-                  ? '重試斷開'
-                  : '斷開',
-            ),
+            label: Text(bluetoothLabel),
           )
         : NextActionGuide.button(
             active: guideConnect,
@@ -2050,10 +2051,10 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
                   ? () => _holdFromCard(peer)
                   : null,
               icon: const Icon(Icons.bluetooth, size: 20),
-              label: const Text('藍牙連線'),
+              label: Text(bluetoothLabel),
             ),
           );
-    final identify = widget.onIdentify == null
+    final identify = widget.onIdentify == null || hold != _Hold.held
         ? null
         : _identifyControl(
             peer,
@@ -2095,20 +2096,13 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
       return width;
     }
 
-    final bluetoothWidth =
-        [
-          '藍牙連線',
-          '取消連線',
-          '重試斷開',
-          '斷開中…',
-        ].map(widthOf).fold<double>(0, (a, b) => a > b ? a : b) +
-        20 +
-        8 +
-        20;
+    // Measure the visible label: reserving every possible connection state
+    // needlessly splits the shorter Disconnect action from Start.
+    final bluetoothWidth = widthOf(bluetoothLabel) + 20 + 8 + 20;
+    final startWidth = widthOf('開始開通') + 20;
     final requiredWidth =
         bluetoothWidth +
-        widthOf('開始開通') +
-        20 +
+        startWidth +
         (identify == null ? 8 : gatewayBulbBox + 16);
     return Padding(
       key: ValueKey('gateway-actions-${peer.id}'),
@@ -2146,18 +2140,20 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  // Keep the two text actions together on narrow screens.
+                  // The secondary identify action can occupy the row above.
+                  if (identify != null) ...[
+                    Align(alignment: Alignment.centerRight, child: identify),
+                    const SizedBox(height: 4),
+                  ],
                   Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Flexible(child: bluetooth),
-                      const Spacer(),
-                      if (identify != null) ...[
-                        const SizedBox(width: 8),
-                        identify,
-                      ],
+                      Flexible(flex: bluetoothWidth.ceil(), child: bluetooth),
+                      const SizedBox(width: 8),
+                      Flexible(flex: startWidth.ceil(), child: start),
                     ],
                   ),
-                  const SizedBox(height: 4),
-                  Align(alignment: Alignment.centerRight, child: start),
                 ],
               );
             },
