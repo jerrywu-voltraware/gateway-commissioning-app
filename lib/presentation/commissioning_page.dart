@@ -2095,8 +2095,15 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                       !done &&
                       (state.step != 1 ||
                           state.error != null ||
-                          (state.message != preparedText &&
-                              state.message != identifyPeerLabel)) &&
+                          // 同源比對，比對所有語言（§8.3）。
+                          !matchesAnyLanguage(
+                            state.message,
+                            (l) => l.controller_prepared,
+                          ) &&
+                              !matchesAnyLanguage(
+                                state.message,
+                                (l) => l.controller_identifyPeerLabel,
+                              )) &&
                       (!stationPages ||
                           state.busy ||
                           state.relinking ||
@@ -2129,7 +2136,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                             child: TextButton(
                               key: const Key('gateway-reboot-ok'),
                               onPressed: controller.dismissGatewayReboot,
-                              child: Text(context.l10n.commissioning_gotIt),
+                              child: Text(context.l10n.common_gotIt),
                             ),
                           ),
                         ],
@@ -2248,7 +2255,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                                     key: const Key('monitor-skip'),
                                     onPressed: controller.skipMonitorConfirm,
                                     child: Text(
-                                      context.l10n.commissioning_skip,
+                                      context.l10n.common_skip,
                                     ),
                                   ),
                                 ),
@@ -2261,7 +2268,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                                     key: const Key('error-detail'),
                                     tilePadding: EdgeInsets.zero,
                                     title: Text(
-                                      context.l10n.commissioning_details,
+                                      context.l10n.common_details,
                                       style: Theme.of(context)
                                           .textTheme
                                           .bodyMedium
@@ -3906,7 +3913,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           if (s.missing.isNotEmpty)
             Text(
               context.l10n.commissioning_notConnectedList(
-                s.missing.join(context.l10n.commissioning_listSeparator),
+                s.missing.join(context.l10n.common_listSeparator),
               ),
             ),
           if (!directRunning)
@@ -4325,8 +4332,8 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             InstallReportStatusLine(enabled: !s.busy, compact: true),
             if (!deferred &&
                 s.message.isNotEmpty &&
-                s.message != verifiedText &&
-                !_isDataFlowingMessage(s.message))
+                s.messageKind != MessageKind.verified &&
+                !s.dataStreaming)
               line(s.message, key: const Key('done-message')),
             // Until the first health check answers, say so instead of a
             // premature 資料有異常.
@@ -4577,10 +4584,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
       // 1.0.0+10: a collapsed section's title (bodyMedium).
       title: Text(
-        // §6：報告本文維持中文（模擬報告以「模擬」開頭），所以比對中文仍成立；
-        // 畫面上的標題照語言翻譯。
-        // TODO(i18n Phase C): switch to B1/B3 flag (e.g. a report demo flag).
-        s.report.startsWith('模擬') // i18n-keep-zh
+        // 模擬報告：與 controller 寫「模擬安裝報告」同一個來源（linkProvider
+        // 的 demo），不比對報告文字。畫面上的標題照語言翻譯。
+        ref.watch(linkProvider).demo
             ? context.l10n.commissioning_reportTitleDemo
             : context.l10n.commissioning_reportTitle,
         style: Theme.of(context).textTheme.bodyMedium,
@@ -5273,11 +5279,3 @@ String topologyKeptText(GatewayTopology gateway) =>
 String get rejoinLabel => L10n.current.commissioning_rejoinLabel;
 String get rejoinHintText => L10n.current.commissioning_rejoinHintText;
 
-/// §8.2/§8.3：done 頁「資料持續更新」訊息（controller `refreshHealth` 的
-/// `controller_dataStreaming`）。訊息是產生當下的語言，所以比對所有語言。
-/// TODO(i18n Phase C): switch to a B1 state flag instead of the text.
-bool _isDataFlowingMessage(String message) => AppLanguage.values.any(
-  (language) =>
-      lookupAppLocalizations(language.locale).controller_dataStreaming ==
-      message,
-);

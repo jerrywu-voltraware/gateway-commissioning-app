@@ -4,7 +4,10 @@
 // - §6：安裝報告、field 診斷說明在英文畫面下仍是中文。
 // - §8.2：取代比對畫面文字的旗標（MessageKind、pendingReadback）。
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gateway_commissioning/application/backend_environment.dart';
 import 'package:gateway_commissioning/application/commissioning_controller.dart';
+import 'package:gateway_commissioning/application/field_report.dart';
+import 'package:gateway_commissioning/application/install_report.dart';
 import 'package:gateway_commissioning/l10n/l10n.dart';
 
 import 'link_loss_test.dart' show DroppingLink, ready;
@@ -68,7 +71,7 @@ void main() {
       );
       expect(
         verifyProgressText([2, 1], {1: 2}, {2}),
-        'Data check #1 2/3, #2 0/3\nPTU #2 no data yet',
+        'Data check #1 2/3, #2 0/3\nPTU #2: no data yet',
       );
     });
 
@@ -135,6 +138,30 @@ void main() {
       expect(s.report, contains('未驗證（已略過）：#2，'));
       expect(s.report, contains('請現場確認 PTU #2 電源與位置'));
       expect(s.report, contains('資料上傳目標：'));
+      // Phase C：「驗證後端」是報告版（中文），不是畫面版。
+      expect(s.report, contains('驗證後端：後端 https://example.invalid'));
+      expect(s.report, isNot(contains('Backend ')));
+      // 上傳後台的安裝報告：report_text、upload_target 都是中文。
+      final body = buildInstallReport(
+        reportId: 'f' * 32,
+        input: FieldInput(
+          state: s,
+          env: const BackendEnvState(environment: BackendEnv.production),
+          directMode: false,
+        ),
+        now: DateTime(2026, 10, 6, 10),
+      )!;
+      expect(body['report_text'], s.report);
+      expect(body['upload_target'], matches(RegExp('^[一-鿿]')));
+      // 英文版的報告用字一個都不該出現。
+      for (final english in [
+        'Upload target',
+        L10n.current.dashboardApi_backend(''),
+        'Install report',
+        'Verified',
+      ]) {
+        expect(body['report_text'], isNot(contains(english.trim())));
+      }
     });
   });
 

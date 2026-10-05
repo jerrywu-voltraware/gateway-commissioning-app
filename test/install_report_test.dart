@@ -367,6 +367,9 @@ void main() {
       await c.online();
       await c.discover();
       await c.configurePtus();
+      // 現場是在選定的後端上登入；排隊項目綁定該後端（origin）。這個 fixture
+      // 的後端環境預設是正式站，先明確選 _base，登入後才送得到同一個後端。
+      c.backendChanged(_base);
       fake.loggedIn = false;
       await c.verify(_base, '');
       await _settle();

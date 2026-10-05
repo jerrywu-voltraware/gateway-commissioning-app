@@ -151,7 +151,7 @@ class FieldHelpSheet extends ConsumerWidget {
                 childrenPadding: const EdgeInsets.only(bottom: 4),
                 expandedAlignment: Alignment.centerLeft,
                 title: Text(
-                  l10n.fieldHelpSheet_details,
+                  l10n.common_details,
                   style: theme.textTheme.bodyMedium,
                 ),
                 children: [

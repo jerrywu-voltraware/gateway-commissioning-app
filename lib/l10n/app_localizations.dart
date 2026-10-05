@@ -152,12 +152,6 @@ abstract class AppLocalizations {
   /// **'更新檔驗證失敗，請重新下載。'**
   String get androidAppUpdateDialog_integrityFailed;
 
-  /// No description provided for @androidAppUpdateDialog_later.
-  ///
-  /// In zh, this message translates to:
-  /// **'稍後'**
-  String get androidAppUpdateDialog_later;
-
   /// No description provided for @androidAppUpdateDialog_latestVersion.
   ///
   /// In zh, this message translates to:
@@ -248,12 +242,6 @@ abstract class AppLocalizations {
   /// **'閘道器忙碌，稍後重試'**
   String get assign_busy;
 
-  /// No description provided for @assign_done.
-  ///
-  /// In zh, this message translates to:
-  /// **'完成'**
-  String get assign_done;
-
   /// No description provided for @assign_doneId.
   ///
   /// In zh, this message translates to:
@@ -289,12 +277,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'藍牙連線失敗，自動重試 {retry}/{retries}'**
   String assign_linkRetry(int retry, int retries);
-
-  /// Joins two PTU names.
-  ///
-  /// In zh, this message translates to:
-  /// **'、'**
-  String get assign_nameSeparator;
 
   /// Step 8 PTU row result after the phone lost the gateway; recognised by assignResultKindOf in every locale.
   ///
@@ -734,12 +716,6 @@ abstract class AppLocalizations {
   /// **'模擬閘道器的 Wi-Fi'**
   String get commissioning_demoWifiLabel;
 
-  /// No description provided for @commissioning_details.
-  ///
-  /// In zh, this message translates to:
-  /// **'詳細資訊'**
-  String get commissioning_details;
-
   /// No description provided for @commissioning_detailsTitle.
   ///
   /// In zh, this message translates to:
@@ -848,12 +824,6 @@ abstract class AppLocalizations {
   /// **'正在把閘道器切到{target}，約 1 分鐘，請留在閘道器旁。'**
   String commissioning_gatewaySwitching(String target);
 
-  /// No description provided for @commissioning_gotIt.
-  ///
-  /// In zh, this message translates to:
-  /// **'知道了'**
-  String get commissioning_gotIt;
-
   /// No description provided for @commissioning_identifyGateway.
   ///
   /// In zh, this message translates to:
@@ -889,12 +859,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'最近確認上傳：{time}'**
   String commissioning_lastUploadConfirmed(String time);
-
-  /// Separator between items of an inline list.
-  ///
-  /// In zh, this message translates to:
-  /// **'、'**
-  String get commissioning_listSeparator;
 
   /// No description provided for @commissioning_liveRssi.
   ///
@@ -1404,12 +1368,6 @@ abstract class AppLocalizations {
   /// **'站點 {site} 的 1–{max} 號閘道器都已被使用，請確認站點 ID 是否正確。'**
   String commissioning_siteNumbersFull(int site, int max);
 
-  /// No description provided for @commissioning_skip.
-  ///
-  /// In zh, this message translates to:
-  /// **'略過'**
-  String get commissioning_skip;
-
   /// No description provided for @commissioning_skipChooseSite.
   ///
   /// In zh, this message translates to:
@@ -1851,7 +1809,7 @@ abstract class AppLocalizations {
   /// No description provided for @commissioning_wifiResetGoHint.
   ///
   /// In zh, this message translates to:
-  /// **'按「是」將前往 Wi-Fi 設定。'**
+  /// **'按「是，重設 Wi-Fi」將前往 Wi-Fi 設定。'**
   String get commissioning_wifiResetGoHint;
 
   /// No description provided for @commissioning_wifiResetLater.
@@ -1920,6 +1878,12 @@ abstract class AppLocalizations {
   /// **'複製'**
   String get common_copy;
 
+  /// Opens or titles the technical details.
+  ///
+  /// In zh, this message translates to:
+  /// **'詳細資訊'**
+  String get common_details;
+
   /// No description provided for @common_done.
   ///
   /// In zh, this message translates to:
@@ -1932,6 +1896,12 @@ abstract class AppLocalizations {
   /// **'・'**
   String get common_dotSeparator;
 
+  /// Dismisses a notice.
+  ///
+  /// In zh, this message translates to:
+  /// **'知道了'**
+  String get common_gotIt;
+
   /// Language name, always written in that language (same text in every locale).
   ///
   /// In zh, this message translates to:
@@ -1943,6 +1913,18 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'繁體中文'**
   String get common_languageZhHant;
+
+  /// No description provided for @common_later.
+  ///
+  /// In zh, this message translates to:
+  /// **'稍後'**
+  String get common_later;
+
+  /// Joins items of a list in a sentence (#1、#2 / #1, #2).
+  ///
+  /// In zh, this message translates to:
+  /// **'、'**
+  String get common_listSeparator;
 
   /// No description provided for @common_loading.
   ///
@@ -1973,6 +1955,12 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'設定'**
   String get common_settings;
+
+  /// No description provided for @common_skip.
+  ///
+  /// In zh, this message translates to:
+  /// **'略過'**
+  String get common_skip;
 
   /// Network request timed out; also shown inside [endpoint · detail] brackets.
   ///
@@ -2788,6 +2776,12 @@ abstract class AppLocalizations {
   /// **'連線失敗紀錄：{log}'**
   String controller_connectLogDetail(String log);
 
+  /// One connect-failure entry (attempt number and technical error type). The Chinese text is also uploaded as field diagnostics connect_log.
+  ///
+  /// In zh, this message translates to:
+  /// **'第 {attempt} 次：{type}'**
+  String controller_connectLogLine(int attempt, String type);
+
   /// No description provided for @controller_connectedHasStation.
   ///
   /// In zh, this message translates to:
@@ -2845,7 +2839,7 @@ abstract class AppLocalizations {
   /// No description provided for @controller_deferConfirm.
   ///
   /// In zh, this message translates to:
-  /// **'閘道器會照常完成配置：加入運作、恢復上傳，維持一對一模式與目前門檻（{threshold} dBm），但不綁定 PTU。\n本樁 PTU 上電後，閘道器會自動連上它；綁定需之後到現場按〔辨識〕確認。'**
+  /// **'閘道器會照常完成配置：加入運作、恢復上傳，維持一對一模式與目前門檻（{threshold} dBm），但不綁定 PTU。\n本樁 PTU 上電後，閘道器會自動連上它；綁定需之後到現場按〔辨識並綁定〕確認。'**
   String controller_deferConfirm(int threshold);
 
   /// No description provided for @controller_deferConfirmTitle.
@@ -2875,7 +2869,7 @@ abstract class AppLocalizations {
   /// No description provided for @controller_deferredDone.
   ///
   /// In zh, this message translates to:
-  /// **'本樁 PTU 尚未連線。PTU 上電後會自動連線，之後到現場按〔辨識〕確認綁定。'**
+  /// **'本樁 PTU 尚未連線。PTU 上電後會自動連線，之後到現場按〔辨識並綁定〕確認綁定。'**
   String get controller_deferredDone;
 
   /// No description provided for @controller_deferredDoneTitle.
@@ -3015,12 +3009,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'正在處理，完成後再按〔完成〕。'**
   String get controller_doneBusy;
-
-  /// No description provided for @controller_doneFinishLabel.
-  ///
-  /// In zh, this message translates to:
-  /// **'完成'**
-  String get controller_doneFinishLabel;
 
   /// No description provided for @controller_doneNextLabel.
   ///
@@ -3207,12 +3195,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'名單沒有寫入，指派照常進行'**
   String get controller_listNotWritten;
-
-  /// Separator between list items (PTU numbers) on screen.
-  ///
-  /// In zh, this message translates to:
-  /// **'、'**
-  String get controller_listSeparator;
 
   /// No description provided for @controller_loginRun.
   ///
@@ -4559,12 +4541,6 @@ abstract class AppLocalizations {
   /// **'請先在第 7 步按「辨識此樁」確認本樁 PTU，再校正門檻。'**
   String get directCalibration_needsOwn;
 
-  /// Joins the named neighbour MAC segments.
-  ///
-  /// In zh, this message translates to:
-  /// **'、'**
-  String get directCalibration_neighborSeparator;
-
   /// No description provided for @directCalibration_neighborsAndMore.
   ///
   /// In zh, this message translates to:
@@ -5561,12 +5537,6 @@ abstract class AppLocalizations {
   /// **'示範模式不會傳送，請直接唸下面的資訊。'**
   String get fieldHelpSheet_demo;
 
-  /// No description provided for @fieldHelpSheet_details.
-  ///
-  /// In zh, this message translates to:
-  /// **'詳細資訊'**
-  String get fieldHelpSheet_details;
-
   /// No description provided for @fieldHelpSheet_label.
   ///
   /// In zh, this message translates to:
@@ -5644,18 +5614,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'後台尚未支援（請更新後台）'**
   String get fieldReport_backendUnsupported;
-
-  /// No description provided for @fieldReport_fwUnknown.
-  ///
-  /// In zh, this message translates to:
-  /// **'未知'**
-  String get fieldReport_fwUnknown;
-
-  /// Recognition only, never shown: the start of the controller's 'no gateway found after a scan' message in this language (sessionRescueCode matches every language). Keep in sync with that controller message.
-  ///
-  /// In zh, this message translates to:
-  /// **'未找到閘道器'**
-  String get fieldReport_gatewayNotFoundPrefix;
 
   /// No description provided for @fieldReport_helpCode.
   ///
@@ -6871,12 +6829,6 @@ abstract class AppLocalizations {
   /// **'閘道器 {gateway} 目前在線上，請先把舊機斷電。'**
   String gatewaySwapSheet_online(int gateway);
 
-  /// No description provided for @gatewaySwapSheet_onlineOk.
-  ///
-  /// In zh, this message translates to:
-  /// **'知道了'**
-  String get gatewaySwapSheet_onlineOk;
-
   /// No description provided for @gatewaySwapSheet_rowTitle.
   ///
   /// In zh, this message translates to:
@@ -7543,12 +7495,6 @@ abstract class AppLocalizations {
   /// **'此閘道器目前上傳到本地測試站，出貨前請切回正式站。'**
   String get mqttTarget_shipWarning;
 
-  /// Firmware version not read.
-  ///
-  /// In zh, this message translates to:
-  /// **'未知'**
-  String get networkCheck_fwUnknown;
-
   /// No description provided for @networkCheck_reuseNoWifi.
   ///
   /// In zh, this message translates to:
@@ -7602,12 +7548,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'確認資料上傳'**
   String get networkCheck_stepConfirmUpload;
-
-  /// No description provided for @networkCheck_stepDone.
-  ///
-  /// In zh, this message translates to:
-  /// **'完成'**
-  String get networkCheck_stepDone;
 
   /// No description provided for @networkCheck_stepFindGateway.
   ///
@@ -8951,12 +8891,6 @@ abstract class AppLocalizations {
   /// **'{count, plural, other{附近有 {count} 台編號相同的其他 PTU，已被閘道器忽略（不會連線）。}}'**
   String starAllowList_foreignIgnored(int count);
 
-  /// Joins PTU numbers (#1、#2).
-  ///
-  /// In zh, this message translates to:
-  /// **'、'**
-  String get starAllowList_idSeparator;
-
   /// No description provided for @starAllowList_reselectHint.
   ///
   /// In zh, this message translates to:
@@ -9226,12 +9160,6 @@ abstract class AppLocalizations {
   /// **'離線'**
   String get verifyDiagnosis_reasonOffline;
 
-  /// Joins several reasons of one PTU on one line.
-  ///
-  /// In zh, this message translates to:
-  /// **'、'**
-  String get verifyDiagnosis_reasonSeparator;
-
   /// No description provided for @verifyDiagnosis_roundOk.
   ///
   /// In zh, this message translates to:
@@ -9333,12 +9261,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'收到 3 筆正常資料就算完成'**
   String get verifyLivePanel_goal;
-
-  /// Joins reasons or PTU names in a list (en: comma and space).
-  ///
-  /// In zh, this message translates to:
-  /// **'、'**
-  String get verifyLivePanel_listSeparator;
 
   /// No description provided for @verifyLivePanel_pace.
   ///

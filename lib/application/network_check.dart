@@ -33,7 +33,7 @@ List<String> stepLabelsIn(AppLocalizations l10n) => [
   l10n.networkCheck_stepChoosePtu,
   l10n.networkCheck_stepStartMonitoring,
   l10n.networkCheck_stepVerifyData,
-  l10n.networkCheck_stepDone,
+  l10n.common_done,
 ];
 
 /// The 「not sure」 mark of a [CheckLine] (a symbol, not a word).
@@ -144,7 +144,7 @@ NetworkCheck networkCheck({
     wifi = CheckLine(
       _unsureMark,
       l10n.networkCheck_wifiUnsupported(
-        '${config['fw_version'] ?? l10n.networkCheck_fwUnknown}',
+        '${config['fw_version'] ?? l10n.common_unknown}',
       ),
       StatusTone.neutral,
     );

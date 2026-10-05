@@ -15,7 +15,6 @@
   "androidAppUpdateDialog_verifying": "Verifying the update file…",
   "androidAppUpdateDialog_downloading": "Downloading {percent}%",
   "androidAppUpdateDialog_cancelDownload": "Cancel download",
-  "androidAppUpdateDialog_later": "Later",
   "androidAppUpdateDialog_continueInstall": "Continue install",
   "androidAppUpdateDialog_redownload": "Download again",
   "androidAppUpdateDialog_updateNow": "Update now"

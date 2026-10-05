@@ -1,6 +1,6 @@
 {
   "@@locale": "en",
   "gatewayProximity_nearest": "Nearest",
-  "gatewayProximity_nearestHint": "This pile's gateway usually has the strongest signal. If unsure, tap it, connect, then tap the bulb to see which one blinks",
+  "gatewayProximity_nearestHint": "This charger's gateway usually has the strongest signal. If unsure, tap it, connect, then tap the bulb to see which one blinks",
   "gatewayProximity_closeHint": "Two gateways are about equally close. Connect and tap the bulb to confirm"
 }

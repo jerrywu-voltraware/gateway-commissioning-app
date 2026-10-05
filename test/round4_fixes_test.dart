@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'link_loss_test.dart'
     show DroppingLink, manualRelinkOnly, pumpApp, pumpWithoutCredential, ready;
+import 'support/finders.dart';
 
 /// Firmware 1.7.15 style ack. [writeTo] makes the gateway write another PTU
 /// than requested (the round-4 mix-up); [ackOverride] replaces ack fields;
@@ -164,8 +165,8 @@ void main() {
       expect(container.read(commissionProvider).step, 6);
       // A PTU without a number (the field case): verify fails at once.
       container.read(commissionProvider).ptus.last['device_number'] = 0;
-      await tester.ensureVisible(find.text('開始資料驗證'));
-      await tester.tap(find.text('開始資料驗證'));
+      await tester.ensureVisible(buttonText('開始資料驗證'));
+      await tester.tap(buttonText('開始資料驗證'));
       await settle(tester, container, (s) => !s.busy);
       await tester.pumpAndSettle();
       final feedback = find.byKey(const Key('verify-feedback'));

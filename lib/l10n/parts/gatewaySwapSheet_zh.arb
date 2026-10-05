@@ -9,14 +9,19 @@
   "gatewaySwapSheet_assignmentHintTail": "（取代舊機 {tail}）",
   "@gatewaySwapSheet_assignmentHintTail": {
     "placeholders": {
-      "tail": {"type": "String", "example": "…70F0"}
+      "tail": {
+        "type": "String",
+        "example": "…70F0"
+      }
     }
   },
   "gatewaySwapSheet_needsNetwork": "換機需要連上網路",
   "gatewaySwapSheet_sheetTitle": "選擇要取代的舊機（站 {site}）",
   "@gatewaySwapSheet_sheetTitle": {
     "placeholders": {
-      "site": {"type": "int"}
+      "site": {
+        "type": "int"
+      }
     }
   },
   "gatewaySwapSheet_sheetHint": "只列出本站目前離線的閘道器；舊機必須已拆除或斷電。",
@@ -24,7 +29,9 @@
   "gatewaySwapSheet_rowTitle": "閘道器 {gateway}",
   "@gatewaySwapSheet_rowTitle": {
     "placeholders": {
-      "gateway": {"type": "int"}
+      "gateway": {
+        "type": "int"
+      }
     }
   },
   "gatewaySwapSheet_noRecord": "沒有上線紀錄",
@@ -32,31 +39,46 @@
   "@gatewaySwapSheet_lastSeen": {
     "description": "age is an already formatted duration (e.g. 3 小時 / 3 h).",
     "placeholders": {
-      "age": {"type": "String", "example": "3 小時"}
+      "age": {
+        "type": "String",
+        "example": "3 小時"
+      }
     }
   },
   "gatewaySwapSheet_confirmTitle": "確定換機？",
   "gatewaySwapSheet_confirmText": "這台將接手 站 {site} · 閘道器 {gateway}。舊機必須已拆除或斷電。",
   "@gatewaySwapSheet_confirmText": {
     "placeholders": {
-      "site": {"type": "int"},
-      "gateway": {"type": "int"}
+      "site": {
+        "type": "int"
+      },
+      "gateway": {
+        "type": "int"
+      }
     }
   },
   "gatewaySwapSheet_confirmTextTail": "這台將接手 站 {site} · 閘道器 {gateway}。舊機（{tail}）必須已拆除或斷電。",
   "@gatewaySwapSheet_confirmTextTail": {
     "placeholders": {
-      "site": {"type": "int"},
-      "gateway": {"type": "int"},
-      "tail": {"type": "String", "example": "…70F0"}
+      "site": {
+        "type": "int"
+      },
+      "gateway": {
+        "type": "int"
+      },
+      "tail": {
+        "type": "String",
+        "example": "…70F0"
+      }
     }
   },
   "gatewaySwapSheet_confirmOk": "確定換機",
   "gatewaySwapSheet_online": "閘道器 {gateway} 目前在線上，請先把舊機斷電。",
   "@gatewaySwapSheet_online": {
     "placeholders": {
-      "gateway": {"type": "int"}
+      "gateway": {
+        "type": "int"
+      }
     }
-  },
-  "gatewaySwapSheet_onlineOk": "知道了"
+  }
 }

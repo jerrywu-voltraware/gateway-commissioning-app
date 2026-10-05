@@ -146,7 +146,7 @@ String assignStatusText(
             assignResultKindOf(result) != AssignResultKind.assigning
         ? L10n.current.assign_doneResult(result)
         : status.id == null
-        ? L10n.current.assign_done
+        ? L10n.current.common_done
         : L10n.current.assign_doneId(status.id!),
   AssignPhase.failed =>
     failure == null || failure.isEmpty
@@ -202,7 +202,7 @@ String _retryingNamed(
   final names = retrying
       .take(2)
       .map((e) => name(e.key))
-      .join(l10n.assign_nameSeparator);
+      .join(l10n.common_listSeparator);
   return retrying.length == 2
       ? l10n.assign_retryingTwo(names)
       : l10n.assign_retryingMany(names, retrying.length);

@@ -10,6 +10,9 @@ import 'package:gateway_commissioning/core/mqtt_target.dart';
 import 'package:gateway_commissioning/core/protocol.dart';
 import 'package:gateway_commissioning/data/dashboard_api.dart';
 import 'package:gateway_commissioning/data/demo_system.dart';
+import 'package:gateway_commissioning/l10n/l10n.dart';
+
+import 'support/l10n.dart';
 
 /// Demo backend whose step-7 data never becomes healthy.
 class StaleBackend extends DemoSystem {
@@ -304,6 +307,24 @@ void main() {
         expect(error, isNot(contains('其他後端環境')));
       },
     );
+    // Phase C（docs/i18n.md §6）：診斷顯示在畫面，後端名稱跟著畫面語言
+    // （安裝報告的「驗證後端」另以中文重算）。
+    test('English: the diagnosis names the backend in English', () async {
+      useLanguage(AppLanguage.en);
+      final fake = StaleBackend()..noGatewayData = true;
+      final (container, c) = await _atVerify(fake);
+      addTearDown(container.dispose);
+      await c.verify('http://192.168.1.20:8000', '');
+      final error = container.read(commissionProvider).error!;
+      expect(
+        error,
+        contains(
+          'not reaching the connected LAN / local backend '
+          'http://192.168.1.20:8000',
+        ),
+      );
+      expect(error, isNot(contains('區域網路')));
+    });
     test(
       '404 gateway_not_found with a matching target explains MQTT',
       () async {

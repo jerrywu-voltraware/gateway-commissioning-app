@@ -1,7 +1,7 @@
 {
   "@@locale": "en",
   "rescueCode_phoneBtOff": "Phone Bluetooth is off",
-  "rescueCode_phonePermission": "APP lacks Bluetooth / Location permission",
+  "rescueCode_phonePermission": "The app lacks Bluetooth / Location permission",
   "rescueCode_gwNotFound": "Phone cannot find the gateway",
   "rescueCode_bleConnectFail": "Phone cannot connect to the gateway (Bluetooth error)",
   "rescueCode_bleLinkDrop": "Phone lost its Bluetooth link to the gateway",
@@ -20,7 +20,7 @@
   "rescueCode_wifiUnknown": "Wi-Fi not connected (reason unknown)",
   "rescueCode_uploadNotStarted": "Wi-Fi connected, but no data has reached the back office yet",
   "rescueCode_uploadTarget": "Gateway sends data to the wrong place (not the phone's back office)",
-  "rescueCode_identityConflict": "Station number already used by another gateway",
+  "rescueCode_identityConflict": "Site ID already used by another gateway",
   "rescueCode_identityReplace": "Replacing the old unit did not finish",
   "rescueCode_ptuNoneFound": "No PTU found in the scan",
   "rescueCode_ptuConnectFail": "Gateway cannot connect to the PTU",
@@ -30,10 +30,10 @@
   "rescueCode_directPick": "One-to-one PTU pick failed",
   "rescueCode_monitorUnconfirmed": "Gateway monitoring not yet confirmed back on",
   "rescueCode_verifyIncomplete": "Some PTU data has not arrived",
-  "rescueCode_backendDown": "APP cannot reach the back office",
+  "rescueCode_backendDown": "The app cannot reach the back office",
   "rescueCode_backendAuth": "Back office login expired",
   "rescueCode_gwNotInBackend": "Back office has no data for this gateway",
-  "rescueCode_appUnexpected": "Unexpected APP error",
+  "rescueCode_appUnexpected": "Unexpected app error",
   "rescueCode_stepStuck": "Stuck on one step too long",
   "rescueCode_helpOnly": "No error on screen; asking for help"
 }

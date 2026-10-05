@@ -31,7 +31,6 @@
   "androidAppUpdateDialog_installFailed": "Can't open the system installer. Return to the app and retry.",
   "androidAppUpdateDialog_installerOpened": "Confirm the install on the system screen. If you cancelled, tap [Continue install] again.",
   "androidAppUpdateDialog_integrityFailed": "Update file check failed. Download it again.",
-  "androidAppUpdateDialog_later": "Later",
   "androidAppUpdateDialog_latestVersion": "Latest version: {name} ({code})",
   "@androidAppUpdateDialog_latestVersion": {
     "placeholders": {
@@ -77,7 +76,6 @@
   },
   "assign_autoHint": "Handled automatically. Failures are retried; nothing to do.",
   "assign_busy": "Gateway busy, retrying shortly",
-  "assign_done": "Done",
   "assign_doneId": "Done · #{id}",
   "@assign_doneId": {
     "placeholders": {
@@ -123,10 +121,6 @@
         "type": "int"
       }
     }
-  },
-  "assign_nameSeparator": ", ",
-  "@assign_nameSeparator": {
-    "description": "Joins two PTU names."
   },
   "assign_notAssignedLink": "Not assigned (phone lost the gateway)",
   "@assign_notAssignedLink": {
@@ -225,7 +219,7 @@
     "description": "Step 8 PTU row status: queued, not started yet."
   },
   "autoChecklist_linkLost": "Bluetooth lost; can't confirm",
-  "autoChecklist_oldFirmwareLater": "This firmware can't report; checked at the final data verification",
+  "autoChecklist_oldFirmwareLater": "This firmware can't report; checked in the final data check",
   "@autoChecklist_oldFirmwareLater": {
     "description": "Checklist item note (Wi-Fi / back office) for firmware that cannot report its network state."
   },
@@ -266,7 +260,7 @@
   "@backendEnvironment_labelProduction": {
     "description": "The production back office (environment name / where data goes)."
   },
-  "backendEnvironment_localUnavailable": "The release APP can't use the local test site. Install the local test APK instead.",
+  "backendEnvironment_localUnavailable": "The release app can't use the local test site. Install the local test APK instead.",
   "@backendEnvironment_localUnavailable": {
     "description": "Why the local test backend cannot be used in a prod / prodtest build."
   },
@@ -291,7 +285,7 @@
   },
   "commissioning_advancedCheck": "Advanced checks",
   "commissioning_appVersion": "App version",
-  "commissioning_archivedConfirmText": "Site {site} / gateway {gateway} was removed (archived) in the back office. Its heartbeats are not recorded, so commissioning stops at \"Confirm the gateway is online\". Adding it back resumes recording; its history is kept.",
+  "commissioning_archivedConfirmText": "Site {site} / gateway {gateway} was removed (archived) in the back office. Its heartbeats are not recorded, so setup stops at \"Confirm the gateway is online\". Adding it back resumes recording; its history is kept.",
   "@commissioning_archivedConfirmText": {
     "placeholders": {
       "site": {
@@ -303,7 +297,7 @@
     }
   },
   "commissioning_archivedConfirmTitle": "This gateway was removed (archived) in the back office. Add it back?",
-  "commissioning_archivedRejoinLabel": "Add back and continue",
+  "commissioning_archivedRejoinLabel": "Rejoin and continue",
   "commissioning_assignFailedCount": "{count, plural, =1{1 PTU failed to assign:} other{{count} PTUs failed to assign:}}",
   "@commissioning_assignFailedCount": {
     "placeholders": {
@@ -351,7 +345,7 @@
     }
   },
   "commissioning_backToStationChoice": "Back to site choice",
-  "commissioning_backendUrl": "Back office URL",
+  "commissioning_backendUrl": "Backend URL",
   "commissioning_boundPtu": "Bound PTU",
   "commissioning_busyWaitUpTo": "Working · up to {seconds} s",
   "@commissioning_busyWaitUpTo": {
@@ -383,7 +377,7 @@
   },
   "commissioning_confirmTargetHint": "Confirm the upload destination",
   "commissioning_confirmUploadTitle": "Confirm data upload",
-  "commissioning_continueCommissioning": "Keep going",
+  "commissioning_continueCommissioning": "Continue setup",
   "commissioning_copied": "Copied; paste to share",
   "commissioning_copyReport": "Copy report",
   "commissioning_currentMode": "Current mode: {mode}",
@@ -399,10 +393,9 @@
   "commissioning_demoWifiConnecting": "Just booted, connecting",
   "commissioning_demoWifiDisconnected": "Cannot connect (Wi-Fi out of range)",
   "commissioning_demoWifiLabel": "Simulated gateway Wi-Fi",
-  "commissioning_details": "Details",
   "commissioning_detailsTitle": "Device and connection info",
   "commissioning_directPickTaskTitle": "Identify the charger in front of you, then start",
-  "commissioning_directSettings": "Direct mode settings",
+  "commissioning_directSettings": "One-to-one advanced settings",
   "commissioning_doneLabelHead": "Label the enclosure:",
   "commissioning_doneLabelHint": "The back office uses this label to find this gateway",
   "commissioning_doneLabelText": "Label the enclosure: {label}",
@@ -422,8 +415,8 @@
       }
     }
   },
-  "commissioning_doneTitle": "Commissioning done",
-  "commissioning_doneTitleDemo": "Demo commissioning done",
+  "commissioning_doneTitle": "Setup complete",
+  "commissioning_doneTitleDemo": "Demo setup complete",
   "commissioning_end": "End",
   "commissioning_envSwitched": "Switched to {env}.",
   "@commissioning_envSwitched": {
@@ -476,7 +469,6 @@
       }
     }
   },
-  "commissioning_gotIt": "Got it",
   "commissioning_identifyGateway": "Identify this one · {seconds} s",
   "@commissioning_identifyGateway": {
     "placeholders": {
@@ -508,10 +500,6 @@
       }
     }
   },
-  "commissioning_listSeparator": ", ",
-  "@commissioning_listSeparator": {
-    "description": "Separator between items of an inline list."
-  },
   "commissioning_liveRssi": "Live RSSI · every 5 s (order kept)",
   "commissioning_localHint": "Phone and PC must be on the same Wi-Fi. If the PC IP changes, edit it above or tap [Auto find].",
   "commissioning_loginAndCheck": "Log in and check data",
@@ -527,7 +515,7 @@
     }
   },
   "commissioning_networkCheckTitle": "Gateway network check",
-  "commissioning_newSiteConfirmText": "The back office has no gateway for site {site} yet. Check the number; continue only if it is a new site.",
+  "commissioning_newSiteConfirmText": "The back office has no gateway for site {site} yet. Check the site ID; continue only if it is a new site.",
   "@commissioning_newSiteConfirmText": {
     "placeholders": {
       "site": {
@@ -632,12 +620,12 @@
     }
   },
   "commissioning_numberTakenTitle": "Gateway number already in use",
-  "commissioning_offlineFirst": "Set up offline, verify data later",
+  "commissioning_offlineFirst": "Set up offline, check data later",
   "commissioning_offlineNumber": " (numbered offline; checked again once online)",
   "@commissioning_offlineNumber": {
     "description": "Appended to assignmentLine."
   },
-  "commissioning_offlineNumberNoList": " (site gateway list unavailable; 1 for now, check once online)",
+  "commissioning_offlineNumberNoList": " (site gateway list unavailable; using 1 for now, check once online)",
   "@commissioning_offlineNumberNoList": {
     "description": "Appended to assignmentLine."
   },
@@ -645,7 +633,7 @@
   "commissioning_oneToOne": "One-to-one",
   "commissioning_onlineAuto": "Confirming online automatically, please wait.",
   "commissioning_onlineFailed": "Check not passed. Fix as advised, then tap the button below to check again.",
-  "commissioning_onlineIntro": "Confirm the gateway is on Wi-Fi and the back office keeps receiving heartbeats.",
+  "commissioning_onlineIntro": "Confirm the gateway is on Wi-Fi and the backend keeps receiving heartbeats.",
   "commissioning_onlineOffline": "Offline setup: confirm online now, or verify later.",
   "commissioning_onlineRunning": "Checking the back office receives heartbeats; PTUs are searched next. Please wait.",
   "commissioning_onlineRunningTaskTitle": "Confirming the gateway is online, please wait",
@@ -664,7 +652,7 @@
     }
   },
   "commissioning_ptuOtherGateway": "Belongs to another gateway",
-  "commissioning_ptuOutOfRange": "Number outside this gateway range; owner not confirmed",
+  "commissioning_ptuOutOfRange": "Number outside this gateway's range; owner unconfirmed",
   "commissioning_ptusPerGateway": "PTUs per gateway",
   "commissioning_recheck": "Check again",
   "commissioning_recheckIntro": "Wi-Fi updated. Once the gateway uploads, confirm the site (keep it or set a new one).",
@@ -676,8 +664,8 @@
   "commissioning_reconnectVerify": "Reconnect and verify",
   "commissioning_reenter": "Re-enter",
   "commissioning_refreshHealth": "Refresh health",
-  "commissioning_rejoinHintText": "This gateway was removed (archived) in the back office; heartbeats are not recorded. Tap [Add back] below to continue confirming online.",
-  "commissioning_rejoinLabel": "Add back",
+  "commissioning_rejoinHintText": "This gateway was removed (archived) in the back office, so its heartbeats are not recorded. Tap [Rejoin] below to continue the online check.",
+  "commissioning_rejoinLabel": "Rejoin",
   "commissioning_replaceFailedText": "Replacing the old gateway failed. Check the network and retry",
   "commissioning_replaceOldKeepNumber": "Replace old (keep this number)",
   "commissioning_replaceOldLabel": "Replace old",
@@ -696,7 +684,7 @@
   "commissioning_reportTitle": "Install report",
   "commissioning_reportTitleDemo": "Demo install report",
   "commissioning_rescanPtus": "Rescan PTUs from the gateway",
-  "commissioning_resetInclude": "Reset and include",
+  "commissioning_resetInclude": "Reset and add",
   "commissioning_resetWifi": "Reset Wi-Fi",
   "commissioning_restart": "Start over",
   "commissioning_resumeMissingKey": "{missing}.\n{resume}",
@@ -720,7 +708,7 @@
     }
   },
   "commissioning_retryReconnect": "Retry reconnect",
-  "commissioning_reuseBlockedTapAbove": "To use this site, first tap \"{button}\" above (now: {reason}).",
+  "commissioning_reuseBlockedTapAbove": "To use this site, first tap [{button}] above (now: {reason}).",
   "@commissioning_reuseBlockedTapAbove": {
     "placeholders": {
       "button": {
@@ -731,7 +719,7 @@
       }
     }
   },
-  "commissioning_reuseBlockedWifi": "To use this site, the gateway must be on Wi-Fi and uploading (now: {reason}). Tap \"{otherWifi}\" or \"{review}\".",
+  "commissioning_reuseBlockedWifi": "To use this site, the gateway must be on Wi-Fi and uploading (now: {reason}). Tap [{otherWifi}] or [{review}].",
   "@commissioning_reuseBlockedWifi": {
     "placeholders": {
       "reason": {
@@ -769,8 +757,8 @@
       }
     }
   },
-  "commissioning_scanHelpDirect": "The gateway scans nearby PTUs and sends the list to the phone over Bluetooth. Direct mode: the strongest one is selected automatically. RSSI is the gateway-to-PTU signal; unconnected devices show the scan value. \"Last\" means paused or stale; \"Cached\" means the firmware gave no read time. Firmware 1.7.5+ measures during setup; RSSI — means no valid reading yet.",
-  "commissioning_scanHelpDirectFlow": "The gateway scans nearby PTUs and sends the list to the phone over Bluetooth. Direct mode: the gateway picks the nearest PTU itself (strongest within the threshold, or the bound one); this list only shows its pick. Use \"Identify this charger\" to check it is the one in front of you; if not, tap \"Not this one?\" to pick again. RSSI is the gateway-to-PTU signal; unconnected devices show the scan value. \"Last\" means paused or stale; \"Cached\" means the firmware gave no read time. Firmware 1.7.5+ measures during setup; RSSI — means no valid reading yet.",
+  "commissioning_scanHelpDirect": "The gateway scans nearby PTUs and sends the list to the phone over Bluetooth. One-to-one mode: the strongest one is selected automatically. RSSI is the gateway-to-PTU signal; unconnected devices show the scan value. \"Last\" means paused or stale; \"Cached\" means the firmware gave no read time. Firmware 1.7.5+ measures during setup; RSSI — means no valid reading yet.",
+  "commissioning_scanHelpDirectFlow": "The gateway scans nearby PTUs and sends the list to the phone over Bluetooth. One-to-one mode: the gateway picks the nearest PTU itself (strongest within the threshold, or the bound one); this list only shows its pick. Use [Identify this charger] to check it is the one in front of you; if not, tap [Not this one?] to pick again. RSSI is the gateway-to-PTU signal; unconnected devices show the scan value. \"Last\" means paused or stale; \"Cached\" means the firmware gave no read time. Firmware 1.7.5+ measures during setup; RSSI — means no valid reading yet.",
   "commissioning_scanHelpStar": "The gateway scans nearby PTUs and sends the list to the phone over Bluetooth. Select up to {max}. RSSI is the gateway-to-PTU signal; unconnected devices show the scan value. \"Last\" means paused or stale; \"Cached\" means the firmware gave no read time. Firmware 1.7.5+ measures during setup; RSSI — means no valid reading yet.",
   "@commissioning_scanHelpStar": {
     "placeholders": {
@@ -783,7 +771,7 @@
   "commissioning_setWifi": "Set up Wi-Fi",
   "commissioning_shareFailed": "Cannot open sharing; copy the report instead.",
   "commissioning_shareReport": "Share report",
-  "commissioning_siteFieldLabel": "Site (1–65535)",
+  "commissioning_siteFieldLabel": "Site ID (1–65535)",
   "commissioning_siteN": "Site {site}",
   "@commissioning_siteN": {
     "placeholders": {
@@ -803,14 +791,13 @@
       }
     }
   },
-  "commissioning_skip": "Skip",
   "commissioning_skipChooseSite": "Choose the site first (keeping it needs a working network)",
   "commissioning_skipNewNote": "⚠ The gateway network is not confirmed yet. Upload is checked again after the new site is set, and in the final \"Verify data\" step.",
   "commissioning_skipNewSite": "Set up a new site anyway (confirm upload later)",
   "commissioning_skipOfflineNewSite": "Set up a new site offline (confirm upload later)",
   "commissioning_skipOnline": "Skip for now, set up PTUs",
   "commissioning_skipOnlineHint": "If skipped, the final \"Verify data\" step still checks the upload.",
-  "commissioning_skipStationNote": "Without passing the network check the current site cannot be kept; reset Wi-Fi or set a new site.",
+  "commissioning_skipStationNote": "The current site can't be kept until the network check passes. Reset Wi-Fi or set a new site.",
   "commissioning_skipThisPtu": "Skip this one",
   "commissioning_sortBySignal": "Sort by signal",
   "commissioning_starAssignTaskTitle": "Configuring PTUs and starting monitoring",
@@ -828,7 +815,7 @@
   "commissioning_startPowerHint": "First make sure the site Wi-Fi router and devices are powered on.",
   "commissioning_startTaskTitle": "Log in to the back office to start",
   "commissioning_startVerify": "Start data check",
-  "commissioning_stationFull": "This site is full (1–{max} all in use). Check the site ID or use \"{swap}\".",
+  "commissioning_stationFull": "This site is full (1–{max} all in use). Check the site ID or use [{swap}].",
   "@commissioning_stationFull": {
     "placeholders": {
       "max": {
@@ -841,7 +828,7 @@
   },
   "commissioning_stationHintBlocked": "Use another site, or fix the tip above to keep this one",
   "commissioning_stationHintCanUse": "Choose: use this site, or another site",
-  "commissioning_stationInputTitle": "Enter the site for this gateway",
+  "commissioning_stationInputTitle": "Enter the site ID for this gateway",
   "commissioning_stationKeep": "Keep site {site} / gateway {gateway}; site data stays as is.",
   "@commissioning_stationKeep": {
     "placeholders": {
@@ -853,7 +840,7 @@
       }
     }
   },
-  "commissioning_stationQuestionTitle": "Current site is {site}. Commission this gateway here?",
+  "commissioning_stationQuestionTitle": "Current site ID is {site}. Set up this gateway here?",
   "@commissioning_stationQuestionTitle": {
     "placeholders": {
       "site": {
@@ -878,9 +865,9 @@
       }
     }
   },
-  "commissioning_targetTaskTitle": "Point the gateway data to this back office",
+  "commissioning_targetTaskTitle": "Have the gateway send data to this back office",
   "commissioning_testModeTaskTitle": "Gateway is in test mode. Switch it back to normal first",
-  "commissioning_topologyAskDirectBound": "This gateway is in one-to-one mode (bound to PTU {mac}). Change it to star?\n\n[Keep one-to-one]: the APP switches to direct mode; the gateway settings stay.",
+  "commissioning_topologyAskDirectBound": "This gateway is in one-to-one mode (bound to PTU {mac}). Change it to star?\n\n[Keep one-to-one]: the app switches to one-to-one mode; the gateway settings stay.",
   "@commissioning_topologyAskDirectBound": {
     "placeholders": {
       "mac": {
@@ -889,8 +876,8 @@
     }
   },
   "commissioning_topologyAskDirectTitle": "This gateway is in one-to-one mode",
-  "commissioning_topologyAskDirectUnbound": "This gateway is in one-to-one mode (no PTU bound). Change it to star?\n\n[Keep one-to-one]: the APP switches to direct mode; the gateway settings stay.",
-  "commissioning_topologyAskStarText": "This gateway is in star mode (up to {max} PTUs). Change it to one-to-one?\n\n[Keep star]: the APP switches to star mode; the gateway settings stay.",
+  "commissioning_topologyAskDirectUnbound": "This gateway is in one-to-one mode (no PTU bound). Change it to star?\n\n[Keep one-to-one]: the app switches to one-to-one mode; the gateway settings stay.",
+  "commissioning_topologyAskStarText": "This gateway is in star mode (up to {max} PTUs). Change it to one-to-one?\n\n[Keep star]: the app switches to star mode; the gateway settings stay.",
   "@commissioning_topologyAskStarText": {
     "placeholders": {
       "max": {
@@ -904,7 +891,7 @@
   "commissioning_topologyChangeToStar": "Change to star",
   "commissioning_topologyKeepDirect": "Keep one-to-one",
   "commissioning_topologyKeepStar": "Keep star",
-  "commissioning_topologyKeptText": "The APP now uses {mode}; the gateway keeps its mode",
+  "commissioning_topologyKeptText": "The app now uses {mode}; the gateway keeps its mode",
   "@commissioning_topologyKeptText": {
     "placeholders": {
       "mode": {
@@ -916,7 +903,7 @@
   "commissioning_topologyMenuDirect": "Direct · one-to-one",
   "commissioning_topologyMenuStar": "Star · one-to-many",
   "commissioning_topologyTitle": "Connection mode",
-  "commissioning_updateAfterHome": "Available on the home page when no commissioning runs",
+  "commissioning_updateAfterHome": "Available on the home page when no setup is running",
   "commissioning_updateCheckFailed": "Cannot check for updates now. Check the network and retry",
   "commissioning_updateLatest": "You have the latest version",
   "commissioning_uploadBadTaskTitle": "Gateway is not uploading yet. Follow the tips below",
@@ -1013,8 +1000,8 @@
   },
   "commissioning_wifi24Only": "The gateway works with 2.4 GHz Wi-Fi only; 5 GHz networks do not connect.",
   "commissioning_wifiBackKeep": "Keep Wi-Fi, go back",
-  "commissioning_wifiBackSite": "Back to edit site",
-  "commissioning_wifiFirstPageText": "Connect the gateway to Wi-Fi first; set the site once the network works.",
+  "commissioning_wifiBackSite": "Back to edit site ID",
+  "commissioning_wifiFirstPageText": "Connect the gateway to Wi-Fi first; set the site ID once the network works.",
   "commissioning_wifiOnlyKeep": "Keep site {site} / gateway {gateway}; update Wi-Fi only.",
   "@commissioning_wifiOnlyKeep": {
     "placeholders": {
@@ -1029,7 +1016,7 @@
   "commissioning_wifiPasswordNotSaved": "Wi-Fi connected, but the password could not be saved; enter it again next time.",
   "commissioning_wifiProblemTaskTitle": "Gateway is not on Wi-Fi. Set up Wi-Fi",
   "commissioning_wifiResetConfirm": "Yes, reset Wi-Fi",
-  "commissioning_wifiResetGoHint": "Tap [Yes] to open the Wi-Fi setup.",
+  "commissioning_wifiResetGoHint": "Tap [Yes, reset Wi-Fi] to open the Wi-Fi setup.",
   "commissioning_wifiResetLater": "Not now",
   "commissioning_wifiResetTitle": "Reset Wi-Fi?",
   "commissioning_wifiSavedWaiting": "Wi-Fi saved. Waiting for the gateway to resume uploading; the next step shows once confirmed. Please wait.",
@@ -1044,10 +1031,18 @@
   "common_confirm": "Confirm",
   "common_continue": "Continue",
   "common_copy": "Copy",
+  "common_details": "Details",
+  "@common_details": {
+    "description": "Opens or titles the technical details."
+  },
   "common_done": "Done",
   "common_dotSeparator": " · ",
   "@common_dotSeparator": {
     "description": "Joins short status parts on one line (e.g. Online・PTU connected)."
+  },
+  "common_gotIt": "Got it",
+  "@common_gotIt": {
+    "description": "Dismisses a notice."
   },
   "common_languageEnglish": "English",
   "@common_languageEnglish": {
@@ -1057,11 +1052,17 @@
   "@common_languageZhHant": {
     "description": "Language name, always written in that language (same text in every locale)."
   },
+  "common_later": "Later",
+  "common_listSeparator": ", ",
+  "@common_listSeparator": {
+    "description": "Joins items of a list in a sentence (#1、#2 / #1, #2)."
+  },
   "common_loading": "Loading…",
   "common_ok": "OK",
   "common_refresh": "Refresh",
   "common_retry": "Retry",
   "common_settings": "Settings",
+  "common_skip": "Skip",
   "common_timeout": "timed out",
   "@common_timeout": {
     "description": "Network request timed out; also shown inside [endpoint · detail] brackets."
@@ -1239,8 +1240,8 @@
   },
   "connectionStatus_detailUploadOn": "Data upload: on",
   "connectionStatus_detailUploadPaused": "Data upload: paused",
-  "connectionStatus_hintCustomUnknown": "The APP can't tell from this URL where the gateway should send data. Showing the gateway's current setting only; no automatic switch.",
-  "connectionStatus_hintLinkLostReconnect": "Bluetooth to the gateway dropped. Move closer and tap [End and reselect gateway] to reconnect.",
+  "connectionStatus_hintCustomUnknown": "The app can't tell from this URL where the gateway should send data. Showing the gateway's current setting only; no automatic switch.",
+  "connectionStatus_hintLinkLostReconnect": "Bluetooth to the gateway dropped. Move closer and tap [End and choose another gateway] to reconnect.",
   "connectionStatus_hintPhoneNoBackend": "The phone can't reach {label}. Check that the phone has internet access.",
   "@connectionStatus_hintPhoneNoBackend": {
     "placeholders": {
@@ -1428,7 +1429,7 @@
   "@connectionStatus_whereUnknown": {
     "description": "Gateway row name: the firmware reported an unknown target."
   },
-  "connectionStatus_wifiActionOther": "Use other Wi-Fi",
+  "connectionStatus_wifiActionOther": "Use another Wi-Fi",
   "@connectionStatus_wifiActionOther": {
     "description": "Button name quoted inside hints (choose another Wi-Fi network)."
   },
@@ -1449,7 +1450,7 @@
       }
     }
   },
-  "connectionStatus_wifiFixReconnect": "Tap [End and reselect gateway] to reconnect, then tap [{action}] in the network check.",
+  "connectionStatus_wifiFixReconnect": "Tap [End and choose another gateway] to reconnect, then tap [{action}] in the network check.",
   "@connectionStatus_wifiFixReconnect": {
     "placeholders": {
       "action": {
@@ -1458,7 +1459,7 @@
       }
     }
   },
-  "connectionStatus_wifiLinkLostReconnect": "Bluetooth to the gateway also dropped: move closer, tap [End and reselect gateway] to reconnect, then tap [{action}].",
+  "connectionStatus_wifiLinkLostReconnect": "Bluetooth to the gateway also dropped: move closer, tap [End and choose another gateway] to reconnect, then tap [{action}].",
   "@connectionStatus_wifiLinkLostReconnect": {
     "placeholders": {
       "action": {
@@ -1596,7 +1597,7 @@
   "controller_backendSwitchedVerify": "Environment switched. Tap [Start data check] to confirm again.",
   "controller_backendUnconfirmed": "Backend not confirmed yet; verification is still needed after setup",
   "controller_bindLaterBlocked": "Cannot open \"Choose PTUs\" now. Finish the network check, then tap again.",
-  "controller_bindLaterHint": "Tap [Identify and bind]: on the PTU list tap [Identify this charger] to confirm it is the one in front of you, then [Yes, set it up] binds it and numbers it #1.",
+  "controller_bindLaterHint": "Tap [Identify and bind]: on the PTU list tap [Identify this charger] to confirm it is the one in front of you, then [This one, start setup] binds it and numbers it #1.",
   "controller_bindLaterLabel": "Identify and bind",
   "controller_bindLaterNoStation": "This gateway cannot keep its site now. Set up the site and Wi-Fi first.",
   "controller_bindLaterTitle": "This gateway is connected to PTU {mac} but not bound",
@@ -1631,7 +1632,7 @@
     }
   },
   "controller_busyTryAgain": "Another action is still running. Wait for it to finish, then tap again.",
-  "controller_cancelRestoreRetry": "{failure} Stay close and cancel again to retry restoring, or restart the APP and reconnect.",
+  "controller_cancelRestoreRetry": "{failure} Stay close and cancel again to retry restoring, or restart the app and reconnect.",
   "@controller_cancelRestoreRetry": {
     "placeholders": {
       "failure": {
@@ -1639,14 +1640,14 @@
       }
     }
   },
-  "controller_cancelled": "Cancelled. Reconnect to check progress; a monitoring session not restored resumes at its expiry at the latest.",
+  "controller_cancelled": "Cancelled. Reconnect to check progress; any unrestored monitoring session resumes by its expiry.",
   "controller_checkFailedNew": "Network check failed. You can still set a new site; the upload is confirmed later.",
   "controller_checkFailedStation": "Network check failed. You can reset the Wi-Fi or set a new site; keeping the site needs a working network.",
   "controller_checkPassedNew": "Network check passed. Set the identity and Wi-Fi.",
   "controller_checkPassedStation": "Network check passed. Choose the site.",
   "controller_checkingMonitor": "Checking the gateway's monitoring state",
   "controller_chooseGateway": "Choose the gateway to set up",
-  "controller_chooseStationWaitUpload": "Choose the site. Keeping it needs the gateway to start uploading.",
+  "controller_chooseStationWaitUpload": "Choose the site. To keep it, wait for the gateway to start uploading.",
   "controller_configureCount": "{count, plural, =1{Set up 1 PTU and start monitoring} other{Set up {count} PTUs and start monitoring}}",
   "@controller_configureCount": {
     "placeholders": {
@@ -1670,6 +1671,18 @@
   "@controller_connectLogDetail": {
     "placeholders": {
       "log": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_connectLogLine": "Attempt {attempt}: {type}",
+  "@controller_connectLogLine": {
+    "description": "One connect-failure entry (attempt number and technical error type). The Chinese text is also uploaded as field diagnostics connect_log.",
+    "placeholders": {
+      "attempt": {
+        "type": "int"
+      },
+      "type": {
         "type": "String"
       }
     }
@@ -1724,7 +1737,7 @@
   "@controller_dataStreaming": {
     "description": "Done page health result; use CommissionState.dataStreaming instead of matching this text."
   },
-  "controller_deferConfirm": "The gateway finishes setup as usual: it joins service, resumes uploading and keeps one-to-one mode with the current threshold ({threshold} dBm), but binds no PTU.\nOnce this charger's PTU is powered, the gateway connects to it; confirm the binding later on site with [Identify].",
+  "controller_deferConfirm": "The gateway finishes setup as usual: it joins service, resumes uploading and keeps one-to-one mode with the current threshold ({threshold} dBm), but binds no PTU.\nOnce this charger's PTU is powered, the gateway connects to it; confirm the binding later on site with [Identify and bind].",
   "@controller_deferConfirm": {
     "placeholders": {
       "threshold": {
@@ -1744,16 +1757,16 @@
       }
     }
   },
-  "controller_deferredDone": "This charger's PTU is not connected yet. It connects once powered; confirm the binding later on site with [Identify].",
+  "controller_deferredDone": "This charger's PTU is not connected yet. It connects once powered; confirm the binding later on site with [Identify and bind].",
   "controller_deferredDoneTitle": "Gateway setup done",
-  "controller_deferredLater": "To bind later: once the PTU is powered, reconnect to this gateway with the APP and [Identify and bind] appears. If you are still on site and the PTU is powered, tap the button below.",
+  "controller_deferredLater": "To bind later: once the PTU is powered, reconnect to this gateway with the app and [Identify and bind] appears. If you are still on site and the PTU is powered, tap the button below.",
   "controller_deferredSummary": "This charger's PTU is not connected yet (connects once powered)",
   "controller_deferredUploadStatus": "✓ Uploading again (waiting for this charger's PTU)",
   "controller_deferring": "Finishing gateway setup (this charger's PTU not connected yet)",
   "controller_devShipNote": "Developer note (local test builds only; field staff can ignore it): this gateway uploads to a local test server. Before shipping, a developer must switch the phone and the gateway back to production.",
   "controller_devShipSwitchLabel": "Switch to production",
   "controller_directBoundMissing": "The PTU bound to the gateway is not here. Make sure it is powered, or unbind it and tap [Search again].",
-  "controller_directBoundNote": "Bound PTU MAC: {mac} (the gateway connects only this one)",
+  "controller_directBoundNote": "Bound PTU MAC: {mac} (the gateway connects to this one only)",
   "@controller_directBoundNote": {
     "description": "Done page line; the install report always uses the zh text.",
     "placeholders": {
@@ -1764,7 +1777,7 @@
   },
   "controller_directFreshWindow": "The gateway is collecting nearby PTUs again. Please wait",
   "controller_directNoCandidate": "The gateway found no PTU close enough. Make sure this charger's PTU is powered and close, then tap [Search again].",
-  "controller_directNoData": "The gateway has no data from this PTU yet. Check the PTU's power, then tap [Yes, set it up] to retry; the gateway keeps monitoring.",
+  "controller_directNoData": "The gateway has no data from this PTU yet. Check the PTU's power, then tap [This one, start setup] to retry; the gateway keeps monitoring.",
   "controller_directNoReport": "The gateway has not reported a pick yet. Tap [Search again].",
   "controller_directPickIncomplete": "The gateway did not finish picking. Check the error, then tap [Search again].",
   "controller_directPicked": "The gateway picked PTU {mac}. Tap [Identify this charger] to confirm it is the one in front of you",
@@ -1804,7 +1817,6 @@
   "controller_disconnecting": "Disconnecting Bluetooth…",
   "controller_doneBefore": "Done earlier",
   "controller_doneBusy": "Working on it. Tap [Done] when it finishes.",
-  "controller_doneFinishLabel": "Done",
   "controller_doneNextLabel": "Set up next",
   "controller_endFlowConfirmTitle": "End the current setup?",
   "controller_endFlowDeferHint": "If this charger's PTU is not here, tap [{label}] instead.",
@@ -1911,14 +1923,10 @@
       }
     }
   },
-  "controller_leaveListConfirmTitle": "End this setup and go to the start page?",
+  "controller_leaveListConfirmTitle": "End this setup and go to the home page?",
   "controller_leaveListLabel": "End setup",
   "controller_linkConfirming": "Bluetooth connected. Checking the gateway's replies and settings…",
-  "controller_listNotWritten": "List not written; assigning goes on",
-  "controller_listSeparator": ", ",
-  "@controller_listSeparator": {
-    "description": "Separator between list items (PTU numbers) on screen."
-  },
+  "controller_listNotWritten": "List not written; assignment continues",
   "controller_loginRun": "Logging in to the backend",
   "controller_monitorSkipped": "Monitoring check skipped. Confirm each PTU uploads during the data check.",
   "controller_monitorUnconfirmedCheck": "Not confirmed that the gateway resumed monitoring. Reconnect to check its settings.",
@@ -1949,7 +1957,7 @@
   },
   "controller_noPtuConnected": "No PTU connected. Check the PTUs' power and distance, then retry; the gateway keeps monitoring.",
   "controller_noneValue": "(none)",
-  "controller_notIdentifiedPick": "The gateway is connected to PTU {mac}. Tap [Identify this charger] to confirm it is the one in front of you, then [Yes, set it up].",
+  "controller_notIdentifiedPick": "The gateway is connected to PTU {mac}. Tap [Identify this charger] to confirm it is the one in front of you, then [This one, start setup].",
   "@controller_notIdentifiedPick": {
     "placeholders": {
       "mac": {
@@ -1958,10 +1966,10 @@
     }
   },
   "controller_notReported": "(not reported)",
-  "controller_offlineMode": "Offline mode: log in at the end to verify the data",
+  "controller_offlineMode": "Offline mode: log in at the end for the data check",
   "controller_onlineReady": "The gateway stays online. You can search for PTUs",
   "controller_onlineRun": "Confirming the gateway stays online",
-  "controller_partialAssign": "{failed, plural, =1{{ok} online first; 1 failed to assign. Tap [Retry this one].} other{{ok} online first; {failed} failed to assign. Tap [Retry these {failed}].}}",
+  "controller_partialAssign": "{failed, plural, =1{{ok} now online; 1 failed to assign. Tap [Retry this one].} other{{ok} now online; {failed} failed to assign. Tap [Retry these {failed}].}}",
   "@controller_partialAssign": {
     "placeholders": {
       "ok": {
@@ -2065,7 +2073,7 @@
       }
     }
   },
-  "controller_ptuSearchingHint": "The gateway just started or changed state and is connecting the bound PTU (MAC ends {tail}). It usually connects within 1 minute; wait, then tap [{label}].",
+  "controller_ptuSearchingHint": "The gateway just started or changed state and is connecting to the bound PTU (MAC ends {tail}). It usually connects within 1 minute; wait, then tap [{label}].",
   "@controller_ptuSearchingHint": {
     "placeholders": {
       "tail": {
@@ -2130,7 +2138,7 @@
   "controller_reconnectLinkRun": "Reconnecting to the gateway",
   "controller_reconnectedRescan": "Reconnected. The gateway is scanning for PTUs again.",
   "controller_reconnecting": "Reconnecting to the gateway",
-  "controller_rejoining": "Rejoining the backend",
+  "controller_rejoining": "Rejoining the back office",
   "controller_relinkReconnect": "Phone reconnecting to the gateway…",
   "controller_relinkReload": "Reading the PTU list again…",
   "controller_relinkingLabel": "Reconnecting…",
@@ -2276,7 +2284,7 @@
     }
   },
   "controller_scanRun": "Searching for nearby gateways",
-  "controller_scanTestMode": "The gateway is in test mode and does not scan PTUs. Tap [{label}]; the APP rescans after the switch.",
+  "controller_scanTestMode": "The gateway is in test mode and does not scan PTUs. Tap [{label}]; the app rescans after the switch.",
   "@controller_scanTestMode": {
     "placeholders": {
       "label": {
@@ -2311,7 +2319,7 @@
       }
     }
   },
-  "controller_starApply": "The gateway connects only {limit} now. After [Set up], it switches to star and connects all PTUs.",
+  "controller_starApply": "The gateway connects to only {limit} now. Once you start the setup, it switches to star and connects all PTUs.",
   "@controller_starApply": {
     "placeholders": {
       "limit": {
@@ -2319,7 +2327,7 @@
       }
     }
   },
-  "controller_starOwnerUnknown": "Cannot confirm the gateways' registration. Reset manually",
+  "controller_starOwnerUnknown": "Cannot confirm the gateway's registration. Reset manually",
   "controller_startVerify": "Start verification",
   "controller_step7Retry": "Bluetooth dropped again. Reconnecting in {seconds} s (retry {retry}/{total})",
   "@controller_step7Retry": {
@@ -2488,8 +2496,8 @@
   "controller_unbindingRun": "Removing the gateway's PTU binding",
   "controller_unreadable": "(unreadable)",
   "controller_updatingDirect": "Updating one-to-one settings",
-  "controller_uploadConnecting": "The gateway is connecting; the APP confirms automatically (up to about 2 minutes).",
-  "controller_uploadElsewhere": "The gateway sends its data to another backend",
+  "controller_uploadConnecting": "The gateway is connecting; the app confirms automatically (up to about 2 minutes).",
+  "controller_uploadElsewhere": "The gateway sends its data to another back office",
   "controller_uploadNotReady": "PTUs can be chosen only after the gateway joins Wi-Fi and starts uploading. Wait for ✓ on \"Confirm upload\", or reset the Wi-Fi again.",
   "controller_uploadStarted": "The gateway has started uploading.",
   "controller_verified": "Verification passed; automatic monitoring resumed",
@@ -2501,7 +2509,7 @@
       }
     }
   },
-  "controller_verifyNoData": "PTU #{id} no data yet",
+  "controller_verifyNoData": "PTU #{id}: no data yet",
   "@controller_verifyNoData": {
     "placeholders": {
       "id": {
@@ -2550,7 +2558,7 @@
     }
   },
   "controller_wifiOnlyPrompt": "Keeping the current site and PTUs; only the Wi-Fi is updated.",
-  "controller_wifiUpdatedChooseStation": "Wi-Fi updated and uploading. Check the site: if this gateway's current site is not this one, choose [Use another site ID].",
+  "controller_wifiUpdatedChooseStation": "Wi-Fi updated and uploading. Check the site: if this gateway's current site is not this one, choose [Use another site].",
   "controller_wifiUpdatedKeepStation": "Wi-Fi updated; site and PTU settings kept. Next, confirm the upload.",
   "controller_writingThreshold": "Writing threshold {dbm} dBm",
   "@controller_writingThreshold": {
@@ -2604,7 +2612,7 @@
   "coreProgressChecklist_finishBind": "Write PTU binding",
   "coreProgressChecklist_finishData": "Verify data upload",
   "coreProgressChecklist_finishJoin": "Join monitoring",
-  "coreProgressChecklist_finishJoined": "Check monitoring joined",
+  "coreProgressChecklist_finishJoined": "Check it joined monitoring",
   "coreProgressChecklist_finishList": "Write PTU list",
   "coreProgressChecklist_finishSettings": "Write PTU settings",
   "coreProgressChecklist_notDone": "Not completed",
@@ -2680,7 +2688,7 @@
   "directCalibrationSheet_notReported": "Not reported by the gateway",
   "directCalibrationSheet_ownAdv": "Own advertising",
   "directCalibrationSheet_ownLink": "Own link signal",
-  "directCalibrationSheet_ownLinkValue": "Median {median} · weakest {weakest} ({count} rows)",
+  "directCalibrationSheet_ownLinkValue": "Median {median} · weakest {weakest} ({count, plural, =1{1 row} other{{count} rows}})",
   "@directCalibrationSheet_ownLinkValue": {
     "description": "median and weakest are already formatted with dBm.",
     "placeholders": {
@@ -2715,7 +2723,7 @@
       }
     }
   },
-  "directCalibrationSheet_range": "Usable range {lower} to {upper}: this charger gets picked and stays connected, and no neighbour is taken when this charger is off.",
+  "directCalibrationSheet_range": "Usable range {lower} to {upper}: this charger gets picked and stays connected, and no neighbour connects when this charger is off.",
   "@directCalibrationSheet_range": {
     "placeholders": {
       "lower": {
@@ -2737,7 +2745,7 @@
       }
     }
   },
-  "directCalibrationSheet_sampling": "Sampling… {left} s left ({reads} reads so far)",
+  "directCalibrationSheet_sampling": "Sampling… {left} s left ({reads, plural, =1{1 read so far} other{{reads} reads so far}})",
   "@directCalibrationSheet_sampling": {
     "placeholders": {
       "left": {
@@ -2896,11 +2904,7 @@
       }
     }
   },
-  "directCalibration_needsOwn": "First tap [Identify charger] in step 7 to confirm this charger's PTU, then calibrate.",
-  "directCalibration_neighborSeparator": ", ",
-  "@directCalibration_neighborSeparator": {
-    "description": "Joins the named neighbour MAC segments."
-  },
+  "directCalibration_needsOwn": "First tap [Identify this charger] in step 7 to confirm this charger's PTU, then calibrate.",
   "directCalibration_neighborsAndMore": "{named} and others ({total} in all)",
   "@directCalibration_neighborsAndMore": {
     "placeholders": {
@@ -2925,7 +2929,7 @@
   },
   "directCalibration_noOwn": "No link signal from this charger's PTU (the gateway is not linked to the confirmed PTU), so no threshold can be suggested. Check this charger's PTU is connected, then sample again.",
   "directCalibration_outOfRange": "This charger's readings are outside the gateway's range (-100 to -20 dBm). Sample again",
-  "directCalibration_ownBelowHold": "This charger's PTU signal is weak (usable up to {upper} dBm, below the {hold} dBm threshold), but without neighbour data the threshold cannot be loosened. Turn on [Bind PTU after confirming] (a bound PTU ignores the threshold), or move the PTU and sample again.",
+  "directCalibration_ownBelowHold": "This charger's PTU signal is weak (usable up to {upper} dBm, below the {hold} dBm threshold), but without neighbour data the threshold cannot be loosened. Turn on [Bind PTU on confirm] (a bound PTU ignores the threshold), or move the PTU and sample again.",
   "@directCalibration_ownBelowHold": {
     "placeholders": {
       "upper": {
@@ -3105,7 +3109,7 @@
     }
   },
   "directModePanel_collecting": "The gateway is collecting nearby PTUs again, about 5–10 s…",
-  "directModePanel_currentPick": "Current",
+  "directModePanel_currentPick": "Current pick",
   "directModePanel_gatewayBusy": "Gateway working, please wait…",
   "directModePanel_hintConfirm": "Check this PTU is the one blinking, then start monitoring",
   "directModePanel_hintIdentify": "Tap [Identify this charger] and check the lights",
@@ -3134,7 +3138,7 @@
   "directModePanel_pickOther": "Pick another PTU",
   "directModePanel_pickedTitle": "PTU picked by the gateway",
   "directModePanel_readingPick": "Reading the gateway's PTU pick…",
-  "directModePanel_reason": "Picked by: {reason}",
+  "directModePanel_reason": "Pick reason: {reason}",
   "@directModePanel_reason": {
     "description": "Why the gateway picked this PTU; reason comes from the gateway's select_reason text.",
     "placeholders": {
@@ -3148,7 +3152,7 @@
   "directModePanel_searchAgain": "Search again",
   "directModePanel_settingsTitle": "One-to-one advanced settings",
   "directModePanel_signalLabel": "Signal",
-  "directModePanel_switchToThis": "Switch to this",
+  "directModePanel_switchToThis": "Switch to this one",
   "directModePanel_threshold": "Threshold {min} dBm",
   "@directModePanel_threshold": {
     "placeholders": {
@@ -3160,7 +3164,7 @@
   "directModePanel_thresholdHelp": "The gateway auto-connects only to PTUs stronger than the threshold; a higher value (closer to -20) needs the PTU closer.",
   "directModePanel_unbind": "Unbind",
   "directModePanel_unbound": "Not bound",
-  "directModePanel_watchLights": "After tapping, watch the PTU and gateway lights",
+  "directModePanel_watchLights": "Tap, then watch the lights",
   "directMode_ackPlain": "{note}; {gateway}.",
   "@directMode_ackPlain": {
     "placeholders": {
@@ -3210,7 +3214,7 @@
       }
     }
   },
-  "directMode_ambiguous": "PTUs with similar signals nearby. Tap [Identify charger] to check it is the one in front of you",
+  "directMode_ambiguous": "PTUs with similar signals nearby. Tap [Identify this charger] to check it is the one in front of you",
   "directMode_confirmLabel": "This one, start setup",
   "@directMode_confirmLabel": {
     "description": "Main button of the direct pick: this PTU is the one, start the setup."
@@ -3218,12 +3222,12 @@
   "directMode_hintBoundMissing": "Bound PTU not found. Check its power; if the PTU was replaced, unbind it",
   "directMode_hintNoCandidate": "Move closer / check this charger's PTU is powered",
   "directMode_identifyConfirmTimeout": "Gateway sent it; older gateway got no PTU confirmation. Watch the charger lights",
-  "directMode_identifyConfirmed": "PTU confirmed its light",
-  "directMode_identifyFirstLabel": "Tap [Identify charger] first",
+  "directMode_identifyConfirmed": "PTU confirmed its light is on",
+  "directMode_identifyFirstLabel": "Tap [Identify this charger] first",
   "@directMode_identifyFirstLabel": {
     "description": "Main button label until the shown PTU is identified. 「辨識此樁」 is the identify button."
   },
-  "directMode_identifyFirstText": "Tap [Identify charger] to check it is the one in front of you, then tap [{confirm}].",
+  "directMode_identifyFirstText": "Tap [Identify this charger] to check it is the one in front of you, then tap [{confirm}].",
   "@directMode_identifyFirstText": {
     "placeholders": {
       "confirm": {
@@ -3328,7 +3332,7 @@
   "@directMode_remoteHeadConfirmed": {
     "description": "Short first line of the back office identify notice; keep all remoteHead texts short (one line of a 360 dp bar)."
   },
-  "directMode_remoteHeadGatewayOnly": "Gateway blinked · PTU missed it",
+  "directMode_remoteHeadGatewayOnly": "Back office blinked gateway · PTU missed it",
   "directMode_remoteHeadOffSent": "Back office sent lights-off",
   "directMode_remoteHeadPtuSent": "Back office sent PTU identify",
   "directMode_remoteHeadSent": "Back office sent · check the lights",
@@ -3393,7 +3397,7 @@
   "directMode_settlingLabel": "Setting up link…",
   "directMode_stateBoundMissing": "Bound PTU not found",
   "directMode_stateConnected": "PTU connected",
-  "directMode_stateConnecting": "Connecting PTU",
+  "directMode_stateConnecting": "Connecting to PTU",
   "directMode_stateNoCandidate": "No PTU close enough",
   "directMode_stateScanning": "Looking for the nearest PTU",
   "directMode_strayBind": "Gateway is bound to PTU {mac}",
@@ -3446,7 +3450,7 @@
       }
     }
   },
-  "directMode_waitingLabel": "Waiting for the gateway to connect a PTU",
+  "directMode_waitingLabel": "Waiting for the gateway to connect to a PTU",
   "directPickActivity_ambiguousIdentify": "Signals are close. Identify this charger.",
   "directPickActivity_boundMissing": "The bound PTU is not here",
   "directPickActivity_connected": "Waiting for the gateway to report its PTU",
@@ -3478,8 +3482,8 @@
     }
   },
   "environmentSwitch_changeIp": "Change PC IP",
-  "environmentSwitch_customNotSet": "Use a custom back office URL (not set)",
-  "environmentSwitch_customUrl": "Use a custom back office URL: {url}",
+  "environmentSwitch_customNotSet": "Use a custom backend URL (not set)",
+  "environmentSwitch_customUrl": "Use a custom backend URL: {url}",
   "@environmentSwitch_customUrl": {
     "placeholders": {
       "url": {
@@ -3488,9 +3492,9 @@
       }
     }
   },
-  "environmentSwitch_editIp": "You can change the test server IP:",
-  "environmentSwitch_localNoHost": "Data goes to the test server on this PC (PC IP not set)",
-  "environmentSwitch_localWithHost": "Data goes to the test server on this PC ({host})",
+  "environmentSwitch_editIp": "You can change the test host IP:",
+  "environmentSwitch_localNoHost": "Data goes to the test host on this PC (PC IP not set)",
+  "environmentSwitch_localWithHost": "Data goes to the test host on this PC ({host})",
   "@environmentSwitch_localWithHost": {
     "placeholders": {
       "host": {
@@ -3499,7 +3503,7 @@
       }
     }
   },
-  "environmentSwitch_noIp": "No test server IP yet. Tap [Auto find] or enter it.",
+  "environmentSwitch_noIp": "No test host IP yet. Tap [Auto find] or enter it.",
   "environmentSwitch_productionHint": "Data goes to production.",
   "environmentSwitch_productionSheetHint": "Data goes to production",
   "environmentSwitch_sheetSubtitle": "The phone and the connected gateway switch together.",
@@ -3507,11 +3511,10 @@
   "@environmentSwitch_title": {
     "description": "Tooltip of the AppBar environment chip and title of the environment sheet."
   },
-  "environmentSwitch_urlLabel": "Back office URL",
+  "environmentSwitch_urlLabel": "Backend URL",
   "environmentSwitch_useLocal": "Use local test",
   "environmentSwitch_useUrl": "Use this URL",
   "fieldHelpSheet_demo": "Demo mode does not send. Read the info below.",
-  "fieldHelpSheet_details": "Details",
   "fieldHelpSheet_label": "Ask back office",
   "fieldHelpSheet_needsConnection": "Back office switched. Connect to the new back office first, then ask again.",
   "fieldHelpSheet_noPassword": "The Wi-Fi password is never sent.",
@@ -3537,16 +3540,11 @@
       }
     }
   },
-  "fieldReport_backendSwitched": "Backend switched; the report was not sent",
+  "fieldReport_backendSwitched": "Back office switched; the report was not sent",
   "@fieldReport_backendSwitched": {
     "description": "Why the install report failed (screen only)."
   },
   "fieldReport_backendUnsupported": "Back office does not support it yet (update the back office)",
-  "fieldReport_fwUnknown": "unknown",
-  "fieldReport_gatewayNotFoundPrefix": "No gateway found",
-  "@fieldReport_gatewayNotFoundPrefix": {
-    "description": "Recognition only, never shown: the start of the controller's 'no gateway found after a scan' message in this language (sessionRescueCode matches every language). Keep in sync with that controller message."
-  },
   "fieldReport_helpCode": "Situation code: {code}",
   "@fieldReport_helpCode": {
     "placeholders": {
@@ -3579,7 +3577,7 @@
       }
     }
   },
-  "fieldReport_helpFirmwareStar": "Firmware {fw} · star, {count} PTUs",
+  "fieldReport_helpFirmwareStar": "Firmware {fw} · star, {count, plural, =1{1 PTU} other{{count} PTUs}}",
   "@fieldReport_helpFirmwareStar": {
     "placeholders": {
       "fw": {
@@ -3610,7 +3608,7 @@
     }
   },
   "fieldReport_helpNoGateway": "Not connected to a gateway yet",
-  "fieldReport_helpStationGateway": "Station {site} / gateway {gateway}",
+  "fieldReport_helpStationGateway": "Site {site} / gateway {gateway}",
   "@fieldReport_helpStationGateway": {
     "description": "Help sheet line the installer reads to the back office.",
     "placeholders": {
@@ -3622,7 +3620,7 @@
       }
     }
   },
-  "fieldReport_helpStationGatewayMac": "Station {site} / gateway {gateway} (MAC ends {tail})",
+  "fieldReport_helpStationGatewayMac": "Site {site} / gateway {gateway} (MAC ends {tail})",
   "@fieldReport_helpStationGatewayMac": {
     "placeholders": {
       "site": {
@@ -3710,10 +3708,10 @@
   "fieldSupportPanel_stillHelp": "Still need help",
   "fieldSupportPanel_unavailable": "Text replies can't be shown in the app now. Tell the back office the device and step info below.",
   "fieldSupportPanel_updateRequest": "Update help request",
-  "gatewayDiscovery_backendNoRecordNote": "The back office has no record of this device. If it is not commissioned yet, tap [Start commissioning]; if it is, check the connection and the selected site.",
+  "gatewayDiscovery_backendNoRecordNote": "The back office has no record of this device. If it is not set up yet, tap [Start setup]; if it is, check the connection and the selected site.",
   "gatewayDiscovery_backendOfflineNote": "The back office is not receiving this device. Check power and Wi-Fi; if the network has changed, set up Wi-Fi again.",
-  "gatewayDiscovery_backendReferenceNote": "Without an identity check on this phone, back-office status only matches the same site and gateway number. Connect to confirm the device.",
-  "gatewayDiscovery_backendRefreshNote": "Back-office status refreshes every 15 s and covers only the selected back office.",
+  "gatewayDiscovery_backendReferenceNote": "Without an identity check on this phone, backend status only matches the same site ID and gateway number. Connect to confirm the device.",
+  "gatewayDiscovery_backendRefreshNote": "Backend status refreshes every 15 s and covers only the selected backend.",
   "gatewayDiscovery_bluetoothConnect": "Connect",
   "@gatewayDiscovery_bluetoothConnect": {
     "description": "Card button: open the Bluetooth link to the selected gateway."
@@ -3722,7 +3720,7 @@
   "gatewayDiscovery_cancelConnect": "Cancel",
   "gatewayDiscovery_cleanupFailed": "Bluetooth cleanup incomplete. Tap [Retry disconnect].",
   "gatewayDiscovery_cleanupIncomplete": "Cleanup incomplete",
-  "gatewayDiscovery_connectLabel": "Start commissioning: {title}",
+  "gatewayDiscovery_connectLabel": "Start setup: {title}",
   "@gatewayDiscovery_connectLabel": {
     "description": "Bottom button for the selected gateway.",
     "placeholders": {
@@ -3848,7 +3846,7 @@
   "gatewayDiscovery_recentGroup": "Recently used",
   "gatewayDiscovery_retryDisconnect": "Retry disconnect",
   "gatewayDiscovery_retrying": "None found, searching again…",
-  "gatewayDiscovery_rssiNote": "RSSI is the Bluetooth signal the phone receives, not the back-office online status.",
+  "gatewayDiscovery_rssiNote": "RSSI is the Bluetooth signal the phone receives, not the backend online status.",
   "gatewayDiscovery_scanFailed": "Search failed. Check Bluetooth, Location and Nearby devices permissions, then retry.",
   "gatewayDiscovery_searchAgain": "Search again",
   "gatewayDiscovery_searchPaused": "Gateway selected, search paused",
@@ -3857,7 +3855,7 @@
   "gatewayDiscovery_selected": "Selected",
   "gatewayDiscovery_signalLost": "Signal lost",
   "gatewayDiscovery_signalUnknown": "Signal unknown",
-  "gatewayDiscovery_startCommissioning": "Start commissioning",
+  "gatewayDiscovery_startCommissioning": "Start setup",
   "gatewayDiscovery_stopSearch": "Stop search",
   "gatewayDiscovery_stopped": "Search stopped. Tap [Search again] to retry",
   "gatewayDiscovery_unconfigured": "Not set up",
@@ -3865,7 +3863,7 @@
     "description": "Small badge on a gateway card: not configured yet."
   },
   "gatewayIdentity_confirmOnlineLabel": "Confirm gateway online",
-  "gatewayIdentity_directGatewayPick": "The gateway connected to another gateway nearby ({mac}), not a PTU; the APP will not treat it as a PTU. Tap [Not this one?] to pick this charger's PTU, or move closer to it and tap [Search again].",
+  "gatewayIdentity_directGatewayPick": "The gateway connected to another gateway nearby ({mac}), not a PTU; the app will not treat it as a PTU. Tap [Not this one?] to pick this charger's PTU, or move closer to it and tap [Search again].",
   "@gatewayIdentity_directGatewayPick": {
     "description": "Yellow direct-mode notice. Logic recognises it by the text before {mac}, in every language.",
     "placeholders": {
@@ -3918,7 +3916,7 @@
   "gatewayIdentity_resumeUploadLabel": "Resume upload",
   "gatewayIdentity_resumingUpload": "Resuming data upload",
   "gatewayIdentity_testMode": "This gateway is in test mode (test data only, no PTU links). Switch it back to normal mode before setup.",
-  "gatewayIdentity_testModeActionHint": "The gateway reboots after the switch (about 1 min); the APP reconnects and continues by itself.",
+  "gatewayIdentity_testModeActionHint": "The gateway reboots after the switch (about 1 min); the app reconnects and continues by itself.",
   "gatewayIdentity_testModeStatusHint": "Gateway in test mode (test data only). Tap [{leave}].",
   "@gatewayIdentity_testModeStatusHint": {
     "placeholders": {
@@ -3933,7 +3931,7 @@
   "@gatewayIdentity_unconfigured": {
     "description": "Title of a gateway known not to be configured (a MAC tail may follow)."
   },
-  "gatewayIdentity_uploadHeld": "Back office link OK. PTU data starts uploading once setup is done (paused for now, which is normal); the APP continues by itself",
+  "gatewayIdentity_uploadHeld": "Back office link OK. PTU data starts uploading once setup is done (paused for now, which is normal); the app continues by itself",
   "gatewayIdentity_uploadHeldStatus": "✓ Connected (uploads after setup)",
   "gatewayIdentity_uploadPaused": "Gateway is online but data upload is paused: no PTU data is sent. Tap [{resume}].",
   "@gatewayIdentity_uploadPaused": {
@@ -4084,8 +4082,8 @@
   "@gatewayProximity_nearest": {
     "description": "Chip on the strongest gateway row of the list."
   },
-  "gatewayProximity_nearestHint": "This pile's gateway usually has the strongest signal. If unsure, tap it, connect, then tap the bulb to see which one blinks",
-  "gatewayReboot_notice": "The gateway just restarted (reason: {reason}). This is not a PTU fault; settings already done on the gateway are kept. The APP has reconnected: continue from the current step. No need to start over; do not unplug it or tap repeatedly.",
+  "gatewayProximity_nearestHint": "This charger's gateway usually has the strongest signal. If unsure, tap it, connect, then tap the bulb to see which one blinks",
+  "gatewayReboot_notice": "The gateway just restarted (reason: {reason}). This is not a PTU fault; settings already done on the gateway are kept. The app has reconnected: continue from the current step. No need to start over; do not unplug it or tap repeatedly.",
   "@gatewayReboot_notice": {
     "description": "Shown after an unrequested gateway restart; also uploaded (in Chinese) as the field report error_message.",
     "placeholders": {
@@ -4094,7 +4092,7 @@
       }
     }
   },
-  "gatewayReboot_noticeMany": "The gateway just restarted (reason: {reason}; {times} restarts in total). This is not a PTU fault; settings already done on the gateway are kept. The APP has reconnected: continue from the current step. No need to start over; do not unplug it or tap repeatedly. If it keeps restarting, take a screenshot and report it.",
+  "gatewayReboot_noticeMany": "The gateway just restarted (reason: {reason}; {times} restarts in total). This is not a PTU fault; settings already done on the gateway are kept. The app has reconnected: continue from the current step. No need to start over; do not unplug it or tap repeatedly. If it keeps restarting, take a screenshot and report it.",
   "@gatewayReboot_noticeMany": {
     "description": "Same as gatewayReboot_notice when the gateway restarted more than once.",
     "placeholders": {
@@ -4159,7 +4157,7 @@
       }
     }
   },
-  "gatewaySignal_linkLost": "The phone lost its Bluetooth link to the gateway. Move closer; the APP will show how to reconnect.",
+  "gatewaySignal_linkLost": "The phone lost its Bluetooth link to the gateway. Move closer; the app will show how to reconnect.",
   "gatewaySignal_noReading": "no reading",
   "gatewaySignal_scan": "Scan {value}",
   "@gatewaySignal_scan": {
@@ -4220,7 +4218,7 @@
   "gatewayStatus_nearbyScanning": "Scanning for nearby gateways (about 8 s)…",
   "gatewayStatus_nearbyTitle": "Nearby gateways (Bluetooth scan)",
   "gatewayStatus_nearbyUnconfigured": "Not set up yet, no data to view",
-  "gatewayStatus_nearbyUnnamed": "No site number yet, no data to view",
+  "gatewayStatus_nearbyUnnamed": "No site ID yet, no data to view",
   "gatewayStatus_nearest": "Nearest",
   "@gatewayStatus_nearest": {
     "description": "Mark on the strongest (closest) nearby gateway."
@@ -4246,7 +4244,7 @@
   },
   "gatewaySwapSheet_cancelLabel": "Cancel replacement",
   "gatewaySwapSheet_confirmOk": "Replace",
-  "gatewaySwapSheet_confirmText": "This gateway takes over Site {site} · gateway {gateway}. The old gateway must be removed or powered off.",
+  "gatewaySwapSheet_confirmText": "This gateway takes over site {site} · gateway {gateway}. The old gateway must be removed or powered off.",
   "@gatewaySwapSheet_confirmText": {
     "placeholders": {
       "site": {
@@ -4257,7 +4255,7 @@
       }
     }
   },
-  "gatewaySwapSheet_confirmTextTail": "This gateway takes over Site {site} · gateway {gateway}. The old gateway ({tail}) must be removed or powered off.",
+  "gatewaySwapSheet_confirmTextTail": "This gateway takes over site {site} · gateway {gateway}. The old gateway ({tail}) must be removed or powered off.",
   "@gatewaySwapSheet_confirmTextTail": {
     "placeholders": {
       "site": {
@@ -4298,7 +4296,6 @@
       }
     }
   },
-  "gatewaySwapSheet_onlineOk": "Got it",
   "gatewaySwapSheet_rowTitle": "Gateway {gateway}",
   "@gatewaySwapSheet_rowTitle": {
     "placeholders": {
@@ -4436,7 +4433,7 @@
       }
     }
   },
-  "localBackendField_foundCount": "{count, plural, =1{Found 1 local back office} other{Found {count} local back offices}}",
+  "localBackendField_foundCount": "{count, plural, =1{Found 1 local backend} other{Found {count} local backends}}",
   "@localBackendField_foundCount": {
     "description": "Title of the pick dialog when several local back offices answered.",
     "placeholders": {
@@ -4445,7 +4442,7 @@
       }
     }
   },
-  "localBackendField_foundFilled": "✓ Found local back office {host} and filled it in.",
+  "localBackendField_foundFilled": "✓ Found local backend {host} and filled it in.",
   "@localBackendField_foundFilled": {
     "placeholders": {
       "host": {
@@ -4454,7 +4451,7 @@
       }
     }
   },
-  "localBackendField_foundNotChosen": "{count, plural, =1{Found 1 local back office; none chosen.} other{Found {count} local back offices; none chosen.}}",
+  "localBackendField_foundNotChosen": "{count, plural, =1{Found 1 local backend; none chosen.} other{Found {count} local backends; none chosen.}}",
   "@localBackendField_foundNotChosen": {
     "placeholders": {
       "count": {
@@ -4465,7 +4462,7 @@
   "localBackendField_gettingSubnet": "Getting the phone's Wi-Fi subnet…",
   "localBackendField_ipLabel": "PC IP address",
   "localBackendField_noPhoneIp": "Can't find the phone's Wi-Fi IP. Connect the phone to the same Wi-Fi as the PC, then try again.",
-  "localBackendField_notFound": "No local back office found on {subnet} (port {port}).",
+  "localBackendField_notFound": "No local backend found on {subnet} (port {port}).",
   "@localBackendField_notFound": {
     "placeholders": {
       "subnet": {
@@ -4478,7 +4475,7 @@
       }
     }
   },
-  "localBackendField_notFoundTimedOut": "No local back office found on {subnet} (port {port}). (Search time limit reached)",
+  "localBackendField_notFoundTimedOut": "No local backend found on {subnet} (port {port}). (Search time limit reached)",
   "@localBackendField_notFoundTimedOut": {
     "placeholders": {
       "subnet": {
@@ -4500,7 +4497,7 @@
       }
     }
   },
-  "localBackendField_portDialogTitle": "Local back office port",
+  "localBackendField_portDialogTitle": "Local backend port",
   "localBackendField_portLabel": "Port",
   "localBackendField_restoreDefault": "Restore default",
   "localBackendField_scanCancelled": "Search cancelled.",
@@ -4586,10 +4583,10 @@
   "mqttTarget_failBleOnly": "The upload target can only be switched on site over Bluetooth, not by remote command.",
   "mqttTarget_failBusy": "The gateway is busy with another command. Wait and retry.",
   "mqttTarget_failInvalidHost": "Gateway refused the switch: the local backend address must be a private LAN IPv4 (10.x, 172.16–31.x, 192.168.x), not a host name or public IP.",
-  "mqttTarget_failInvalidParams": "Gateway refused the switch: bad command parameters. Update the APP and retry.",
+  "mqttTarget_failInvalidParams": "Gateway refused the switch: bad command parameters. Update the app and retry.",
   "mqttTarget_failInvalidPort": "Gateway refused the switch: the MQTT port must be a whole number from 1 to 65535.",
-  "mqttTarget_failInvalidReqId": "The APP sent an invalid command number. Reconnect and retry.",
-  "mqttTarget_failInvalidTarget": "Gateway refused the switch: invalid upload target name. Update the APP and retry.",
+  "mqttTarget_failInvalidReqId": "The app sent an invalid command number. Reconnect and retry.",
+  "mqttTarget_failInvalidTarget": "Gateway refused the switch: invalid upload target name. Update the app and retry.",
   "mqttTarget_failNoReason": "The gateway refused to switch the upload target (no reason given).",
   "mqttTarget_failNotReady": "The gateway is still starting up. Wait a few seconds and retry.",
   "mqttTarget_failNvsWrite": "The gateway could not save the setting. The upload target did not change and it did not restart. Retry; report it if this keeps failing.",
@@ -4648,7 +4645,7 @@
       }
     }
   },
-  "mqttTarget_plainLocal": "the local test server ({host})",
+  "mqttTarget_plainLocal": "the local test host ({host})",
   "@mqttTarget_plainLocal": {
     "description": "Local test backend inside a sentence; no port.",
     "placeholders": {
@@ -4705,10 +4702,6 @@
   },
   "mqttTarget_reportUnconfirmed": "Upload target: not confirmed",
   "mqttTarget_shipWarning": "This gateway uploads to a local test server. Switch it back to production before shipping.",
-  "networkCheck_fwUnknown": "unknown",
-  "@networkCheck_fwUnknown": {
-    "description": "Firmware version not read."
-  },
   "networkCheck_reuseNoWifi": "The gateway is not on Wi-Fi yet",
   "networkCheck_reuseNotUploading": "The gateway has not started uploading data",
   "networkCheck_reuseTargetMismatch": "The gateway's data does not reach the phone's backend yet",
@@ -4719,9 +4712,8 @@
   "networkCheck_reuseUploadPaused": "The gateway's data upload is paused",
   "networkCheck_stepAlignTarget": "Match upload target",
   "networkCheck_stepChoosePtu": "Choose PTUs",
-  "networkCheck_stepChooseSite": "Choose station",
+  "networkCheck_stepChooseSite": "Choose site",
   "networkCheck_stepConfirmUpload": "Confirm data upload",
-  "networkCheck_stepDone": "Done",
   "networkCheck_stepFindGateway": "Find gateway",
   "networkCheck_stepNetworkCheck": "Gateway network check",
   "networkCheck_stepPrepare": "Prepare",
@@ -4759,7 +4751,7 @@
     }
   },
   "networkCheck_targetProductionFixed": "The gateway sends data to production",
-  "networkCheck_targetUndecidable": "The gateway sends data to {current}; the APP cannot tell from this URL whether it matches.",
+  "networkCheck_targetUndecidable": "The gateway sends data to {current}; the app cannot tell from this URL whether it matches.",
   "@networkCheck_targetUndecidable": {
     "placeholders": {
       "current": {
@@ -4778,11 +4770,11 @@
   },
   "networkCheck_uploadAfterTarget": "Checked once the upload target matches",
   "networkCheck_uploadAfterWifi": "Checked once the gateway is on Wi-Fi",
-  "networkCheck_uploadLinkLost": "The phone lost the gateway's Bluetooth; cannot confirm.",
-  "networkCheck_uploadLinkLostHint": "Move closer to the gateway and tap [End and choose gateway again] to reconnect.",
+  "networkCheck_uploadLinkLost": "The phone lost its Bluetooth link to the gateway; cannot confirm.",
+  "networkCheck_uploadLinkLostHint": "Move closer to the gateway and tap [End and choose another gateway] to reconnect.",
   "networkCheck_uploadNotConfirmed": "Data upload not confirmed yet. Tap [Check again].",
   "networkCheck_uploadNotStarted": "The gateway has not started uploading data.",
-  "networkCheck_uploadUnsupported": "Cannot confirm; the final data verification checks it again.",
+  "networkCheck_uploadUnsupported": "Cannot confirm; the final data check checks it again.",
   "networkCheck_uploadWaiting": "Waiting for the gateway to start uploading… (up to about 1 minute)",
   "networkCheck_uploading": "Uploading data",
   "networkCheck_wifiNotRead": "Gateway network status not read yet. Tap [Check again].",
@@ -4791,7 +4783,7 @@
   "@networkCheck_wifiResetAction": {
     "description": "Name of the Reset Wi-Fi button, inserted into the subnet hint."
   },
-  "networkCheck_wifiUnsupported": "The APP cannot read this gateway's Wi-Fi (firmware {fw} is too old); the final data verification checks it again.",
+  "networkCheck_wifiUnsupported": "The app cannot read this gateway's Wi-Fi (firmware {fw} is too old); the final data check checks it again.",
   "@networkCheck_wifiUnsupported": {
     "placeholders": {
       "fw": {
@@ -4799,11 +4791,11 @@
       }
     }
   },
-  "nextActionGuide_captionBegin": "Connected. You can start commissioning.",
+  "nextActionGuide_captionBegin": "Connected. You can start setup.",
   "nextActionGuide_captionConnect": "Check the target, then tap connect below",
   "nextActionGuide_captionStart": "Start here",
   "protocol_ambiguousTarget": "The gateway is connected to several PTUs and cannot tell which one to identify. Choose a PTU, then retry.",
-  "protocol_authentication": "Back office login failed or expired. Retry later; if it still fails, contact the administrator to update the APP.",
+  "protocol_authentication": "Back office login failed or expired. Retry later; if it still fails, contact the administrator to update the app.",
   "protocol_backendUnavailable": "The backend is not responding; 60 seconds of automatic retries did not help. Check the backend, then tap [Retry]; the verification progress so far is kept.",
   "protocol_badResponse": "Cannot read the backend's response ({backend}).",
   "@protocol_badResponse": {
@@ -4830,7 +4822,7 @@
   "@protocol_currentBackend": {
     "description": "Fallback name of the backend inside error sentences."
   },
-  "protocol_directDeferUnconfirmed": "The gateway did not report being in service with uploads resumed, so setup is not finished. Tap [Finish setup first] again; if that still fails, tap [Ask back office for help].",
+  "protocol_directDeferUnconfirmed": "The gateway did not report being in service with uploads resumed, so setup is not finished. Tap [Finish setup now] again; if that still fails, tap [Ask back office].",
   "protocol_directNoPtu": "The gateway is not connected to a PTU, so it cannot bind. Wait for the PTU to connect, then try again.",
   "protocol_directPickMissing": "The gateway is not connected to a PTU. Check the PTU's power, then tap [Search again].",
   "protocol_directSwitchFailed": "The gateway has not switched to this PTU in time (it is bound for now). The screen updates once it connects; you can also check the PTU is powered and close, or pick another PTU.",
@@ -4838,7 +4830,7 @@
   "protocol_directUnsupported": "This firmware does not support the one-to-one threshold and binding. Update the firmware first (1.7.20 or later).",
   "protocol_disconnected": "Connection to the gateway lost. Move closer and reconnect.",
   "protocol_expired": "Command expired (phone and gateway clocks differ too much, or it was delayed). Retry",
-  "protocol_fleetUnconfirmed": "Data uploaded, but the gateway did not report being in monitoring (the APP resent the command once), so activation is not finished. Move closer to the gateway and tap [Start data verification] to retry; if that still fails, tap [Ask back office for help].",
+  "protocol_fleetUnconfirmed": "Data uploaded, but the gateway did not report being in monitoring (the app resent the command once), so setup is not finished. Move closer to the gateway and tap [Start data check] to retry; if that still fails, tap [Ask back office].",
   "protocol_gatewayBusy": "The gateway is preparing or busy with another operation. Retry shortly.",
   "protocol_gatewayFailedNoReason": "The gateway reported a failure (no reason given).",
   "protocol_gatewayFailedSeeDetails": "The gateway reported a failure. See the details.",
@@ -4852,7 +4844,7 @@
     }
   },
   "protocol_gatewayFull": "This gateway is full. Connect to another gateway.",
-  "protocol_gatewayNotFound": "The backend has no record of this gateway{where}. The gateway may upload to another backend (e.g. production), while the APP is connected to {backend}.",
+  "protocol_gatewayNotFound": "The backend has no record of this gateway{where}. The gateway may upload to another backend (e.g. production), while the app is connected to {backend}.",
   "@protocol_gatewayNotFound": {
     "placeholders": {
       "where": {
@@ -4863,7 +4855,7 @@
       }
     }
   },
-  "protocol_gatewayNotFoundCause": "The backend has no record of this gateway{where} (the APP is connected to {backend}). {cause}",
+  "protocol_gatewayNotFoundCause": "The backend has no record of this gateway{where} (the app is connected to {backend}). {cause}",
   "@protocol_gatewayNotFoundCause": {
     "description": "HTTP 404 gateway_not_found with a known cause sentence.",
     "placeholders": {
@@ -4897,7 +4889,7 @@
   },
   "protocol_httpsRequired": "Production needs a valid HTTPS URL.",
   "protocol_identifyDurationUnsupported": "This older gateway does not support the chosen identify seconds. Older versions with PTU identify allow only 1–30 seconds, earlier ones a fixed 6 seconds; for other values (including 0, light off) update the gateway firmware.",
-  "protocol_identifyNoPtu": "The gateway is not connected to a PTU, so no PTU can blink. Make sure this pile's PTU is powered and close, then retry.",
+  "protocol_identifyNoPtu": "The gateway is not connected to a PTU, so no PTU can blink. Make sure this charger's PTU is powered and close, then retry.",
   "protocol_identifyUnsupported": "This firmware does not support the identify light. Update the firmware first. The breathing light while connected can still help.",
   "protocol_identityArchived": "This gateway was removed (archived) in the back office, so its heartbeats are not recorded. Tap [Rejoin] below; once recording resumes, the online check continues.",
   "@protocol_identityArchived": {
@@ -4906,7 +4898,7 @@
   "protocol_incomplete": "Some PTUs are not connected or their data has not arrived. Check each one's status, then retry.",
   "protocol_invalidIdentifySeconds": "Identify seconds must be 0 (light off) or a whole number 2–10; 1 keeps the PTU light on, so it is not offered.",
   "protocol_locationOff": "This Android version needs Location to scan for Bluetooth. Turn on Location, then scan again.",
-  "protocol_monitorUnconfirmed": "Monitoring was not confirmed back on within 30 seconds. Tap [Reconnect and continue] to retry, or [Skip] to verify the data directly.",
+  "protocol_monitorUnconfirmed": "Could not confirm within 30 seconds that the gateway resumed monitoring. Tap [Reconnect and continue] to retry, or [Skip] to verify the data directly.",
   "protocol_networkUnreachable": "Cannot reach {backend}. Check that the phone and the backend PC are on the same Wi-Fi subnet, the PC firewall allows the port, and the backend URL is correct.",
   "@protocol_networkUnreachable": {
     "placeholders": {
@@ -4937,7 +4929,7 @@
   "protocol_permission": "Bluetooth permission needed. Allow it in system settings, then retry.",
   "protocol_phoneLinkLost": "The phone lost its Bluetooth link to the gateway. Move closer and tap [Reconnect and continue]",
   "protocol_ptuConnectFailed": "PTU connection failed. Check the PTU's power and distance",
-  "protocol_ptuIdentityMismatch": "The back office's PTU identity does not match this selection, or the MAC is missing; verification is not complete. Go back and check this pile's PTU; if it still differs, ask the back office for help.",
+  "protocol_ptuIdentityMismatch": "The back office's PTU identity does not match this selection, or the MAC is missing; verification is not complete. Go back and check this charger's PTU; if it still differs, ask the back office for help.",
   "protocol_ptuNoResponse": "PTU not responding",
   "protocol_reconnectFailed": "Reconnect failed. Move closer to the gateway and retry, or go back to finding gateways.",
   "protocol_replacePending": "The back office registered the new unit, but writing to the device failed. Run setup again; the replacement setting is kept.",
@@ -4965,7 +4957,7 @@
       }
     }
   },
-  "protocol_targetReconnect": "The gateway got the switch command and restarted, but Bluetooth did not reconnect within 45 seconds. Move closer to the gateway, tap [End and choose gateway again], reconnect, then check [Connection status].",
+  "protocol_targetReconnect": "The gateway got the switch command and restarted, but Bluetooth did not reconnect within 45 seconds. Move closer to the gateway, tap [End and choose another gateway], reconnect, then check [Connection status].",
   "protocol_testModeStuck": "The gateway is still in test mode after restarting. Tap [{button}] again; if that still fails, tap Help.",
   "@protocol_testModeStuck": {
     "description": "{button} is the leave-test-mode button name.",
@@ -4977,7 +4969,7 @@
   },
   "protocol_timeNotSynced": "Gateway clock not synced. Without a network, update the firmware over USB first.",
   "protocol_timeout": "Timed out. Check the device and network, then retry.",
-  "protocol_unexpected": "Unexpected APP error: {detail}",
+  "protocol_unexpected": "Unexpected app error: {detail}",
   "@protocol_unexpected": {
     "placeholders": {
       "detail": {
@@ -5100,7 +5092,7 @@
     }
   },
   "ptuSelectionTile_unassigned": "Unassigned PTU",
-  "recentDataApi_authRefused": "The back office refused this APP's credential. Contact the administrator to update the APP",
+  "recentDataApi_authRefused": "The back office refused this app's credential. Contact the administrator to update the app",
   "recentDataApi_errorText": "Cannot reach the back office ({reason})",
   "@recentDataApi_errorText": {
     "placeholders": {
@@ -5316,7 +5308,7 @@
   "recentDataPage_voltage": "Voltage",
   "recentGateways_archivedLabel": "Archived (removed in back office)",
   "recentGateways_configuredLabel": "Configured",
-  "recentGateways_queryFailed": "Back office status unknown · query failed ({detail})",
+  "recentGateways_queryFailed": "Backend status unknown · query failed ({detail})",
   "@recentGateways_queryFailed": {
     "placeholders": {
       "detail": {
@@ -5324,9 +5316,9 @@
       }
     }
   },
-  "recentGateways_queryTimeout": "Back office status unknown · query timed out (8 s)",
-  "recentGateways_reportedOffline": "Back office reports offline",
-  "recentGateways_reportedOnline": "Back office reports online",
+  "recentGateways_queryTimeout": "Backend status unknown · query timed out (8 s)",
+  "recentGateways_reportedOffline": "Backend reports offline",
+  "recentGateways_reportedOnline": "Backend reports online",
   "recentGateways_shortArchived": "Backend archived",
   "recentGateways_shortNoRecord": "No backend record",
   "recentGateways_shortOffline": "Backend offline",
@@ -5335,9 +5327,9 @@
     "description": "Short badge on the gateway list (BackendPresence.online)."
   },
   "recentGateways_shortUnknown": "Backend unknown",
-  "recentGateways_unknown": "Back office status unknown",
-  "recentGateways_unknownConflict": "Back office status unknown · identity conflict flagged",
-  "recentGateways_unknownDuplicates": "{count, plural, other{Back office status unknown · {count} records with the same MAC}}",
+  "recentGateways_unknown": "Backend status unknown",
+  "recentGateways_unknownConflict": "Backend status unknown · identity conflict flagged",
+  "recentGateways_unknownDuplicates": "{count, plural, other{Backend status unknown · {count} records with the same MAC}}",
   "@recentGateways_unknownDuplicates": {
     "placeholders": {
       "count": {
@@ -5345,14 +5337,14 @@
       }
     }
   },
-  "recentGateways_unknownNoHeartbeat": "Back office status unknown · no heartbeat from this MAC",
-  "recentGateways_unknownUnverified": "Back office status unknown · identity checked after connecting",
+  "recentGateways_unknownNoHeartbeat": "Backend status unknown · no heartbeat from this MAC",
+  "recentGateways_unknownUnverified": "Backend status unknown · identity checked after connecting",
   "@recentGateways_unknownUnverified": {
     "description": "Gateway list: back-office status of a gateway; the part after the dot says why it is unknown."
   },
-  "rescueCode_appUnexpected": "Unexpected APP error",
+  "rescueCode_appUnexpected": "Unexpected app error",
   "rescueCode_backendAuth": "Back office login expired",
-  "rescueCode_backendDown": "APP cannot reach the back office",
+  "rescueCode_backendDown": "The app cannot reach the back office",
   "rescueCode_bleConnectFail": "Phone cannot connect to the gateway (Bluetooth error)",
   "rescueCode_bleLinkDrop": "Phone lost its Bluetooth link to the gateway",
   "rescueCode_bleReconnectFail": "Reconnect failed",
@@ -5368,14 +5360,14 @@
   "rescueCode_gwRebooted": "Gateway just restarted",
   "rescueCode_gwRejected": "Gateway reported a failure",
   "rescueCode_helpOnly": "No error on screen; asking for help",
-  "rescueCode_identityConflict": "Station number already used by another gateway",
+  "rescueCode_identityConflict": "Site ID already used by another gateway",
   "rescueCode_identityReplace": "Replacing the old unit did not finish",
   "rescueCode_monitorUnconfirmed": "Gateway monitoring not yet confirmed back on",
   "rescueCode_phoneBtOff": "Phone Bluetooth is off",
   "@rescueCode_phoneBtOff": {
     "description": "Rescue code in words for the installer (help sheet). Never sent to the back office."
   },
-  "rescueCode_phonePermission": "APP lacks Bluetooth / Location permission",
+  "rescueCode_phonePermission": "The app lacks Bluetooth / Location permission",
   "rescueCode_ptuConnectFail": "Gateway cannot connect to the PTU",
   "rescueCode_ptuNoResponse": "PTU not responding",
   "rescueCode_ptuNoneFound": "No PTU found in the scan",
@@ -5404,7 +5396,7 @@
   "settings_themeDark": "Dark",
   "settings_themeLight": "Light",
   "settings_themeSystem": "System default",
-  "starAllowList_beforeFailed": "PTU binding list not written; continuing. If another PTU nearby with the same number holds the connection, some PTUs may fail to be assigned. The list is written again after the data verification.",
+  "starAllowList_beforeFailed": "PTU binding list not written; continuing. If another PTU nearby with the same number holds the connection, some PTUs may fail to be assigned. The list is written again after the data check.",
   "starAllowList_failed": "PTU binding list not written. Retry. Until it is written the gateway only checks numbers, so another PTU nearby with the same number may still be connected.",
   "@starAllowList_failed": {
     "description": "Completion page: the star allow list (PTU binding list) could not be written."
@@ -5417,17 +5409,13 @@
       }
     }
   },
-  "starAllowList_idSeparator": ", ",
-  "@starAllowList_idSeparator": {
-    "description": "Joins PTU numbers (#1、#2)."
-  },
   "starAllowList_reselectHint": "If one of them belongs to this gateway, select it and configure again.",
   "starAllowList_retryButton": "Retry writing the binding list",
   "starAllowList_sentenceSeparator": " ",
   "@starAllowList_sentenceSeparator": {
     "description": "Joins the sentences of the foreign-PTU note: empty in Chinese, a space in English."
   },
-  "starAllowList_switchFailed": "PTU binding list not written after switching back to star; it is written again after the data verification.",
+  "starAllowList_switchFailed": "PTU binding list not written after switching back to star; it is written again after the data check.",
   "starAllowList_unlistedDropped": "{count, plural, =1{1 connected PTU is not on this gateway's binding list; the gateway drops it.} other{{count} connected PTUs are not on this gateway's binding list; the gateway drops them.}}",
   "@starAllowList_unlistedDropped": {
     "placeholders": {
@@ -5446,9 +5434,9 @@
       }
     }
   },
-  "stationChangeProgress_applying": "After the site number is applied, the gateway restarts. Stay close; the APP reconnects by itself.",
-  "stationChangeProgress_confirming": "Reconnected. Checking the new site number and Wi-Fi; it continues by itself when done.",
-  "stationChangeProgress_restarting": "This is the normal restart after applying the site number; Bluetooth drops briefly. Stay close; the APP reconnects by itself.",
+  "stationChangeProgress_applying": "After the site ID is applied, the gateway restarts. Stay close; the app reconnects by itself.",
+  "stationChangeProgress_confirming": "Reconnected. Checking the new site ID and Wi-Fi; it continues by itself when done.",
+  "stationChangeProgress_restarting": "This is the normal restart after applying the site ID; Bluetooth drops briefly. Stay close; the app reconnects by itself.",
   "stationChangeProgress_target": "Site {site} · Gateway {gateway}",
   "@stationChangeProgress_target": {
     "placeholders": {
@@ -5461,12 +5449,12 @@
     }
   },
   "stationChange_itemApply": "Apply site settings",
-  "stationChange_itemConfirm": "Check the station number and Wi-Fi",
+  "stationChange_itemConfirm": "Check the site ID and Wi-Fi",
   "stationChange_itemRestart": "Restart and reconnect",
   "stationChange_noteReconnecting": "Reconnecting automatically",
   "stationChange_noteWaitBoot": "Waiting for the gateway to start",
-  "stationChange_titleApplying": "Applying the station number, please wait",
-  "stationChange_titleConfirming": "Checking the station number and Wi-Fi",
+  "stationChange_titleApplying": "Applying the site ID, please wait",
+  "stationChange_titleConfirming": "Checking the site ID and Wi-Fi",
   "stationChange_titleReconnecting": "Reconnecting to the gateway",
   "stationChange_titleRestarting": "Gateway restarting, please wait",
   "uiProgressChecklist_doneAt": "Done {time}",
@@ -5613,12 +5601,8 @@
     }
   },
   "verifyDiagnosis_reasonOffline": "Offline",
-  "verifyDiagnosis_reasonSeparator": ", ",
-  "@verifyDiagnosis_reasonSeparator": {
-    "description": "Joins several reasons of one PTU on one line."
-  },
   "verifyDiagnosis_roundOk": "OK this round",
-  "verifyDiagnosis_sameTarget": "The gateway uploads to {target} (same backend as the APP), but the backend has no heartbeat from it yet, so the gateway is not connected to that MQTT broker yet.{state}\n{hint}",
+  "verifyDiagnosis_sameTarget": "The gateway uploads to {target} (same backend as the app), but the backend has no heartbeat from it yet, so the gateway is not connected to that MQTT broker yet.{state}\n{hint}",
   "@verifyDiagnosis_sameTarget": {
     "description": "state: verifyDiagnosis_mqttConnected / _mqttDisconnected or empty; hint: what to check.",
     "placeholders": {
@@ -5713,7 +5697,7 @@
   "@verifyLivePanel_flowGateway": {
     "description": "Middle stop of the flow PTU → gateway → back office (short)."
   },
-  "verifyLivePanel_footer": "{pace}・{seconds} s left",
+  "verifyLivePanel_footer": "{pace} · {seconds} s left",
   "@verifyLivePanel_footer": {
     "placeholders": {
       "pace": {
@@ -5727,10 +5711,6 @@
   "verifyLivePanel_goal": "Done after 3 normal rows",
   "@verifyLivePanel_goal": {
     "description": "Step 9 (data check) sentence; a row is one data sample uploaded by a PTU."
-  },
-  "verifyLivePanel_listSeparator": ", ",
-  "@verifyLivePanel_listSeparator": {
-    "description": "Joins reasons or PTU names in a list (en: comma and space)."
   },
   "verifyLivePanel_pace": "Checks for new data every {seconds} s; done after 3 normal rows",
   "@verifyLivePanel_pace": {

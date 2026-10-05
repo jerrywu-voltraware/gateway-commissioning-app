@@ -367,7 +367,7 @@
   "controller_deferFinishLabel": "先完成配置",
   "controller_deferring": "正在完成閘道器配置（本樁 PTU 尚未連線）",
   "controller_deferConfirmTitle": "先完成配置，稍後 PTU 上電自動連線？",
-  "controller_deferConfirm": "閘道器會照常完成配置：加入運作、恢復上傳，維持一對一模式與目前門檻（{threshold} dBm），但不綁定 PTU。\n本樁 PTU 上電後，閘道器會自動連上它；綁定需之後到現場按〔辨識〕確認。",
+  "controller_deferConfirm": "閘道器會照常完成配置：加入運作、恢復上傳，維持一對一模式與目前門檻（{threshold} dBm），但不綁定 PTU。\n本樁 PTU 上電後，閘道器會自動連上它；綁定需之後到現場按〔辨識並綁定〕確認。",
   "@controller_deferConfirm": {
     "placeholders": {
       "threshold": {
@@ -376,7 +376,7 @@
     }
   },
   "controller_deferredDoneTitle": "閘道器配置完成",
-  "controller_deferredDone": "本樁 PTU 尚未連線。PTU 上電後會自動連線，之後到現場按〔辨識〕確認綁定。",
+  "controller_deferredDone": "本樁 PTU 尚未連線。PTU 上電後會自動連線，之後到現場按〔辨識並綁定〕確認綁定。",
   "controller_deferredDetail": "閘道器已加入運作並恢復上傳，維持一對一模式（門檻 {threshold} dBm），尚未綁定 PTU。",
   "@controller_deferredDetail": {
     "description": "Done page line; the install report always uses the zh text.",
@@ -519,7 +519,6 @@
       }
     }
   },
-  "controller_doneFinishLabel": "完成",
   "controller_doneNextLabel": "配置下一台",
   "controller_doneBusy": "正在處理，完成後再按〔完成〕。",
   "controller_devShipNote": "開發環境提示（本地測試版才會出現，現場人員不用處理）：這台閘道器目前上傳到本地測試站，出貨前需由開發人員把手機和閘道器一起切回正式站。",
@@ -536,10 +535,6 @@
     }
   },
   "controller_resumeUnknown": "已保留先前進度，請重新連線以核對裝置現況。",
-  "controller_listSeparator": "、",
-  "@controller_listSeparator": {
-    "description": "Separator between list items (PTU numbers) on screen."
-  },
   "controller_resumeNoneDone": "尚未完成任何 PTU",
   "controller_resumeDone": "已完成 {count} 台（{list}）",
   "@controller_resumeDone": {
@@ -668,6 +663,18 @@
   "@controller_connectLogDetail": {
     "placeholders": {
       "log": {
+        "type": "String"
+      }
+    }
+  },
+  "controller_connectLogLine": "第 {attempt} 次：{type}",
+  "@controller_connectLogLine": {
+    "description": "One connect-failure entry (attempt number and technical error type). The Chinese text is also uploaded as field diagnostics connect_log.",
+    "placeholders": {
+      "attempt": {
+        "type": "int"
+      },
+      "type": {
         "type": "String"
       }
     }

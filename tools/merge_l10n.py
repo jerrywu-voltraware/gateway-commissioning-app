@@ -4,6 +4,8 @@
 
     py -3 -X utf8 tools/merge_l10n.py           # 合併並寫出 app_zh.arb、app_en.arb
     py -3 -X utf8 tools/merge_l10n.py --check   # 只比對；與現有檔不同或有錯就 exit 1
+    py -3 -X utf8 tools/merge_l10n.py --check --check-buttons   # 另檢查句中按鈕名
+    py -3 -X utf8 tools/merge_l10n.py --report-duplicate-values # 列出 zh 值相同的 key
 
 規則（任一違反就 exit 1 並列出全部問題，不寫檔）：
 - 分區檔名 `<area>_<lang>.arb`；area 為 lowerCamelCase（不可含底線），lang 為 zh／en。
@@ -12,6 +14,12 @@
 - 每個分區 zh 與 en 的 key 集合必須相同（en 缺 key 或多 key 都失敗）。
 - `@key` metadata（description、placeholders）跟著 key 走；`@key` 沒有對應 key → 失敗。
   metadata 以 zh（template）為準，en 可省略 `@key`。
+- `--check-buttons`（Phase C）：句子裡提到的按鈕名——en 的 `[...]`、zh 的〔…〕——
+  必須與某個 key 的完整值（按鈕 label）一字不差（`{x}` 視為任意值、ICU plural
+  的各分支都算）；不一致就列出並 exit 1。zh 的「…」也常用來引述狀態文字，
+  不納入檢查。
+- `--report-duplicate-values`：列出 zh 值相同的 key（只報告、不影響 exit code）；
+  通用字應改用 `common_*`，其餘為不同語境刻意分開（英文可能不同）。
 - 輸出：`@@locale` 在最前，其後依 key 字母序，每個 key 後接它的 `@key`；
   兩格縮排、UTF-8（無 BOM）、LF、結尾換行；輸出穩定（同輸入同輸出）。
 """
@@ -158,9 +166,62 @@ def render(lang: str, entries: dict, template: dict) -> str:
     return json.dumps(out, ensure_ascii=False, indent=2) + "\n"
 
 
+_PLURAL = re.compile(r"(?:=\d+|zero|one|two|few|many|other)\{((?:[^{}]|\{[^{}]*\})*)\}")
+_PH = re.compile(r"\{\w+\}")
+_BUTTON_REF = {"en": re.compile(r"\[([^\[\]{}]+)\]"), "zh": re.compile(r"〔([^〔〕]+)〕")}
+
+
+def _label_forms(value: str) -> set[str]:
+    """[value] 當按鈕 label 時可能出現在句中的樣子（plural 各分支、placeholder→#）。"""
+    forms = {value}
+    if value.startswith("{") and ", plural," in value:
+        forms.update(m.group(1) for m in _PLURAL.finditer(value))
+    out = set()
+    for f in forms:
+        f = f.strip()
+        out.add(f)
+        out.add(_PH.sub("#", f))
+    return out
+
+
+def check_buttons(merged: dict) -> list[str]:
+    """句中提到的按鈕名必須等於某個 key 的值（見模組說明 --check-buttons）。"""
+    problems = []
+    for lang, pat in _BUTTON_REF.items():
+        entries = merged[lang]
+        labels: set[str] = set()
+        for value, _, _ in entries.values():
+            labels |= _label_forms(value)
+        for key in sorted(entries):
+            for m in pat.finditer(entries[key][0]):
+                ref = m.group(1).strip()
+                if ref.startswith("{") and ref.endswith("}") and _PH.fullmatch(ref):
+                    continue  # 〔{label}〕：由呼叫端代入真正的 label
+                if lang == "en" and ("·" in ref or "_" in ref):
+                    continue  # 技術尾巴 [endpoint · detail]、[set_mqtt_target · code]
+                cands = {ref, _PH.sub("#", ref), re.sub(r"\b\d+\b", "#", ref)}
+                if not cands & labels:
+                    problems.append(f"{lang} {key}: 按鈕名「{ref}」不是任何 key 的值")
+    return problems
+
+
+def report_duplicate_values(merged: dict) -> None:
+    groups: dict[str, list[str]] = {}
+    for key, (value, _, _) in merged[TEMPLATE].items():
+        groups.setdefault(value, []).append(key)
+    dups = [(v, ks) for v, ks in groups.items() if len(ks) > 1]
+    for value, keys in sorted(dups, key=lambda x: (-len(x[1]), x[0])):
+        en = [merged["en"].get(k, ("?",))[0] for k in keys]
+        mark = " [common]" if any(k.startswith("common_") for k in keys) else ""
+        print(f"{value!r}{mark}: " + ", ".join(f"{k}={e!r}" for k, e in zip(keys, en)))
+    print(f"duplicate zh values: {len(dups)} groups")
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="合併 lib/l10n/parts/*.arb")
     ap.add_argument("--check", action="store_true", help="只比對，不寫檔")
+    ap.add_argument("--check-buttons", action="store_true", help="檢查句中按鈕名與按鈕 label 一致")
+    ap.add_argument("--report-duplicate-values", action="store_true", help="列出 zh 值相同的 key")
     ap.add_argument("--parts-dir", default=PARTS_DIR, help=argparse.SUPPRESS)
     ap.add_argument("--out-dir", default=L10N_DIR, help=argparse.SUPPRESS)
     args = ap.parse_args(argv)
@@ -171,6 +232,17 @@ def main(argv=None) -> int:
             print("ERROR " + e, file=sys.stderr)
         print(f"merge_l10n: {len(errors)} 個錯誤，未寫檔", file=sys.stderr)
         return 1
+
+    if args.report_duplicate_values:
+        report_duplicate_values(merged)
+    if args.check_buttons:
+        problems = check_buttons(merged)
+        for p in problems:
+            print("BUTTON " + p, file=sys.stderr)
+        if problems:
+            print(f"merge_l10n: {len(problems)} 個按鈕名不一致", file=sys.stderr)
+            return 1
+        print("merge_l10n --check-buttons OK")
 
     stale = []
     for lang in LANGS:

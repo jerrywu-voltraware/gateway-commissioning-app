@@ -7,22 +7,34 @@
   "verifyLivePanel_pace": "每 {seconds} 秒確認新資料，收到 3 筆正常資料即完成",
   "@verifyLivePanel_pace": {
     "placeholders": {
-      "seconds": {"type": "int"}
+      "seconds": {
+        "type": "int"
+      }
     }
   },
   "verifyLivePanel_paceInterval": "約每 {interval}收一筆，通常 {total}內完成",
   "@verifyLivePanel_paceInterval": {
     "description": "interval and total are already formatted durations (e.g. 30 秒 / 30 s).",
     "placeholders": {
-      "interval": {"type": "String", "example": "1 分鐘"},
-      "total": {"type": "String", "example": "3 分鐘"}
+      "interval": {
+        "type": "String",
+        "example": "1 分鐘"
+      },
+      "total": {
+        "type": "String",
+        "example": "3 分鐘"
+      }
     }
   },
   "verifyLivePanel_footer": "{pace}・剩餘 {seconds} 秒",
   "@verifyLivePanel_footer": {
     "placeholders": {
-      "pace": {"type": "String"},
-      "seconds": {"type": "int"}
+      "pace": {
+        "type": "String"
+      },
+      "seconds": {
+        "type": "int"
+      }
     }
   },
   "verifyLivePanel_passed": "資料正常上傳",
@@ -39,33 +51,37 @@
   "verifyLivePanel_countNotCounted": "未計入（維持 {count}/3）",
   "@verifyLivePanel_countNotCounted": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "verifyLivePanel_countFull": "正常（已滿 3 筆）",
   "verifyLivePanel_countRestart": "重新計數：第 {count}/3 筆",
   "@verifyLivePanel_countRestart": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "verifyLivePanel_countNth": "第 {count} 筆",
   "@verifyLivePanel_countNth": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "verifyLivePanel_reason": "原因：{reasons}",
   "@verifyLivePanel_reason": {
     "placeholders": {
-      "reasons": {"type": "String"}
+      "reasons": {
+        "type": "String"
+      }
     }
   },
   "verifyLivePanel_reasonDefault": "未通過檢查",
-  "verifyLivePanel_listSeparator": "、",
-  "@verifyLivePanel_listSeparator": {
-    "description": "Joins reasons or PTU names in a list (en: comma and space)."
-  },
   "verifyLivePanel_announceSeparator": "；",
   "@verifyLivePanel_announceSeparator": {
     "description": "Joins announcements of several PTUs (en: semicolon and space)."
@@ -73,35 +89,48 @@
   "verifyLivePanel_announceNotCounted": "資料未計入：{reasons}",
   "@verifyLivePanel_announceNotCounted": {
     "placeholders": {
-      "reasons": {"type": "String"}
+      "reasons": {
+        "type": "String"
+      }
     }
   },
   "verifyLivePanel_announceNew": "收到新資料",
   "verifyLivePanel_announceNth": "收到第 {count} 筆",
   "@verifyLivePanel_announceNth": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "verifyLivePanel_announcePtu": "{who} {text}",
   "@verifyLivePanel_announcePtu": {
     "description": "who is one or more PTU names (PTU #1, PTU #2); text is an announcement.",
     "placeholders": {
-      "who": {"type": "String", "example": "PTU #1"},
-      "text": {"type": "String"}
+      "who": {
+        "type": "String",
+        "example": "PTU #1"
+      },
+      "text": {
+        "type": "String"
+      }
     }
   },
   "verifyLivePanel_announceEvery": "每台{text}",
   "@verifyLivePanel_announceEvery": {
     "description": "Every PTU said the same announcement text.",
     "placeholders": {
-      "text": {"type": "String"}
+      "text": {
+        "type": "String"
+      }
     }
   },
   "verifyLivePanel_uncountedDetails": "查看未計入資料（{count} 筆）",
   "@verifyLivePanel_uncountedDetails": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "verifyLivePanel_rowOk": "正常",

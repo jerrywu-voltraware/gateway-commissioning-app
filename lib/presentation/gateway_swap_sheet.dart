@@ -65,7 +65,7 @@ String get swapConfirmOkLabel => L10n.current.gatewaySwapSheet_confirmOk;
 /// Sent no more: the old gateway came online after it was chosen.
 String swapOnlineText(int gateway) =>
     L10n.current.gatewaySwapSheet_online(gateway);
-String get swapOnlineOkLabel => L10n.current.gatewaySwapSheet_onlineOk;
+String get swapOnlineOkLabel => L10n.current.common_gotIt;
 
 /// The old gateway picked, or null (closed / cancelled).
 Future<SwapCandidate?> showGatewaySwapSheet(

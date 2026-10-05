@@ -1190,7 +1190,8 @@ class _DirectPickActionsState extends ConsumerState<DirectPickActions> {
     final pending =
         remote == null &&
         state.busy &&
-        (line == identifyPendingText || line == identifyPendingGatewayText);
+        // 同源比對（controller 寫入的 identifyPendingText），比對所有語言。
+        matchesAnyLanguage(line, (l) => l.directMode_identifyPending);
     return Column(
       key: const Key('direct-pick-actions'),
       mainAxisSize: MainAxisSize.min,

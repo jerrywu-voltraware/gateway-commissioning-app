@@ -17,10 +17,6 @@
       }
     }
   },
-  "starAllowList_idSeparator": "、",
-  "@starAllowList_idSeparator": {
-    "description": "Joins PTU numbers (#1、#2)."
-  },
   "starAllowList_foreignIgnored": "{count, plural, other{附近有 {count} 台編號相同的其他 PTU，已被閘道器忽略（不會連線）。}}",
   "@starAllowList_foreignIgnored": {
     "placeholders": {

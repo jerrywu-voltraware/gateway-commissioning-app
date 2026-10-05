@@ -122,7 +122,7 @@ String verifyFeedReasonText(VerifyFeedEntry e) =>
 /// The reasons of [e] in one, or 「未通過檢查」 when it has none.
 String _reasonsText(VerifyFeedEntry e) => e.reasons.isEmpty
     ? L10n.current.verifyLivePanel_reasonDefault
-    : e.reasons.join(L10n.current.verifyLivePanel_listSeparator);
+    : e.reasons.join(L10n.current.common_listSeparator);
 
 /// The announced line for [e]; 「PTU #n」 first when [ptus] > 1.
 String verifyFeedAnnounce(VerifyFeedEntry e, {required int ptus}) {
@@ -156,7 +156,7 @@ String verifyPollAnnounce(List<VerifyFeedEntry> rows, {required int ptus}) {
         : l10n.verifyLivePanel_announcePtu(
             rows
                 .map((e) => 'PTU #${e.id}')
-                .join(l10n.verifyLivePanel_listSeparator),
+                .join(l10n.common_listSeparator),
             said.single,
           );
   }

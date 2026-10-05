@@ -80,7 +80,7 @@ void main() {
       expect(find.text('Site 81 · Gateway 2'), findsOneWidget);
       expect(
         find.text(
-          'Reconnected. Checking the new site number and Wi-Fi; '
+          'Reconnected. Checking the new site ID and Wi-Fi; '
           'it continues by itself when done.',
         ),
         findsOneWidget,

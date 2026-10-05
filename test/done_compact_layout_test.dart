@@ -50,6 +50,7 @@ CommissionState _done({
   verified: !deferred,
   checkPassed: true,
   message: deferred ? '' : '資料持續更新',
+  messageKind: deferred ? MessageKind.none : MessageKind.dataStreaming,
   backendSeenAt: seen ? DateTime.now() : null,
   ptuDeferred: deferred,
   uploadIntervalMs: 300000,
@@ -513,7 +514,11 @@ void main() {
     final stamp = DateTime.now();
     await _pumpPage(
       tester,
-      snapshot: _done().copy(backendSeenAt: stamp, message: verifiedText),
+      snapshot: _done().copy(
+        backendSeenAt: stamp,
+        message: verifiedText,
+        messageKind: MessageKind.verified,
+      ),
     );
     final expected =
         '${stamp.hour.toString().padLeft(2, '0')}:${stamp.minute.toString().padLeft(2, '0')}';

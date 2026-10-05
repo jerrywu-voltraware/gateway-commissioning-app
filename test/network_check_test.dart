@@ -16,6 +16,7 @@ import 'package:gateway_commissioning/data/demo_system.dart';
 import 'package:gateway_commissioning/data/local_backend_probe.dart';
 import 'package:gateway_commissioning/gateway_app.dart';
 import 'support/pick_gateway.dart';
+import 'support/finders.dart';
 
 const _lan = MqttTarget.local('192.168.1.50');
 const _local = BackendEnvState(
@@ -796,7 +797,7 @@ void main() {
       expect(find.byKey(const Key('wifi-reset-prompt')), findsOneWidget);
       await tap(tester, find.byKey(const Key('wifi-reset-later')));
       expect(find.text('✗ $_missingHomeWifi'), findsOneWidget);
-      expect(find.text('重設 Wi-Fi'), findsOneWidget);
+      expect(buttonText('重設 Wi-Fi'), findsOneWidget);
       // The panel names the Wi-Fi as the cause too, in plain words.
       expect(find.textContaining('閘道器連不上 Wi-Fi「Xiaomi_WU」'), findsWidgets);
       expect(find.textContaining('disconnected'), findsNothing);
@@ -812,7 +813,7 @@ void main() {
 
       // 回到網路體檢 → 重設 Wi-Fi: Wi-Fi only, site and gateway locked.
       await tap(tester, find.text('回到網路體檢'));
-      await tap(tester, find.text('重設 Wi-Fi'));
+      await tap(tester, buttonText('重設 Wi-Fi'));
       expect(find.text('保留站點 80／閘道器 1，只更新 Wi-Fi。'), findsOneWidget);
       expect(find.widgetWithText(TextField, '站號（1–65535）'), findsNothing);
       expect(tester.takeException(), isNull);

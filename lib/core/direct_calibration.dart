@@ -168,7 +168,7 @@ String calibrationNeighborLabel(List<String> segments, {int? total}) {
   final l10n = L10n.current;
   final named = segments
       .map(noBreak)
-      .join(l10n.directCalibration_neighborSeparator);
+      .join(l10n.common_listSeparator);
   return total != null && total > segments.length
       ? l10n.directCalibration_neighborsAndMore(named, total)
       : named;

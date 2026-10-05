@@ -12,6 +12,7 @@ import 'package:gateway_commissioning/core/app_theme.dart';
 import 'package:gateway_commissioning/core/protocol.dart';
 import 'package:gateway_commissioning/data/contracts.dart';
 import 'package:gateway_commissioning/data/demo_system.dart';
+import 'package:gateway_commissioning/data/recent_gateways.dart';
 import 'package:gateway_commissioning/gateway_app.dart';
 import 'package:gateway_commissioning/presentation/gateway_discovery.dart';
 
@@ -408,7 +409,7 @@ void main() {
     // _tile already maps stale or logged-out backend state to this label.
     // Its native DateTime clock is unchanged by Build37; this asserts only the
     // new presentation boundary and does not claim a simulated cache expiry.
-    expect(gatewayBackendNoteFor('後端未知'), isNull);
+    expect(gatewayBackendNoteFor(BackendPresence.unknown), isNull);
   });
 
   for (final scenario in const [

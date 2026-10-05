@@ -29,6 +29,7 @@ import 'package:gateway_commissioning/presentation/commissioning_page.dart';
 
 import 'network_check_test.dart' show WifiGateway;
 import 'support/pick_gateway.dart';
+import 'support/finders.dart';
 
 const _lan = MqttTarget.local('192.168.1.50');
 
@@ -662,11 +663,11 @@ void main() {
         expect(fake.count('set_wifi'), 0);
         expect(fake.count('set_site_identity'), 0);
         await tester.scrollUntilVisible(
-          find.text('重設 Wi-Fi'),
+          buttonText('重設 Wi-Fi'),
           160,
           scrollable: find.byType(Scrollable).first,
         );
-        await tap(tester, find.text('重設 Wi-Fi'));
+        await tap(tester, buttonText('重設 Wi-Fi'));
         expect(text(tester, 'task-title'), wifiTaskTitle);
         expect(tester.takeException(), isNull);
       },

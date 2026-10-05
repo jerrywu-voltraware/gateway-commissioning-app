@@ -41,9 +41,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get androidAppUpdateDialog_integrityFailed => '更新檔驗證失敗，請重新下載。';
 
   @override
-  String get androidAppUpdateDialog_later => '稍後';
-
-  @override
   String androidAppUpdateDialog_latestVersion(String name, String code) {
     return '最新版本：$name（$code）';
   }
@@ -97,9 +94,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get assign_busy => '閘道器忙碌，稍後重試';
 
   @override
-  String get assign_done => '完成';
-
-  @override
   String assign_doneId(int id) {
     return '完成 · #$id';
   }
@@ -131,9 +125,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String assign_linkRetry(int retry, int retries) {
     return '藍牙連線失敗，自動重試 $retry/$retries';
   }
-
-  @override
-  String get assign_nameSeparator => '、';
 
   @override
   String get assign_notAssignedLink => '尚未指派（手機與閘道器斷線）';
@@ -399,9 +390,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get commissioning_demoWifiLabel => '模擬閘道器的 Wi-Fi';
 
   @override
-  String get commissioning_details => '詳細資訊';
-
-  @override
   String get commissioning_detailsTitle => '設備與連線資訊';
 
   @override
@@ -472,9 +460,6 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get commissioning_gotIt => '知道了';
-
-  @override
   String commissioning_identifyGateway(int seconds) {
     return '辨識這台・$seconds 秒';
   }
@@ -497,9 +482,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String commissioning_lastUploadConfirmed(String time) {
     return '最近確認上傳：$time';
   }
-
-  @override
-  String get commissioning_listSeparator => '、';
 
   @override
   String get commissioning_liveRssi => '動態 RSSI · 每 5 秒更新（順序不變）';
@@ -819,9 +801,6 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get commissioning_skip => '略過';
-
-  @override
   String get commissioning_skipChooseSite => '先選擇站點（沿用要等網路正常）';
 
   @override
@@ -1087,7 +1066,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get commissioning_wifiResetConfirm => '是，重設 Wi-Fi';
 
   @override
-  String get commissioning_wifiResetGoHint => '按「是」將前往 Wi-Fi 設定。';
+  String get commissioning_wifiResetGoHint => '按「是，重設 Wi-Fi」將前往 Wi-Fi 設定。';
 
   @override
   String get commissioning_wifiResetLater => '暫不重設';
@@ -1124,16 +1103,28 @@ class AppLocalizationsZh extends AppLocalizations {
   String get common_copy => '複製';
 
   @override
+  String get common_details => '詳細資訊';
+
+  @override
   String get common_done => '完成';
 
   @override
   String get common_dotSeparator => '・';
 
   @override
+  String get common_gotIt => '知道了';
+
+  @override
   String get common_languageEnglish => 'English';
 
   @override
   String get common_languageZhHant => '繁體中文';
+
+  @override
+  String get common_later => '稍後';
+
+  @override
+  String get common_listSeparator => '、';
 
   @override
   String get common_loading => '讀取中…';
@@ -1149,6 +1140,9 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get common_settings => '設定';
+
+  @override
+  String get common_skip => '略過';
 
   @override
   String get common_timeout => '逾時';
@@ -1712,6 +1706,11 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String controller_connectLogLine(int attempt, String type) {
+    return '第 $attempt 次：$type';
+  }
+
+  @override
   String get controller_connectedHasStation =>
       '已連線，此閘道器已有站點設定。先做網路體檢，再選擇沿用或設定新站。';
 
@@ -1756,7 +1755,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String controller_deferConfirm(int threshold) {
-    return '閘道器會照常完成配置：加入運作、恢復上傳，維持一對一模式與目前門檻（$threshold dBm），但不綁定 PTU。\n本樁 PTU 上電後，閘道器會自動連上它；綁定需之後到現場按〔辨識〕確認。';
+    return '閘道器會照常完成配置：加入運作、恢復上傳，維持一對一模式與目前門檻（$threshold dBm），但不綁定 PTU。\n本樁 PTU 上電後，閘道器會自動連上它；綁定需之後到現場按〔辨識並綁定〕確認。';
   }
 
   @override
@@ -1775,7 +1774,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get controller_deferredDone =>
-      '本樁 PTU 尚未連線。PTU 上電後會自動連線，之後到現場按〔辨識〕確認綁定。';
+      '本樁 PTU 尚未連線。PTU 上電後會自動連線，之後到現場按〔辨識並綁定〕確認綁定。';
 
   @override
   String get controller_deferredDoneTitle => '閘道器配置完成';
@@ -1860,9 +1859,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get controller_doneBusy => '正在處理，完成後再按〔完成〕。';
-
-  @override
-  String get controller_doneFinishLabel => '完成';
 
   @override
   String get controller_doneNextLabel => '配置下一台';
@@ -1989,9 +1985,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get controller_listNotWritten => '名單沒有寫入，指派照常進行';
-
-  @override
-  String get controller_listSeparator => '、';
 
   @override
   String get controller_loginRun => '登入後端';
@@ -2911,9 +2904,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get directCalibration_needsOwn => '請先在第 7 步按「辨識此樁」確認本樁 PTU，再校正門檻。';
 
   @override
-  String get directCalibration_neighborSeparator => '、';
-
-  @override
   String directCalibration_neighborsAndMore(String named, int total) {
     return '$named 等 $total 台';
   }
@@ -3513,9 +3503,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get fieldHelpSheet_demo => '示範模式不會傳送，請直接唸下面的資訊。';
 
   @override
-  String get fieldHelpSheet_details => '詳細資訊';
-
-  @override
   String get fieldHelpSheet_label => '請後台協助';
 
   @override
@@ -3557,12 +3544,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get fieldReport_backendUnsupported => '後台尚未支援（請更新後台）';
-
-  @override
-  String get fieldReport_fwUnknown => '未知';
-
-  @override
-  String get fieldReport_gatewayNotFoundPrefix => '未找到閘道器';
 
   @override
   String fieldReport_helpCode(String code) {
@@ -4323,9 +4304,6 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get gatewaySwapSheet_onlineOk => '知道了';
-
-  @override
   String gatewaySwapSheet_rowTitle(int gateway) {
     return '閘道器 $gateway';
   }
@@ -4756,9 +4734,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get mqttTarget_shipWarning => '此閘道器目前上傳到本地測試站，出貨前請切回正式站。';
 
   @override
-  String get networkCheck_fwUnknown => '未知';
-
-  @override
   String get networkCheck_reuseNoWifi => '閘道器還沒連上 Wi-Fi';
 
   @override
@@ -4784,9 +4759,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get networkCheck_stepConfirmUpload => '確認資料上傳';
-
-  @override
-  String get networkCheck_stepDone => '完成';
 
   @override
   String get networkCheck_stepFindGateway => '找到閘道器';
@@ -5614,9 +5586,6 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get starAllowList_idSeparator => '、';
-
-  @override
   String get starAllowList_reselectHint => '若其中有這台閘道器要接的 PTU，請勾選它後重新配置。';
 
   @override
@@ -5794,9 +5763,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get verifyDiagnosis_reasonOffline => '離線';
 
   @override
-  String get verifyDiagnosis_reasonSeparator => '、';
-
-  @override
   String get verifyDiagnosis_roundOk => '本輪正常';
 
   @override
@@ -5864,9 +5830,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get verifyLivePanel_goal => '收到 3 筆正常資料就算完成';
-
-  @override
-  String get verifyLivePanel_listSeparator => '、';
 
   @override
   String verifyLivePanel_pace(int seconds) {

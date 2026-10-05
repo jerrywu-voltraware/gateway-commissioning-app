@@ -1,9 +1,5 @@
 {
   "@@locale": "zh",
-  "fieldReport_gatewayNotFoundPrefix": "未找到閘道器",
-  "@fieldReport_gatewayNotFoundPrefix": {
-    "description": "Recognition only, never shown: the start of the controller's 'no gateway found after a scan' message in this language (sessionRescueCode matches every language). Keep in sync with that controller message."
-  },
   "fieldReport_helpStationGateway": "站 {site} / 閘道器 {gateway}",
   "@fieldReport_helpStationGateway": {
     "description": "Help sheet line the installer reads to the back office.",
@@ -77,7 +73,6 @@
       }
     }
   },
-  "fieldReport_fwUnknown": "未知",
   "fieldReport_helpFirmwareDirect": "韌體 {fw} · 直連",
   "@fieldReport_helpFirmwareDirect": {
     "placeholders": {

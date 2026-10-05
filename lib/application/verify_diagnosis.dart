@@ -151,7 +151,7 @@ String verifyDiagnosis({
         id,
         reasons.isEmpty
             ? l10n.verifyDiagnosis_roundOk
-            : reasons.join(l10n.verifyDiagnosis_reasonSeparator),
+            : reasons.join(l10n.common_listSeparator),
       ),
     );
   }

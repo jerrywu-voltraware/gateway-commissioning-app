@@ -10,6 +10,5 @@
   "fieldHelpSheet_sending": "Notifying the back office…",
   "fieldHelpSheet_resend": "Resend",
   "fieldHelpSheet_readOut": "Read to the back office:",
-  "fieldHelpSheet_details": "Details",
   "fieldHelpSheet_noPassword": "The Wi-Fi password is never sent."
 }

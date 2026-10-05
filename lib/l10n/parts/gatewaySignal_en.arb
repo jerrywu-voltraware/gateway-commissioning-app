@@ -7,5 +7,5 @@
   "gatewaySignal_disconnectedScan": "Disconnected · scan {value}",
   "gatewaySignal_last": "Last {value}",
   "gatewaySignal_line": "Phone ↔ gateway: {status}",
-  "gatewaySignal_linkLost": "The phone lost its Bluetooth link to the gateway. Move closer; the APP will show how to reconnect."
+  "gatewaySignal_linkLost": "The phone lost its Bluetooth link to the gateway. Move closer; the app will show how to reconnect."
 }

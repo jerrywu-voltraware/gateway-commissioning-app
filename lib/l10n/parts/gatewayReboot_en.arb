@@ -12,7 +12,7 @@
   "gatewayReboot_reasonDeepSleep": "Woke from power-saving sleep",
   "gatewayReboot_reasonUsb": "Reset while connected to a computer",
   "gatewayReboot_reasonUnknown": "Unknown reason",
-  "gatewayReboot_notice": "The gateway just restarted (reason: {reason}). This is not a PTU fault; settings already done on the gateway are kept. The APP has reconnected: continue from the current step. No need to start over; do not unplug it or tap repeatedly.",
-  "gatewayReboot_noticeMany": "The gateway just restarted (reason: {reason}; {times} restarts in total). This is not a PTU fault; settings already done on the gateway are kept. The APP has reconnected: continue from the current step. No need to start over; do not unplug it or tap repeatedly. If it keeps restarting, take a screenshot and report it.",
+  "gatewayReboot_notice": "The gateway just restarted (reason: {reason}). This is not a PTU fault; settings already done on the gateway are kept. The app has reconnected: continue from the current step. No need to start over; do not unplug it or tap repeatedly.",
+  "gatewayReboot_noticeMany": "The gateway just restarted (reason: {reason}; {times} restarts in total). This is not a PTU fault; settings already done on the gateway are kept. The app has reconnected: continue from the current step. No need to start over; do not unplug it or tap repeatedly. If it keeps restarting, take a screenshot and report it.",
   "gatewayReboot_retry": "The last action was interrupted by a gateway restart (not a PTU fault). Tap the same button again to continue."
 }

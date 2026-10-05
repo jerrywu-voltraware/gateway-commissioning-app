@@ -12,9 +12,8 @@
   "gatewaySwapSheet_noRecord": "Never online",
   "gatewaySwapSheet_lastSeen": "Last online {age} ago",
   "gatewaySwapSheet_confirmTitle": "Replace the gateway?",
-  "gatewaySwapSheet_confirmText": "This gateway takes over Site {site} · gateway {gateway}. The old gateway must be removed or powered off.",
-  "gatewaySwapSheet_confirmTextTail": "This gateway takes over Site {site} · gateway {gateway}. The old gateway ({tail}) must be removed or powered off.",
+  "gatewaySwapSheet_confirmText": "This gateway takes over site {site} · gateway {gateway}. The old gateway must be removed or powered off.",
+  "gatewaySwapSheet_confirmTextTail": "This gateway takes over site {site} · gateway {gateway}. The old gateway ({tail}) must be removed or powered off.",
   "gatewaySwapSheet_confirmOk": "Replace",
-  "gatewaySwapSheet_online": "Gateway {gateway} is online. Power off the old gateway first.",
-  "gatewaySwapSheet_onlineOk": "Got it"
+  "gatewaySwapSheet_online": "Gateway {gateway} is online. Power off the old gateway first."
 }

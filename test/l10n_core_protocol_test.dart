@@ -90,7 +90,7 @@ void main() {
       expect(
         notFound.withCause('It was archived.').message,
         contains(
-          '(the APP is connected to backend http://x). It was archived.',
+          '(the app is connected to backend http://x). It was archived.',
         ),
       );
       expect(
@@ -116,7 +116,7 @@ void main() {
       );
       expect(
         GatewayFailure.unexpected(StateError('boom')).message,
-        startsWith('Unexpected APP error: '),
+        startsWith('Unexpected app error: '),
       );
     });
 
@@ -163,7 +163,7 @@ void main() {
     expect(change.items.map((i) => i.label), [
       'Apply site settings',
       'Restart and reconnect',
-      'Check the station number and Wi-Fi',
+      'Check the site ID and Wi-Fi',
     ]);
     expect(change.items[1].note, 'Waiting for the gateway to start');
   });
@@ -281,8 +281,8 @@ void main() {
     expect(L10n.current.recentDataApi_secondsAgo(7), '7 seconds ago');
     expect(
       recentDataErrorText(const GatewayFailure('authentication')),
-      "Cannot reach the back office (The back office refused this APP's "
-      'credential. Contact the administrator to update the APP)',
+      "Cannot reach the back office (The back office refused this app's "
+      'credential. Contact the administrator to update the app)',
     );
   });
 }

@@ -28,5 +28,19 @@
   "common_languageEnglish": "English",
   "@common_languageEnglish": {
     "description": "Language name, always written in that language (same text in every locale)."
+  },
+  "common_listSeparator": "、",
+  "@common_listSeparator": {
+    "description": "Joins items of a list in a sentence (#1、#2 / #1, #2)."
+  },
+  "common_later": "稍後",
+  "common_skip": "略過",
+  "common_details": "詳細資訊",
+  "@common_details": {
+    "description": "Opens or titles the technical details."
+  },
+  "common_gotIt": "知道了",
+  "@common_gotIt": {
+    "description": "Dismisses a notice."
   }
 }

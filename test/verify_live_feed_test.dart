@@ -232,9 +232,16 @@ String _joined(WidgetTester tester, Key key, [String separator = '']) => tester
 /// The page at step 9 (offline, so nothing starts by itself).
 Future<(ProviderContainer, CommissioningController)> _pageAtStep9(
   WidgetTester tester,
-  _Scripted fake,
-) async {
+  _Scripted fake, {
+  bool animations = false,
+}) async {
   final container = await pumpApp(tester, fake);
+  // 共用的 pumpApp（3b320c7 起）預設「減少動態效果」；要量動畫的測試打開。
+  if (animations) {
+    tester.platformDispatcher.accessibilityFeaturesTestValue =
+        const FakeAccessibilityFeatures();
+    await tester.pumpAndSettle();
+  }
   final c = container.read(commissionProvider.notifier);
   await c.prepare('https://example.invalid', '', offline: true);
   await c.scan();
@@ -309,6 +316,9 @@ void main() {
         expect(find.byIcon(Icons.cancel), findsNothing);
         expect(counts, {1: 1});
       } else {
+        // 3b320c7 起未計入的列收在可展開的「詳細」裡：先展開再看原因。
+        await tester.tap(find.byKey(const ValueKey('verify-feed-details-1')));
+        await tester.pumpAndSettle();
         expect(find.text('原因：$reason'), findsOneWidget);
         expect(find.byIcon(Icons.cancel), findsOneWidget);
         expect(counts[1] ?? 0, 0);
@@ -702,7 +712,11 @@ void main() {
         'a dot that runs once, the live line; the copy', (tester) async {
       final calls = _platformCalls(tester);
       final fake = _Scripted(holdAt: 3);
-      final (container, c) = await _pageAtStep9(tester, fake);
+      final (container, c) = await _pageAtStep9(
+        tester,
+        fake,
+        animations: true,
+      );
       // Before: the flow stands still, the goal sentence, no old copy.
       expect(find.byKey(const Key('verify-flow')), findsOneWidget);
       expect(_dots(tester), [null, null]);
@@ -844,7 +858,11 @@ void main() {
     testWidgets('passed: the whole card green, 資料正常上傳 with a tick that '
         'scales in once', (tester) async {
       final fake = _Scripted(holdConfirm: true);
-      final (container, c) = await _pageAtStep9(tester, fake);
+      final (container, c) = await _pageAtStep9(
+        tester,
+        fake,
+        animations: true,
+      );
       final card = find.byKey(const Key('verify-card-surface'));
       Color? surface() =>
           (tester.widget<AnimatedContainer>(card).decoration as BoxDecoration?)

@@ -81,6 +81,22 @@ abstract final class L10n {
   static void reset() => load(AppLanguage.zh);
 }
 
+/// [text] 是否等於 [pick] 在任一 APP 語言產生的文字（docs/i18n.md §8.3）。
+///
+/// 給「同源比對」用：state 裡存的文字是產生當下的語言，語言切換後
+/// `L10n.current` 算出的會是另一種語言；比對所有語言就不會因切換而失準。
+/// 能用旗標或列舉時優先用旗標，這只是沒有結構化資料時的退路。
+bool matchesAnyLanguage(
+  String? text,
+  String Function(AppLocalizations l10n) pick,
+) {
+  if (text == null) return false;
+  for (final language in AppLanguage.values) {
+    if (pick(lookupAppLocalizations(language.locale)) == text) return true;
+  }
+  return false;
+}
+
 /// widget 層的簡寫：`context.l10n.common_close`。
 ///
 /// 樹上有 [AppLocalizations]（[GatewayApp]、`test/support/l10n.dart`）就用

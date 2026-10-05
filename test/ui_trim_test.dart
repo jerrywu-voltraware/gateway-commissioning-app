@@ -164,11 +164,14 @@ void _titleIsWhole(WidgetTester tester) {
   final text = tester.widget<Text>(title);
   expect(text.data, appBarTitle);
   expect(text.overflow, isNot(TextOverflow.ellipsis));
-  // 1.0.0+9: not scaled — no FittedBox above it inside the AppBar.
-  expect(
+  // 1.0.0+9: not scaled. 99ddebe（10-04）起標題外包「只縮不放」的
+  // FittedBox（scaleDown），讓較長的名稱擠得下；360 dp 一般字級下不會縮，
+  // 下面的字級檢查仍成立。
+  for (final box in tester.widgetList<FittedBox>(
     find.ancestor(of: title, matching: find.byType(FittedBox)),
-    findsNothing,
-  );
+  )) {
+    expect(box.fit, BoxFit.scaleDown);
+  }
   final paragraph = _titleParagraph(tester);
   expect(paragraph.didExceedMaxLines, isFalse);
   expect(paragraph.text.toPlainText(), appBarTitle);

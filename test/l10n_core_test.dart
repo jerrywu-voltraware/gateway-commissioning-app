@@ -175,16 +175,24 @@ void main() {
     for (final language in AppLanguage.values) {
       test('field_report: gateway not found (${language.name})', () {
         useLanguage(language);
-        final prefix = L10n.current.fieldReport_gatewayNotFoundPrefix;
-        final state = CommissionState(
-          step: 1,
-          message: '$prefix. Move closer and rescan.',
+        // Phase C：依 messageKind 旗標，不比對訊息文字。
+        final state = const CommissionState(step: 1).copy(
+          message: L10n.current.controller_noGatewayFound,
+          messageKind: MessageKind.noGatewayFound,
         );
         expect(sessionRescueCode(_input(state)), RescueCode.gwNotFound);
-        // Both languages are recognised whatever the current one is.
-        expect(isGatewayNotFoundMessage('未找到閘道器，請靠近並確認電源後重掃。'), isTrue);
-        expect(isGatewayNotFoundMessage('No gateway found. Rescan.'), isTrue);
-        expect(isGatewayNotFoundMessage('請選擇要開通的閘道器'), isFalse);
+        // The same text without the flag is not GW_NOT_FOUND.
+        expect(
+          sessionRescueCode(
+            _input(
+              CommissionState(
+                step: 1,
+                message: L10n.current.controller_noGatewayFound,
+              ),
+            ),
+          ),
+          isNull,
+        );
         expect(
           sessionRescueCode(
             _input(const CommissionState(step: 1, message: '準備完成')),
@@ -195,18 +203,26 @@ void main() {
 
       test('field_report: pending read-back (${language.name})', () {
         useLanguage(language);
-        expect(isPendingReadbackResult(pendingReadbackText(3)), isTrue);
-        expect(isPendingReadbackResult('已指派 #3，等待連線'), isFalse);
-        expect(isPendingReadbackResult(null), isFalse);
         final state = CommissionState(
           step: 5,
           ptus: const [
             {'mac': 'AA', 'device_number': 3},
           ],
           results: {'AA': pendingReadbackText(3)},
+          pendingReadback: const {'AA'},
         );
         final ptus = diagnosticSections(state, now: DateTime(2026))['ptus'];
         expect((ptus as List).single['assign'], 'pending_readback');
+        // The same row text without the flag is not pending.
+        final plain = CommissionState(
+          step: 5,
+          ptus: const [
+            {'mac': 'AA', 'device_number': 3},
+          ],
+          results: {'AA': pendingReadbackText(3)},
+        );
+        final rows = diagnosticSections(plain, now: DateTime(2026))['ptus'];
+        expect((rows as List).single['assign'], isNot('pending_readback'));
       });
 
       test('progress_checklist: checklistReason (${language.name})', () {
@@ -281,7 +297,7 @@ void main() {
     test('recent_gateways: English texts', () {
       useLanguage(AppLanguage.en);
       expect(backendPresenceShort(_uid, [_row()]), 'Backend online');
-      expect(backendPresence(_uid, [_row()]), 'Back office reports online');
+      expect(backendPresence(_uid, [_row()]), 'Backend reports online');
       expect(backendUnknownShort, 'Backend unknown');
       expect(gatewayArchivedLabel, 'Archived (removed in back office)');
     });

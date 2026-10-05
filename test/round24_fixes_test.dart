@@ -32,7 +32,9 @@ import 'package:gateway_commissioning/core/rescue_code.dart';
 import 'package:gateway_commissioning/data/contracts.dart';
 import 'package:gateway_commissioning/data/demo_system.dart';
 import 'package:gateway_commissioning/data/network_watch.dart';
+import 'package:gateway_commissioning/l10n/l10n.dart';
 import 'package:gateway_commissioning/presentation/field_help_sheet.dart';
+import 'support/l10n.dart';
 
 const _base = 'https://example.invalid';
 
@@ -525,6 +527,43 @@ void main() {
       expect((reboot['from'], reboot['to']), (40, 41));
       // The commissioning went on (nothing of the report touches it).
       expect(s.error, isNull);
+    });
+
+    // Phase C（docs/i18n.md §6）：英文畫面的重開機說明是英文，上傳的
+    // error_message／診斷包 message 與 step_label 仍是中文。
+    test('English: notice on screen in English, uploaded texts in Chinese', () async {
+      useLanguage(AppLanguage.en);
+      _manualRelink();
+      var clock = DateTime(2026, 9, 26, 22, 54);
+      final fake = R24Gateway()
+        ..restartReason = 'sw'
+        ..dropAfterAssigns = 1;
+      final container = _container(
+        fake,
+        config: FieldReporterConfig(allowDemoLink: true, now: () => clock),
+      );
+      final c = await _toStep7(container);
+      await c.configurePtus();
+      await _settle();
+      final dropsBefore = fake.reports.length;
+      clock = clock.add(const Duration(seconds: 12));
+      await c.resumeAssign();
+      await _settle();
+      final s = container.read(commissionProvider);
+      expect(s.gatewayReboot?.to, 41);
+      final notice = gatewayRebootText(s.gatewayReboot!);
+      expect(notice, isNot(matches(RegExp('[一-鿿]'))));
+      final rebooted = fake.reports
+          .skip(dropsBefore)
+          .lastWhere((r) => r['error_code'] == 'GW_REBOOTED');
+      expect(rebooted['error_message'], contains('閘道器剛重新啟動'));
+      expect(rebooted['error_message'], contains('收到重新啟動指令或設定變更'));
+      expect(rebooted['step_label'], matches(RegExp('^[一-鿿]')));
+      final pkg = fake.diags.lastWhere(
+        (d) => (d['error'] as Map)['code'] == 'GW_REBOOTED',
+      );
+      expect((pkg['error'] as Map)['message'], contains('閘道器剛重新啟動'));
+      expect(pkg['step_label'], matches(RegExp('^[一-鿿]')));
     });
 
     test(

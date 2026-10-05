@@ -8,24 +8,45 @@
   "directCalibration_outOfRange": "本樁讀數已超出閘道器可用範圍（-100～-20 dBm），請重新取樣",
   "directCalibration_ambiguous": "本樁與鄰近樁的廣播訊號相差不到 {db} dB：選台時可能判為不確定，綁定後就不受影響。",
   "@directCalibration_ambiguous": {
-    "placeholders": {"db": {"type": "int", "example": "6"}}
+    "placeholders": {
+      "db": {
+        "type": "int",
+        "example": "6"
+      }
+    }
   },
   "directCalibration_saved": "已寫入閘道器（重開機仍保留）",
   "directCalibration_noOwn": "未取得本樁 PTU 的連線訊號（閘道器目前沒有連著已確認的 PTU），無法建議門檻。請確認本樁 PTU 已連上後重新取樣。",
   "directCalibration_noNeighbor": "未偵測到鄰近 PTU（已連線的 PTU 不會廣播），無法確認放寬是否安全，建議維持 {hold} dBm。",
   "@directCalibration_noNeighbor": {
-    "placeholders": {"hold": {"type": "int", "example": "-55"}}
+    "placeholders": {
+      "hold": {
+        "type": "int",
+        "example": "-55"
+      }
+    }
   },
   "directCalibration_ownBelowHold": "本樁 PTU 訊號偏弱（可用上限 {upper} dBm，低於門檻 {hold} dBm），但沒有鄰近資料不能放寬門檻：請確認已開啟「確認後綁定 PTU」（綁定後不受門檻影響），或調整 PTU 擺放後重新取樣。",
   "@directCalibration_ownBelowHold": {
     "placeholders": {
-      "upper": {"type": "int", "example": "-60"},
-      "hold": {"type": "int", "example": "-55"}
+      "upper": {
+        "type": "int",
+        "example": "-60"
+      },
+      "hold": {
+        "type": "int",
+        "example": "-55"
+      }
     }
   },
   "directCalibration_holdLabel": "維持目前門檻（{hold} dBm），不需寫入",
   "@directCalibration_holdLabel": {
-    "placeholders": {"hold": {"type": "int", "example": "-55"}}
+    "placeholders": {
+      "hold": {
+        "type": "int",
+        "example": "-55"
+      }
+    }
   },
   "directCalibration_needsOwn": "請先在第 7 步按「辨識此樁」確認本樁 PTU，再校正門檻。",
   "directCalibration_rescanLabel": "重新掃描鄰近",
@@ -33,62 +54,117 @@
   "directCalibration_referenceNoAdv": "參考值（閘道器未回報本樁廣播訊號）",
   "directCalibration_referenceStaleAdv": "參考值（本樁廣播值超過 {minutes} 分鐘，上限只用連線訊號）",
   "@directCalibration_referenceStaleAdv": {
-    "placeholders": {"minutes": {"type": "int", "example": "15"}}
+    "placeholders": {
+      "minutes": {
+        "type": "int",
+        "example": "15"
+      }
+    }
   },
   "directCalibration_referenceUndatedAdv": "參考值（本樁廣播值未附選台時間，上限只用連線訊號）",
   "directCalibration_selfAdvUndated": "本樁廣播值未附選台時間",
   "directCalibration_selfAdvSeconds": "本樁廣播值來自 {seconds} 秒前選台",
   "@directCalibration_selfAdvSeconds": {
-    "placeholders": {"seconds": {"type": "int", "example": "45"}}
+    "placeholders": {
+      "seconds": {
+        "type": "int",
+        "example": "45"
+      }
+    }
   },
   "directCalibration_selfAdvMinutes": "本樁廣播值來自 {minutes} 分鐘前選台",
   "@directCalibration_selfAdvMinutes": {
-    "placeholders": {"minutes": {"type": "int", "example": "4"}}
-  },
-  "directCalibration_neighborSeparator": "、",
-  "@directCalibration_neighborSeparator": {
-    "description": "Joins the named neighbour MAC segments."
+    "placeholders": {
+      "minutes": {
+        "type": "int",
+        "example": "4"
+      }
+    }
   },
   "directCalibration_neighborsAndMore": "{named} 等 {total} 台",
   "@directCalibration_neighborsAndMore": {
     "placeholders": {
-      "named": {"type": "String", "example": "…5F…、…2C…"},
-      "total": {"type": "int", "example": "4"}
+      "named": {
+        "type": "String",
+        "example": "…5F…、…2C…"
+      },
+      "total": {
+        "type": "int",
+        "example": "4"
+      }
     }
   },
   "directCalibration_gapStronger": "鄰近樁 {neighbor} 比本樁還強 {db} dB",
   "@directCalibration_gapStronger": {
     "placeholders": {
-      "neighbor": {"type": "String", "example": "…5F…"},
-      "db": {"type": "int", "example": "3"}
+      "neighbor": {
+        "type": "String",
+        "example": "…5F…"
+      },
+      "db": {
+        "type": "int",
+        "example": "3"
+      }
     }
   },
   "directCalibration_gapEqual": "鄰近樁 {neighbor} 和本樁一樣強",
   "@directCalibration_gapEqual": {
-    "placeholders": {"neighbor": {"type": "String", "example": "…5F…"}}
+    "placeholders": {
+      "neighbor": {
+        "type": "String",
+        "example": "…5F…"
+      }
+    }
   },
   "directCalibration_gapSmall": "鄰近樁 {neighbor} 只比本樁弱 {gap} dB，餘裕不足（至少要弱 {min} dB）",
   "@directCalibration_gapSmall": {
     "placeholders": {
-      "neighbor": {"type": "String", "example": "…5F…"},
-      "gap": {"type": "int", "example": "2"},
-      "min": {"type": "int", "example": "3"}
+      "neighbor": {
+        "type": "String",
+        "example": "…5F…"
+      },
+      "gap": {
+        "type": "int",
+        "example": "2"
+      },
+      "min": {
+        "type": "int",
+        "example": "3"
+      }
     }
   },
   "directCalibration_stale": "鄰近資料已 {age} 秒未更新（超過 {max} 秒，未列入計算），請按「{rescan}」再取樣一次。",
   "@directCalibration_stale": {
     "placeholders": {
-      "age": {"type": "int", "example": "75"},
-      "max": {"type": "int", "example": "60"},
-      "rescan": {"type": "String", "example": "重新掃描鄰近"}
+      "age": {
+        "type": "int",
+        "example": "75"
+      },
+      "max": {
+        "type": "int",
+        "example": "60"
+      },
+      "rescan": {
+        "type": "String",
+        "example": "重新掃描鄰近"
+      }
     }
   },
   "directCalibration_fewSamples": "{count, plural, other{有 {count} 台鄰近 PTU 讀數較少（不足 {min} 筆），已計入下限但可能不穩定，請按「{rescan}」再取樣一次。}}",
   "@directCalibration_fewSamples": {
     "placeholders": {
-      "count": {"type": "int", "example": "2"},
-      "min": {"type": "int", "example": "3"},
-      "rescan": {"type": "String", "example": "重新掃描鄰近"}
+      "count": {
+        "type": "int",
+        "example": "2"
+      },
+      "min": {
+        "type": "int",
+        "example": "3"
+      },
+      "rescan": {
+        "type": "String",
+        "example": "重新掃描鄰近"
+      }
     }
   }
 }

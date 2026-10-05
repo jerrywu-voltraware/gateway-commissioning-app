@@ -37,6 +37,7 @@ import 'package:gateway_commissioning/presentation/direct_mode_panel.dart';
 
 import 'compact_ptu_test.dart' show pumpSelection;
 import 'round15_direct_flow_test.dart' show PickGateway;
+import 'support/finders.dart';
 
 /// Field round 16: five PTUs that only differ in bytes 2–4.
 const _f5F = '90:5F:E8:9A:96:00';
@@ -681,7 +682,7 @@ void main() {
         tester.widget<Text>(find.byKey(const Key('ptu-selection-count'))).data,
         '已選 5 台 · 已完成 4 台 · 將配置 1 台',
       );
-      expect(find.text('配置剩餘 1 台並開始監控'), findsOneWidget);
+      expect(buttonText('配置剩餘 1 台並開始監控'), findsOneWidget);
       expect(find.text('已選 5 / 5 台'), findsNothing);
     });
   });

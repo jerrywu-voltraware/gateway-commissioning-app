@@ -97,6 +97,10 @@ Future<(ProviderContainer, _MenuGateway)> _pump(
     ),
   );
   await tester.pumpAndSettle();
+  // 首頁在啟動約 2 秒後會自動檢查一次更新（0b7e32a），pumpAndSettle 會走過
+  // 那段時間；那次檢查與它讀的安裝資訊不屬於選單行為。歸零後只量選單本身。
+  gateway.updateChecks = 0;
+  platform.reads = 0;
   return (
     ProviderScope.containerOf(tester.element(find.byType(GatewayApp))),
     gateway,
@@ -269,9 +273,10 @@ void main() {
 
   testWidgets('an already open menu updates when installed metadata arrives '
       'without checking for updates', (tester) async {
-    final platform = _VersionPlatform()
-      ..pending = Completer<InstalledAndroidApp>();
+    final platform = _VersionPlatform();
     final (_, gateway) = await _pump(tester, platform);
+    // 啟動時的自動檢查已完成；之後選單讀安裝資訊才卡住。
+    platform.pending = Completer<InstalledAndroidApp>();
     await _open(tester);
     expect(_updateItem(tester).enabled, isTrue);
     expect(find.byKey(const Key('app-installed-version')), findsNothing);

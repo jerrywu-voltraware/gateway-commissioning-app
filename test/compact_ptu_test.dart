@@ -8,6 +8,7 @@ import 'package:gateway_commissioning/data/demo_system.dart';
 import 'package:gateway_commissioning/data/local_backend_probe.dart';
 import 'package:gateway_commissioning/gateway_app.dart';
 import 'package:gateway_commissioning/presentation/ptu_selection_tile.dart';
+import 'support/finders.dart';
 
 class _Prober implements LocalBackendProber {
   @override
@@ -88,7 +89,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(container.read(commissionProvider).selected, hasLength(4));
       expect(find.text('已選 4 / 5 台'), findsOneWidget);
-      expect(find.text('配置 4 台並開始監控'), findsOneWidget);
+      expect(buttonText('配置 4 台並開始監控'), findsOneWidget);
       final lastRow = find.byType(PtuSelectionTile).last;
       await tester.ensureVisible(lastRow);
       await tester.pumpAndSettle();

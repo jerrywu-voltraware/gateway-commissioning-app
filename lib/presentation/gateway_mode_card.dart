@@ -31,15 +31,21 @@ class GatewayModeCard extends ConsumerWidget {
     }
     final atCheck = state.step == 2 && !state.checkPassed;
     final String text, hint, label, key;
+    // [text] 在每個語言的版本（與紅框同源比對，語言切換前寫入的也認得）。
+    final String Function(AppLocalizations) textIn;
     final VoidCallback action;
     if (state.testMode) {
       text = testModeText;
+      textIn = (l) => l.gatewayIdentity_testMode;
       hint = testModeActionHint;
       label = leaveTestModeLabel;
       key = 'test-mode';
       action = controller.leaveTestMode;
     } else if (state.uploadPaused && !atCheck) {
       text = uploadPausedText;
+      textIn = (l) => l.gatewayIdentity_uploadPaused(
+        l.gatewayIdentity_resumeUploadLabel,
+      );
       hint = gatewayModeResumeHint;
       label = resumeUploadLabel;
       key = 'upload-paused';
@@ -66,7 +72,7 @@ class GatewayModeCard extends ConsumerWidget {
         children: [
           // The red box right below already says it (e.g. a refused
           // 「下一步」): the card keeps only what to do.
-          if (state.error != text) ...[
+          if (!matchesAnyLanguage(state.error, textIn)) ...[
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [

@@ -16,5 +16,10 @@
   "common_timeout": "timed out",
   "common_dotSeparator": " · ",
   "common_languageZhHant": "繁體中文",
-  "common_languageEnglish": "English"
+  "common_languageEnglish": "English",
+  "common_listSeparator": ", ",
+  "common_later": "Later",
+  "common_skip": "Skip",
+  "common_details": "Details",
+  "common_gotIt": "Got it"
 }

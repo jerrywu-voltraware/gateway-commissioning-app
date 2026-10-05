@@ -1,6 +1,6 @@
 {
   "@@locale": "en",
-  "autoChecklist_oldFirmwareLater": "This firmware can't report; checked at the final data verification",
+  "autoChecklist_oldFirmwareLater": "This firmware can't report; checked in the final data check",
   "autoChecklist_linkLost": "Bluetooth lost; can't confirm",
   "autoChecklist_wifiConnected": "Connected",
   "autoChecklist_wifiNotSet": "Wi-Fi not set up; tap [Set up Wi-Fi] below",

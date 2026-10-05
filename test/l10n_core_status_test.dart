@@ -97,7 +97,7 @@ void main() {
         subnetHint(const MqttTarget.local('192.168.1.187'), '10.0.0.5'),
         'The gateway is on the 10.0.0.x subnet and may not reach the test '
         'host 192.168.1.187. Make sure the gateway and this computer use the '
-        'same Wi-Fi (tap [Use other Wi-Fi]).',
+        'same Wi-Fi (tap [Use another Wi-Fi]).',
       );
       expect(_linkLost().hint, startsWith('Bluetooth to the gateway dropped'));
     });
@@ -190,7 +190,7 @@ void main() {
       );
       expect(
         oldView.item(connectItemBackend)!.note,
-        "This firmware can't report; checked at the final data verification",
+        "This firmware can't report; checked in the final data check",
       );
     });
   });
@@ -203,7 +203,7 @@ void main() {
       expect(envLabel(BackendEnv.production), 'Production');
       expect(envLabel(BackendEnv.local), 'Local test');
       expect(localUnavailableLabel, 'Local test (not in this build)');
-      expect(localUnavailableText, startsWith("The release APP can't use"));
+      expect(localUnavailableText, startsWith("The release app can't use"));
       expect(
         environmentChangeHint(
           const BackendEnvState(),

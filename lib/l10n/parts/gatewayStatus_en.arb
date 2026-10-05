@@ -8,7 +8,7 @@
   "gatewayStatus_recentEmpty": "No setup finished on this phone with this version yet",
   "gatewayStatus_nearbyEmpty": "No gateway found nearby. Move closer and tap [Rescan].",
   "gatewayStatus_nearbyScanning": "Scanning for nearby gateways (about 8 s)…",
-  "gatewayStatus_nearbyUnnamed": "No site number yet, no data to view",
+  "gatewayStatus_nearbyUnnamed": "No site ID yet, no data to view",
   "gatewayStatus_nearbyUnconfigured": "Not set up yet, no data to view",
   "gatewayStatus_nearbyScanFailed": "Scan failed. Check Bluetooth, Location and Nearby devices permissions, then retry.",
   "gatewayStatus_rescan": "Rescan",

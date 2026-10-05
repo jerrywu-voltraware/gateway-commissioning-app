@@ -287,7 +287,7 @@ String get starListBeforeFailedText => L10n.current.starAllowList_beforeFailed;
 
 /// Completion page after a successful write ([ids]: the listed numbers).
 String starListWrittenText(List<int> ids) => L10n.current.starAllowList_written(
-  ids.map((id) => '#$id').join(L10n.current.starAllowList_idSeparator),
+  ids.map((id) => '#$id').join(L10n.current.common_listSeparator),
 );
 
 /// Install report line; null when this run wrote no list.

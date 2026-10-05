@@ -18,6 +18,7 @@ import 'package:gateway_commissioning/presentation/environment_switch.dart';
 import 'support/pick_gateway.dart';
 import 'support/l10n.dart';
 import 'package:gateway_commissioning/l10n/l10n.dart';
+import 'support/finders.dart';
 
 const _debug = EnvSwitchPolicy(
   autoSyncDefault: true,
@@ -511,7 +512,7 @@ void main() {
     expect(fake.targetRequests.single['host'], '192.168.1.50');
     await _passCheck(tester);
     await _tap(tester, find.text('使用此站點'));
-    await _tap(tester, find.text('配置 3 台並開始監控'));
+    await _tap(tester, buttonText('配置 3 台並開始監控'));
     // Step 6 starts the data verification by itself (no 開始資料驗證 tap).
     var state = container.read(commissionProvider);
     expect(state.error, isNull);
@@ -576,7 +577,7 @@ void main() {
     await _connectGateway(tester);
     await _passCheck(tester);
     await _tap(tester, find.text('使用此站點'));
-    await _tap(tester, find.text('配置 3 台並開始監控'));
+    await _tap(tester, buttonText('配置 3 台並開始監控'));
     await _tap(tester, find.text(devShipSwitchLabel));
     expect(container.read(commissionProvider).loggedIn, isFalse);
     final logins = fake.logins.length;
@@ -605,7 +606,7 @@ void main() {
     await _connectGateway(tester);
     await _passCheck(tester);
     await _tap(tester, find.text('使用此站點'));
-    await _tap(tester, find.text('配置 3 台並開始監控'));
+    await _tap(tester, buttonText('配置 3 台並開始監控'));
     await _tap(tester, find.text(devShipSwitchLabel));
     if (find.byKey(const Key('done-repair')).evaluate().isEmpty) {
       await openDoneSection(tester, 'done-advanced');
@@ -637,7 +638,7 @@ void main() {
     await _connectGateway(tester);
     await _passCheck(tester);
     await _tap(tester, find.text('使用此站點'));
-    await _tap(tester, find.text('配置 3 台並開始監控'));
+    await _tap(tester, buttonText('配置 3 台並開始監控'));
     expect(container.read(commissionProvider).step, 6);
     expect(container.read(commissionProvider).loggedIn, isTrue);
     // The automatic verification ran once (and failed here), staying on 6.
@@ -673,7 +674,7 @@ void main() {
     await tester.enterText(url, 'https://final.example');
     await tester.pump();
     expect(find.widgetWithText(TextField, '若尚未登入，請輸入登入密碼'), findsNothing);
-    await tester.tap(find.text('開始資料驗證'));
+    await tester.tap(buttonText('開始資料驗證'));
     await tester.pumpAndSettle();
     expect(fake.logins.last, ('https://final.example', _buildKey));
     expect(prober.probed, isNot(contains('https://a.example')));

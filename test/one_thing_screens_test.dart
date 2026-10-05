@@ -35,6 +35,7 @@ import 'gateway_signal_test.dart' show SignalLink;
 import 'network_check_test.dart' show WifiGateway;
 import 'round15_direct_flow_test.dart' show PickGateway;
 import 'support/pick_gateway.dart';
+import 'support/finders.dart';
 
 class _Prober implements LocalBackendProber {
   @override
@@ -541,7 +542,7 @@ void main() {
       expect(_title(tester), starPickTaskTitle);
       expect(find.byType(Checkbox), findsNWidgets(3));
       expect(find.byKey(const Key('ptu-configure')), findsOneWidget);
-      expect(find.text('配置 3 台並開始監控'), findsOneWidget);
+      expect(buttonText('配置 3 台並開始監控'), findsOneWidget);
       expect(find.byKey(const Key('identify-label')), findsOneWidget);
       expect(
         find.descendant(
@@ -550,7 +551,7 @@ void main() {
         ),
         findsNothing,
       );
-      await _tap(tester, find.text('配置 3 台並開始監控'));
+      await _tap(tester, buttonText('配置 3 台並開始監控'));
       s = container.read(commissionProvider);
       expect(s.error, isNull);
       expect(s.step, 7);

@@ -397,6 +397,9 @@ void main() {
       expect(_button(tester, _unselectedConnect(other)).onPressed, isNotNull);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
+      // testWidgets 在 tearDown 之前就檢查 debug 變數，必須在測試本體內還原
+      // （上面的 addTearDown 只管中途失敗的情況）。
+      debugDefaultTargetPlatformOverride = null;
     });
   }
 

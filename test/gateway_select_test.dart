@@ -412,6 +412,9 @@ void main() {
       };
       final inList = _listRects(tester, [_gw81, _gw82, _new]);
 
+      // 捲到 _new 之後 _gw82 的卡片被頂端蓋住，tap 落空；先捲回來。
+      await tester.ensureVisible(_card(_gw82));
+      await tester.pump();
       await tester.tap(_card(_gw82));
       await tester.pump();
       expect(

@@ -11,23 +11,41 @@
   "verifyDiagnosis_localHint": "請確認：閘道器的 MQTT 已連線（按「重新讀取」查看）、電腦防火牆已開放 TCP {port}、本地 MQTT broker 已啟動，且 broker 憑證包含電腦目前的 IP {host}（電腦 IP 若因 DHCP 變更，需重新產生憑證並把閘道器切到新 IP）。",
   "@verifyDiagnosis_localHint": {
     "placeholders": {
-      "port": {"type": "String", "example": "8883"},
-      "host": {"type": "String", "example": "192.168.0.12"}
+      "port": {
+        "type": "String",
+        "example": "8883"
+      },
+      "host": {
+        "type": "String",
+        "example": "192.168.0.12"
+      }
     }
   },
   "verifyDiagnosis_productionHint": "請確認現場網路可連到正式站（TCP {port}），並按「重新讀取」查看 MQTT 是否已連線。",
   "@verifyDiagnosis_productionHint": {
     "placeholders": {
-      "port": {"type": "String", "example": "8883"}
+      "port": {
+        "type": "String",
+        "example": "8883"
+      }
     }
   },
   "verifyDiagnosis_sameTarget": "閘道器已確認上傳到{target}（與 APP 所連後端一致），但後端尚未收到它的心跳，表示閘道器還沒連上該 MQTT broker。{state}\n{hint}",
   "@verifyDiagnosis_sameTarget": {
     "description": "state: verifyDiagnosis_mqttConnected / _mqttDisconnected or empty; hint: what to check.",
     "placeholders": {
-      "target": {"type": "String", "example": "正式站"},
-      "state": {"type": "String", "example": "閘道器最近回報 MQTT 未連線。"},
-      "hint": {"type": "String", "example": "請確認現場網路可連到正式站（TCP 8883）…"}
+      "target": {
+        "type": "String",
+        "example": "正式站"
+      },
+      "state": {
+        "type": "String",
+        "example": "閘道器最近回報 MQTT 未連線。"
+      },
+      "hint": {
+        "type": "String",
+        "example": "請確認現場網路可連到正式站（TCP 8883）…"
+      }
     }
   },
   "verifyDiagnosis_causeProductionUnknown": "閘道器可能尚未連上正式站的 MQTT，或上傳到其他後端環境（例如本地測試站）。",
@@ -36,7 +54,10 @@
   "verifyDiagnosis_reasonBackendLate": "後端資料延遲 {seconds} 秒",
   "@verifyDiagnosis_reasonBackendLate": {
     "placeholders": {
-      "seconds": {"type": "String", "example": "75"}
+      "seconds": {
+        "type": "String",
+        "example": "75"
+      }
     }
   },
   "verifyDiagnosis_reasonNotInLatest": "最新資料（/api/latest）無此 PTU",
@@ -45,40 +66,58 @@
   "verifyDiagnosis_reasonLag": "延遲 {seconds} 秒",
   "@verifyDiagnosis_reasonLag": {
     "placeholders": {
-      "seconds": {"type": "int"}
+      "seconds": {
+        "type": "int"
+      }
     }
   },
   "verifyDiagnosis_reasonBadTime": "資料時間無法解析",
   "verifyDiagnosis_reasonNotUpdated": "資料未更新（最後 {ts}）",
   "@verifyDiagnosis_reasonNotUpdated": {
     "placeholders": {
-      "ts": {"type": "String", "example": "2026-09-30T03:15:00Z"}
+      "ts": {
+        "type": "String",
+        "example": "2026-09-30T03:15:00Z"
+      }
     }
-  },
-  "verifyDiagnosis_reasonSeparator": "、",
-  "@verifyDiagnosis_reasonSeparator": {
-    "description": "Joins several reasons of one PTU on one line."
   },
   "verifyDiagnosis_noData": "閘道器的資料沒有進入目前連線的{backend}：fleet-status 沒有站 {site} / 閘道器 {gateway} 的心跳，/api/latest 也沒有任何資料。{cause}",
   "@verifyDiagnosis_noData": {
     "placeholders": {
-      "backend": {"type": "String", "example": "後端 https://46.250.255.172"},
-      "site": {"type": "int"},
-      "gateway": {"type": "int"},
-      "cause": {"type": "String", "example": "閘道器可能上傳到其他後端環境（例如正式站）。"}
+      "backend": {
+        "type": "String",
+        "example": "後端 https://46.250.255.172"
+      },
+      "site": {
+        "type": "int"
+      },
+      "gateway": {
+        "type": "int"
+      },
+      "cause": {
+        "type": "String",
+        "example": "閘道器可能上傳到其他後端環境（例如正式站）。"
+      }
     }
   },
   "verifyDiagnosis_noFleet": "fleet-status 沒有站 {site} / 閘道器 {gateway} 的心跳紀錄。",
   "@verifyDiagnosis_noFleet": {
     "placeholders": {
-      "site": {"type": "int"},
-      "gateway": {"type": "int"}
+      "site": {
+        "type": "int"
+      },
+      "gateway": {
+        "type": "int"
+      }
     }
   },
   "verifyDiagnosis_offline": "閘道器在後端顯示離線（最後心跳 {last}）。",
   "@verifyDiagnosis_offline": {
     "placeholders": {
-      "last": {"type": "String", "example": "2026-09-30 03:15:00"}
+      "last": {
+        "type": "String",
+        "example": "2026-09-30 03:15:00"
+      }
     }
   },
   "verifyDiagnosis_none": "無",
@@ -89,15 +128,22 @@
   "verifyDiagnosis_consecutive": "連續通過 {count} / 3 次。",
   "@verifyDiagnosis_consecutive": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "verifyDiagnosis_installNoDetail": "後端安裝驗證未通過（未回傳此 PTU 明細）",
   "verifyDiagnosis_ptuLine": "PTU #{id}：{reasons}",
   "@verifyDiagnosis_ptuLine": {
     "placeholders": {
-      "id": {"type": "int"},
-      "reasons": {"type": "String", "example": "離線、延遲 75 秒"}
+      "id": {
+        "type": "int"
+      },
+      "reasons": {
+        "type": "String",
+        "example": "離線、延遲 75 秒"
+      }
     }
   },
   "verifyDiagnosis_roundOk": "本輪正常"

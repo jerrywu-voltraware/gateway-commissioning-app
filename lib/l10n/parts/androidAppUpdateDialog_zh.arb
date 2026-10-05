@@ -12,15 +12,27 @@
   "androidAppUpdateDialog_currentVersion": "目前版本：{name}（{code}）",
   "@androidAppUpdateDialog_currentVersion": {
     "placeholders": {
-      "name": {"type": "String", "example": "1.0.0"},
-      "code": {"type": "String", "example": "21"}
+      "name": {
+        "type": "String",
+        "example": "1.0.0"
+      },
+      "code": {
+        "type": "String",
+        "example": "21"
+      }
     }
   },
   "androidAppUpdateDialog_latestVersion": "最新版本：{name}（{code}）",
   "@androidAppUpdateDialog_latestVersion": {
     "placeholders": {
-      "name": {"type": "String", "example": "1.0.1"},
-      "code": {"type": "String", "example": "22"}
+      "name": {
+        "type": "String",
+        "example": "1.0.1"
+      },
+      "code": {
+        "type": "String",
+        "example": "22"
+      }
     }
   },
   "androidAppUpdateDialog_defaultNotes": "改善 APP 使用體驗。",
@@ -31,11 +43,12 @@
   "androidAppUpdateDialog_downloading": "正在下載 {percent}%",
   "@androidAppUpdateDialog_downloading": {
     "placeholders": {
-      "percent": {"type": "int"}
+      "percent": {
+        "type": "int"
+      }
     }
   },
   "androidAppUpdateDialog_cancelDownload": "取消下載",
-  "androidAppUpdateDialog_later": "稍後",
   "androidAppUpdateDialog_continueInstall": "繼續安裝",
   "androidAppUpdateDialog_redownload": "重新下載",
   "androidAppUpdateDialog_updateNow": "立即更新"

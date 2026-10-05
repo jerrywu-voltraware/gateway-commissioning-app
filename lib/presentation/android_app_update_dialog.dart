@@ -188,7 +188,7 @@ class _AndroidAppUpdateDialogState extends ConsumerState<AndroidAppUpdateDialog>
                   ? l10n.androidAppUpdateDialog_cancelDownload
                   : (_installerOpened
                         ? l10n.common_close
-                        : l10n.androidAppUpdateDialog_later),
+                        : l10n.common_later),
             ),
           ),
           FilledButton(

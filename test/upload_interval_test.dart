@@ -1270,7 +1270,7 @@ void main() {
   ) async {
     useLanguage(AppLanguage.en);
     expect(verifyGoalText, 'Done after 3 normal rows');
-    expect(verifyFooterText(12), '$verifyPaceText・12 s left');
+    expect(verifyFooterText(12), '$verifyPaceText · 12 s left');
     await tester.pumpWidget(
       wrapWithL10n(
         const Scaffold(

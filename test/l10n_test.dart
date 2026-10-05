@@ -193,7 +193,7 @@ void main() {
       useLanguage(AppLanguage.en);
       expect(local.label, 'Local 192.168.0.12:8883');
       expect(local.shortLabel, 'Local 192.168.0.12');
-      expect(local.plainLabel, 'the local test server (192.168.0.12)');
+      expect(local.plainLabel, 'the local test host (192.168.0.12)');
       expect(const MqttTarget.production().label, 'Production');
       expect(
         uploadTargetFailureText('busy'),

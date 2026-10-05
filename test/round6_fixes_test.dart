@@ -15,6 +15,7 @@ import 'package:gateway_commissioning/data/contracts.dart';
 import 'ble_transport_test.dart' show FakePlatform;
 import 'link_loss_test.dart'
     show DroppingLink, manualRelinkOnly, ready, pumpApp;
+import 'support/finders.dart';
 
 /// Android after Bluetooth off/on: the first [failConnects] connects fail
 /// with "Failed to connect".
@@ -231,7 +232,7 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(find.text('重新連線並繼續（剩 2 台）'), findsOneWidget);
+      expect(buttonText('重新連線並繼續（剩 2 台）'), findsOneWidget);
       await tester.runAsync(() async {
         await tester.tap(find.byKey(const Key('ptu-resume')));
         await Future<void>.delayed(const Duration(milliseconds: 300));
@@ -286,7 +287,11 @@ void main() {
 
   test('7. recent heartbeat skips 正在確認資料上傳', () {
     final now = DateTime(2026, 9, 25, 12);
-    final base = CommissionState(loggedIn: true, message: verifiedText);
+    final base = CommissionState(
+      loggedIn: true,
+      message: verifiedText,
+      messageKind: MessageKind.verified,
+    );
     expect(showHealthPending(base, now: now), isTrue);
     expect(
       showHealthPending(

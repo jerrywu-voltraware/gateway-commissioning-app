@@ -2,5 +2,5 @@
   "@@locale": "en",
   "nextActionGuide_captionStart": "Start here",
   "nextActionGuide_captionConnect": "Check the target, then tap connect below",
-  "nextActionGuide_captionBegin": "Connected. You can start commissioning."
+  "nextActionGuide_captionBegin": "Connected. You can start setup."
 }

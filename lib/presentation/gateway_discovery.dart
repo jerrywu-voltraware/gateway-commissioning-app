@@ -89,24 +89,13 @@ String get gatewayBackendOfflineNote =>
 String get gatewayBackendNoRecordNote =>
     L10n.current.gatewayDiscovery_backendNoRecordNote;
 
-/// [presence] 是 [backendPresenceShort] 的結果。不比對中文字面量：以同一個
-/// 函式對固定輸入算出「離線」「無紀錄」的短語再比（同源，哪個語言都對）。
-// TODO(i18n Phase C): switch to B3 enum (backendPresenceShort 的結構化結果)
-String? gatewayBackendNoteFor(String presence) {
-  if (presence == _backendOfflineShort) return gatewayBackendOfflineNote;
-  if (presence == _backendNoRecordShort) return gatewayBackendNoRecordNote;
-  return null;
-}
-
-const _probeUid = 'AABBCCDDEEFF';
-
-/// [backendPresenceShort] 對「後台有這台、回報離線」的短語。
-String get _backendOfflineShort => backendPresenceShort(_probeUid, const [
-  {'last_seen_mac': _probeUid, 'online': false},
-]);
-
-/// [backendPresenceShort] 對「後台沒有這台」的短語。
-String get _backendNoRecordShort => backendPresenceShort(_probeUid, const []);
+/// 卡片的後台狀態（[backendPresenceKind]）要附的說明；只有「離線」「無紀錄」有。
+/// Phase C（i18n）：依列舉判斷，不比對畫面短語。
+String? gatewayBackendNoteFor(BackendPresence presence) => switch (presence) {
+  BackendPresence.offline => gatewayBackendOfflineNote,
+  BackendPresence.noRecord => gatewayBackendNoRecordNote,
+  _ => null,
+};
 
 /// The identify button's tooltip (an icon since 1.0.0+8).
 String get identifyGatewayLabel => L10n.current.gatewayDiscovery_identifyLabel;
@@ -1677,14 +1666,15 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     final stale =
         _backendAt == null ||
         DateTime.now().difference(_backendAt!).inSeconds > 30;
-    final presence = !ref.watch(commissionProvider).loggedIn || stale
-        ? backendUnknownShort
-        : backendPresenceShort(
+    final presenceKind = !ref.watch(commissionProvider).loggedIn || stale
+        ? BackendPresence.unknown
+        : backendPresenceKind(
             last?.uid,
             _fleet,
             archived: _archived,
             advertisedName: name,
           );
+    final presence = presenceKind.shortText;
     final configured = _configured(peer.id);
     // 1.0.0+11: never 「未收到廣播」 (wide: it cut the title) — the last RSSI
     // heard (grey while not live), 「—」 never heard, 「訊號中斷」 not heard
@@ -1715,7 +1705,7 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     final small = theme.bodySmall?.copyWith(color: colors.onSurfaceVariant);
     final identified = _identified == peer.id;
     final identifying = _identifyingId == peer.id;
-    final backendNote = gatewayBackendNoteFor(presence);
+    final backendNote = gatewayBackendNoteFor(presenceKind);
     final detail = [if (title == name) name, tail].join(' · ');
     // 1.0.0+14 (1.0.0+12's 「未配置閘道器 …70F0」 took two lines at text
     // scale 1.1 on a 360 dp phone and looked cut): the card's title is

@@ -1249,10 +1249,14 @@ void main() {
           expect(rows, hasLength(2));
           expect(rows.first.ok, fake.lateAt.isEmpty);
         }
-        expect(
-          find.textContaining('原因：延遲 75 秒'),
-          fake.lateAt.isEmpty ? findsNothing : findsNWidgets(ids.length),
-        );
+        // 3b320c7 起未計入的列（含「原因：延遲 75 秒」）收在每台 PTU 下
+        // 可展開的「詳細」裡：看展開入口在不在。
+        for (final id in ids) {
+          expect(
+            find.byKey(ValueKey('verify-feed-details-$id')),
+            fake.lateAt.isEmpty ? findsNothing : findsOneWidget,
+          );
+        }
       }
       expect(s.verifyIntervalMs, fake.fallbackFails ? 300000 : isNull);
       if (fake.fallbackFails) {

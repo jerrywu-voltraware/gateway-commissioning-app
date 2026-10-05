@@ -12,7 +12,6 @@
   "networkCheck_stepChoosePtu": "選擇 PTU",
   "networkCheck_stepStartMonitoring": "開始監控",
   "networkCheck_stepVerifyData": "驗證資料",
-  "networkCheck_stepDone": "完成",
   "networkCheck_reuseTestMode": "閘道器在測試模式",
   "@networkCheck_reuseTestMode": {
     "description": "Why 'keep the current station' cannot be used now."
@@ -21,10 +20,6 @@
   "networkCheck_reuseNoWifi": "閘道器還沒連上 Wi-Fi",
   "networkCheck_reuseTargetMismatch": "閘道器的資料還沒送到手機連的地方",
   "networkCheck_reuseNotUploading": "閘道器還沒開始上傳資料",
-  "networkCheck_fwUnknown": "未知",
-  "@networkCheck_fwUnknown": {
-    "description": "Firmware version not read."
-  },
   "networkCheck_wifiUnsupported": "APP 無法讀取這台閘道器的 Wi-Fi（韌體 {fw} 較舊），最後的資料驗證會再確認。",
   "@networkCheck_wifiUnsupported": {
     "placeholders": {

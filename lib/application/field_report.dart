@@ -281,39 +281,6 @@ bool networkCheckFailed(FieldInput i) {
   return [check.wifi, check.target, check.upload].any((l) => l.mark == '✗');
 }
 
-/// The step 1 message after a scan found no gateway (「未找到閘道器，…」).
-///
-/// 2026-10-05 (i18n): replaces `message.startsWith('未找到閘道器')`. The
-/// message follows the screen language, so its start is compared in every
-/// supported language ([AppLocalizations.fieldReport_gatewayNotFoundPrefix]
-/// must match the controller's scan message in each language); a message
-/// written before a language switch is still recognised.
-bool isGatewayNotFoundMessage(String message) {
-  if (message.isEmpty) return false;
-  for (final language in AppLanguage.values) {
-    final prefix = lookupAppLocalizations(
-      language.locale,
-    ).fieldReport_gatewayNotFoundPrefix;
-    if (message.startsWith(prefix)) return true;
-  }
-  return false;
-}
-
-/// A PTU row result that says the number was sent and waits for the
-/// read-back ([pendingReadbackText], 「已送出 #n，待回讀確認」).
-///
-/// 2026-10-05 (i18n): replaces `contains('待回讀確認')`. The row's own number
-/// is read from the text and the text compared with [pendingReadbackText]
-/// for it, so it works in whatever language the controller wrote it.
-bool isPendingReadbackResult(String? result) {
-  if (result == null || result.isEmpty) return false;
-  for (final m in RegExp(r'#(\d+)').allMatches(result)) {
-    final id = int.tryParse(m.group(1)!);
-    if (id != null && pendingReadbackText(id) == result) return true;
-  }
-  return false;
-}
-
 /// §3.1 「沒有紅框、但要回報的情況」 (STEP_STUCK / HELP_ONLY are the
 /// reporter's own).
 RescueCode? sessionRescueCode(FieldInput i) {
@@ -321,7 +288,8 @@ RescueCode? sessionRescueCode(FieldInput i) {
   if (s.step == 1 &&
       !s.busy &&
       s.peers.isEmpty &&
-      isGatewayNotFoundMessage(s.message)) {
+      // Phase C（i18n）：旗標，不比對訊息文字（CommissionState.messageKind）。
+      s.noGatewayFound) {
     return RescueCode.gwNotFound;
   }
   if (inNetworkCheck(s)) {
@@ -523,7 +491,8 @@ const gatewayConfigKeys = [
 ];
 
 String _assignOf(CommissionState s, String mac) {
-  if (isPendingReadbackResult(s.results[mac])) return 'pending_readback';
+  // Phase C（i18n）：旗標，不比對列文字（CommissionState.pendingReadback）。
+  if (s.pendingReadbackOf(mac)) return 'pending_readback';
   final a = s.assignStatus[mac];
   if (a != null) {
     return switch (a.phase) {
@@ -824,7 +793,7 @@ List<String> fieldHelpLines(FieldInput i, {String? errorCode}) {
     lines.add(l10n.fieldReport_helpCondition(code.label));
   }
   if (s.peer != null) {
-    final fw = '${id['fw_version'] ?? l10n.fieldReport_fwUnknown}';
+    final fw = '${id['fw_version'] ?? l10n.common_unknown}';
     lines.add(
       i.directMode
           ? l10n.fieldReport_helpFirmwareDirect(fw)
@@ -1245,6 +1214,10 @@ class FieldReporter {
     _input = input;
     _sections = sections;
   }
+
+  /// 測試用：controller 目前提供的 gateway／PTU／phone-link 區塊（診斷包內容）。
+  @visibleForTesting
+  Map<String, dynamic> debugSections() => _sections?.call() ?? const {};
 
   /// The controller is gone: stop the timers that read it.
   void detach() {

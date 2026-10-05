@@ -17,6 +17,5 @@
   "fieldHelpSheet_sending": "正在通知後台…",
   "fieldHelpSheet_resend": "重新傳送",
   "fieldHelpSheet_readOut": "請唸給後台：",
-  "fieldHelpSheet_details": "詳細資訊",
   "fieldHelpSheet_noPassword": "不會傳送 Wi-Fi 密碼。"
 }

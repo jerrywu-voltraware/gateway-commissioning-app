@@ -6,11 +6,14 @@
 // 3. Step 7 while a scan runs: 「掃描中…」, not 「恢復監控」 with 已選 0/5.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gateway_commissioning/application/commissioning_controller.dart';
+import 'package:gateway_commissioning/application/field_report.dart';
+import 'package:gateway_commissioning/l10n/l10n.dart';
 import 'package:gateway_commissioning/core/protocol.dart';
 import 'package:gateway_commissioning/data/contracts.dart';
 
 import 'link_loss_test.dart' show DroppingLink, ready;
 import 'round8_fixes_test.dart' show row;
+import 'support/l10n.dart';
 
 /// The first [failures] connects fail with the listed errors.
 class FlakyConnectLink extends DroppingLink {
@@ -85,6 +88,33 @@ void main() {
       expect(flaky.attempts, greaterThan(1));
       expect(s.errorDetail, contains('連線失敗紀錄：第 1 次：ble_error 133'));
       expect(s.errorDetail, contains('第 2 次：ble_error 133'));
+    });
+
+    // Phase C（docs/i18n.md §6）：英文畫面的詳細資訊是英文，上傳 field 診斷的
+    // connect_log 仍是中文。
+    test('English: detail in English, uploaded connect_log in Chinese', () async {
+      useLanguage(AppLanguage.en);
+      final flaky = FlakyConnectLink();
+      final (container, c) = await ready(flaky);
+      addTearDown(container.dispose);
+      final peer = container.read(commissionProvider).peer!;
+      await c.cancel();
+      connectPersistence = const Duration(milliseconds: 80);
+      flaky.failures.addAll(List.filled(10000, gatt133));
+      await c.connect(peer);
+      final s = container.read(commissionProvider);
+      expect(
+        s.errorDetail,
+        contains('Connect failures: Attempt 1: ble_error 133, Attempt 2: '),
+      );
+      expect(s.errorDetail, isNot(contains('第 1 次')));
+      final link =
+          container.read(fieldReporterProvider).debugSections()['phone_link']
+              as Map;
+      final log = (link['connect_log'] as List).cast<String>();
+      expect(log, isNotEmpty);
+      expect(log.first, matches(RegExp(r'^第 \d+ 次：ble_error 133$')));
+      expect(log.every((line) => line.startsWith('第 ')), isTrue);
     });
 
     test('a non-retryable failure stops at once', () async {

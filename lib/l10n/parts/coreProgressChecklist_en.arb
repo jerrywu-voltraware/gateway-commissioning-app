@@ -17,7 +17,7 @@
   "coreProgressChecklist_finishAssign": "Assign PTU",
   "coreProgressChecklist_finishAssignTotal": "{total, plural, =1{Assign PTU} other{Assign PTUs ({total} in total)}}",
   "coreProgressChecklist_finishJoin": "Join monitoring",
-  "coreProgressChecklist_finishJoined": "Check monitoring joined",
+  "coreProgressChecklist_finishJoined": "Check it joined monitoring",
   "coreProgressChecklist_finishData": "Verify data upload",
   "coreProgressChecklist_dataEach": "{count}/{need} rows each",
   "coreProgressChecklist_dataReceived": "{count}/{need} rows received"

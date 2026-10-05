@@ -452,6 +452,13 @@ bool isRetryableConnect(Object error) =>
         }.contains(error.code));
 
 /// Short type of a connect failure for 詳細資訊 (e.g. `ble_error 133`).
+/// One 「連線失敗紀錄」 entry: [attempt] and [type] ([connectFailureType]).
+///
+/// [l10n]: 預設畫面語言（錯誤詳情）；上傳 field 診斷 `connect_log` 用
+/// [L10n.zh]（docs/i18n.md §6）。
+String connectLogLine(int attempt, String type, {AppLocalizations? l10n}) =>
+    (l10n ?? L10n.current).controller_connectLogLine(attempt, type);
+
 String connectFailureType(Object error) {
   if (error is GatewayFailure) {
     final detail = error.detail ?? '';
@@ -1255,7 +1262,7 @@ String get preparedText => L10n.current.controller_prepared;
 String nextGatewayText(int site) => L10n.current.controller_nextGateway(site);
 
 /// Round 29: the done page's main button (also the system 返回 there).
-String get doneFinishLabel => L10n.current.controller_doneFinishLabel;
+String get doneFinishLabel => L10n.current.common_done;
 
 /// Round 29: the done page's second button.
 String get doneNextLabel => L10n.current.controller_doneNextLabel;
@@ -1278,7 +1285,7 @@ int monitorLimit(bool isStar) => isStar ? maxStarPtuCount : 1;
 /// the step 9 verification already records one, so normally the status
 /// panel's 「✓ 資料上傳中」 shows directly.
 bool showHealthPending(CommissionState s, {DateTime? now}) {
-  if (!s.loggedIn || s.message != verifiedText) return false;
+  if (!s.loggedIn || s.messageKind != MessageKind.verified) return false;
   final seen = s.backendSeenAt;
   return seen == null ||
       (now ?? DateTime.now()).difference(seen) >= const Duration(seconds: 60);
@@ -1310,7 +1317,7 @@ String resumeText(
   if (where == null) return l10n.controller_resumeUnknown;
   String list(List<int> v) => (List<int>.of(
     v,
-  )..sort()).map((i) => '#$i').join(l10n.controller_listSeparator);
+  )..sort()).map((i) => '#$i').join(l10n.common_listSeparator);
   final doneText = done.isEmpty
       ? l10n.controller_resumeNoneDone
       : l10n.controller_resumeDone(done.length, list(done));
@@ -1468,7 +1475,7 @@ String verifyProgressText(
   final l10n = L10n.current;
   final line = sorted
       .map((id) => '#$id ${counts[id] ?? 0}/3')
-      .join(l10n.controller_listSeparator);
+      .join(l10n.common_listSeparator);
   final idle = [
     for (final id in sorted)
       if (skipped.contains(id))
@@ -2448,7 +2455,14 @@ class CommissioningController extends Notifier<CommissionState> {
 
   /// Saved progress read by [restore] (for 「重新連線並繼續」).
   Map? _saved;
-  String _backend = describeBackend(null);
+  // 目前後端網址；文字依去向重算（docs/i18n.md §6）。
+  Uri? _backendBase;
+
+  /// 寫進安裝報告的「後端：…」：上傳後台、分享，一律中文。
+  String get _backend => describeBackend(_backendBase, l10n: L10n.zh);
+
+  /// 畫面（驗證診斷）顯示用：跟著目前畫面語言。
+  String get _backendShown => describeBackend(_backendBase);
   // Latest step-7 diagnosis, tagged with the generation that produced it.
   (int, String)? _diagnosis;
   bool _loggedIn = false,
@@ -2965,7 +2979,9 @@ class CommissioningController extends Notifier<CommissionState> {
         }
       }
     } finally {
-      if (before != null && ref.mounted && state.message == gatewayBusyText) {
+      if (before != null &&
+          ref.mounted &&
+          matchesAnyLanguage(state.message, (l) => l.controller_gatewayBusy)) {
         state = state.copy(message: before, error: state.error);
       }
     }
@@ -3353,7 +3369,7 @@ class CommissioningController extends Notifier<CommissionState> {
         state = state.copy(
           errorDetail: log != null && log.$1 == generation && log.$2.isNotEmpty
               ? '${failure.toString()}\n'
-                    '${L10n.current.controller_connectLogDetail(log.$2.join(L10n.current.controller_listSeparator))}'
+                    '${L10n.current.controller_connectLogDetail(log.$2.map((e) => connectLogLine(e.$1, e.$2)).join(L10n.current.common_listSeparator))}'
               : failure.toString(),
           reconnectFailed: failure.code == 'reconnect_failed',
           // Round 11: no 「連線中（第 n 次）」 left beside the banner.
@@ -3763,7 +3779,7 @@ class CommissioningController extends Notifier<CommissionState> {
       _run(L10n.current.controller_prepareRun, 30, untimed: _link.prepare, (
         generation,
       ) async {
-        _backend = describeBackend(Uri.tryParse(base.trim()));
+        _backendBase = Uri.tryParse(base.trim());
         if (!offline) {
           final secret = _passwordFor(base, password);
           await _api.login(base, secret);
@@ -5527,7 +5543,7 @@ class CommissioningController extends Notifier<CommissionState> {
     }
     _check(generation);
     final secret = _passwordFor(base, null);
-    _backend = describeBackend(Uri.tryParse(base));
+    _backendBase = Uri.tryParse(base);
     await _api.login(base, secret);
     _check(generation);
     _loginOk(base, secret);
@@ -5896,7 +5912,7 @@ class CommissioningController extends Notifier<CommissionState> {
     if (!_loggedIn) _onlineReservationPending = true;
     final secret = base == null ? '' : _passwordFor(base, password);
     if (!skip && !_loggedIn && base != null && secret.isNotEmpty) {
-      _backend = describeBackend(Uri.tryParse(base.trim()));
+      _backendBase = Uri.tryParse(base.trim());
       await _api.login(base.trim(), secret);
       _check(generation);
       _loginOk(base, secret);
@@ -6510,10 +6526,13 @@ class CommissioningController extends Notifier<CommissionState> {
     // first later read with the chosen PTU connected clears the red error
     // (round 15: it stayed 20 s+ beside a card already showing that PTU).
     final want = state.tempBoundMac;
+    final switchError = _directSwitchError;
     if (mac != null &&
         want != null &&
         sameMac(mac, want) &&
-        state.error == const GatewayFailure('direct_switch_failed').message) {
+        switchError != null &&
+        state.error == switchError) {
+      _directSwitchError = null;
       state = state.copy(error: null, message: directSwitchDoneText(mac));
     }
     final identified = state.identifiedMac;
@@ -7379,7 +7398,11 @@ class CommissioningController extends Notifier<CommissionState> {
   void _settlePending(Map<String, String> results) {
     for (final mac in _pendingReadback) {
       final id = _doneAssign[mac];
-      if (id != null && results[mac] == pendingReadbackText(id)) {
+      if (id != null &&
+          matchesAnyLanguage(
+            results[mac],
+            (l) => l.controller_pendingReadback(id),
+          )) {
         results[mac] = L10n.current.controller_assignedWaiting(id);
       }
     }
@@ -7767,6 +7790,8 @@ class CommissioningController extends Notifier<CommissionState> {
   /// error as soon as it reports the chosen PTU ([_syncDirectPick]).
   Future<void> switchDirectPick(String mac) async {
     final wait = directSwitchWait;
+    var switchFailed = false;
+    _directSwitchError = null;
     await _run(
       relinkStep: 4,
       countdown: directSwitchSeconds,
@@ -7795,11 +7820,14 @@ class CommissioningController extends Notifier<CommissionState> {
         _syncDirectPick();
         if (!ok) {
           state = state.copy(message: directSwitchPendingText(mac));
+          switchFailed = true;
           throw const GatewayFailure('direct_switch_failed');
         }
         state = state.copy(message: directSwitchDoneText(mac));
       },
     );
+    // 記下這次切換失敗顯示的那段錯誤（不比對譯文，語言切換也不受影響）。
+    if (switchFailed && ref.mounted) _directSwitchError = state.error;
     if (ref.mounted && !_autoRelinking && _linkLostAt(4)) {
       await _autoRelink(4);
     }
@@ -9743,7 +9771,7 @@ class CommissioningController extends Notifier<CommissionState> {
     // Also check fresh fleet data in every polling round and read back
     // the gateway before completion. Verification can survive BLE loss.
     if (state.testMode) throw const GatewayFailure('test_mode');
-    _backend = describeBackend(Uri.tryParse(base.trim()));
+    _backendBase = Uri.tryParse(base.trim());
     final wanted = _checkUploadTarget(base, environment);
     final running = parseMqttTarget(state.config);
     // Why a gateway can be missing from this backend, from what the APP knows.
@@ -10003,7 +10031,7 @@ class CommissioningController extends Notifier<CommissionState> {
             site: site,
             gateway: gateway,
             consecutive: consecutive,
-            backend: _backend,
+            backend: _backendShown,
             cause: cause,
             lagLimit: lagLimit,
           ),
@@ -10157,7 +10185,7 @@ class CommissioningController extends Notifier<CommissionState> {
     _field.onBackendChanged(base);
     final next = base.trim();
     if (_loginBase == next && _loggedIn) return;
-    if (!state.busy) _backend = describeBackend(Uri.tryParse(next));
+    if (!state.busy) _backendBase = Uri.tryParse(next);
     _setLoggedIn(false);
     // Progress kept for 「重試」 belongs to the old backend.
     _verifyCarry = null;
@@ -10189,7 +10217,7 @@ class CommissioningController extends Notifier<CommissionState> {
       ok = false;
     }
     if (!ok || !ref.mounted) return false;
-    _backend = describeBackend(Uri.tryParse(trimmed));
+    _backendBase = Uri.tryParse(trimmed);
     _setLoggedIn(true, trimmed);
     if ((fallbackPassword ?? '').isNotEmpty) {
       _credentials = (trimmed, fallbackPassword!);
@@ -10206,7 +10234,7 @@ class CommissioningController extends Notifier<CommissionState> {
         final secret = _passwordFor(base, password);
         await _api.login(base.trim(), secret);
         _check(generation);
-        _backend = describeBackend(Uri.tryParse(base.trim()));
+        _backendBase = Uri.tryParse(base.trim());
         _loginOk(base, secret);
         // 1.0.0+19: the done page's 〔登入並確認資料〕 — its upload
         // interval line gets the number too.
@@ -10367,7 +10395,10 @@ class CommissioningController extends Notifier<CommissionState> {
       // failure being classified right now gets GW_REBOOTED by itself
       // (§3.1 rule 1).
       if (!_classifyingFailure) {
-        _field.onGatewayReboot(to: count, text: gatewayRebootText(reboot));
+        _field.onGatewayReboot(
+          to: count,
+          text: gatewayRebootText(reboot, l10n: L10n.zh),
+        );
       }
       return true;
     }
@@ -10601,8 +10632,13 @@ class CommissioningController extends Notifier<CommissionState> {
     });
   }
 
+  /// [switchDirectPick] 失敗時畫面上的錯誤（`direct_switch_failed`）；
+  /// [_syncDirectPick] 看到閘道器已換成指定 PTU 時，只清掉這一段錯誤。
+  String? _directSwitchError;
+
   /// Failure types of the latest [_persistentLink] run (for 詳細資訊).
-  (int, List<String>)? _connectLog;
+  /// 每筆是（第幾次, [connectFailureType]）；文字依去向重算。
+  (int, List<(int, String)>)? _connectLog;
 
   /// Round 10: connects (the link's own retries included) and runs [after];
   /// a retryable failure (133 / unknownError / disconnected / timeout) is
@@ -10619,7 +10655,7 @@ class CommissioningController extends Notifier<CommissionState> {
     bool adopt = false,
   }) async {
     final watch = Stopwatch()..start();
-    final failures = <String>[];
+    final failures = <(int, String)>[];
     _connectLog = (generation, failures);
     for (int attempt = 1; ; attempt++) {
       _check(generation);
@@ -10658,10 +10694,7 @@ class CommissioningController extends Notifier<CommissionState> {
       } catch (error) {
         if (error is GatewayFailure && error.code == 'cancelled') rethrow;
         _check(generation);
-        // connect_log 上傳 field 診斷，維持中文（docs/i18n.md §6）。
-        // i18n-keep-zh-begin
-        failures.add('第 $attempt 次：${connectFailureType(error)}');
-        // i18n-keep-zh-end
+        failures.add((attempt, connectFailureType(error)));
         if (state.relinkStage != RelinkStage.reconnecting) {
           state = state.copy(
             relinkStage: RelinkStage.reconnecting,
@@ -11152,7 +11185,7 @@ class CommissioningController extends Notifier<CommissionState> {
       _run(L10n.current.controller_repairRun, 60, (generation) async {
         final secret = base == null ? '' : _passwordFor(base, password);
         if (!_loggedIn && base != null && secret.isNotEmpty) {
-          _backend = describeBackend(Uri.tryParse(base.trim()));
+          _backendBase = Uri.tryParse(base.trim());
           await _api.login(base.trim(), secret);
           _check(generation);
           _loginOk(base, secret);
@@ -11553,7 +11586,11 @@ class CommissioningController extends Notifier<CommissionState> {
     return diagnosticSections(
       state,
       now: DateTime.now(),
-      connectLog: _connectLog?.$2 ?? const [],
+      // connect_log 上傳 field 診斷，維持中文（docs/i18n.md §6）。
+      connectLog: [
+        for (final (attempt, type) in _connectLog?.$2 ?? const <(int, String)>[])
+          connectLogLine(attempt, type, l10n: L10n.zh),
+      ],
       firstConnectFailure: link is ConnectDiagnostics
           ? (link as ConnectDiagnostics).firstConnectFailure
           : null,

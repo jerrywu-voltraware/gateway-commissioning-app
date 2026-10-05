@@ -94,7 +94,7 @@
     }
   },
   "commissioning_wifiResetTitle": "是否重設 Wi-Fi？",
-  "commissioning_wifiResetGoHint": "按「是」將前往 Wi-Fi 設定。",
+  "commissioning_wifiResetGoHint": "按「是，重設 Wi-Fi」將前往 Wi-Fi 設定。",
   "commissioning_wifiResetLater": "暫不重設",
   "commissioning_wifiResetConfirm": "是，重設 Wi-Fi",
   "commissioning_wifiUploadWaitTitle": "Wi-Fi 已連線，正在確認資料上傳",
@@ -172,7 +172,6 @@
   },
   "commissioning_cancelAction": "取消操作",
   "commissioning_demoBanner": "模擬模式 · 不會設定真實設備或驗證正式資料",
-  "commissioning_gotIt": "知道了",
   "commissioning_waitUpTo": "最多等待 {seconds} 秒",
   "@commissioning_waitUpTo": {
     "placeholders": {
@@ -183,8 +182,6 @@
   },
   "commissioning_reconnectContinue": "重新連線並繼續",
   "commissioning_reconnect": "重新連線",
-  "commissioning_skip": "略過",
-  "commissioning_details": "詳細資訊",
   "commissioning_busyWaitUpTo": "處理中 · 最多等待 {seconds} 秒",
   "@commissioning_busyWaitUpTo": {
     "placeholders": {
@@ -390,10 +387,6 @@
         "type": "String"
       }
     }
-  },
-  "commissioning_listSeparator": "、",
-  "@commissioning_listSeparator": {
-    "description": "Separator between items of an inline list."
   },
   "commissioning_scanHelpTitle": "掃描說明與完整流程",
   "commissioning_scanHelpDirectFlow": "由閘道器掃描附近的 PTU，再透過藍牙把清單傳回手機。直連模式：由閘道器自己選最近的 PTU（門檻內最強，或已綁定的那台），這裡只顯示它的選擇；請用「辨識此樁」確認是眼前這台，不是的話按「不是這台？」改選。RSSI 是閘道器與 PTU 之間的訊號；未連線裝置顯示掃描值。「上次」表示暫停或過期，「快取」表示韌體未提供讀值時間。韌體 1.7.5 起可在配置期間量測；RSSI — 表示尚無有效讀值。",

@@ -391,8 +391,13 @@ void main() {
       });
       addTearDown(container.dispose);
       await tester.pumpWidget(_screen(container));
-      // Round 28: the no-PTU help sits above it in the card.
+      // Round 28: the no-PTU help sits above it in the card — the button is
+      // below the fold on this phone size, scroll to it first.
+      await tester.ensureVisible(find.byKey(const Key('direct-not-this')));
+      await tester.pump();
       await tapDirectAction(tester, 'direct-not-this');
+      await tester.pump();
+      await tester.ensureVisible(find.text('峰值 -80 dBm'));
       await tester.pump();
       expect(find.text('峰值 -80 dBm'), findsOneWidget);
       expect(find.text(_first), findsOneWidget);

@@ -1,6 +1,6 @@
 {
   "@@locale": "en",
-  "backendEnvironment_localUnavailable": "The release APP can't use the local test site. Install the local test APK instead.",
+  "backendEnvironment_localUnavailable": "The release app can't use the local test site. Install the local test APK instead.",
   "backendEnvironment_localUnavailableLabel": "Local test (not in this build)",
   "backendEnvironment_labelProduction": "Production",
   "backendEnvironment_labelLocal": "Local test",

@@ -45,9 +45,6 @@ class AppLocalizationsEn extends AppLocalizations {
       'Update file check failed. Download it again.';
 
   @override
-  String get androidAppUpdateDialog_later => 'Later';
-
-  @override
   String androidAppUpdateDialog_latestVersion(String name, String code) {
     return 'Latest version: $name ($code)';
   }
@@ -104,9 +101,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get assign_busy => 'Gateway busy, retrying shortly';
 
   @override
-  String get assign_done => 'Done';
-
-  @override
   String assign_doneId(int id) {
     return 'Done · #$id';
   }
@@ -141,9 +135,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String assign_linkRetry(int retry, int retries) {
     return 'Bluetooth link failed, retrying $retry/$retries';
   }
-
-  @override
-  String get assign_nameSeparator => ', ';
 
   @override
   String get assign_notAssignedLink => 'Not assigned (phone lost the gateway)';
@@ -199,7 +190,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get autoChecklist_oldFirmwareLater =>
-      'This firmware can\'t report; checked at the final data verification';
+      'This firmware can\'t report; checked in the final data check';
 
   @override
   String get autoChecklist_targetElsewhere =>
@@ -254,7 +245,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get backendEnvironment_localUnavailable =>
-      'The release APP can\'t use the local test site. Install the local test APK instead.';
+      'The release app can\'t use the local test site. Install the local test APK instead.';
 
   @override
   String get backendEnvironment_localUnavailableLabel =>
@@ -286,7 +277,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String commissioning_archivedConfirmText(int site, int gateway) {
-    return 'Site $site / gateway $gateway was removed (archived) in the back office. Its heartbeats are not recorded, so commissioning stops at \"Confirm the gateway is online\". Adding it back resumes recording; its history is kept.';
+    return 'Site $site / gateway $gateway was removed (archived) in the back office. Its heartbeats are not recorded, so setup stops at \"Confirm the gateway is online\". Adding it back resumes recording; its history is kept.';
   }
 
   @override
@@ -294,7 +285,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'This gateway was removed (archived) in the back office. Add it back?';
 
   @override
-  String get commissioning_archivedRejoinLabel => 'Add back and continue';
+  String get commissioning_archivedRejoinLabel => 'Rejoin and continue';
 
   @override
   String commissioning_assignFailedCount(int count) {
@@ -343,7 +334,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get commissioning_backToStationChoice => 'Back to site choice';
 
   @override
-  String get commissioning_backendUrl => 'Back office URL';
+  String get commissioning_backendUrl => 'Backend URL';
 
   @override
   String get commissioning_boundPtu => 'Bound PTU';
@@ -397,7 +388,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get commissioning_confirmUploadTitle => 'Confirm data upload';
 
   @override
-  String get commissioning_continueCommissioning => 'Keep going';
+  String get commissioning_continueCommissioning => 'Continue setup';
 
   @override
   String get commissioning_copied => 'Copied; paste to share';
@@ -428,9 +419,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get commissioning_demoWifiLabel => 'Simulated gateway Wi-Fi';
 
   @override
-  String get commissioning_details => 'Details';
-
-  @override
   String get commissioning_detailsTitle => 'Device and connection info';
 
   @override
@@ -438,7 +426,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'Identify the charger in front of you, then start';
 
   @override
-  String get commissioning_directSettings => 'Direct mode settings';
+  String get commissioning_directSettings => 'One-to-one advanced settings';
 
   @override
   String get commissioning_doneLabelHead => 'Label the enclosure:';
@@ -458,10 +446,10 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get commissioning_doneTitle => 'Commissioning done';
+  String get commissioning_doneTitle => 'Setup complete';
 
   @override
-  String get commissioning_doneTitleDemo => 'Demo commissioning done';
+  String get commissioning_doneTitleDemo => 'Demo setup complete';
 
   @override
   String get commissioning_end => 'End';
@@ -505,9 +493,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get commissioning_gotIt => 'Got it';
-
-  @override
   String commissioning_identifyGateway(int seconds) {
     return 'Identify this one · $seconds s';
   }
@@ -534,9 +519,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get commissioning_listSeparator => ', ';
-
-  @override
   String get commissioning_liveRssi => 'Live RSSI · every 5 s (order kept)';
 
   @override
@@ -556,7 +538,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String commissioning_newSiteConfirmText(int site) {
-    return 'The back office has no gateway for site $site yet. Check the number; continue only if it is a new site.';
+    return 'The back office has no gateway for site $site yet. Check the site ID; continue only if it is a new site.';
   }
 
   @override
@@ -626,7 +608,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get commissioning_numberTakenTitle => 'Gateway number already in use';
 
   @override
-  String get commissioning_offlineFirst => 'Set up offline, verify data later';
+  String get commissioning_offlineFirst => 'Set up offline, check data later';
 
   @override
   String get commissioning_offlineNumber =>
@@ -634,7 +616,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get commissioning_offlineNumberNoList =>
-      ' (site gateway list unavailable; 1 for now, check once online)';
+      ' (site gateway list unavailable; using 1 for now, check once online)';
 
   @override
   String get commissioning_oneToMany => 'One-to-many';
@@ -652,7 +634,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get commissioning_onlineIntro =>
-      'Confirm the gateway is on Wi-Fi and the back office keeps receiving heartbeats.';
+      'Confirm the gateway is on Wi-Fi and the backend keeps receiving heartbeats.';
 
   @override
   String get commissioning_onlineOffline =>
@@ -702,7 +684,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get commissioning_ptuOutOfRange =>
-      'Number outside this gateway range; owner not confirmed';
+      'Number outside this gateway\'s range; owner unconfirmed';
 
   @override
   String get commissioning_ptusPerGateway => 'PTUs per gateway';
@@ -741,10 +723,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get commissioning_rejoinHintText =>
-      'This gateway was removed (archived) in the back office; heartbeats are not recorded. Tap [Add back] below to continue confirming online.';
+      'This gateway was removed (archived) in the back office, so its heartbeats are not recorded. Tap [Rejoin] below to continue the online check.';
 
   @override
-  String get commissioning_rejoinLabel => 'Add back';
+  String get commissioning_rejoinLabel => 'Rejoin';
 
   @override
   String get commissioning_replaceFailedText =>
@@ -775,7 +757,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get commissioning_rescanPtus => 'Rescan PTUs from the gateway';
 
   @override
-  String get commissioning_resetInclude => 'Reset and include';
+  String get commissioning_resetInclude => 'Reset and add';
 
   @override
   String get commissioning_resetWifi => 'Reset Wi-Fi';
@@ -804,7 +786,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String commissioning_reuseBlockedTapAbove(String button, String reason) {
-    return 'To use this site, first tap \"$button\" above (now: $reason).';
+    return 'To use this site, first tap [$button] above (now: $reason).';
   }
 
   @override
@@ -813,7 +795,7 @@ class AppLocalizationsEn extends AppLocalizations {
     String otherWifi,
     String review,
   ) {
-    return 'To use this site, the gateway must be on Wi-Fi and uploading (now: $reason). Tap \"$otherWifi\" or \"$review\".';
+    return 'To use this site, the gateway must be on Wi-Fi and uploading (now: $reason). Tap [$otherWifi] or [$review].';
   }
 
   @override
@@ -834,11 +816,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get commissioning_scanHelpDirect =>
-      'The gateway scans nearby PTUs and sends the list to the phone over Bluetooth. Direct mode: the strongest one is selected automatically. RSSI is the gateway-to-PTU signal; unconnected devices show the scan value. \"Last\" means paused or stale; \"Cached\" means the firmware gave no read time. Firmware 1.7.5+ measures during setup; RSSI — means no valid reading yet.';
+      'The gateway scans nearby PTUs and sends the list to the phone over Bluetooth. One-to-one mode: the strongest one is selected automatically. RSSI is the gateway-to-PTU signal; unconnected devices show the scan value. \"Last\" means paused or stale; \"Cached\" means the firmware gave no read time. Firmware 1.7.5+ measures during setup; RSSI — means no valid reading yet.';
 
   @override
   String get commissioning_scanHelpDirectFlow =>
-      'The gateway scans nearby PTUs and sends the list to the phone over Bluetooth. Direct mode: the gateway picks the nearest PTU itself (strongest within the threshold, or the bound one); this list only shows its pick. Use \"Identify this charger\" to check it is the one in front of you; if not, tap \"Not this one?\" to pick again. RSSI is the gateway-to-PTU signal; unconnected devices show the scan value. \"Last\" means paused or stale; \"Cached\" means the firmware gave no read time. Firmware 1.7.5+ measures during setup; RSSI — means no valid reading yet.';
+      'The gateway scans nearby PTUs and sends the list to the phone over Bluetooth. One-to-one mode: the gateway picks the nearest PTU itself (strongest within the threshold, or the bound one); this list only shows its pick. Use [Identify this charger] to check it is the one in front of you; if not, tap [Not this one?] to pick again. RSSI is the gateway-to-PTU signal; unconnected devices show the scan value. \"Last\" means paused or stale; \"Cached\" means the firmware gave no read time. Firmware 1.7.5+ measures during setup; RSSI — means no valid reading yet.';
 
   @override
   String commissioning_scanHelpStar(int max) {
@@ -859,7 +841,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get commissioning_shareReport => 'Share report';
 
   @override
-  String get commissioning_siteFieldLabel => 'Site (1–65535)';
+  String get commissioning_siteFieldLabel => 'Site ID (1–65535)';
 
   @override
   String commissioning_siteN(int site) {
@@ -870,9 +852,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String commissioning_siteNumbersFull(int site, int max) {
     return 'Gateways 1–$max of site $site are all in use. Check the site ID.';
   }
-
-  @override
-  String get commissioning_skip => 'Skip';
 
   @override
   String get commissioning_skipChooseSite =>
@@ -899,7 +878,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get commissioning_skipStationNote =>
-      'Without passing the network check the current site cannot be kept; reset Wi-Fi or set a new site.';
+      'The current site can\'t be kept until the network check passes. Reset Wi-Fi or set a new site.';
 
   @override
   String get commissioning_skipThisPtu => 'Skip this one';
@@ -945,7 +924,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String commissioning_stationFull(int max, String swap) {
-    return 'This site is full (1–$max all in use). Check the site ID or use \"$swap\".';
+    return 'This site is full (1–$max all in use). Check the site ID or use [$swap].';
   }
 
   @override
@@ -958,7 +937,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get commissioning_stationInputTitle =>
-      'Enter the site for this gateway';
+      'Enter the site ID for this gateway';
 
   @override
   String commissioning_stationKeep(String site, String gateway) {
@@ -967,7 +946,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String commissioning_stationQuestionTitle(int site) {
-    return 'Current site is $site. Commission this gateway here?';
+    return 'Current site ID is $site. Set up this gateway here?';
   }
 
   @override
@@ -985,7 +964,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get commissioning_targetTaskTitle =>
-      'Point the gateway data to this back office';
+      'Have the gateway send data to this back office';
 
   @override
   String get commissioning_testModeTaskTitle =>
@@ -993,7 +972,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String commissioning_topologyAskDirectBound(String mac) {
-    return 'This gateway is in one-to-one mode (bound to PTU $mac). Change it to star?\n\n[Keep one-to-one]: the APP switches to direct mode; the gateway settings stay.';
+    return 'This gateway is in one-to-one mode (bound to PTU $mac). Change it to star?\n\n[Keep one-to-one]: the app switches to one-to-one mode; the gateway settings stay.';
   }
 
   @override
@@ -1002,11 +981,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get commissioning_topologyAskDirectUnbound =>
-      'This gateway is in one-to-one mode (no PTU bound). Change it to star?\n\n[Keep one-to-one]: the APP switches to direct mode; the gateway settings stay.';
+      'This gateway is in one-to-one mode (no PTU bound). Change it to star?\n\n[Keep one-to-one]: the app switches to one-to-one mode; the gateway settings stay.';
 
   @override
   String commissioning_topologyAskStarText(int max) {
-    return 'This gateway is in star mode (up to $max PTUs). Change it to one-to-one?\n\n[Keep star]: the APP switches to star mode; the gateway settings stay.';
+    return 'This gateway is in star mode (up to $max PTUs). Change it to one-to-one?\n\n[Keep star]: the app switches to star mode; the gateway settings stay.';
   }
 
   @override
@@ -1031,7 +1010,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String commissioning_topologyKeptText(String mode) {
-    return 'The APP now uses $mode; the gateway keeps its mode';
+    return 'The app now uses $mode; the gateway keeps its mode';
   }
 
   @override
@@ -1049,7 +1028,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get commissioning_updateAfterHome =>
-      'Available on the home page when no commissioning runs';
+      'Available on the home page when no setup is running';
 
   @override
   String get commissioning_updateCheckFailed =>
@@ -1145,11 +1124,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get commissioning_wifiBackKeep => 'Keep Wi-Fi, go back';
 
   @override
-  String get commissioning_wifiBackSite => 'Back to edit site';
+  String get commissioning_wifiBackSite => 'Back to edit site ID';
 
   @override
   String get commissioning_wifiFirstPageText =>
-      'Connect the gateway to Wi-Fi first; set the site once the network works.';
+      'Connect the gateway to Wi-Fi first; set the site ID once the network works.';
 
   @override
   String commissioning_wifiOnlyKeep(String site, String gateway) {
@@ -1169,7 +1148,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get commissioning_wifiResetGoHint =>
-      'Tap [Yes] to open the Wi-Fi setup.';
+      'Tap [Yes, reset Wi-Fi] to open the Wi-Fi setup.';
 
   @override
   String get commissioning_wifiResetLater => 'Not now';
@@ -1207,16 +1186,28 @@ class AppLocalizationsEn extends AppLocalizations {
   String get common_copy => 'Copy';
 
   @override
+  String get common_details => 'Details';
+
+  @override
   String get common_done => 'Done';
 
   @override
   String get common_dotSeparator => ' · ';
 
   @override
+  String get common_gotIt => 'Got it';
+
+  @override
   String get common_languageEnglish => 'English';
 
   @override
   String get common_languageZhHant => '繁體中文';
+
+  @override
+  String get common_later => 'Later';
+
+  @override
+  String get common_listSeparator => ', ';
 
   @override
   String get common_loading => 'Loading…';
@@ -1232,6 +1223,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get common_settings => 'Settings';
+
+  @override
+  String get common_skip => 'Skip';
 
   @override
   String get common_timeout => 'timed out';
@@ -1380,11 +1374,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get connectionStatus_hintCustomUnknown =>
-      'The APP can\'t tell from this URL where the gateway should send data. Showing the gateway\'s current setting only; no automatic switch.';
+      'The app can\'t tell from this URL where the gateway should send data. Showing the gateway\'s current setting only; no automatic switch.';
 
   @override
   String get connectionStatus_hintLinkLostReconnect =>
-      'Bluetooth to the gateway dropped. Move closer and tap [End and reselect gateway] to reconnect.';
+      'Bluetooth to the gateway dropped. Move closer and tap [End and choose another gateway] to reconnect.';
 
   @override
   String connectionStatus_hintPhoneNoBackend(String label) {
@@ -1563,7 +1557,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get connectionStatus_whereUnknown => 'Unrecognized';
 
   @override
-  String get connectionStatus_wifiActionOther => 'Use other Wi-Fi';
+  String get connectionStatus_wifiActionOther => 'Use another Wi-Fi';
 
   @override
   String get connectionStatus_wifiActionReset => 'Reset Wi-Fi';
@@ -1578,12 +1572,12 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String connectionStatus_wifiFixReconnect(String action) {
-    return 'Tap [End and reselect gateway] to reconnect, then tap [$action] in the network check.';
+    return 'Tap [End and choose another gateway] to reconnect, then tap [$action] in the network check.';
   }
 
   @override
   String connectionStatus_wifiLinkLostReconnect(String action) {
-    return 'Bluetooth to the gateway also dropped: move closer, tap [End and reselect gateway] to reconnect, then tap [$action].';
+    return 'Bluetooth to the gateway also dropped: move closer, tap [End and choose another gateway] to reconnect, then tap [$action].';
   }
 
   @override
@@ -1708,7 +1702,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get controller_bindLaterHint =>
-      'Tap [Identify and bind]: on the PTU list tap [Identify this charger] to confirm it is the one in front of you, then [Yes, set it up] binds it and numbers it #1.';
+      'Tap [Identify and bind]: on the PTU list tap [Identify this charger] to confirm it is the one in front of you, then [This one, start setup] binds it and numbers it #1.';
 
   @override
   String get controller_bindLaterLabel => 'Identify and bind';
@@ -1754,12 +1748,12 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String controller_cancelRestoreRetry(String failure) {
-    return '$failure Stay close and cancel again to retry restoring, or restart the APP and reconnect.';
+    return '$failure Stay close and cancel again to retry restoring, or restart the app and reconnect.';
   }
 
   @override
   String get controller_cancelled =>
-      'Cancelled. Reconnect to check progress; a monitoring session not restored resumes at its expiry at the latest.';
+      'Cancelled. Reconnect to check progress; any unrestored monitoring session resumes by its expiry.';
 
   @override
   String get controller_checkFailedNew =>
@@ -1786,7 +1780,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get controller_chooseStationWaitUpload =>
-      'Choose the site. Keeping it needs the gateway to start uploading.';
+      'Choose the site. To keep it, wait for the gateway to start uploading.';
 
   @override
   String controller_configureCount(int count) {
@@ -1824,6 +1818,11 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String controller_connectLogDetail(String log) {
     return 'Connect failures: $log';
+  }
+
+  @override
+  String controller_connectLogLine(int attempt, String type) {
+    return 'Attempt $attempt: $type';
   }
 
   @override
@@ -1873,7 +1872,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String controller_deferConfirm(int threshold) {
-    return 'The gateway finishes setup as usual: it joins service, resumes uploading and keeps one-to-one mode with the current threshold ($threshold dBm), but binds no PTU.\nOnce this charger\'s PTU is powered, the gateway connects to it; confirm the binding later on site with [Identify].';
+    return 'The gateway finishes setup as usual: it joins service, resumes uploading and keeps one-to-one mode with the current threshold ($threshold dBm), but binds no PTU.\nOnce this charger\'s PTU is powered, the gateway connects to it; confirm the binding later on site with [Identify and bind].';
   }
 
   @override
@@ -1894,14 +1893,14 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get controller_deferredDone =>
-      'This charger\'s PTU is not connected yet. It connects once powered; confirm the binding later on site with [Identify].';
+      'This charger\'s PTU is not connected yet. It connects once powered; confirm the binding later on site with [Identify and bind].';
 
   @override
   String get controller_deferredDoneTitle => 'Gateway setup done';
 
   @override
   String get controller_deferredLater =>
-      'To bind later: once the PTU is powered, reconnect to this gateway with the APP and [Identify and bind] appears. If you are still on site and the PTU is powered, tap the button below.';
+      'To bind later: once the PTU is powered, reconnect to this gateway with the app and [Identify and bind] appears. If you are still on site and the PTU is powered, tap the button below.';
 
   @override
   String get controller_deferredSummary =>
@@ -1928,7 +1927,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String controller_directBoundNote(String mac) {
-    return 'Bound PTU MAC: $mac (the gateway connects only this one)';
+    return 'Bound PTU MAC: $mac (the gateway connects to this one only)';
   }
 
   @override
@@ -1941,7 +1940,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get controller_directNoData =>
-      'The gateway has no data from this PTU yet. Check the PTU\'s power, then tap [Yes, set it up] to retry; the gateway keeps monitoring.';
+      'The gateway has no data from this PTU yet. Check the PTU\'s power, then tap [This one, start setup] to retry; the gateway keeps monitoring.';
 
   @override
   String get controller_directNoReport =>
@@ -1988,9 +1987,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get controller_doneBusy =>
       'Working on it. Tap [Done] when it finishes.';
-
-  @override
-  String get controller_doneFinishLabel => 'Done';
 
   @override
   String get controller_doneNextLabel => 'Set up next';
@@ -2115,7 +2111,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get controller_leaveListConfirmTitle =>
-      'End this setup and go to the start page?';
+      'End this setup and go to the home page?';
 
   @override
   String get controller_leaveListLabel => 'End setup';
@@ -2125,10 +2121,8 @@ class AppLocalizationsEn extends AppLocalizations {
       'Bluetooth connected. Checking the gateway\'s replies and settings…';
 
   @override
-  String get controller_listNotWritten => 'List not written; assigning goes on';
-
-  @override
-  String get controller_listSeparator => ', ';
+  String get controller_listNotWritten =>
+      'List not written; assignment continues';
 
   @override
   String get controller_loginRun => 'Logging in to the backend';
@@ -2182,7 +2176,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String controller_notIdentifiedPick(String mac) {
-    return 'The gateway is connected to PTU $mac. Tap [Identify this charger] to confirm it is the one in front of you, then [Yes, set it up].';
+    return 'The gateway is connected to PTU $mac. Tap [Identify this charger] to confirm it is the one in front of you, then [This one, start setup].';
   }
 
   @override
@@ -2190,7 +2184,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get controller_offlineMode =>
-      'Offline mode: log in at the end to verify the data';
+      'Offline mode: log in at the end for the data check';
 
   @override
   String get controller_onlineReady =>
@@ -2205,8 +2199,8 @@ class AppLocalizationsEn extends AppLocalizations {
       failed,
       locale: localeName,
       other:
-          '$ok online first; $failed failed to assign. Tap [Retry these $failed].',
-      one: '$ok online first; 1 failed to assign. Tap [Retry this one].',
+          '$ok now online; $failed failed to assign. Tap [Retry these $failed].',
+      one: '$ok now online; 1 failed to assign. Tap [Retry this one].',
     );
     return '$_temp0';
   }
@@ -2309,7 +2303,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String controller_ptuSearchingHint(String tail, String label) {
-    return 'The gateway just started or changed state and is connecting the bound PTU (MAC ends $tail). It usually connects within 1 minute; wait, then tap [$label].';
+    return 'The gateway just started or changed state and is connecting to the bound PTU (MAC ends $tail). It usually connects within 1 minute; wait, then tap [$label].';
   }
 
   @override
@@ -2377,7 +2371,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get controller_reconnecting => 'Reconnecting to the gateway';
 
   @override
-  String get controller_rejoining => 'Rejoining the backend';
+  String get controller_rejoining => 'Rejoining the back office';
 
   @override
   String get controller_relinkReconnect => 'Phone reconnecting to the gateway…';
@@ -2608,7 +2602,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String controller_scanTestMode(String label) {
-    return 'The gateway is in test mode and does not scan PTUs. Tap [$label]; the APP rescans after the switch.';
+    return 'The gateway is in test mode and does not scan PTUs. Tap [$label]; the app rescans after the switch.';
   }
 
   @override
@@ -2630,12 +2624,12 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String controller_starApply(int limit) {
-    return 'The gateway connects only $limit now. After [Set up], it switches to star and connects all PTUs.';
+    return 'The gateway connects to only $limit now. Once you start the setup, it switches to star and connects all PTUs.';
   }
 
   @override
   String get controller_starOwnerUnknown =>
-      'Cannot confirm the gateways\' registration. Reset manually';
+      'Cannot confirm the gateway\'s registration. Reset manually';
 
   @override
   String get controller_startVerify => 'Start verification';
@@ -2758,11 +2752,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get controller_uploadConnecting =>
-      'The gateway is connecting; the APP confirms automatically (up to about 2 minutes).';
+      'The gateway is connecting; the app confirms automatically (up to about 2 minutes).';
 
   @override
   String get controller_uploadElsewhere =>
-      'The gateway sends its data to another backend';
+      'The gateway sends its data to another back office';
 
   @override
   String get controller_uploadNotReady =>
@@ -2782,7 +2776,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String controller_verifyNoData(int id) {
-    return 'PTU #$id no data yet';
+    return 'PTU #$id: no data yet';
   }
 
   @override
@@ -2840,7 +2834,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get controller_wifiUpdatedChooseStation =>
-      'Wi-Fi updated and uploading. Check the site: if this gateway\'s current site is not this one, choose [Use another site ID].';
+      'Wi-Fi updated and uploading. Check the site: if this gateway\'s current site is not this one, choose [Use another site].';
 
   @override
   String get controller_wifiUpdatedKeepStation =>
@@ -2900,7 +2894,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get coreProgressChecklist_finishJoin => 'Join monitoring';
 
   @override
-  String get coreProgressChecklist_finishJoined => 'Check monitoring joined';
+  String get coreProgressChecklist_finishJoined => 'Check it joined monitoring';
 
   @override
   String get coreProgressChecklist_finishList => 'Write PTU list';
@@ -2994,7 +2988,13 @@ class AppLocalizationsEn extends AppLocalizations {
     String weakest,
     int count,
   ) {
-    return 'Median $median · weakest $weakest ($count rows)';
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count rows',
+      one: '1 row',
+    );
+    return 'Median $median · weakest $weakest ($_temp0)';
   }
 
   @override
@@ -3009,7 +3009,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String directCalibrationSheet_range(String lower, String upper) {
-    return 'Usable range $lower to $upper: this charger gets picked and stays connected, and no neighbour is taken when this charger is off.';
+    return 'Usable range $lower to $upper: this charger gets picked and stays connected, and no neighbour connects when this charger is off.';
   }
 
   @override
@@ -3028,7 +3028,13 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String directCalibrationSheet_sampling(int left, int reads) {
-    return 'Sampling… $left s left ($reads reads so far)';
+    String _temp0 = intl.Intl.pluralLogic(
+      reads,
+      locale: localeName,
+      other: '$reads reads so far',
+      one: '1 read so far',
+    );
+    return 'Sampling… $left s left ($_temp0)';
   }
 
   @override
@@ -3114,10 +3120,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get directCalibration_needsOwn =>
-      'First tap [Identify charger] in step 7 to confirm this charger\'s PTU, then calibrate.';
-
-  @override
-  String get directCalibration_neighborSeparator => ', ';
+      'First tap [Identify this charger] in step 7 to confirm this charger\'s PTU, then calibrate.';
 
   @override
   String directCalibration_neighborsAndMore(String named, int total) {
@@ -3139,7 +3142,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String directCalibration_ownBelowHold(int upper, int hold) {
-    return 'This charger\'s PTU signal is weak (usable up to $upper dBm, below the $hold dBm threshold), but without neighbour data the threshold cannot be loosened. Turn on [Bind PTU after confirming] (a bound PTU ignores the threshold), or move the PTU and sample again.';
+    return 'This charger\'s PTU signal is weak (usable up to $upper dBm, below the $hold dBm threshold), but without neighbour data the threshold cannot be loosened. Turn on [Bind PTU on confirm] (a bound PTU ignores the threshold), or move the PTU and sample again.';
   }
 
   @override
@@ -3282,7 +3285,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'The gateway is collecting nearby PTUs again, about 5–10 s…';
 
   @override
-  String get directModePanel_currentPick => 'Current';
+  String get directModePanel_currentPick => 'Current pick';
 
   @override
   String get directModePanel_gatewayBusy => 'Gateway working, please wait…';
@@ -3344,7 +3347,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String directModePanel_reason(String reason) {
-    return 'Picked by: $reason';
+    return 'Pick reason: $reason';
   }
 
   @override
@@ -3360,7 +3363,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get directModePanel_signalLabel => 'Signal';
 
   @override
-  String get directModePanel_switchToThis => 'Switch to this';
+  String get directModePanel_switchToThis => 'Switch to this one';
 
   @override
   String directModePanel_threshold(int min) {
@@ -3378,8 +3381,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get directModePanel_unbound => 'Not bound';
 
   @override
-  String get directModePanel_watchLights =>
-      'After tapping, watch the PTU and gateway lights';
+  String get directModePanel_watchLights => 'Tap, then watch the lights';
 
   @override
   String directMode_ackPlain(String note, String gateway) {
@@ -3403,7 +3405,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get directMode_ambiguous =>
-      'PTUs with similar signals nearby. Tap [Identify charger] to check it is the one in front of you';
+      'PTUs with similar signals nearby. Tap [Identify this charger] to check it is the one in front of you';
 
   @override
   String get directMode_confirmLabel => 'This one, start setup';
@@ -3421,14 +3423,15 @@ class AppLocalizationsEn extends AppLocalizations {
       'Gateway sent it; older gateway got no PTU confirmation. Watch the charger lights';
 
   @override
-  String get directMode_identifyConfirmed => 'PTU confirmed its light';
+  String get directMode_identifyConfirmed => 'PTU confirmed its light is on';
 
   @override
-  String get directMode_identifyFirstLabel => 'Tap [Identify charger] first';
+  String get directMode_identifyFirstLabel =>
+      'Tap [Identify this charger] first';
 
   @override
   String directMode_identifyFirstText(String confirm) {
-    return 'Tap [Identify charger] to check it is the one in front of you, then tap [$confirm].';
+    return 'Tap [Identify this charger] to check it is the one in front of you, then tap [$confirm].';
   }
 
   @override
@@ -3535,7 +3538,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get directMode_remoteHeadGatewayOnly =>
-      'Gateway blinked · PTU missed it';
+      'Back office blinked gateway · PTU missed it';
 
   @override
   String get directMode_remoteHeadOffSent => 'Back office sent lights-off';
@@ -3613,7 +3616,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get directMode_stateConnected => 'PTU connected';
 
   @override
-  String get directMode_stateConnecting => 'Connecting PTU';
+  String get directMode_stateConnecting => 'Connecting to PTU';
 
   @override
   String get directMode_stateNoCandidate => 'No PTU close enough';
@@ -3652,7 +3655,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get directMode_waitingLabel =>
-      'Waiting for the gateway to connect a PTU';
+      'Waiting for the gateway to connect to a PTU';
 
   @override
   String get directPickActivity_ambiguousIdentify =>
@@ -3716,28 +3719,28 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get environmentSwitch_customNotSet =>
-      'Use a custom back office URL (not set)';
+      'Use a custom backend URL (not set)';
 
   @override
   String environmentSwitch_customUrl(String url) {
-    return 'Use a custom back office URL: $url';
+    return 'Use a custom backend URL: $url';
   }
 
   @override
-  String get environmentSwitch_editIp => 'You can change the test server IP:';
+  String get environmentSwitch_editIp => 'You can change the test host IP:';
 
   @override
   String get environmentSwitch_localNoHost =>
-      'Data goes to the test server on this PC (PC IP not set)';
+      'Data goes to the test host on this PC (PC IP not set)';
 
   @override
   String environmentSwitch_localWithHost(String host) {
-    return 'Data goes to the test server on this PC ($host)';
+    return 'Data goes to the test host on this PC ($host)';
   }
 
   @override
   String get environmentSwitch_noIp =>
-      'No test server IP yet. Tap [Auto find] or enter it.';
+      'No test host IP yet. Tap [Auto find] or enter it.';
 
   @override
   String get environmentSwitch_productionHint => 'Data goes to production.';
@@ -3753,7 +3756,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get environmentSwitch_title => 'Switch environment';
 
   @override
-  String get environmentSwitch_urlLabel => 'Back office URL';
+  String get environmentSwitch_urlLabel => 'Backend URL';
 
   @override
   String get environmentSwitch_useLocal => 'Use local test';
@@ -3764,9 +3767,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get fieldHelpSheet_demo =>
       'Demo mode does not send. Read the info below.';
-
-  @override
-  String get fieldHelpSheet_details => 'Details';
 
   @override
   String get fieldHelpSheet_label => 'Ask back office';
@@ -3810,17 +3810,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get fieldReport_backendSwitched =>
-      'Backend switched; the report was not sent';
+      'Back office switched; the report was not sent';
 
   @override
   String get fieldReport_backendUnsupported =>
       'Back office does not support it yet (update the back office)';
-
-  @override
-  String get fieldReport_fwUnknown => 'unknown';
-
-  @override
-  String get fieldReport_gatewayNotFoundPrefix => 'No gateway found';
 
   @override
   String fieldReport_helpCode(String code) {
@@ -3844,7 +3838,13 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String fieldReport_helpFirmwareStar(String fw, int count) {
-    return 'Firmware $fw · star, $count PTUs';
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count PTUs',
+      one: '1 PTU',
+    );
+    return 'Firmware $fw · star, $_temp0';
   }
 
   @override
@@ -3862,7 +3862,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String fieldReport_helpStationGateway(String site, String gateway) {
-    return 'Station $site / gateway $gateway';
+    return 'Site $site / gateway $gateway';
   }
 
   @override
@@ -3871,7 +3871,7 @@ class AppLocalizationsEn extends AppLocalizations {
     String gateway,
     String tail,
   ) {
-    return 'Station $site / gateway $gateway (MAC ends $tail)';
+    return 'Site $site / gateway $gateway (MAC ends $tail)';
   }
 
   @override
@@ -3977,7 +3977,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get gatewayDiscovery_backendNoRecordNote =>
-      'The back office has no record of this device. If it is not commissioned yet, tap [Start commissioning]; if it is, check the connection and the selected site.';
+      'The back office has no record of this device. If it is not set up yet, tap [Start setup]; if it is, check the connection and the selected site.';
 
   @override
   String get gatewayDiscovery_backendOfflineNote =>
@@ -3985,11 +3985,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get gatewayDiscovery_backendReferenceNote =>
-      'Without an identity check on this phone, back-office status only matches the same site and gateway number. Connect to confirm the device.';
+      'Without an identity check on this phone, backend status only matches the same site ID and gateway number. Connect to confirm the device.';
 
   @override
   String get gatewayDiscovery_backendRefreshNote =>
-      'Back-office status refreshes every 15 s and covers only the selected back office.';
+      'Backend status refreshes every 15 s and covers only the selected backend.';
 
   @override
   String get gatewayDiscovery_bluetoothConnect => 'Connect';
@@ -4009,7 +4009,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String gatewayDiscovery_connectLabel(String title) {
-    return 'Start commissioning: $title';
+    return 'Start setup: $title';
   }
 
   @override
@@ -4154,7 +4154,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get gatewayDiscovery_rssiNote =>
-      'RSSI is the Bluetooth signal the phone receives, not the back-office online status.';
+      'RSSI is the Bluetooth signal the phone receives, not the backend online status.';
 
   @override
   String get gatewayDiscovery_scanFailed =>
@@ -4182,7 +4182,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get gatewayDiscovery_signalUnknown => 'Signal unknown';
 
   @override
-  String get gatewayDiscovery_startCommissioning => 'Start commissioning';
+  String get gatewayDiscovery_startCommissioning => 'Start setup';
 
   @override
   String get gatewayDiscovery_stopSearch => 'Stop search';
@@ -4199,7 +4199,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String gatewayIdentity_directGatewayPick(String mac) {
-    return 'The gateway connected to another gateway nearby ($mac), not a PTU; the APP will not treat it as a PTU. Tap [Not this one?] to pick this charger\'s PTU, or move closer to it and tap [Search again].';
+    return 'The gateway connected to another gateway nearby ($mac), not a PTU; the app will not treat it as a PTU. Tap [Not this one?] to pick this charger\'s PTU, or move closer to it and tap [Search again].';
   }
 
   @override
@@ -4240,7 +4240,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get gatewayIdentity_testModeActionHint =>
-      'The gateway reboots after the switch (about 1 min); the APP reconnects and continues by itself.';
+      'The gateway reboots after the switch (about 1 min); the app reconnects and continues by itself.';
 
   @override
   String gatewayIdentity_testModeStatusHint(String leave) {
@@ -4256,7 +4256,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get gatewayIdentity_uploadHeld =>
-      'Back office link OK. PTU data starts uploading once setup is done (paused for now, which is normal); the APP continues by itself';
+      'Back office link OK. PTU data starts uploading once setup is done (paused for now, which is normal); the app continues by itself';
 
   @override
   String get gatewayIdentity_uploadHeldStatus =>
@@ -4386,16 +4386,16 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get gatewayProximity_nearestHint =>
-      'This pile\'s gateway usually has the strongest signal. If unsure, tap it, connect, then tap the bulb to see which one blinks';
+      'This charger\'s gateway usually has the strongest signal. If unsure, tap it, connect, then tap the bulb to see which one blinks';
 
   @override
   String gatewayReboot_notice(String reason) {
-    return 'The gateway just restarted (reason: $reason). This is not a PTU fault; settings already done on the gateway are kept. The APP has reconnected: continue from the current step. No need to start over; do not unplug it or tap repeatedly.';
+    return 'The gateway just restarted (reason: $reason). This is not a PTU fault; settings already done on the gateway are kept. The app has reconnected: continue from the current step. No need to start over; do not unplug it or tap repeatedly.';
   }
 
   @override
   String gatewayReboot_noticeMany(String reason, int times) {
-    return 'The gateway just restarted (reason: $reason; $times restarts in total). This is not a PTU fault; settings already done on the gateway are kept. The APP has reconnected: continue from the current step. No need to start over; do not unplug it or tap repeatedly. If it keeps restarting, take a screenshot and report it.';
+    return 'The gateway just restarted (reason: $reason; $times restarts in total). This is not a PTU fault; settings already done on the gateway are kept. The app has reconnected: continue from the current step. No need to start over; do not unplug it or tap repeatedly. If it keeps restarting, take a screenshot and report it.';
   }
 
   @override
@@ -4472,7 +4472,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get gatewaySignal_linkLost =>
-      'The phone lost its Bluetooth link to the gateway. Move closer; the APP will show how to reconnect.';
+      'The phone lost its Bluetooth link to the gateway. Move closer; the app will show how to reconnect.';
 
   @override
   String get gatewaySignal_noReading => 'no reading';
@@ -4542,8 +4542,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'Not set up yet, no data to view';
 
   @override
-  String get gatewayStatus_nearbyUnnamed =>
-      'No site number yet, no data to view';
+  String get gatewayStatus_nearbyUnnamed => 'No site ID yet, no data to view';
 
   @override
   String get gatewayStatus_nearest => 'Nearest';
@@ -4592,12 +4591,12 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String gatewaySwapSheet_confirmText(int site, int gateway) {
-    return 'This gateway takes over Site $site · gateway $gateway. The old gateway must be removed or powered off.';
+    return 'This gateway takes over site $site · gateway $gateway. The old gateway must be removed or powered off.';
   }
 
   @override
   String gatewaySwapSheet_confirmTextTail(int site, int gateway, String tail) {
-    return 'This gateway takes over Site $site · gateway $gateway. The old gateway ($tail) must be removed or powered off.';
+    return 'This gateway takes over site $site · gateway $gateway. The old gateway ($tail) must be removed or powered off.';
   }
 
   @override
@@ -4626,9 +4625,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String gatewaySwapSheet_online(int gateway) {
     return 'Gateway $gateway is online. Power off the old gateway first.';
   }
-
-  @override
-  String get gatewaySwapSheet_onlineOk => 'Got it';
 
   @override
   String gatewaySwapSheet_rowTitle(int gateway) {
@@ -4839,15 +4835,15 @@ class AppLocalizationsEn extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: 'Found $count local back offices',
-      one: 'Found 1 local back office',
+      other: 'Found $count local backends',
+      one: 'Found 1 local backend',
     );
     return '$_temp0';
   }
 
   @override
   String localBackendField_foundFilled(String host) {
-    return '✓ Found local back office $host and filled it in.';
+    return '✓ Found local backend $host and filled it in.';
   }
 
   @override
@@ -4855,8 +4851,8 @@ class AppLocalizationsEn extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: 'Found $count local back offices; none chosen.',
-      one: 'Found 1 local back office; none chosen.',
+      other: 'Found $count local backends; none chosen.',
+      one: 'Found 1 local backend; none chosen.',
     );
     return '$_temp0';
   }
@@ -4874,12 +4870,12 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String localBackendField_notFound(String subnet, String port) {
-    return 'No local back office found on $subnet (port $port).';
+    return 'No local backend found on $subnet (port $port).';
   }
 
   @override
   String localBackendField_notFoundTimedOut(String subnet, String port) {
-    return 'No local back office found on $subnet (port $port). (Search time limit reached)';
+    return 'No local backend found on $subnet (port $port). (Search time limit reached)';
   }
 
   @override
@@ -4888,7 +4884,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get localBackendField_portDialogTitle => 'Local back office port';
+  String get localBackendField_portDialogTitle => 'Local backend port';
 
   @override
   String get localBackendField_portLabel => 'Port';
@@ -4974,7 +4970,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get mqttTarget_failInvalidParams =>
-      'Gateway refused the switch: bad command parameters. Update the APP and retry.';
+      'Gateway refused the switch: bad command parameters. Update the app and retry.';
 
   @override
   String get mqttTarget_failInvalidPort =>
@@ -4982,11 +4978,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get mqttTarget_failInvalidReqId =>
-      'The APP sent an invalid command number. Reconnect and retry.';
+      'The app sent an invalid command number. Reconnect and retry.';
 
   @override
   String get mqttTarget_failInvalidTarget =>
-      'Gateway refused the switch: invalid upload target name. Update the APP and retry.';
+      'Gateway refused the switch: invalid upload target name. Update the app and retry.';
 
   @override
   String get mqttTarget_failNoReason =>
@@ -5063,7 +5059,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String mqttTarget_plainLocal(String host) {
-    return 'the local test server ($host)';
+    return 'the local test host ($host)';
   }
 
   @override
@@ -5100,9 +5096,6 @@ class AppLocalizationsEn extends AppLocalizations {
       'This gateway uploads to a local test server. Switch it back to production before shipping.';
 
   @override
-  String get networkCheck_fwUnknown => 'unknown';
-
-  @override
   String get networkCheck_reuseNoWifi => 'The gateway is not on Wi-Fi yet';
 
   @override
@@ -5127,13 +5120,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get networkCheck_stepChoosePtu => 'Choose PTUs';
 
   @override
-  String get networkCheck_stepChooseSite => 'Choose station';
+  String get networkCheck_stepChooseSite => 'Choose site';
 
   @override
   String get networkCheck_stepConfirmUpload => 'Confirm data upload';
-
-  @override
-  String get networkCheck_stepDone => 'Done';
 
   @override
   String get networkCheck_stepFindGateway => 'Find gateway';
@@ -5171,7 +5161,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String networkCheck_targetUndecidable(String current) {
-    return 'The gateway sends data to $current; the APP cannot tell from this URL whether it matches.';
+    return 'The gateway sends data to $current; the app cannot tell from this URL whether it matches.';
   }
 
   @override
@@ -5193,11 +5183,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get networkCheck_uploadLinkLost =>
-      'The phone lost the gateway\'s Bluetooth; cannot confirm.';
+      'The phone lost its Bluetooth link to the gateway; cannot confirm.';
 
   @override
   String get networkCheck_uploadLinkLostHint =>
-      'Move closer to the gateway and tap [End and choose gateway again] to reconnect.';
+      'Move closer to the gateway and tap [End and choose another gateway] to reconnect.';
 
   @override
   String get networkCheck_uploadNotConfirmed =>
@@ -5209,7 +5199,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get networkCheck_uploadUnsupported =>
-      'Cannot confirm; the final data verification checks it again.';
+      'Cannot confirm; the final data check checks it again.';
 
   @override
   String get networkCheck_uploadWaiting =>
@@ -5231,12 +5221,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String networkCheck_wifiUnsupported(String fw) {
-    return 'The APP cannot read this gateway\'s Wi-Fi (firmware $fw is too old); the final data verification checks it again.';
+    return 'The app cannot read this gateway\'s Wi-Fi (firmware $fw is too old); the final data check checks it again.';
   }
 
   @override
-  String get nextActionGuide_captionBegin =>
-      'Connected. You can start commissioning.';
+  String get nextActionGuide_captionBegin => 'Connected. You can start setup.';
 
   @override
   String get nextActionGuide_captionConnect =>
@@ -5251,7 +5240,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get protocol_authentication =>
-      'Back office login failed or expired. Retry later; if it still fails, contact the administrator to update the APP.';
+      'Back office login failed or expired. Retry later; if it still fails, contact the administrator to update the app.';
 
   @override
   String get protocol_backendUnavailable =>
@@ -5288,7 +5277,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get protocol_directDeferUnconfirmed =>
-      'The gateway did not report being in service with uploads resumed, so setup is not finished. Tap [Finish setup first] again; if that still fails, tap [Ask back office for help].';
+      'The gateway did not report being in service with uploads resumed, so setup is not finished. Tap [Finish setup now] again; if that still fails, tap [Ask back office].';
 
   @override
   String get protocol_directNoPtu =>
@@ -5320,7 +5309,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get protocol_fleetUnconfirmed =>
-      'Data uploaded, but the gateway did not report being in monitoring (the APP resent the command once), so activation is not finished. Move closer to the gateway and tap [Start data verification] to retry; if that still fails, tap [Ask back office for help].';
+      'Data uploaded, but the gateway did not report being in monitoring (the app resent the command once), so setup is not finished. Move closer to the gateway and tap [Start data check] to retry; if that still fails, tap [Ask back office].';
 
   @override
   String get protocol_gatewayBusy =>
@@ -5345,7 +5334,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String protocol_gatewayNotFound(String where, String backend) {
-    return 'The backend has no record of this gateway$where. The gateway may upload to another backend (e.g. production), while the APP is connected to $backend.';
+    return 'The backend has no record of this gateway$where. The gateway may upload to another backend (e.g. production), while the app is connected to $backend.';
   }
 
   @override
@@ -5354,7 +5343,7 @@ class AppLocalizationsEn extends AppLocalizations {
     String backend,
     String cause,
   ) {
-    return 'The backend has no record of this gateway$where (the APP is connected to $backend). $cause';
+    return 'The backend has no record of this gateway$where (the app is connected to $backend). $cause';
   }
 
   @override
@@ -5380,7 +5369,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get protocol_identifyNoPtu =>
-      'The gateway is not connected to a PTU, so no PTU can blink. Make sure this pile\'s PTU is powered and close, then retry.';
+      'The gateway is not connected to a PTU, so no PTU can blink. Make sure this charger\'s PTU is powered and close, then retry.';
 
   @override
   String get protocol_identifyUnsupported =>
@@ -5404,7 +5393,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get protocol_monitorUnconfirmed =>
-      'Monitoring was not confirmed back on within 30 seconds. Tap [Reconnect and continue] to retry, or [Skip] to verify the data directly.';
+      'Could not confirm within 30 seconds that the gateway resumed monitoring. Tap [Reconnect and continue] to retry, or [Skip] to verify the data directly.';
 
   @override
   String protocol_networkUnreachable(String backend) {
@@ -5455,7 +5444,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get protocol_ptuIdentityMismatch =>
-      'The back office\'s PTU identity does not match this selection, or the MAC is missing; verification is not complete. Go back and check this pile\'s PTU; if it still differs, ask the back office for help.';
+      'The back office\'s PTU identity does not match this selection, or the MAC is missing; verification is not complete. Go back and check this charger\'s PTU; if it still differs, ask the back office for help.';
 
   @override
   String get protocol_ptuNoResponse => 'PTU not responding';
@@ -5484,7 +5473,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get protocol_targetReconnect =>
-      'The gateway got the switch command and restarted, but Bluetooth did not reconnect within 45 seconds. Move closer to the gateway, tap [End and choose gateway again], reconnect, then check [Connection status].';
+      'The gateway got the switch command and restarted, but Bluetooth did not reconnect within 45 seconds. Move closer to the gateway, tap [End and choose another gateway], reconnect, then check [Connection status].';
 
   @override
   String protocol_testModeStuck(String button) {
@@ -5501,7 +5490,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String protocol_unexpected(String detail) {
-    return 'Unexpected APP error: $detail';
+    return 'Unexpected app error: $detail';
   }
 
   @override
@@ -5600,7 +5589,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get recentDataApi_authRefused =>
-      'The back office refused this APP\'s credential. Contact the administrator to update the APP';
+      'The back office refused this app\'s credential. Contact the administrator to update the app';
 
   @override
   String recentDataApi_errorText(String reason) {
@@ -5832,18 +5821,18 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String recentGateways_queryFailed(String detail) {
-    return 'Back office status unknown · query failed ($detail)';
+    return 'Backend status unknown · query failed ($detail)';
   }
 
   @override
   String get recentGateways_queryTimeout =>
-      'Back office status unknown · query timed out (8 s)';
+      'Backend status unknown · query timed out (8 s)';
 
   @override
-  String get recentGateways_reportedOffline => 'Back office reports offline';
+  String get recentGateways_reportedOffline => 'Backend reports offline';
 
   @override
-  String get recentGateways_reportedOnline => 'Back office reports online';
+  String get recentGateways_reportedOnline => 'Backend reports online';
 
   @override
   String get recentGateways_shortArchived => 'Backend archived';
@@ -5861,38 +5850,38 @@ class AppLocalizationsEn extends AppLocalizations {
   String get recentGateways_shortUnknown => 'Backend unknown';
 
   @override
-  String get recentGateways_unknown => 'Back office status unknown';
+  String get recentGateways_unknown => 'Backend status unknown';
 
   @override
   String get recentGateways_unknownConflict =>
-      'Back office status unknown · identity conflict flagged';
+      'Backend status unknown · identity conflict flagged';
 
   @override
   String recentGateways_unknownDuplicates(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: 'Back office status unknown · $count records with the same MAC',
+      other: 'Backend status unknown · $count records with the same MAC',
     );
     return '$_temp0';
   }
 
   @override
   String get recentGateways_unknownNoHeartbeat =>
-      'Back office status unknown · no heartbeat from this MAC';
+      'Backend status unknown · no heartbeat from this MAC';
 
   @override
   String get recentGateways_unknownUnverified =>
-      'Back office status unknown · identity checked after connecting';
+      'Backend status unknown · identity checked after connecting';
 
   @override
-  String get rescueCode_appUnexpected => 'Unexpected APP error';
+  String get rescueCode_appUnexpected => 'Unexpected app error';
 
   @override
   String get rescueCode_backendAuth => 'Back office login expired';
 
   @override
-  String get rescueCode_backendDown => 'APP cannot reach the back office';
+  String get rescueCode_backendDown => 'The app cannot reach the back office';
 
   @override
   String get rescueCode_bleConnectFail =>
@@ -5945,7 +5934,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get rescueCode_identityConflict =>
-      'Station number already used by another gateway';
+      'Site ID already used by another gateway';
 
   @override
   String get rescueCode_identityReplace =>
@@ -5960,7 +5949,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get rescueCode_phonePermission =>
-      'APP lacks Bluetooth / Location permission';
+      'The app lacks Bluetooth / Location permission';
 
   @override
   String get rescueCode_ptuConnectFail => 'Gateway cannot connect to the PTU';
@@ -6025,7 +6014,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get starAllowList_beforeFailed =>
-      'PTU binding list not written; continuing. If another PTU nearby with the same number holds the connection, some PTUs may fail to be assigned. The list is written again after the data verification.';
+      'PTU binding list not written; continuing. If another PTU nearby with the same number holds the connection, some PTUs may fail to be assigned. The list is written again after the data check.';
 
   @override
   String get starAllowList_failed =>
@@ -6045,9 +6034,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get starAllowList_idSeparator => ', ';
-
-  @override
   String get starAllowList_reselectHint =>
       'If one of them belongs to this gateway, select it and configure again.';
 
@@ -6059,7 +6045,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get starAllowList_switchFailed =>
-      'PTU binding list not written after switching back to star; it is written again after the data verification.';
+      'PTU binding list not written after switching back to star; it is written again after the data check.';
 
   @override
   String starAllowList_unlistedDropped(int count) {
@@ -6084,15 +6070,15 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get stationChangeProgress_applying =>
-      'After the site number is applied, the gateway restarts. Stay close; the APP reconnects by itself.';
+      'After the site ID is applied, the gateway restarts. Stay close; the app reconnects by itself.';
 
   @override
   String get stationChangeProgress_confirming =>
-      'Reconnected. Checking the new site number and Wi-Fi; it continues by itself when done.';
+      'Reconnected. Checking the new site ID and Wi-Fi; it continues by itself when done.';
 
   @override
   String get stationChangeProgress_restarting =>
-      'This is the normal restart after applying the site number; Bluetooth drops briefly. Stay close; the APP reconnects by itself.';
+      'This is the normal restart after applying the site ID; Bluetooth drops briefly. Stay close; the app reconnects by itself.';
 
   @override
   String stationChangeProgress_target(int site, int gateway) {
@@ -6103,7 +6089,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get stationChange_itemApply => 'Apply site settings';
 
   @override
-  String get stationChange_itemConfirm => 'Check the station number and Wi-Fi';
+  String get stationChange_itemConfirm => 'Check the site ID and Wi-Fi';
 
   @override
   String get stationChange_itemRestart => 'Restart and reconnect';
@@ -6115,12 +6101,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get stationChange_noteWaitBoot => 'Waiting for the gateway to start';
 
   @override
-  String get stationChange_titleApplying =>
-      'Applying the station number, please wait';
+  String get stationChange_titleApplying => 'Applying the site ID, please wait';
 
   @override
-  String get stationChange_titleConfirming =>
-      'Checking the station number and Wi-Fi';
+  String get stationChange_titleConfirming => 'Checking the site ID and Wi-Fi';
 
   @override
   String get stationChange_titleReconnecting => 'Reconnecting to the gateway';
@@ -6236,14 +6220,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get verifyDiagnosis_reasonOffline => 'Offline';
 
   @override
-  String get verifyDiagnosis_reasonSeparator => ', ';
-
-  @override
   String get verifyDiagnosis_roundOk => 'OK this round';
 
   @override
   String verifyDiagnosis_sameTarget(String target, String state, String hint) {
-    return 'The gateway uploads to $target (same backend as the APP), but the backend has no heartbeat from it yet, so the gateway is not connected to that MQTT broker yet.$state\n$hint';
+    return 'The gateway uploads to $target (same backend as the app), but the backend has no heartbeat from it yet, so the gateway is not connected to that MQTT broker yet.$state\n$hint';
   }
 
   @override
@@ -6302,14 +6283,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String verifyLivePanel_footer(String pace, int seconds) {
-    return '$pace・$seconds s left';
+    return '$pace · $seconds s left';
   }
 
   @override
   String get verifyLivePanel_goal => 'Done after 3 normal rows';
-
-  @override
-  String get verifyLivePanel_listSeparator => ', ';
 
   @override
   String verifyLivePanel_pace(int seconds) {

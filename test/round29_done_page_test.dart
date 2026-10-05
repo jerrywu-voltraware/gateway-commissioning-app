@@ -315,7 +315,10 @@ void main() {
         expect(find.text(deferredSummaryText), findsOneWidget);
         // The reminder: the PTU connects once powered, bind on site later.
         expect(find.text(deferredDoneText), findsOneWidget);
-        expect(deferredDoneText, contains('PTU 上電後會自動連線，之後到現場按〔辨識〕確認綁定'));
+        expect(
+          deferredDoneText,
+          contains('PTU 上電後會自動連線，之後到現場按〔辨識並綁定〕確認綁定'),
+        );
         expect(
           find.byWidgetPredicate((w) => w is FilledButton),
           findsOneWidget,
