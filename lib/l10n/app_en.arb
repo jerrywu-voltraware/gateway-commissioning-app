@@ -4189,6 +4189,14 @@
   },
   "gatewayStatus_fleetEmpty": "The back office has no gateways yet.",
   "gatewayStatus_fleetTitle": "Gateways in the back office",
+  "gatewayStatus_gatewayCount": "{count, plural, =1{1 gateway} other{{count} gateways}}",
+  "@gatewayStatus_gatewayCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "gatewayStatus_heartbeatAgo": "Heartbeat {age} ago",
   "@gatewayStatus_heartbeatAgo": {
     "placeholders": {
@@ -4198,7 +4206,7 @@
       }
     }
   },
-  "gatewayStatus_hint": "Tap a row to see that gateway's recent data.",
+  "gatewayStatus_hint": "Expand a site, then tap a gateway to view recent data.",
   "gatewayStatus_homeCaption": "After setup, check that data reaches the back office",
   "gatewayStatus_label": "View uploaded data",
   "gatewayStatus_loading": "Checking the back office…",
@@ -4232,6 +4240,15 @@
   "gatewayStatus_recentEmpty": "No setup finished on this phone with this version yet",
   "gatewayStatus_recentTitle": "Recent setups (this phone)",
   "gatewayStatus_rescan": "Rescan",
+  "gatewayStatus_siteGroup": "Site {site}",
+  "@gatewayStatus_siteGroup": {
+    "placeholders": {
+      "site": {
+        "type": "int"
+      }
+    }
+  },
+  "gatewayStatus_unconfiguredGroup": "Not set up / site unconfirmed",
   "gatewaySwapSheet_assignmentHint": "(replacing old gateway)",
   "gatewaySwapSheet_assignmentHintTail": "(replacing old gateway {tail})",
   "@gatewaySwapSheet_assignmentHintTail": {

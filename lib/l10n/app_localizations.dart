@@ -6619,6 +6619,12 @@ abstract class AppLocalizations {
   /// **'後台在線閘道器'**
   String get gatewayStatus_fleetTitle;
 
+  /// No description provided for @gatewayStatus_gatewayCount.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count} 台閘道器'**
+  String gatewayStatus_gatewayCount(int count);
+
   /// No description provided for @gatewayStatus_heartbeatAgo.
   ///
   /// In zh, this message translates to:
@@ -6628,7 +6634,7 @@ abstract class AppLocalizations {
   /// No description provided for @gatewayStatus_hint.
   ///
   /// In zh, this message translates to:
-  /// **'點一列即可查看該閘道器的最近資料。'**
+  /// **'展開站號，再點選閘道器查看最近資料。'**
   String get gatewayStatus_hint;
 
   /// No description provided for @gatewayStatus_homeCaption.
@@ -6750,6 +6756,18 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'重新掃描'**
   String get gatewayStatus_rescan;
+
+  /// No description provided for @gatewayStatus_siteGroup.
+  ///
+  /// In zh, this message translates to:
+  /// **'站 {site}'**
+  String gatewayStatus_siteGroup(int site);
+
+  /// No description provided for @gatewayStatus_unconfiguredGroup.
+  ///
+  /// In zh, this message translates to:
+  /// **'未配置／站號未確認'**
+  String get gatewayStatus_unconfiguredGroup;
 
   /// No description provided for @gatewaySwapSheet_assignmentHint.
   ///

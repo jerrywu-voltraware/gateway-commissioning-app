@@ -4503,13 +4503,24 @@ class AppLocalizationsEn extends AppLocalizations {
   String get gatewayStatus_fleetTitle => 'Gateways in the back office';
 
   @override
+  String gatewayStatus_gatewayCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count gateways',
+      one: '1 gateway',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String gatewayStatus_heartbeatAgo(String age) {
     return 'Heartbeat $age ago';
   }
 
   @override
   String get gatewayStatus_hint =>
-      'Tap a row to see that gateway\'s recent data.';
+      'Expand a site, then tap a gateway to view recent data.';
 
   @override
   String get gatewayStatus_homeCaption =>
@@ -4578,6 +4589,14 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get gatewayStatus_rescan => 'Rescan';
+
+  @override
+  String gatewayStatus_siteGroup(int site) {
+    return 'Site $site';
+  }
+
+  @override
+  String get gatewayStatus_unconfiguredGroup => 'Not set up / site unconfirmed';
 
   @override
   String get gatewaySwapSheet_assignmentHint => '(replacing old gateway)';

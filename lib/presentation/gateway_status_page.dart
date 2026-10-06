@@ -42,7 +42,8 @@ String get gatewayStatusNearbyScanningText =>
 String get gatewayStatusNearbyUnnamedText =>
     L10n.current.gatewayStatus_nearbyUnnamed;
 String get gatewayStatusRescanLabel => L10n.current.gatewayStatus_rescan;
-String get gatewayStatusSettingsLabel => L10n.current.gatewayStatus_openSettings;
+String get gatewayStatusSettingsLabel =>
+    L10n.current.gatewayStatus_openSettings;
 String get gatewayStatusFleetEmptyText => L10n.current.gatewayStatus_fleetEmpty;
 String get gatewayStatusLoadingText => L10n.current.gatewayStatus_loading;
 String get gatewayStatusRefreshLabel => L10n.current.common_refresh;
@@ -158,6 +159,48 @@ class _GatewayStatusPageState extends ConsumerState<GatewayStatusPage> {
   bool _scanning = false;
   int _scanGeneration = 0;
   Completer<void>? _scanStop;
+  final Set<String> _expandedSites = {};
+
+  List<Widget> _siteGroups<T>(
+    String section,
+    List<T> items,
+    int? Function(T) siteOf,
+    Widget Function(T) tileOf,
+  ) {
+    final groups = <int?, List<T>>{};
+    for (final item in items) {
+      groups.putIfAbsent(siteOf(item), () => []).add(item);
+    }
+    final sites = groups.keys.toList()
+      ..sort(
+        (a, b) =>
+            a == null ? (b == null ? 0 : 1) : (b == null ? -1 : a.compareTo(b)),
+      );
+    final l10n = context.l10n;
+    return [
+      for (final site in sites)
+        ExpansionTile(
+          key: ValueKey('gs-$section-site-${site ?? 'unconfigured'}'),
+          initiallyExpanded: _expandedSites.contains('$section:$site'),
+          onExpansionChanged: (expanded) {
+            if (expanded) {
+              _expandedSites.add('$section:$site');
+            } else {
+              _expandedSites.remove('$section:$site');
+            }
+          },
+          leading: const Icon(Icons.location_on_outlined),
+          title: Text(
+            site == null
+                ? l10n.gatewayStatus_unconfiguredGroup
+                : l10n.gatewayStatus_siteGroup(site),
+          ),
+          subtitle: Text(l10n.gatewayStatus_gatewayCount(groups[site]!.length)),
+          childrenPadding: const EdgeInsets.only(left: 12),
+          children: [for (final item in groups[site]!) tileOf(item)],
+        ),
+    ];
+  }
 
   @override
   void initState() {
@@ -305,18 +348,20 @@ class _GatewayStatusPageState extends ConsumerState<GatewayStatusPage> {
     }
     // 1.0.0+10 (phone: 「GIOS-S81-GW01・09-29 / 01:15 完成」 on two lines):
     // the time alone (the title says which gateway).
-    return [
-      for (final r in _recent)
-        _tile(
-          context,
-          key: Key('gs-recent-${r.site}-${r.gateway}'),
-          leading: const Icon(Icons.history),
-          title: gatewayStatusName(r.site, r.gateway),
-          line: gatewayStatusDoneText(r.doneAt),
-          lineKey: Key('gs-recent-${r.site}-${r.gateway}-line'),
-          onTap: () => _openRecent(r.site, r.gateway),
-        ),
-    ];
+    return _siteGroups<RecentCommission>(
+      'recent',
+      _recent,
+      (r) => r.site,
+      (r) => _tile(
+        context,
+        key: Key('gs-recent-${r.site}-${r.gateway}'),
+        leading: const Icon(Icons.history),
+        title: gatewayStatusName(r.site, r.gateway),
+        line: gatewayStatusDoneText(r.doneAt),
+        lineKey: Key('gs-recent-${r.site}-${r.gateway}-line'),
+        onTap: () => _openRecent(r.site, r.gateway),
+      ),
+    );
   }
 
   /// 1.0.0+10: one row style for the three sections — the title
@@ -451,8 +496,14 @@ class _GatewayStatusPageState extends ConsumerState<GatewayStatusPage> {
         ? null
         : nearby.reduce((a, b) => b.rssi > a.rssi ? b : a).id;
     return [
-      for (final p in nearby)
-        _nearbyTile(p, colors, nearest: p.id == strongest),
+      ..._siteGroups<GatewayPeer>(
+        'nearby',
+        nearby,
+        (p) => nearbyKnownUnconfigured(p.name, _error == null ? _fleet : null)
+            ? null
+            : parseGatewayName(p.name)?.site,
+        (p) => _nearbyTile(p, colors, nearest: p.id == strongest),
+      ),
       _rescanRow(top: 8),
     ];
   }
@@ -575,21 +626,23 @@ class _GatewayStatusPageState extends ConsumerState<GatewayStatusPage> {
       ];
     }
     final now = (widget.now ?? DateTime.now)();
-    return [
-      for (final g in fleet)
-        _tile(
-          context,
-          key: Key('gs-fleet-${g.site}-${g.gateway}'),
-          leading: Icon(
-            g.online ? Icons.cloud_done : Icons.cloud_off,
-            color: g.online ? const Color(0xFF2E7D32) : colors.error,
-          ),
-          title: gatewayStatusName(g.site, g.gateway),
-          line: gatewayStatusLine(g, now),
-          lineKey: Key('gs-fleet-${g.site}-${g.gateway}-line'),
-          onTap: () => _openRecent(g.site, g.gateway),
+    return _siteGroups<FleetGateway>(
+      'fleet',
+      fleet,
+      (g) => g.site,
+      (g) => _tile(
+        context,
+        key: Key('gs-fleet-${g.site}-${g.gateway}'),
+        leading: Icon(
+          g.online ? Icons.cloud_done : Icons.cloud_off,
+          color: g.online ? const Color(0xFF2E7D32) : colors.error,
         ),
-    ];
+        title: gatewayStatusName(g.site, g.gateway),
+        line: gatewayStatusLine(g, now),
+        lineKey: Key('gs-fleet-${g.site}-${g.gateway}-line'),
+        onTap: () => _openRecent(g.site, g.gateway),
+      ),
+    );
   }
 }
 

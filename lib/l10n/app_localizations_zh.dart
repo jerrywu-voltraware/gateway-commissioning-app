@@ -4185,12 +4185,17 @@ class AppLocalizationsZh extends AppLocalizations {
   String get gatewayStatus_fleetTitle => '後台在線閘道器';
 
   @override
+  String gatewayStatus_gatewayCount(int count) {
+    return '$count 台閘道器';
+  }
+
+  @override
   String gatewayStatus_heartbeatAgo(String age) {
     return '心跳 $age前';
   }
 
   @override
-  String get gatewayStatus_hint => '點一列即可查看該閘道器的最近資料。';
+  String get gatewayStatus_hint => '展開站號，再點選閘道器查看最近資料。';
 
   @override
   String get gatewayStatus_homeCaption => '架設完後，看資料有沒有正常送到後台';
@@ -4253,6 +4258,14 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get gatewayStatus_rescan => '重新掃描';
+
+  @override
+  String gatewayStatus_siteGroup(int site) {
+    return '站 $site';
+  }
+
+  @override
+  String get gatewayStatus_unconfiguredGroup => '未配置／站號未確認';
 
   @override
   String get gatewaySwapSheet_assignmentHint => '（取代舊機）';

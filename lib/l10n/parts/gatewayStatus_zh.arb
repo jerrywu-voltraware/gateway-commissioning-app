@@ -15,7 +15,12 @@
   "gatewayStatus_openSettings": "開啟權限設定",
   "gatewayStatus_fleetEmpty": "後台目前沒有任何閘道器。",
   "gatewayStatus_loading": "正在向後台查詢…",
-  "gatewayStatus_hint": "點一列即可查看該閘道器的最近資料。",
+  "gatewayStatus_hint": "展開站號，再點選閘道器查看最近資料。",
+  "gatewayStatus_siteGroup": "站 {site}",
+  "@gatewayStatus_siteGroup": {"placeholders": {"site": {"type": "int"}}},
+  "gatewayStatus_gatewayCount": "{count} 台閘道器",
+  "@gatewayStatus_gatewayCount": {"placeholders": {"count": {"type": "int"}}},
+  "gatewayStatus_unconfiguredGroup": "未配置／站號未確認",
   "gatewayStatus_nearest": "最近",
   "@gatewayStatus_nearest": {
     "description": "Mark on the strongest (closest) nearby gateway."
