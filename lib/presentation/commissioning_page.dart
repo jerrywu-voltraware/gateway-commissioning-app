@@ -1,3 +1,4 @@
+import 'home_entry_panel.dart';
 import 'dart:async';
 import 'identify_duration_setting.dart';
 import 'package:flutter/material.dart';
@@ -76,7 +77,9 @@ class CommissioningPage extends ConsumerStatefulWidget {
     required this.onThemeChanged,
     this.language = AppLanguage.zh,
     this.onLanguageChanged,
+    this.showHomeEntry = false,
   });
+  final bool showHomeEntry;
   final ThemeMode themeMode;
   final ValueChanged<ThemeMode> onThemeChanged;
 
@@ -92,6 +95,20 @@ class CommissioningPage extends ConsumerStatefulWidget {
 class _CommissioningPageState extends ConsumerState<CommissioningPage>
     with WidgetsBindingObserver {
   final _pageScroll = ScrollController();
+  late bool _showHome = widget.showHomeEntry;
+
+  Future<void> _openHomeData() async {
+    _autoUpdateTimer?.cancel();
+    await GatewayStatusPage.open(context);
+    if (mounted) _scheduleAutoUpdate();
+  }
+
+  void _returnHome() {
+    if (mounted && widget.showHomeEntry) {
+      setState(() => _showHome = true);
+      _scheduleAutoUpdate();
+    }
+  }
 
   /// 1.0.0+11 (phone: 〔辨識〕 emptied the list for 2–4 s): the busy row
   /// inserted above the step card shifts the page's children, so the card
@@ -131,6 +148,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         ref.read(demoProvider)) {
       return false;
     }
+    if (ModalRoute.of(context)?.isCurrent == false) return false;
     final link = ref.read(linkProvider);
     return appUpdateHomeAllowed(
       ref.read(commissionProvider),
@@ -1603,7 +1621,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     final env = ref.watch(backendEnvProvider);
     final updateSupported = ref.watch(androidUpdateSupportedProvider);
     final iosVersionSupported = ref.watch(iosAppVersionSupportedProvider);
-    _scheduleAutoFlow(state);
+    if (!_showHome) _scheduleAutoFlow(state);
     final topologySettings = ref.watch(topologyProvider);
     final topology = topologySettings.topology;
     final targetPtuCount = topologySettings.targetCount;
@@ -1665,13 +1683,21 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       // Round 29: on the done page 返回 is 〔完成〕 (nothing to ask).
       // 09-29: the gateway list no longer leaves the APP — 返回 there is
       // 〔結束配置〕 (back to the start page, no question asked).
-      canPop: state.step == 0 && !state.busy,
+      canPop:
+          (_showHome || !widget.showHomeEntry) &&
+          state.step == 0 &&
+          !state.busy,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) _backPressed(controller);
       },
       child: Scaffold(
         appBar: AppBar(
-          title: const _AppBarTitle(),
+          leading: widget.showHomeEntry && !_showHome
+              ? BackButton(onPressed: () => _backPressed(controller))
+              : null,
+          title: widget.showHomeEntry && !_showHome
+              ? Text(context.l10n.homeEntry_configure)
+              : const _AppBarTitle(),
           bottom: PreferredSize(
             preferredSize: const Size.fromHeight(48),
             child: SizedBox(
@@ -1682,7 +1708,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    if (state.step > 0 && !demo && controller.fieldHelpAvailable)
+                    if (state.step > 0 &&
+                        !demo &&
+                        controller.fieldHelpAvailable)
                       IconButton(
                         key: const Key('field-help-appbar'),
                         icon: const Icon(Icons.support_agent),
@@ -1868,7 +1896,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             ),
           ],
         ),
-        bottomNavigationBar: checkNext != null
+        bottomNavigationBar: _showHome
+            ? null
+            : checkNext != null
             ? SafeArea(
                 top: false,
                 child: Material(
@@ -2031,466 +2061,507 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             : state.step == 1
             ? GatewayScanBar(choice: _gatewayChoice, enabled: !state.busy)
             : null,
-        body: SafeArea(
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 720),
-              child: ListView(
-                controller: _pageScroll,
-                // 1.0.0+10: 16 (was 20) — more width for the gateway list's
-                // rows at 360 dp.
-                padding: EdgeInsets.all(
-                  state.step == 1 ? 12 : (selectingPtus ? 12 : 16),
-                ),
-                children: [
-                  if (demo)
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      color: colors.secondaryContainer,
-                      child: Text(context.l10n.commissioning_demoBanner),
-                    ),
-                  // Round 29: the done page starts with its summary.
-                  if (done) _doneSummary(state, controller, demo, env),
-                  // One-thing screens (09-28): one sentence on top — what
-                  // this page asks, or what runs by itself; the step count
-                  // below it, small.
-                  if (!done) ...[
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text(
-                        _taskTitle(state, env),
-                        key: const Key('task-title'),
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
+        body: _showHome
+            ? HomeEntryPanel(
+                hasSavedProgress: state.savedResume || state.savedProgress,
+                onConfigure: !state.busy && _updateRestoreReady
+                    ? () {
+                        _autoUpdateTimer?.cancel();
+                        setState(() => _showHome = false);
+                      }
+                    : null,
+                onViewData: !state.busy && _updateRestoreReady
+                    ? _openHomeData
+                    : null,
+              )
+            : SafeArea(
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 720),
+                    child: ListView(
+                      controller: _pageScroll,
+                      // 1.0.0+10: 16 (was 20) — more width for the gateway list's
+                      // rows at 360 dp.
+                      padding: EdgeInsets.all(
+                        state.step == 1 ? 12 : (selectingPtus ? 12 : 16),
                       ),
-                    ),
-                    SizedBox(height: state.step == 1 ? 2 : 10),
-                    if (state.step != 1)
-                      LinearProgressIndicator(
-                        value: shown / (stepLabels.length - 1),
-                      ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${shown + 1} / ${stepLabels.length}   ${stepLabels[shown]}',
-                      key: const Key('step-title'),
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: colors.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                  SizedBox(
-                    height: state.step == 1 ? 6 : (selectingPtus ? 4 : 12),
-                  ),
-                  // The phone's signal row is in 「設備與連線資訊」; a lost
-                  // Bluetooth link is said here, never behind the fold.
-                  if (state.peer != null &&
-                      !done &&
-                      stationChange?.expectedDisconnect != true)
-                    GatewayLinkAlert(link: ref.watch(linkProvider)),
-                  if (identifyAt && identifyOnPage) _identifyButton(state),
-                  if (selectingPtus &&
-                      !directPicking &&
-                      state.identifyNote.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text(
-                        state.identifyNote,
-                        key: const Key('identify-note'),
-                        style: TextStyle(color: colors.primary),
-                      ),
-                    ),
-                  // 09-28: on the station and Wi-Fi pages the idle message
-                  // only repeated the task sentence; while something runs
-                  // (or failed) it is shown as before.
-                  // 1.0.0+17: on the gateway list (step 2) neither the
-                  // message left from the step before (「準備完成」) nor
-                  // 〔辨識〕's own (the list's progress says what runs) —
-                  // others (offline, 〔配置下一台〕's) and failures stay.
-                  if (state.message.isNotEmpty &&
-                      stationChange == null &&
-                      !done &&
-                      (state.step != 1 ||
-                          state.error != null ||
-                          // 同源比對，比對所有語言（§8.3）。
-                          !matchesAnyLanguage(
-                            state.message,
-                            (l) => l.controller_prepared,
-                          ) &&
-                              !matchesAnyLanguage(
-                                state.message,
-                                (l) => l.controller_identifyPeerLabel,
-                              )) &&
-                      (!stationPages ||
-                          state.busy ||
-                          state.relinking ||
-                          state.error != null) &&
-                      (!selectingPtus ||
-                          state.busy ||
-                          state.error != null ||
-                          state.ptus.isEmpty))
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      child: Text(state.message),
-                    ),
-                  // The gateway restarted on its own: why, in plain words,
-                  // and that it is not a PTU fault (kept until 「知道了」).
-                  if (state.gatewayReboot != null)
-                    Container(
-                      key: const Key('gateway-reboot'),
-                      margin: const EdgeInsets.only(bottom: 12),
-                      padding: const EdgeInsets.fromLTRB(16, 12, 8, 0),
-                      color: colors.tertiaryContainer,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Text(
-                            gatewayRebootText(state.gatewayReboot!),
-                            style: TextStyle(color: colors.onTertiaryContainer),
+                      children: [
+                        if (demo)
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            color: colors.secondaryContainer,
+                            child: Text(context.l10n.commissioning_demoBanner),
                           ),
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: TextButton(
-                              key: const Key('gateway-reboot-ok'),
-                              onPressed: controller.dismissGatewayReboot,
-                              child: Text(context.l10n.common_gotIt),
+                        // Round 29: the done page starts with its summary.
+                        if (done) _doneSummary(state, controller, demo, env),
+                        // One-thing screens (09-28): one sentence on top — what
+                        // this page asks, or what runs by itself; the step count
+                        // below it, small.
+                        if (!done) ...[
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Text(
+                              _taskTitle(state, env),
+                              key: const Key('task-title'),
+                              style: Theme.of(context).textTheme.titleLarge
+                                  ?.copyWith(fontWeight: FontWeight.w700),
                             ),
                           ),
+                          SizedBox(height: state.step == 1 ? 2 : 10),
+                          if (state.step != 1)
+                            LinearProgressIndicator(
+                              value: shown / (stepLabels.length - 1),
+                            ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '${shown + 1} / ${stepLabels.length}   ${stepLabels[shown]}',
+                            key: const Key('step-title'),
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: colors.onSurfaceVariant),
+                          ),
                         ],
-                      ),
-                    ),
-                  // Round 26: test mode / paused upload, with the way out.
-                  if (stationChange == null) const GatewayModeCard(),
-                  // Round 28: a PTU connected but never bound (〔先完成配置〕
-                  // earlier): 〔辨識並綁定〕.
-                  if (stationChange == null &&
-                      state.step == 2 &&
-                      (state.bindLaterMac != null || state.bindLaterDeferred))
-                    _bindLaterCard(state, controller),
-                  // r34: bound, but the bound PTU is not connected:
-                  // 〔更換 PTU〕 / 〔PTU 已上電，重新檢查〕.
-                  if (stationChange == null &&
-                      state.step == 2 &&
-                      state.ptuMissingMac != null)
-                    _ptuMissingCard(state, controller),
-                  // Above the red box: the item that failed, then why in
-                  // full and its retry.
-                  if (checklist != null && stationChange == null)
-                    ProgressChecklist(
-                      key: const Key('auto-checklist'),
-                      items: checklist.items,
-                      animate: state.busy,
-                      // 1.0.0+18: the data check says its pace instead.
-                      footer: !state.busy
-                          ? null
-                          : state.step == 6
-                          ? verifyFooterText(
-                              state.seconds,
-                              intervalMs: state.verifyIntervalMs,
-                            )
-                          : context.l10n.commissioning_waitUpTo(state.seconds),
-                    ),
-                  if (state.error != null)
-                    Material(
-                      key: const Key('error-banner'),
-                      color: colors.errorContainer,
-                      child: InkWell(
-                        // Round 6: the resume action was two screens below
-                        // the banner; the banner itself is the action now.
-                        onTap: _resumeAction(state, controller),
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Text(
-                                state.error!,
-                                style: TextStyle(
-                                  color: colors.onErrorContainer,
+                        SizedBox(
+                          height: state.step == 1
+                              ? 6
+                              : (selectingPtus ? 4 : 12),
+                        ),
+                        // The phone's signal row is in 「設備與連線資訊」; a lost
+                        // Bluetooth link is said here, never behind the fold.
+                        if (state.peer != null &&
+                            !done &&
+                            stationChange?.expectedDisconnect != true)
+                          GatewayLinkAlert(link: ref.watch(linkProvider)),
+                        if (identifyAt && identifyOnPage)
+                          _identifyButton(state),
+                        if (selectingPtus &&
+                            !directPicking &&
+                            state.identifyNote.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Text(
+                              state.identifyNote,
+                              key: const Key('identify-note'),
+                              style: TextStyle(color: colors.primary),
+                            ),
+                          ),
+                        // 09-28: on the station and Wi-Fi pages the idle message
+                        // only repeated the task sentence; while something runs
+                        // (or failed) it is shown as before.
+                        // 1.0.0+17: on the gateway list (step 2) neither the
+                        // message left from the step before (「準備完成」) nor
+                        // 〔辨識〕's own (the list's progress says what runs) —
+                        // others (offline, 〔配置下一台〕's) and failures stay.
+                        if (state.message.isNotEmpty &&
+                            stationChange == null &&
+                            !done &&
+                            (state.step != 1 ||
+                                state.error != null ||
+                                // 同源比對，比對所有語言（§8.3）。
+                                !matchesAnyLanguage(
+                                      state.message,
+                                      (l) => l.controller_prepared,
+                                    ) &&
+                                    !matchesAnyLanguage(
+                                      state.message,
+                                      (l) => l.controller_identifyPeerLabel,
+                                    )) &&
+                            (!stationPages ||
+                                state.busy ||
+                                state.relinking ||
+                                state.error != null) &&
+                            (!selectingPtus ||
+                                state.busy ||
+                                state.error != null ||
+                                state.ptus.isEmpty))
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            child: Text(state.message),
+                          ),
+                        // The gateway restarted on its own: why, in plain words,
+                        // and that it is not a PTU fault (kept until 「知道了」).
+                        if (state.gatewayReboot != null)
+                          Container(
+                            key: const Key('gateway-reboot'),
+                            margin: const EdgeInsets.only(bottom: 12),
+                            padding: const EdgeInsets.fromLTRB(16, 12, 8, 0),
+                            color: colors.tertiaryContainer,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Text(
+                                  gatewayRebootText(state.gatewayReboot!),
+                                  style: TextStyle(
+                                    color: colors.onTertiaryContainer,
+                                  ),
                                 ),
-                              ),
-                              // Field rescue v1.1: 「請後台協助」 (a button,
-                              // so the banner's own tap action does not
-                              // fire).
-                              if (!demo && controller.fieldHelpAvailable)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 12),
-                                  child: OutlinedButton.icon(
-                                    key: const Key('field-help'),
-                                    style: OutlinedButton.styleFrom(
-                                      foregroundColor: colors.onErrorContainer,
-                                      side: BorderSide(
+                                Align(
+                                  alignment: Alignment.centerRight,
+                                  child: TextButton(
+                                    key: const Key('gateway-reboot-ok'),
+                                    onPressed: controller.dismissGatewayReboot,
+                                    child: Text(context.l10n.common_gotIt),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        // Round 26: test mode / paused upload, with the way out.
+                        if (stationChange == null) const GatewayModeCard(),
+                        // Round 28: a PTU connected but never bound (〔先完成配置〕
+                        // earlier): 〔辨識並綁定〕.
+                        if (stationChange == null &&
+                            state.step == 2 &&
+                            (state.bindLaterMac != null ||
+                                state.bindLaterDeferred))
+                          _bindLaterCard(state, controller),
+                        // r34: bound, but the bound PTU is not connected:
+                        // 〔更換 PTU〕 / 〔PTU 已上電，重新檢查〕.
+                        if (stationChange == null &&
+                            state.step == 2 &&
+                            state.ptuMissingMac != null)
+                          _ptuMissingCard(state, controller),
+                        // Above the red box: the item that failed, then why in
+                        // full and its retry.
+                        if (checklist != null && stationChange == null)
+                          ProgressChecklist(
+                            key: const Key('auto-checklist'),
+                            items: checklist.items,
+                            animate: state.busy,
+                            // 1.0.0+18: the data check says its pace instead.
+                            footer: !state.busy
+                                ? null
+                                : state.step == 6
+                                ? verifyFooterText(
+                                    state.seconds,
+                                    intervalMs: state.verifyIntervalMs,
+                                  )
+                                : context.l10n.commissioning_waitUpTo(
+                                    state.seconds,
+                                  ),
+                          ),
+                        if (state.error != null)
+                          Material(
+                            key: const Key('error-banner'),
+                            color: colors.errorContainer,
+                            child: InkWell(
+                              // Round 6: the resume action was two screens below
+                              // the banner; the banner itself is the action now.
+                              onTap: _resumeAction(state, controller),
+                              child: Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    Text(
+                                      state.error!,
+                                      style: TextStyle(
                                         color: colors.onErrorContainer,
                                       ),
                                     ),
-                                    icon: const Icon(
-                                      Icons.support_agent,
-                                      size: 20,
-                                    ),
-                                    onPressed: () =>
-                                        openFieldHelp(context, ref),
-                                    label: Text(fieldHelpLabel),
-                                  ),
-                                ),
-                              if (_resumeAction(state, controller) != null)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 12),
-                                  child: FilledButton.icon(
-                                    key: const Key('ptu-resume'),
-                                    icon: const Icon(
-                                      Icons.bluetooth_searching,
-                                      size: 20,
-                                    ),
-                                    onPressed: _resumeAction(state, controller),
-                                    label: Text(
-                                      state.step == 4 || state.step == 5
-                                          ? context
-                                                .l10n
-                                                .commissioning_reconnectContinue
-                                          : context
-                                                .l10n
-                                                .commissioning_reconnect,
-                                    ),
-                                  ),
-                                ),
-                              if (state.verifyBackendDown &&
-                                  !state.busy &&
-                                  state.step == 6)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 12),
-                                  child: FilledButton.icon(
-                                    key: const Key('verify-retry'),
-                                    icon: const Icon(Icons.refresh, size: 20),
-                                    onPressed: _startVerify,
-                                    label: Text(context.l10n.common_retry),
-                                  ),
-                                ),
-                              if (state.monitorUnconfirmed && !state.busy)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 8),
-                                  child: OutlinedButton(
-                                    key: const Key('monitor-skip'),
-                                    onPressed: controller.skipMonitorConfirm,
-                                    child: Text(
-                                      context.l10n.common_skip,
-                                    ),
-                                  ),
-                                ),
-                              if (state.errorDetail != null)
-                                Theme(
-                                  data: Theme.of(
-                                    context,
-                                  ).copyWith(dividerColor: Colors.transparent),
-                                  child: ExpansionTile(
-                                    key: const Key('error-detail'),
-                                    tilePadding: EdgeInsets.zero,
-                                    title: Text(
-                                      context.l10n.common_details,
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .bodyMedium
-                                          ?.copyWith(
-                                            color: colors.onErrorContainer,
-                                          ),
-                                    ),
-                                    children: [
-                                      SelectableText(
-                                        state.errorDetail!,
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .bodySmall
-                                            ?.copyWith(
+                                    // Field rescue v1.1: 「請後台協助」 (a button,
+                                    // so the banner's own tap action does not
+                                    // fire).
+                                    if (!demo && controller.fieldHelpAvailable)
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 12),
+                                        child: OutlinedButton.icon(
+                                          key: const Key('field-help'),
+                                          style: OutlinedButton.styleFrom(
+                                            foregroundColor:
+                                                colors.onErrorContainer,
+                                            side: BorderSide(
                                               color: colors.onErrorContainer,
                                             ),
+                                          ),
+                                          icon: const Icon(
+                                            Icons.support_agent,
+                                            size: 20,
+                                          ),
+                                          onPressed: () =>
+                                              openFieldHelp(context, ref),
+                                          label: Text(fieldHelpLabel),
+                                        ),
                                       ),
-                                    ],
-                                  ),
+                                    if (_resumeAction(state, controller) !=
+                                        null)
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 12),
+                                        child: FilledButton.icon(
+                                          key: const Key('ptu-resume'),
+                                          icon: const Icon(
+                                            Icons.bluetooth_searching,
+                                            size: 20,
+                                          ),
+                                          onPressed: _resumeAction(
+                                            state,
+                                            controller,
+                                          ),
+                                          label: Text(
+                                            state.step == 4 || state.step == 5
+                                                ? context
+                                                      .l10n
+                                                      .commissioning_reconnectContinue
+                                                : context
+                                                      .l10n
+                                                      .commissioning_reconnect,
+                                          ),
+                                        ),
+                                      ),
+                                    if (state.verifyBackendDown &&
+                                        !state.busy &&
+                                        state.step == 6)
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 12),
+                                        child: FilledButton.icon(
+                                          key: const Key('verify-retry'),
+                                          icon: const Icon(
+                                            Icons.refresh,
+                                            size: 20,
+                                          ),
+                                          onPressed: _startVerify,
+                                          label: Text(
+                                            context.l10n.common_retry,
+                                          ),
+                                        ),
+                                      ),
+                                    if (state.monitorUnconfirmed && !state.busy)
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 8),
+                                        child: OutlinedButton(
+                                          key: const Key('monitor-skip'),
+                                          onPressed:
+                                              controller.skipMonitorConfirm,
+                                          child: Text(context.l10n.common_skip),
+                                        ),
+                                      ),
+                                    if (state.errorDetail != null)
+                                      Theme(
+                                        data: Theme.of(context).copyWith(
+                                          dividerColor: Colors.transparent,
+                                        ),
+                                        child: ExpansionTile(
+                                          key: const Key('error-detail'),
+                                          tilePadding: EdgeInsets.zero,
+                                          title: Text(
+                                            context.l10n.common_details,
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .bodyMedium
+                                                ?.copyWith(
+                                                  color:
+                                                      colors.onErrorContainer,
+                                                ),
+                                          ),
+                                          children: [
+                                            SelectableText(
+                                              state.errorDetail!,
+                                              style: Theme.of(context)
+                                                  .textTheme
+                                                  .bodySmall
+                                                  ?.copyWith(
+                                                    color:
+                                                        colors.onErrorContainer,
+                                                  ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                  ],
                                 ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  if (state.busy && checklist == null && stationChange == null)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      child: Row(
-                        children: [
-                          const SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              context.l10n.commissioning_busyWaitUpTo(
-                                state.seconds,
                               ),
                             ),
                           ),
-                        ],
-                      ),
-                    ),
-                  // Earliest page with the gateway connected and its config
-                  // read; kept on step 7 so a local target is not shipped.
-                  // 09-28: all fine, it is in 「設備與連線資訊」 instead.
-                  if (panelAt && !panelOk && stationChange == null)
-                    ConnectionStatusPanel(
-                      state: state,
-                      env: env,
-                      demo: demo,
-                      onSync: () => _syncGateway(explicit: true),
-                      onRefresh: controller.refreshUploadTarget,
-                    ),
-                  if (state.step >= 1 &&
-                      state.step <= 2 &&
-                      !state.loggedIn &&
-                      stationChange == null)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: Text(
-                        context.l10n.commissioning_notLoggedIn(env.label),
-                        style: TextStyle(color: colors.onSurfaceVariant),
-                      ),
-                    ),
-                  // Round 29: the done page's other actions are secondary,
-                  // below the summary and the 連線狀態 line (no card).
-                  if (stationChange != null)
-                    StationChangeProgress(
-                      key: const Key('station-change-progress'),
-                      progress: stationChange,
-                    )
-                  else if (done)
-                    ...content(state, controller, demo)
-                  // 1.0.0+18: step 9's card turns green once the data
-                  // passed.
-                  else if (state.step == 6)
-                    VerifyStepCard(
-                      key: const Key('verify-card'),
-                      passed: state.verifyPassed,
-                      children: content(state, controller, demo),
-                    )
-                  else
-                    Card(
-                      // The busy indicator changes this ListView child's index
-                      // during identify. Keep the scanner's state and selection.
-                      key: state.step == 1
-                          ? const Key('gateway-discovery-card')
-                          : null,
-                      // The devices are cards themselves. Avoid a second inset
-                      // that hides the first device below the fold on a phone.
-                      margin: state.step == 1 ? EdgeInsets.zero : null,
-                      elevation: state.step == 1 ? 0 : null,
-                      color: state.step == 1 ? Colors.transparent : null,
-                      shape: state.step == 1
-                          ? const RoundedRectangleBorder()
-                          : null,
-                      child: Padding(
-                        padding: EdgeInsets.all(
-                          state.step == 1 ? 0 : (selectingPtus ? 8 : 16),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: content(state, controller, demo),
-                        ),
-                      ),
-                    ),
-                  // 1.0.0+16: 〔查看上傳資料〕 - its own row under the start
-                  // card, level with 「設備與連線資訊」 (it was a button in the
-                  // card; the field did not know what 「閘道器狀態」 was for).
-                  if (!done && state.step == 0) _uploadDataRow(!state.busy),
-                  if (stationChange == null)
-                    _details(
-                      state,
-                      controller,
-                      env,
-                      demo,
-                      shown: shown,
-                      topologyLabel: topology.label,
-                      identify: identifyAt && !identifyOnPage,
-                      panel: panelOk,
-                    ),
-                  // After step 3 it asks first (field round 17: a late tap
-                  // ended the flow). At direct step 7 it is in the fixed
-                  // bottom bar's more menu ([DirectPickActions]), where
-                  // the card above can no longer move its entry point.
-                  // Round 29: not on the done page (〔完成〕／〔配置下一台〕).
-                  // 09-29: on the gateway list it is 〔結束配置〕 — back to
-                  // the start page ([_leaveList]); 「結束並重新選擇閘道器」
-                  // there only wrote 「已取消」 in place.
-                  if (state.step > 0 &&
-                      !done &&
-                      !directPicking &&
-                      !(selectingPtus && state.busy))
-                    TextButton(
-                      key: const Key('page-cancel'),
-                      // Step 9: back to step 7 keeping the progress (round
-                      // 8: a cancel here dropped back to step 2).
-                      onPressed: state.step == 6 && state.busy
-                          ? controller.backToSelection
-                          : state.busy
-                          ? () => controller.cancel()
-                          : state.step == 1
-                          ? () => _leaveList(controller)
-                          : () => _endFlow(controller),
-                      child: Text(
-                        state.busy
-                            ? context.l10n.commissioning_cancelAction
-                            : state.step == 1
-                            ? leaveListLabel
-                            : endFlowLabel,
-                      ),
-                    ),
-                  // 1.0.0+8: the 「使用模擬設備練習」 switch is gone from the
-                  // start page; tests turn the demo on through
-                  // [demoProvider]. Practice the network check: the
-                  // simulated gateway's Wi-Fi after it boots.
-                  if (state.step == 0 && demo)
-                    DropdownButtonFormField<String>(
-                      key: const Key('demo-wifi'),
-                      initialValue: ref.read(demoSystemProvider).wifiState,
-                      isExpanded: true,
-                      decoration: InputDecoration(
-                        labelText: context.l10n.commissioning_demoWifiLabel,
-                        border: const OutlineInputBorder(),
-                      ),
-                      items: [
-                        DropdownMenuItem(
-                          value: 'got_ip',
-                          child: Text(
-                            context.l10n.commissioning_demoWifiConnected,
+                        if (state.busy &&
+                            checklist == null &&
+                            stationChange == null)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            child: Row(
+                              children: [
+                                const SizedBox(
+                                  width: 22,
+                                  height: 22,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    context.l10n.commissioning_busyWaitUpTo(
+                                      state.seconds,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                        DropdownMenuItem(
-                          value: 'connecting',
-                          child: Text(
-                            context.l10n.commissioning_demoWifiConnecting,
+                        // Earliest page with the gateway connected and its config
+                        // read; kept on step 7 so a local target is not shipped.
+                        // 09-28: all fine, it is in 「設備與連線資訊」 instead.
+                        if (panelAt && !panelOk && stationChange == null)
+                          ConnectionStatusPanel(
+                            state: state,
+                            env: env,
+                            demo: demo,
+                            onSync: () => _syncGateway(explicit: true),
+                            onRefresh: controller.refreshUploadTarget,
                           ),
-                        ),
-                        DropdownMenuItem(
-                          value: 'disconnected',
-                          child: Text(
-                            context.l10n.commissioning_demoWifiDisconnected,
+                        if (state.step >= 1 &&
+                            state.step <= 2 &&
+                            !state.loggedIn &&
+                            stationChange == null)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: Text(
+                              context.l10n.commissioning_notLoggedIn(env.label),
+                              style: TextStyle(color: colors.onSurfaceVariant),
+                            ),
                           ),
-                        ),
+                        // Round 29: the done page's other actions are secondary,
+                        // below the summary and the 連線狀態 line (no card).
+                        if (stationChange != null)
+                          StationChangeProgress(
+                            key: const Key('station-change-progress'),
+                            progress: stationChange,
+                          )
+                        else if (done)
+                          ...content(state, controller, demo)
+                        // 1.0.0+18: step 9's card turns green once the data
+                        // passed.
+                        else if (state.step == 6)
+                          VerifyStepCard(
+                            key: const Key('verify-card'),
+                            passed: state.verifyPassed,
+                            children: content(state, controller, demo),
+                          )
+                        else
+                          Card(
+                            // The busy indicator changes this ListView child's index
+                            // during identify. Keep the scanner's state and selection.
+                            key: state.step == 1
+                                ? const Key('gateway-discovery-card')
+                                : null,
+                            // The devices are cards themselves. Avoid a second inset
+                            // that hides the first device below the fold on a phone.
+                            margin: state.step == 1 ? EdgeInsets.zero : null,
+                            elevation: state.step == 1 ? 0 : null,
+                            color: state.step == 1 ? Colors.transparent : null,
+                            shape: state.step == 1
+                                ? const RoundedRectangleBorder()
+                                : null,
+                            child: Padding(
+                              padding: EdgeInsets.all(
+                                state.step == 1 ? 0 : (selectingPtus ? 8 : 16),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: content(state, controller, demo),
+                              ),
+                            ),
+                          ),
+                        // 1.0.0+16: 〔查看上傳資料〕 - its own row under the start
+                        // card, level with 「設備與連線資訊」 (it was a button in the
+                        // card; the field did not know what 「閘道器狀態」 was for).
+                        if (!done && state.step == 0)
+                          _uploadDataRow(!state.busy),
+                        if (stationChange == null)
+                          _details(
+                            state,
+                            controller,
+                            env,
+                            demo,
+                            shown: shown,
+                            topologyLabel: topology.label,
+                            identify: identifyAt && !identifyOnPage,
+                            panel: panelOk,
+                          ),
+                        // After step 3 it asks first (field round 17: a late tap
+                        // ended the flow). At direct step 7 it is in the fixed
+                        // bottom bar's more menu ([DirectPickActions]), where
+                        // the card above can no longer move its entry point.
+                        // Round 29: not on the done page (〔完成〕／〔配置下一台〕).
+                        // 09-29: on the gateway list it is 〔結束配置〕 — back to
+                        // the start page ([_leaveList]); 「結束並重新選擇閘道器」
+                        // there only wrote 「已取消」 in place.
+                        if (state.step > 0 &&
+                            !done &&
+                            !directPicking &&
+                            !(selectingPtus && state.busy))
+                          TextButton(
+                            key: const Key('page-cancel'),
+                            // Step 9: back to step 7 keeping the progress (round
+                            // 8: a cancel here dropped back to step 2).
+                            onPressed: state.step == 6 && state.busy
+                                ? controller.backToSelection
+                                : state.busy
+                                ? () => controller.cancel()
+                                : state.step == 1
+                                ? () => _leaveList(controller)
+                                : () => _endFlow(controller),
+                            child: Text(
+                              state.busy
+                                  ? context.l10n.commissioning_cancelAction
+                                  : state.step == 1
+                                  ? leaveListLabel
+                                  : endFlowLabel,
+                            ),
+                          ),
+                        // 1.0.0+8: the 「使用模擬設備練習」 switch is gone from the
+                        // start page; tests turn the demo on through
+                        // [demoProvider]. Practice the network check: the
+                        // simulated gateway's Wi-Fi after it boots.
+                        if (state.step == 0 && demo)
+                          DropdownButtonFormField<String>(
+                            key: const Key('demo-wifi'),
+                            initialValue: ref
+                                .read(demoSystemProvider)
+                                .wifiState,
+                            isExpanded: true,
+                            decoration: InputDecoration(
+                              labelText:
+                                  context.l10n.commissioning_demoWifiLabel,
+                              border: const OutlineInputBorder(),
+                            ),
+                            items: [
+                              DropdownMenuItem(
+                                value: 'got_ip',
+                                child: Text(
+                                  context.l10n.commissioning_demoWifiConnected,
+                                ),
+                              ),
+                              DropdownMenuItem(
+                                value: 'connecting',
+                                child: Text(
+                                  context.l10n.commissioning_demoWifiConnecting,
+                                ),
+                              ),
+                              DropdownMenuItem(
+                                value: 'disconnected',
+                                child: Text(
+                                  context
+                                      .l10n
+                                      .commissioning_demoWifiDisconnected,
+                                ),
+                              ),
+                            ],
+                            onChanged: state.busy
+                                ? null
+                                : (value) {
+                                    if (value == null) return;
+                                    setState(
+                                      () => ref
+                                          .read(demoSystemProvider)
+                                          .simulateWifi(value),
+                                    );
+                                  },
+                          ),
                       ],
-                      onChanged: state.busy
-                          ? null
-                          : (value) {
-                              if (value == null) return;
-                              setState(
-                                () => ref
-                                    .read(demoSystemProvider)
-                                    .simulateWifi(value),
-                              );
-                            },
                     ),
-                ],
+                  ),
+                ),
               ),
-            ),
-          ),
-        ),
       ),
     );
   }
@@ -3337,6 +3408,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     );
     if (leave != true || !mounted) return;
     await c.leaveList();
+    if (mounted && ref.read(commissionProvider).step == 0) _returnHome();
   }
 
   /// Round 28: the system 返回 while a gateway is connected or a step runs
@@ -3354,9 +3426,16 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   Future<void> _backPressed(CommissioningController c) async {
     final s = ref.read(commissionProvider);
     // The start page (checking Bluetooth / the login) has nothing to end.
-    if (_backAsking || s.step == 0) return;
+    if (_backAsking) return;
+    if (s.step == 0) {
+      if (!s.busy) _returnHome();
+      return;
+    }
     if (s.step == 1) {
-      if (!s.busy) await c.leaveList();
+      if (!s.busy) {
+        await c.leaveList();
+        if (mounted && ref.read(commissionProvider).step == 0) _returnHome();
+      }
       return;
     }
     if (s.step == 7) {
@@ -4542,6 +4621,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     bool next = false,
   }) async {
     await c.finishDone(next: next);
+    if (mounted && !next && ref.read(commissionProvider).step == 0) {
+      _returnHome();
+    }
     if (mounted && _pageScroll.hasClients) _pageScroll.jumpTo(0);
   }
 
@@ -5308,4 +5390,3 @@ String topologyKeptText(GatewayTopology gateway) =>
 /// 09-28: 確認上線 stopped on an archived station — the bottom bar's action.
 String get rejoinLabel => L10n.current.commissioning_rejoinLabel;
 String get rejoinHintText => L10n.current.commissioning_rejoinHintText;
-

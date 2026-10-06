@@ -4379,6 +4379,36 @@ class AppLocalizationsZh extends AppLocalizations {
   String get heartbeatActivity_waitingStart => '等待開始確認';
 
   @override
+  String get homeEntry_backHome => '返回首頁';
+
+  @override
+  String get homeEntry_configure => '現場配置';
+
+  @override
+  String get homeEntry_configureAction => '進入配置';
+
+  @override
+  String get homeEntry_configureDescription => '安裝新設備、設定網路、綁定 PTU 並確認資料上傳';
+
+  @override
+  String get homeEntry_savedProgress => '有未完成的配置，可進入後繼續';
+
+  @override
+  String get homeEntry_subtitle => '選擇你要進行的操作';
+
+  @override
+  String get homeEntry_title => '今天要做什麼？';
+
+  @override
+  String get homeEntry_viewData => '查看數據';
+
+  @override
+  String get homeEntry_viewDataAction => '查看數據';
+
+  @override
+  String get homeEntry_viewDataDescription => '查看各站充電功率、效率、電池狀態與異常資訊';
+
+  @override
   String get identifyDurationSetting_fieldLabel => '秒數（0 或 2–10）';
 
   @override

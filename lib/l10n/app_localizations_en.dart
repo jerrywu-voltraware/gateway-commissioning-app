@@ -4724,6 +4724,39 @@ class AppLocalizationsEn extends AppLocalizations {
   String get heartbeatActivity_waitingStart => 'Waiting to start the check';
 
   @override
+  String get homeEntry_backHome => 'Back to home';
+
+  @override
+  String get homeEntry_configure => 'Field Setup';
+
+  @override
+  String get homeEntry_configureAction => 'Open setup';
+
+  @override
+  String get homeEntry_configureDescription =>
+      'Install devices, set up Wi-Fi, pair PTUs and confirm data uploads';
+
+  @override
+  String get homeEntry_savedProgress =>
+      'An unfinished setup is available to continue';
+
+  @override
+  String get homeEntry_subtitle => 'Choose a task to get started';
+
+  @override
+  String get homeEntry_title => 'What would you like to do?';
+
+  @override
+  String get homeEntry_viewData => 'View Data';
+
+  @override
+  String get homeEntry_viewDataAction => 'View data';
+
+  @override
+  String get homeEntry_viewDataDescription =>
+      'View charging power, efficiency, battery status and faults by site';
+
+  @override
   String get identifyDurationSetting_fieldLabel => 'Seconds (0 or 2–10)';
 
   @override

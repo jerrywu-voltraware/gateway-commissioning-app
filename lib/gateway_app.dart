@@ -88,6 +88,7 @@ class _GatewayAppState extends State<GatewayApp> {
     supportedLocales: appSupportedLocales,
     localizationsDelegates: appLocalizationsDelegates,
     home: CommissioningPage(
+      showHomeEntry: true,
       themeMode: _mode,
       onThemeChanged: _change,
       language: _language,

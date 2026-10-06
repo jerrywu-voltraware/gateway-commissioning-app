@@ -1,0 +1,13 @@
+{
+  "@@locale": "en",
+  "homeEntry_title": "What would you like to do?",
+  "homeEntry_subtitle": "Choose a task to get started",
+  "homeEntry_configure": "Field Setup",
+  "homeEntry_configureDescription": "Install devices, set up Wi-Fi, pair PTUs and confirm data uploads",
+  "homeEntry_configureAction": "Open setup",
+  "homeEntry_savedProgress": "An unfinished setup is available to continue",
+  "homeEntry_viewData": "View Data",
+  "homeEntry_viewDataDescription": "View charging power, efficiency, battery status and faults by site",
+  "homeEntry_viewDataAction": "View data",
+  "homeEntry_backHome": "Back to home"
+}

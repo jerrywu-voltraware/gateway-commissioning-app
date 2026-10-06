@@ -6955,6 +6955,66 @@ abstract class AppLocalizations {
   /// **'等待開始確認'**
   String get heartbeatActivity_waitingStart;
 
+  /// No description provided for @homeEntry_backHome.
+  ///
+  /// In zh, this message translates to:
+  /// **'返回首頁'**
+  String get homeEntry_backHome;
+
+  /// No description provided for @homeEntry_configure.
+  ///
+  /// In zh, this message translates to:
+  /// **'現場配置'**
+  String get homeEntry_configure;
+
+  /// No description provided for @homeEntry_configureAction.
+  ///
+  /// In zh, this message translates to:
+  /// **'進入配置'**
+  String get homeEntry_configureAction;
+
+  /// No description provided for @homeEntry_configureDescription.
+  ///
+  /// In zh, this message translates to:
+  /// **'安裝新設備、設定網路、綁定 PTU 並確認資料上傳'**
+  String get homeEntry_configureDescription;
+
+  /// No description provided for @homeEntry_savedProgress.
+  ///
+  /// In zh, this message translates to:
+  /// **'有未完成的配置，可進入後繼續'**
+  String get homeEntry_savedProgress;
+
+  /// No description provided for @homeEntry_subtitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'選擇你要進行的操作'**
+  String get homeEntry_subtitle;
+
+  /// No description provided for @homeEntry_title.
+  ///
+  /// In zh, this message translates to:
+  /// **'今天要做什麼？'**
+  String get homeEntry_title;
+
+  /// No description provided for @homeEntry_viewData.
+  ///
+  /// In zh, this message translates to:
+  /// **'查看數據'**
+  String get homeEntry_viewData;
+
+  /// No description provided for @homeEntry_viewDataAction.
+  ///
+  /// In zh, this message translates to:
+  /// **'查看數據'**
+  String get homeEntry_viewDataAction;
+
+  /// No description provided for @homeEntry_viewDataDescription.
+  ///
+  /// In zh, this message translates to:
+  /// **'查看各站充電功率、效率、電池狀態與異常資訊'**
+  String get homeEntry_viewDataDescription;
+
   /// No description provided for @identifyDurationSetting_fieldLabel.
   ///
   /// In zh, this message translates to:
