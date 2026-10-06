@@ -99,7 +99,22 @@ Future<ProviderContainer> _pump(
   return container;
 }
 
+/// The page list keeps its scroll offset between steps; since the toolbar got
+/// its 48 dp second row (51be5da) a lazily built item can be off the built
+/// range. Bring the list back to the top, then down to the item if needed.
+Future<void> _reveal(WidgetTester tester, Finder finder) async {
+  if (finder.evaluate().isNotEmpty) return;
+  final lists = find.byType(Scrollable);
+  if (lists.evaluate().isEmpty) return;
+  tester.state<ScrollableState>(lists.first).position.jumpTo(0);
+  await tester.pumpAndSettle();
+  if (finder.evaluate().isEmpty) {
+    await tester.scrollUntilVisible(finder, 200, scrollable: lists.first);
+  }
+}
+
 Future<void> _tap(WidgetTester tester, Finder finder) async {
+  await _reveal(tester, finder);
   await tester.ensureVisible(finder);
   await tester.pumpAndSettle();
   await tester.tap(finder);
@@ -111,8 +126,19 @@ Future<void> _connect(WidgetTester tester) => pickGateway(
   find.byKey(const ValueKey('demo-gateway')),
 );
 
-String _title(WidgetTester tester) =>
-    tester.widget<Text>(find.byKey(const Key('task-title'))).data!;
+String _title(WidgetTester tester) {
+  final title = find.byKey(const Key('task-title'));
+  if (title.evaluate().isEmpty) {
+    final lists = find.byType(Scrollable);
+    if (lists.evaluate().isNotEmpty) {
+      tester.state<ScrollableState>(lists.first).position.jumpTo(0);
+      tester.binding.scheduleFrame();
+      tester.binding.handleBeginFrame(null);
+      tester.binding.handleDrawFrame();
+    }
+  }
+  return tester.widget<Text>(title).data!;
+}
 
 String _label(WidgetTester tester, String key) {
   final button = tester.widget<ButtonStyleButton>(find.byKey(Key(key)));

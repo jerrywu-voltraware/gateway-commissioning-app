@@ -458,8 +458,21 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    String text(WidgetTester tester, String key) =>
-        tester.widget<Text>(find.byKey(Key(key))).data!;
+    String text(WidgetTester tester, String key) {
+      final finder = find.byKey(Key(key));
+      if (finder.evaluate().isEmpty) {
+        // The page list keeps its offset between steps; with the toolbar's
+        // 48 dp second row (51be5da) the title can fall out of the built range.
+        final lists = find.byType(Scrollable);
+        if (lists.evaluate().isNotEmpty) {
+          tester.state<ScrollableState>(lists.first).position.jumpTo(0);
+          tester.binding.scheduleFrame();
+          tester.binding.handleBeginFrame(null);
+          tester.binding.handleDrawFrame();
+        }
+      }
+      return tester.widget<Text>(finder).data!;
+    }
 
     Future<void> save(WidgetTester tester, String password) async {
       await tester.enterText(
