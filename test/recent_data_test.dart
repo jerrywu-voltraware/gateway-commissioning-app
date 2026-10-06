@@ -241,7 +241,8 @@ void main() {
         'input_ma': 2000,
         'temp_c': 49,
         'pru_iout': 1500,
-        'pru_vrect': 48000,
+        'pru_vrect': 45000,
+        'pru_vbat': 4800,
         'pru_Temp_degC': 37,
         'error_num': 12,
       };
@@ -258,7 +259,7 @@ void main() {
         isNull,
       );
       expect(
-        RecentItem.fromJson({...row, 'pru_vrect': null}).efficiencyPercent,
+        RecentItem.fromJson({...row, 'pru_vbat': null}).efficiencyPercent,
         isNull,
       );
       final old = RecentItem.fromJson({'input_ma': 1400, 'temp_c': 49});
@@ -282,7 +283,8 @@ void main() {
       'input_ma': 2000,
       'temp_c': 49,
       'pru_iout': 1500,
-      'pru_vrect': 48000,
+      'pru_vrect': 45000,
+      'pru_vbat': 4800,
       'pru_Temp_degC': 37,
       'error_num': 12,
     };
@@ -364,27 +366,28 @@ void main() {
 
   test('PRU metrics match station 20 backend log from 2026-10-06', () {
     final item = RecentItem.fromJson({
-      'ts': '2026-10-06T11:38:15+08:00',
+      'ts': '2026-10-06T16:39:06+08:00',
       'ptu_mac': 'DF:B0:25:F3:40:AC',
       'pru_mac': '2F:F7:F6:24:00:A2',
       'ptu_state': 'POWER_TRANSFER',
-      'input_mv': 53633,
-      'input_ma': 1403,
+      'input_mv': 53607,
+      'input_ma': 1479,
       'bus_mv': 34918,
       'temp_c': 59,
-      'pru_vrect': 43720,
+      'pru_vrect': 44550,
+      'pru_vbat': 4723,
       'pru_iout': 1051,
       'pru_Temp_degC': 20,
       'error_num': 0,
     });
     expect(recentAmpsText(item.pruIoutMa), '1.05');
-    expect(recentAmpsText(item.inputMa), '1.40');
+    expect(recentAmpsText(item.inputMa), '1.48');
     expect(item.tempC, 59);
     expect(item.pruTempC, 20);
     expect(item.ptuMacText, 'DF:B0:25:F3:40:AC');
     expect(item.pruMacText, '2F:F7:F6:24:00:A2');
     expect(item.errorNum, 0);
-    expect(item.efficiencyPercent, closeTo(61.06, 0.02));
+    expect(item.efficiencyPercent, closeTo(62.609, 0.002));
   });
 
   group('model', () {

@@ -9,7 +9,7 @@
 ///  "items":[{"ts":"2026-09-28T13:00:00.123+08:00","seq":123,"device_id":1,
 ///            "ptu_mac":"90:5F:E8:9A:96:00","ptu_state":"POWER_TRANSFER",
 ///            "input_mv":5000,"input_ma":120,"bus_mv":4980,"temp_c":31,
-///            "pru_iout":100,"pru_vrect":4800,"pru_Temp_degC":29,"error_num":0}],
+///            "pru_iout":100,"pru_vrect":4800,"pru_vbat":480,"pru_Temp_degC":29,"error_num":0}],
 ///  "upload_interval_ms":300000}
 /// ```
 /// `count` 0 = nothing received yet; a non-2xx answer or no connection is
@@ -41,6 +41,7 @@ class RecentItem {
     this.tempC,
     this.pruIoutMa,
     this.pruVrectMv,
+    this.pruVbatRaw,
     this.pruTempC,
     this.errorNum,
   });
@@ -56,18 +57,21 @@ class RecentItem {
   /// Missing receiver data must never fall back to PTU input measurements.
   final num? pruIoutMa, pruVrectMv, pruTempC;
 
+  /// Raw PRU VBAT from the API; multiply by 10 to obtain millivolts.
+  final num? pruVbatRaw;
+
   /// Device error code, not a transport/upload failure. Null on older APIs.
   final int? errorNum;
 
-  /// Same power ratio as the dashboard: PRU VRECT * IOUT / PTU VIN * IIN.
+  /// PRU (raw VBAT * 10) * IOUT / (PTU VIN * IIN), as a percentage.
   /// All four values must come from this same sample. Missing/invalid data
   /// or zero input power is unknown; a measured zero output remains zero.
   double? get efficiencyPercent {
-    final values = [inputMv, inputMa, pruVrectMv, pruIoutMa];
+    final values = [inputMv, inputMa, pruVbatRaw, pruIoutMa];
     if (values.any((v) => v == null || !v.isFinite || v < 0)) return null;
     final inputPower = inputMv! * inputMa!;
     if (inputPower <= 0) return null;
-    final result = pruVrectMv! * pruIoutMa! / inputPower * 100;
+    final result = (pruVbatRaw! * 10) * pruIoutMa! / inputPower * 100;
     return result.isFinite ? result : null;
   }
 
@@ -103,6 +107,7 @@ class RecentItem {
     tempC: json['temp_c'] as num?,
     pruIoutMa: json['pru_iout'] as num?,
     pruVrectMv: json['pru_vrect'] as num?,
+    pruVbatRaw: json['pru_vbat'] as num?,
     pruTempC: json['pru_Temp_degC'] as num?,
     errorNum: (json['error_num'] as num?)?.toInt(),
   );

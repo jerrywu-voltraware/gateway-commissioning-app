@@ -688,6 +688,7 @@ class DemoSystem implements GatewayLink, GatewayApi, ForeignAcks {
               'temp_c': 31,
               'pru_iout': 100,
               'pru_vrect': 4800,
+              'pru_vbat': 480,
               'pru_Temp_degC': 29,
               'error_num': 0,
             },
