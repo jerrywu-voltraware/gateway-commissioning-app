@@ -5538,6 +5538,9 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String get recentDataPage_vehicleType => '車型';
+
+  @override
   String get recentDataPage_voltage => '電壓';
 
   @override

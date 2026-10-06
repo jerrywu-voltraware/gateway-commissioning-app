@@ -5376,6 +5376,7 @@
       }
     }
   },
+  "recentDataPage_vehicleType": "Vehicle Type",
   "recentDataPage_voltage": "Voltage",
   "recentGateways_archivedLabel": "Archived (removed in back office)",
   "recentGateways_configuredLabel": "Configured",

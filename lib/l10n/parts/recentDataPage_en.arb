@@ -1,5 +1,6 @@
 {
   "@@locale": "en",
+  "recentDataPage_vehicleType": "Vehicle Type",
   "recentDataPage_label": "View recent data",
   "recentDataPage_title": "Recent data",
   "recentDataPage_empty": "The back office has no data from this gateway yet. Wait a moment, then refresh",

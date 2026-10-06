@@ -17,6 +17,8 @@
 /// `upload_interval_ms` — the longest this gateway goes without a row
 /// (the back office's upload policy); missing or null on an older back
 /// office.
+/// Build 62: `pru_type` is from the same sample: 1=E-Bike, 2=E-Scooter.
+/// Missing or unrecognized types remain unknown.
 library;
 
 import '../core/protocol.dart';
@@ -44,6 +46,7 @@ class RecentItem {
     this.pruVbatRaw,
     this.pruTempC,
     this.errorNum,
+    this.pruType,
   });
 
   /// Local time ([DateTime.parse] then [DateTime.toLocal]); null when the
@@ -62,6 +65,14 @@ class RecentItem {
 
   /// Device error code, not a transport/upload failure. Null on older APIs.
   final int? errorNum;
+
+  final int? pruType;
+
+  String get vehicleTypeText => switch (pruType) {
+    1 => 'E-Bike',
+    2 => 'E-Scooter',
+    _ => L10n.current.common_unknown,
+  };
 
   /// Derived from this sample only; invalid/missing readings stay unknown.
   static double? _scaledReading(num? value, double divisor) =>
@@ -132,6 +143,7 @@ class RecentItem {
     pruVbatRaw: json['pru_vbat'] as num?,
     pruTempC: json['pru_Temp_degC'] as num?,
     errorNum: (json['error_num'] as num?)?.toInt(),
+    pruType: (json['pru_type'] as num?)?.toInt(),
   );
 }
 

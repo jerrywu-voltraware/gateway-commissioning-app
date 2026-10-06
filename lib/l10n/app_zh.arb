@@ -5376,6 +5376,7 @@
       }
     }
   },
+  "recentDataPage_vehicleType": "車型",
   "recentDataPage_voltage": "電壓",
   "recentGateways_archivedLabel": "已封存（後台已移除）",
   "recentGateways_configuredLabel": "已配置",

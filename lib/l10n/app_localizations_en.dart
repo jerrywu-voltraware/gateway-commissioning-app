@@ -5979,6 +5979,9 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get recentDataPage_vehicleType => 'Vehicle Type';
+
+  @override
   String get recentDataPage_voltage => 'Voltage';
 
   @override

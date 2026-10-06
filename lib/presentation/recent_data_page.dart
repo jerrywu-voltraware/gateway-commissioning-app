@@ -736,6 +736,18 @@ class _LatestCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            _LabeledValue(
+              label: context.l10n.recentDataPage_vehicleType,
+              value: Text(
+                item.vehicleTypeText,
+                key: Key('$key-vehicle-type'),
+                style: theme.textTheme.titleLarge?.copyWith(
+                  color: colors.primary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            const Divider(height: 24),
             _MeasurementRows(
               keyPrefix: key,
               big: big,

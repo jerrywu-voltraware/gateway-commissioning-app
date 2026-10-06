@@ -8819,6 +8819,12 @@ abstract class AppLocalizations {
   /// **'{n, plural, other{最近 {n} 筆}}'**
   String recentDataPage_trendCount(int n);
 
+  /// No description provided for @recentDataPage_vehicleType.
+  ///
+  /// In zh, this message translates to:
+  /// **'車型'**
+  String get recentDataPage_vehicleType;
+
   /// No description provided for @recentDataPage_voltage.
   ///
   /// In zh, this message translates to:

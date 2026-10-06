@@ -1,5 +1,6 @@
 {
   "@@locale": "zh",
+  "recentDataPage_vehicleType": "車型",
   "recentDataPage_label": "查看最近資料",
   "@recentDataPage_label": {
     "description": "Button on the done page that opens the recent-data page."
