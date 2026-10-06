@@ -776,7 +776,7 @@ void main() {
       expect(find.text('POWER_TRANSFER'), findsNothing);
       // One PTU: no repeated MAC column; error descriptions scroll horizontally.
       expect(
-        find.descendant(of: table, matching: find.text('PTU')),
+        find.descendant(of: table, matching: find.text('PTU MAC')),
         findsNothing,
       );
       expect(find.byKey(const Key('recent-table-scroll')), findsOneWidget);
@@ -871,7 +871,7 @@ void main() {
       expect(
         find.descendant(
           of: find.byKey(const Key('recent-table')),
-          matching: find.text('PTU'),
+          matching: find.text('PTU MAC'),
         ),
         findsOneWidget,
       );

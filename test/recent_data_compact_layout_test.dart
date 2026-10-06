@@ -26,6 +26,7 @@ Map<String, dynamic> _row({
   num? current = 2720,
   num? temperature = 36,
   int age = 3,
+  int? errorNum = 0,
 }) => {
   'ts': _now.subtract(Duration(seconds: age)).toIso8601String(),
   'device_id': mac == _mac ? 1 : 2,
@@ -34,6 +35,10 @@ Map<String, dynamic> _row({
   'input_mv': voltage,
   'input_ma': current,
   'pru_iout': current,
+  'pru_vrect': 4800,
+  'pru_Temp_degC': 29,
+  'error_num': errorNum,
+  'pru_mac': '3C:84:27:AA:BB:CC',
   'temp_c': temperature,
 };
 
@@ -184,7 +189,7 @@ void _readings(
 }) {
   for (final (index, value) in values.indexed) {
     _fullyPainted(tester, '$prefix-value-$index', value);
-    _fullyPainted(tester, '$prefix-label-$index', ['電壓', '電流', '溫度'][index]);
+    _fullyPainted(tester, '$prefix-label-$index', ['電壓', '電流', '發射端溫度'][index]);
   }
   expect(
     tester.getRect(_key('$prefix-value-0')).bottom,
@@ -367,7 +372,15 @@ void main() {
           scale: 1.6,
           rows: [
             _row(),
-            _row(mac: _otherMac, state: fault, temperature: 255),
+            // No error_num: the line then shows only the PTU fault text, which is
+            // what this long-status case measures (a wrapped " · " separator
+            // adds a trailing-space box that the painted-width check rejects).
+            _row(
+              mac: _otherMac,
+              state: fault,
+              temperature: 255,
+              errorNum: null,
+            ),
           ],
         );
         expect(_key('recent-latest-grid'), findsOneWidget);
