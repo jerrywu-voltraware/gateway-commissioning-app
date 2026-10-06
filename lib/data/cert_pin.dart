@@ -27,10 +27,16 @@
 /// valid for more than 825 days — the production leaf is valid for 20
 /// years, so the CA path can never pass there (Android's BoringSSL has no
 /// such rule). With a pin set, Apple platforms therefore use the leaf
-/// pinning path instead of the CA chain: there the certificate handed to
-/// badCertificateCallback is the leaf (verified on macOS against the
-/// production host), so the pin matches exactly one certificate. Without a
-/// pin the CA path is kept (and fails closed).
+/// pinning path instead of the CA chain. Without a pin the CA path is kept
+/// (and fails closed).
+///
+/// 10-06: which certificate Dart hands to a bad-certificate callback depends
+/// on the SDK — Dart 3.13 hands the leaf, Dart 3.12 (Flutter 3.44.3) hands
+/// the CA, so a callback that only compares the pin refused the production
+/// host on iOS build 52. The Apple path therefore tolerates the failed
+/// check only for the pinned leaf or the build's own CA, and then requires
+/// the server's leaf ([SecureSocket.peerCertificate]) to match the pin
+/// before any request byte is written: the pin decides, not the callback.
 library;
 
 import 'dart:convert';
@@ -111,11 +117,60 @@ SecurityContext caSecurityContext(List<int> ca) {
 /// (iOS / macOS), which rejects the long-lived production leaf.
 final bool appleTrustPlatform = Platform.isIOS || Platform.isMacOS;
 
+/// DER of the first certificate in [pem]; null when there is none.
+List<int>? firstCertDer(List<int>? pem) {
+  if (pem == null) return null;
+  final match = RegExp(
+    r'-----BEGIN CERTIFICATE-----([\s\S]*?)-----END CERTIFICATE-----',
+  ).firstMatch(utf8.decode(pem, allowMalformed: true));
+  if (match == null) return null;
+  try {
+    return base64.decode(match.group(1)!.replaceAll(RegExp(r'\s'), ''));
+  } on FormatException {
+    return null;
+  }
+}
+
+/// Connection factory that connects with [context] and, right after the
+/// handshake and before any request byte is written, requires the server's
+/// own certificate (the leaf, [SecureSocket.peerCertificate]) to match
+/// [want]. [onBadCertificate] decides which failed chain checks the
+/// handshake may tolerate; the leaf pin still applies to every connection.
+Future<ConnectionTask<Socket>> Function(Uri, String?, int?) _leafPinnedFactory(
+  SecurityContext context,
+  String want, {
+  bool Function(X509Certificate certificate)? onBadCertificate,
+}) {
+  return (uri, proxyHost, proxyPort) async {
+    final task = await SecureSocket.startConnect(
+      uri.host,
+      uri.port,
+      context: context,
+      onBadCertificate: onBadCertificate,
+    );
+    return ConnectionTask.fromSocket(
+      task.socket.then((socket) {
+        final leaf = socket.peerCertificate;
+        if (leaf == null || !certMatchesPin(leaf.der, want)) {
+          socket.destroy();
+          throw const HandshakeException(
+            'server certificate does not match API_CERT_SHA256',
+          );
+        }
+        return socket;
+      }),
+      task.cancel,
+    );
+  };
+}
+
 /// HTTP client for [base]:
 /// * production + CA ([caPemB64]): chain verification against system roots
 ///   plus the CA, and — when [pin] is also set — the leaf's fingerprint;
 /// * production + pin on an Apple platform ([applePlatform]): the leaf
-///   pinning path, even with a CA (see the library comment);
+///   pinning path, even with a CA (see the library comment): the failed
+///   chain check is tolerated only for the pinned leaf or the build's CA,
+///   and the server's leaf must match the pin;
 /// * production + pin only: the single self-signed certificate pinning;
 /// * anything else: a plain system-trust client.
 HttpClient apiHttpClientFor(
@@ -134,29 +189,20 @@ HttpClient apiHttpClientFor(
     final context = caSecurityContext(ca);
     client = HttpClient(context: context);
     if (want != null) {
-      // The leaf is checked on the socket right after the handshake,
-      // before any request byte is written.
-      client.connectionFactory = (uri, proxyHost, proxyPort) async {
-        final task = await SecureSocket.startConnect(
-          uri.host,
-          uri.port,
-          context: context,
-        );
-        return ConnectionTask.fromSocket(
-          task.socket.then((socket) {
-            final leaf = socket.peerCertificate;
-            if (leaf == null || !certMatchesPin(leaf.der, want)) {
-              socket.destroy();
-              throw const HandshakeException(
-                'server certificate does not match API_CERT_SHA256',
-              );
-            }
-            return socket;
-          }),
-          task.cancel,
-        );
-      };
+      client.connectionFactory = _leafPinnedFactory(context, want);
     }
+  } else if (want != null && apple) {
+    final context = SecurityContext(withTrustedRoots: false);
+    final caDer = firstCertDer(caPemBytes(caPemB64));
+    final caPin = caDer == null ? null : sha256.convert(caDer).toString();
+    client = HttpClient(context: context)
+      ..connectionFactory = _leafPinnedFactory(
+        context,
+        want,
+        onBadCertificate: (cert) =>
+            certMatchesPin(cert.der, want) ||
+            (caPin != null && certMatchesPin(cert.der, caPin)),
+      );
   } else if (want != null) {
     client = HttpClient(context: SecurityContext(withTrustedRoots: false))
       ..badCertificateCallback = (cert, host, port) =>

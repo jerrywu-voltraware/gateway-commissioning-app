@@ -134,11 +134,15 @@ void main() {
       expect(await _get(server, ca: caB64), 200);
     }, skip: _macOsHostVerifier);
 
-    test('a leaf alone (CA not sent) still verifies against the CA', () async {
-      final server = await _serve(['leaf.pem'], 'leaf.key');
-      addTearDown(() => server.close(force: true));
-      expect(await _get(server, ca: caB64), 200);
-    }, skip: _macOsHostVerifier);
+    test(
+      'a leaf alone (CA not sent) still verifies against the CA',
+      () async {
+        final server = await _serve(['leaf.pem'], 'leaf.key');
+        addTearDown(() => server.close(force: true));
+        expect(await _get(server, ca: caB64), 200);
+      },
+      skip: _macOsHostVerifier,
+    );
 
     test('a self-signed certificate is refused', () async {
       final server = await _serve(['self.pem'], 'self.key');
@@ -192,26 +196,26 @@ void main() {
     // fixture: 100 years), so on iOS / macOS the CA chain can never pass
     // and a pin switches to leaf pinning. Setting apple: true only selects
     // the APP branch; badCertificateCallback still uses the native host's
-    // verifier. A sent CA reaches that callback on Windows / Linux, while
-    // Apple platforms provide the leaf. Keep both host outcomes explicit.
+    // verifier. 10-06: which certificate that callback receives for a full
+    // chain differs by host and SDK (the CA on BoringSSL and on Dart 3.12,
+    // the leaf on Dart 3.13 / Apple), so the pin is enforced on the server's
+    // leaf after the handshake and every host must give the same outcome.
     group('09-30: Apple platforms pin the leaf instead of the CA chain', () {
+      test('CA + pin: a full chain is admitted by the leaf pin', () async {
+        final server = await _serve(['leaf.pem', 'ca.pem'], 'leaf.key');
+        addTearDown(() => server.close(force: true));
+        expect(await _get(server, ca: caB64, pin: leafPin, apple: true), 200);
+      });
+
       test(
-        'CA + pin: full-chain leaf pinning follows the native host',
+        'a certificate that is neither the pin nor the CA is refused',
         () async {
-          final server = await _serve(['leaf.pem', 'ca.pem'], 'leaf.key');
+          final server = await _serve(['self.pem'], 'self.key');
           addTearDown(() => server.close(force: true));
-          if (Platform.isIOS || Platform.isMacOS) {
-            expect(
-              await _get(server, ca: caB64, pin: leafPin, apple: true),
-              200,
-            );
-          } else {
-            // The untrusted CA cannot match the leaf pin: fail closed.
-            await expectLater(
-              _get(server, ca: caB64, pin: leafPin, apple: true),
-              throwsA(isA<HandshakeException>()),
-            );
-          }
+          await expectLater(
+            _get(server, ca: caB64, pin: leafPin, apple: true),
+            throwsA(isA<HandshakeException>()),
+          );
         },
       );
 
