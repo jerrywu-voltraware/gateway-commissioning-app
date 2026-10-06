@@ -1,5 +1,10 @@
 # Mac 接手交接（2026-10-06，Build 53 發布後）
 
+> **2026-10-06 下午追加**（公司機 session 結束前；Mac 尚未同步，這次一併帶過去）：
+> 1. **新功能待 APP 實作**：現場除錯 PTU 即時讀值，方案 A（加速上傳 5 分鐘）＋方案 B（藍牙直讀 `get_ptu_data`）。實作簡報 `docs/live_ptu_data_app_brief_2026-10-06.md`（契約、UI、link 共用規則、測試、i18n）。後台 v1.38.0 的 `/end` 端點已 commit（部署進行中，見簡報 §1.1）；韌體 1.7.47 的 `get_ptu_data` 已 commit（未燒錄；錯誤欄位是巢狀 `err{num,data,limit}`）。
+> 2. **啟動圖示已換成 1024 Voltraware logo**（commit e1468b8）：`assets/icon/`＋`flutter_launcher_icons` 設定在 pubspec 末尾；iOS AppIcon set 全套已產生（RGB 無 alpha），Mac 建 iOS 時 Xcode 會驗證。重產圖示後要 `git checkout -- ios/Runner.xcodeproj/project.pbxproj`（工具會誤改 `ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS`）。
+> 3. 下一版 Build 54 內容預計：A、B 兩功能＋新圖示＋Build 53 留下的 6 項小螢幕版面問題。版號由使用者決定時再改。
+
 寫給在 Mac 上接手 APP_v2 的 AI。公司機（Windows）這一輪做了什麼、現在的正式狀態、留給你的事。所有 hash 以 `git log` 為準。
 
 ## 現在的狀態（2026-10-06 13:00 台灣時間）
