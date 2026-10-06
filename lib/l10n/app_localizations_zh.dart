@@ -5389,19 +5389,19 @@ class AppLocalizationsZh extends AppLocalizations {
   String get recentDataPage_ok => '上傳正常';
 
   @override
-  String get recentDataPage_overallEfficiency => '????';
+  String get recentDataPage_overallEfficiency => '整體效率';
 
   @override
   String get recentDataPage_pruCurrent => '電流';
 
   @override
-  String get recentDataPage_pruOutputPower => 'PRU ????';
+  String get recentDataPage_pruOutputPower => 'PRU 輸出功率';
 
   @override
   String get recentDataPage_pruTemperature => '接收端溫度';
 
   @override
-  String get recentDataPage_ptuInputPower => 'PTU ????';
+  String get recentDataPage_ptuInputPower => 'PTU 輸入功率';
 
   @override
   String get recentDataPage_ptuTemperature => '發射端溫度';

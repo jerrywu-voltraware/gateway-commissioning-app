@@ -8546,7 +8546,7 @@ abstract class AppLocalizations {
   /// No description provided for @recentDataPage_overallEfficiency.
   ///
   /// In zh, this message translates to:
-  /// **'????'**
+  /// **'整體效率'**
   String get recentDataPage_overallEfficiency;
 
   /// No description provided for @recentDataPage_pruCurrent.
@@ -8558,7 +8558,7 @@ abstract class AppLocalizations {
   /// No description provided for @recentDataPage_pruOutputPower.
   ///
   /// In zh, this message translates to:
-  /// **'PRU ????'**
+  /// **'PRU 輸出功率'**
   String get recentDataPage_pruOutputPower;
 
   /// No description provided for @recentDataPage_pruTemperature.
@@ -8570,7 +8570,7 @@ abstract class AppLocalizations {
   /// No description provided for @recentDataPage_ptuInputPower.
   ///
   /// In zh, this message translates to:
-  /// **'PTU ????'**
+  /// **'PTU 輸入功率'**
   String get recentDataPage_ptuInputPower;
 
   /// No description provided for @recentDataPage_ptuTemperature.
