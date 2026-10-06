@@ -37,8 +37,9 @@
                "age_ms":850,"received_at_ms":123455939,
                "ptu":{"state":"POWER_TRANSFER","vin_mv":53200,"iin_ma":1403,"vbus_mv":…,"ampTemp_c":59,"mac":"DF:B0:25:F3:40:AC", …},
                "pru":{"iout_ma":1051, …vrect／溫度／mac 等鍵名同上傳 record…},
-               "error_num":0,"error_data":0,"error_limit":0}]}
+               "err":{"num":0,"data":0,"limit":0}}]}
   ```
+  **韌體 1.7.47（commit 8fede6d）實作後的修正**：錯誤欄位是巢狀 `err{num,data,limit}`（與上傳 record 相同），不是頂層 `error_num`；PTU 未連線時 `device_id` 為 `null`；`slot` 固定有值。`errorNum = err.num`。以韌體 `docs/cmd_contract.md` §2／§9 為準。
   - `ptu`／`pru` 物件鍵名**與閘道器上傳到後台的 record 完全相同**（契約 §4.4）；後台 `ingest/ingest.py:675-700` 有 record 鍵 → DB 欄位的對應表（例 `pru.iout_ma → pru_iout`），拿它當 `RecentItem` 欄位對應的依據。
   - `devices` 預設只含已連線或 `age_ms` < 60000 的槽；測試模式 `mode` ≠ `normal` 時為空陣列。
   - 沒有 `device_seq`、`crc16`、`measure_ts_ms`；時間一律用 `age_ms`（現在 − 收到時間）。
@@ -57,7 +58,7 @@
 
 ### 2.3 輪詢與顯示
 - 每 **1 秒**送 `get_ptu_data`；前一個未回就跳過該拍（`_tail` 是序列佇列，`ble_gateway_link.dart:743-828`）。`commandTimeout`（`lib/core/protocol.dart:54-63`）加 `get_ptu_data: 5 s`。
-- 每個 device 轉成 `RecentItem`（`lib/data/recent_data_api.dart:30,93-108`）：`ts = now − age_ms`、`deviceId = device_id`、`ptuMac = ptu.mac`、`ptuState = ptu.state`、`inputMv = ptu.vin_mv`、`inputMa = ptu.iin_ma`、`busMv = ptu.vbus_mv`、`tempC = ptu.ampTemp_c`、`pruIoutMa = pru.iout_ma`、`pruVrectMv`／`pruTempC`／`pruMac` 依 ingest 對應表、`errorNum = error_num`。寫成 `RecentItem.fromLiveDevice(Map device, DateTime now)` 並單元測試。
+- 每個 device 轉成 `RecentItem`（`lib/data/recent_data_api.dart:30,93-108`）：`ts = now − age_ms`、`deviceId = device_id`、`ptuMac = ptu.mac`、`ptuState = ptu.state`、`inputMv = ptu.vin_mv`、`inputMa = ptu.iin_ma`、`busMv = ptu.vbus_mv`、`tempC = ptu.ampTemp_c`、`pruIoutMa = pru.iout_ma`、`pruVrectMv`／`pruTempC`／`pruMac` 依 ingest 對應表、`errorNum = err.num`（巢狀 `err` 物件）；`device_id` 可能為 null（未連線槽，只在 `all:true` 時出現）。寫成 `RecentItem.fromLiveDevice(Map device, DateTime now)` 並單元測試。
 - 重用「最新一筆」卡片與 PTU 分組（`recentLatestPerDevice` `:227`、`recentDeviceKey` `:222`、`_LatestCard` `:616`）。效率、錯誤碼說明、PRU MAC 照現有邏輯。
 - 橫幅（`Key('recent-banner')` 同 key、kind 加 `live`）：「藍牙即時・N 秒前」；`age_ms` < 10 s 綠、< 60 s 黃、否則紅；`upload_paused:true` 加一行「閘道器上傳暫停中（藍牙資料仍即時）」；`devices` 空「閘道器目前沒有 PTU 資料」；連線中「藍牙連線中…」。
 - 歷史表在藍牙模式顯示本次收到的最近 20 拍（記憶體 ring，每拍每台一列，`seq` 用拍數），不打後台；切回〔後台〕清掉 ring 並重新 `fetchRecentData`。
