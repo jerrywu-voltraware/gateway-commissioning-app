@@ -6985,16 +6985,10 @@ abstract class AppLocalizations {
   /// **'有未完成的配置，可進入後繼續'**
   String get homeEntry_savedProgress;
 
-  /// No description provided for @homeEntry_subtitle.
-  ///
-  /// In zh, this message translates to:
-  /// **'選擇你要進行的操作'**
-  String get homeEntry_subtitle;
-
   /// No description provided for @homeEntry_title.
   ///
   /// In zh, this message translates to:
-  /// **'今天要做什麼？'**
+  /// **'選擇要進行的操作'**
   String get homeEntry_title;
 
   /// No description provided for @homeEntry_viewData.

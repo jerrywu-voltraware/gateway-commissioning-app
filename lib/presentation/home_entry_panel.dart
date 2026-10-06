@@ -28,8 +28,6 @@ class HomeEntryPanel extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
             children: [
               Text(l10n.homeEntry_title, style: theme.textTheme.headlineSmall),
-              const SizedBox(height: 8),
-              Text(l10n.homeEntry_subtitle, style: theme.textTheme.bodyMedium),
               const SizedBox(height: 24),
               _EntryCard(
                 key: const Key('home-configure'),

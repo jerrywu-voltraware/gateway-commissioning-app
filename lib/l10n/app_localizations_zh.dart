@@ -4394,10 +4394,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get homeEntry_savedProgress => '有未完成的配置，可進入後繼續';
 
   @override
-  String get homeEntry_subtitle => '選擇你要進行的操作';
-
-  @override
-  String get homeEntry_title => '今天要做什麼？';
+  String get homeEntry_title => '選擇要進行的操作';
 
   @override
   String get homeEntry_viewData => '查看數據';

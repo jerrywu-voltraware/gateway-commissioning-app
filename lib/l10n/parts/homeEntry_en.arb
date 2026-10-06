@@ -1,7 +1,6 @@
 {
   "@@locale": "en",
-  "homeEntry_title": "What would you like to do?",
-  "homeEntry_subtitle": "Choose a task to get started",
+  "homeEntry_title": "Choose an action",
   "homeEntry_configure": "Field Setup",
   "homeEntry_configureDescription": "Install devices, set up Wi-Fi, pair PTUs and confirm data uploads",
   "homeEntry_configureAction": "Open setup",

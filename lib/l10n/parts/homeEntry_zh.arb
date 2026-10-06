@@ -1,7 +1,6 @@
 {
   "@@locale": "zh",
-  "homeEntry_title": "今天要做什麼？",
-  "homeEntry_subtitle": "選擇你要進行的操作",
+  "homeEntry_title": "選擇要進行的操作",
   "homeEntry_configure": "現場配置",
   "homeEntry_configureDescription": "安裝新設備、設定網路、綁定 PTU 並確認資料上傳",
   "homeEntry_configureAction": "進入配置",

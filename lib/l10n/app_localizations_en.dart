@@ -4741,10 +4741,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'An unfinished setup is available to continue';
 
   @override
-  String get homeEntry_subtitle => 'Choose a task to get started';
-
-  @override
-  String get homeEntry_title => 'What would you like to do?';
+  String get homeEntry_title => 'Choose an action';
 
   @override
   String get homeEntry_viewData => 'View Data';
