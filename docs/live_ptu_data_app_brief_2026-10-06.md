@@ -9,14 +9,14 @@
 
 ### 1.1 後台契約
 - 既有 `POST /api/app/build-mode/{site}/{gateway}`（無 body；APP key 可用；`DashboardApi.request` 既有路徑 `buildModeFallbackPath`，`lib/application/commissioning_controller.dart:1418`）。成功 `200 {"sent":true,"req_id":"…"}`。錯誤：`404 gateway_not_found`、`409 gateway_offline`、`409 command_in_flight`、`429 rate_limited`（同台 60 秒一次）、`503 mqtt_not_connected`。效果：閘道器改成每 1 秒上傳（`ds_min_ms=ds_max_ms=1000`）。
-- **新增** `POST /api/app/build-mode/{site}/{gateway}/end`（公司機實作中；APP key 可用）：立即把全站政策值推回該台。回 `200 {"sent":true|false,"reason":"pushed|deduped|offline|test_mode|session_active|not_in_fleet|mqtt_not_connected"}`；`sent:false` 不是錯誤（後台巡檢會在 ≤ 約 11 分鐘補推）；503 ＝ MQTT 服務未建。
+- **新增** `POST /api/app/build-mode/{site}/{gateway}/end`（後台 v1.38.0 已實作；APP key 可用）：立即把全站政策值推回該台。回 `200 {"sent":true|false,"reason":"pushed|deduped|offline|test_mode|session_active|not_in_fleet|publish_failed"}`；503 `mqtt_not_connected` ＝ 後台 MQTT 服務未建或未連線。`sent:false` 不是錯誤，但**不要寫成「10 分鐘內一定恢復」**：巡檢只在條件成立（閘道器在線、非測試模式、無進行中現場 session）後 ≤ 約 11 分鐘補推；離線／測試模式／session 中巡檢同樣不推。文案建議：「未能立即送回政策值（{reason 中文}），閘道器重新在線後由後台自動恢復」。
 - 不要走藍牙 `set_config`：OTP 啟用時 APP 簽不了（`commissioning_controller.dart:4598`），而且會跟配置流程搶同一條 `BleGatewayLink`。APP 既有程式從不送政策值（`:1507-1511`），維持這個原則。
 
 ### 1.2 UI 與行為
 - AppBar actions（`recent_data_page.dart:391-398`）加〔加速 5 分鐘〕（`Key('recent-boost')`）；加速中變〔停止加速〕。
 - 按下 → POST build-mode → 成功則副標題區（`:417-427` 與 `_Banner` 之間）顯示「加速中・剩 m:ss・閘道器每 1 秒上傳」，每 **2 秒**重抓 `fetchRecentData`（`lib/data/recent_data_api.dart:262`，limit 20）。
 - 輪詢用本頁既有的世代號＋`mounted` 模式（`_generation`／`_load()`，`recent_data_page.dart:332-378`）加 `Timer.periodic`；dispose 取消。**不要**用控制器的步驟 9 迴圈（它打 `/api/latest`，形狀不同，`commissioning_controller.dart:9905,10122`）。
-- 結束條件任一：倒數到 0、〔停止加速〕、dispose、APP 進背景 >30 秒（`WidgetsBindingObserver`）。結束 → POST end（10 秒逾時）→ `sent:true`「已送回政策值」、`sent:false`／失敗「由後台巡檢在 10 分鐘內恢復」。
+- 結束條件任一：倒數到 0、〔停止加速〕、dispose、APP 進背景 >30 秒（`WidgetsBindingObserver`）。結束 → POST end（10 秒逾時）→ `sent:true`「已送回政策值」；`sent:false`「未能立即送回（原因），閘道器重新在線後由後台自動恢復」；HTTP 失敗「後台未連線，稍後由後台自動恢復」。reason 中文：offline 閘道器離線、test_mode 測試模式、session_active 配置進行中、not_in_fleet 不在車隊、publish_failed 送出被擋、deduped 剛送過。
 - 錯誤文案（ARB `recentDataPage_boost*`）：`gateway_offline`「閘道器未連上後台，無法加速；可改用藍牙即時」；`rate_limited`「60 秒內已送過，請稍候」；`command_in_flight`「閘道器忙碌中，請稍候重試」；503「後台 MQTT 未連線」；其他「加速失敗：{code}」。
 - 常數集中：`recentBoostDuration = 5 min`、`recentBoostPoll = 2 s`、`recentBoostBackgroundGrace = 30 s`。
 - 練習模式（`DemoSystem`，`lib/data/demo_system.dart`）：build-mode 回 `sent:true`，end 回 `sent:true reason:pushed`，資料照常。
