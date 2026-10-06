@@ -140,7 +140,12 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   bool _updateRestoreReady = false;
   Timer? _autoUpdateTimer;
 
-  bool get _updateHomeSafe {
+  bool get _updateHomeSafe =>
+      _updateStateSafe && ModalRoute.of(context)?.isCurrent != false;
+
+  // The update dialog covers the home route. Both routes share these
+  // device/session guards, but each must check its own route visibility.
+  bool get _updateStateSafe {
     if (!mounted ||
         !_foreground ||
         !_updateRestoreReady ||
@@ -148,7 +153,6 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         ref.read(demoProvider)) {
       return false;
     }
-    if (ModalRoute.of(context)?.isCurrent == false) return false;
     final link = ref.read(linkProvider);
     return appUpdateHomeAllowed(
       ref.read(commissionProvider),
@@ -182,9 +186,12 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       await showDialog<void>(
         context: context,
         barrierDismissible: false,
-        builder: (_) => AndroidAppUpdateDialog(
+        builder: (dialogContext) => AndroidAppUpdateDialog(
           check: check,
-          isHomeSafe: () => _updateHomeSafe,
+          isHomeSafe: () =>
+              dialogContext.mounted &&
+              ModalRoute.of(dialogContext)?.isCurrent == true &&
+              _updateStateSafe,
         ),
       );
     } catch (_) {
