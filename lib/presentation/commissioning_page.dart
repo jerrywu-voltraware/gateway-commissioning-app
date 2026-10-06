@@ -1696,34 +1696,21 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               ? BackButton(onPressed: () => _backPressed(controller))
               : null,
           title: widget.showHomeEntry && !_showHome
-              ? Text(context.l10n.homeEntry_configure)
+              ? FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(context.l10n.homeEntry_configure),
+                )
               : const _AppBarTitle(),
-          bottom: PreferredSize(
-            preferredSize: const Size.fromHeight(48),
-            child: SizedBox(
-              key: const Key('appbar-secondary-actions'),
-              height: 48,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    if (state.step > 0 &&
-                        !demo &&
-                        controller.fieldHelpAvailable)
-                      IconButton(
-                        key: const Key('field-help-appbar'),
-                        icon: const Icon(Icons.support_agent),
-                        tooltip: fieldHelpLabel,
-                        onPressed: () => openFieldHelp(context, ref),
-                      ),
-                    EnvironmentChip(onPressed: _openEnvironmentSheet),
-                  ],
-                ),
-              ),
-            ),
-          ),
           actions: [
+            if (state.step > 0 && !demo && controller.fieldHelpAvailable)
+              IconButton(
+                key: const Key('field-help-appbar'),
+                icon: const Icon(Icons.support_agent),
+                tooltip: fieldHelpLabel,
+                onPressed: () => openFieldHelp(context, ref),
+              ),
+            EnvironmentChip(onPressed: _openEnvironmentSheet),
             // Keep the first menu short; mode and appearance choices open
             // separately so they do not cover the gateway list together.
             PopupMenuButton<String>(
@@ -1733,10 +1720,6 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               onSelected: (value) {
                 if (value == 'topology-settings') {
                   _openTopologyOptions();
-                } else if (value == 'status') {
-                  if (gatewayStatusMenuEnabled(ref.read(commissionProvider))) {
-                    GatewayStatusPage.open(context);
-                  }
                 } else if (value == 'app-update') {
                   _checkAppUpdate(manual: true);
                 } else if (value == 'theme-settings') {
@@ -1746,7 +1729,6 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                 }
               },
               itemBuilder: (context) {
-                final statusEnabled = gatewayStatusMenuEnabled(state);
                 final updateEnabled = _updateHomeSafe && !_updateChecking;
                 return [
                   PopupMenuItem<String>(
@@ -1763,17 +1745,6 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                           : context.l10n.commissioning_topologyMenuStar,
                       enabled: !state.busy,
                       opensOptions: true,
-                    ),
-                  ),
-                  PopupMenuItem<String>(
-                    key: const Key('gateway-status-menu'),
-                    value: 'status',
-                    enabled: statusEnabled,
-                    child: _moreMenuRow(
-                      icon: Icons.bar_chart_outlined,
-                      title: context.l10n.commissioning_viewUploadData,
-                      subtitle: statusEnabled ? null : gatewayStatusBusyText,
-                      enabled: statusEnabled,
                     ),
                   ),
                   if (updateSupported && !demo)
@@ -2461,11 +2432,6 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                               ),
                             ),
                           ),
-                        // 1.0.0+16: 〔查看上傳資料〕 - its own row under the start
-                        // card, level with 「設備與連線資訊」 (it was a button in the
-                        // card; the field did not know what 「閘道器狀態」 was for).
-                        if (!done && state.step == 0)
-                          _uploadDataRow(!state.busy),
                         if (stationChange == null)
                           _details(
                             state,
@@ -3206,27 +3172,6 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           ),
         )
       : Text(context.l10n.commissioning_identifyUnsupported);
-
-  /// 1.0.0+16: the start page's 〔查看上傳資料〕 row (opens
-  /// [GatewayStatusPage]); a ListTile so the touch target is >= 48 dp and
-  /// the caption wraps at 360 dp / text scale 1.3.
-  Widget _uploadDataRow(bool enabled) {
-    return ListTile(
-      key: const Key('home-gateway-status'),
-      contentPadding: EdgeInsets.zero,
-      enabled: enabled,
-      minVerticalPadding: 12,
-      leading: const Icon(Icons.cloud_done_outlined, size: 20),
-      title: Text(gatewayStatusLabel),
-      subtitle: Text(
-        gatewayStatusHomeCaption,
-        key: const Key('home-gateway-status-caption'),
-        style: Theme.of(context).textTheme.bodySmall,
-      ),
-      trailing: const Icon(Icons.chevron_right),
-      onTap: enabled ? () => GatewayStatusPage.open(context) : null,
-    );
-  }
 
   /// One-thing screens (09-28): 「設備與連線資訊」, collapsed — the mode,
   /// the step list, the gateway's name / MAC / phone signal, its identify
