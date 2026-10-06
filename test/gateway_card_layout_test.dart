@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -15,6 +16,7 @@ import 'package:gateway_commissioning/core/protocol.dart';
 import 'package:gateway_commissioning/data/contracts.dart';
 import 'package:gateway_commissioning/data/demo_system.dart';
 import 'package:gateway_commissioning/gateway_app.dart';
+import 'package:gateway_commissioning/l10n/l10n.dart';
 import 'package:gateway_commissioning/presentation/gateway_discovery.dart';
 
 import 'support/real_fonts.dart';
@@ -110,6 +112,7 @@ Future<ProviderContainer> _openGatewayPage(
   double scale = 1,
   bool savedProgress = true,
   double bottomPadding = 0,
+  AppLanguage language = AppLanguage.zh,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -123,6 +126,7 @@ Future<ProviderContainer> _openGatewayPage(
   addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
   SharedPreferences.setMockInitialValues({
     'backend_environment': 'production',
+    if (language == AppLanguage.en) 'app_locale': 'en',
     'recent_gateways': jsonEncode([
       {'id': _a.id, 'name': _a.name, 'uid': 'AABBCCDD3A00'},
     ]),
@@ -402,6 +406,99 @@ void main() {
       debugDefaultTargetPlatformOverride = null;
     });
   }
+
+  // 10-06 (iPhone, English at a larger text size): 「Disconnect」 broke
+  // inside the word when the action row was shared in proportion. Every
+  // label whole on one line; the pair stacks when it does not fit side by
+  // side (320 dp at 1.6 cannot hold 「Disconnect」 and 「Start setup」).
+  testWidgets('iOS English at 320 dp @1.6: Disconnect and Start are whole, '
+      'stacked with Start last, apart from the bulb', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final fake = _TwoGateways();
+    final container = await _openGatewayPage(
+      tester,
+      fake,
+      size: const Size(320, 640),
+      scale: 1.6,
+      language: AppLanguage.en,
+    );
+    expect(L10n.language, AppLanguage.en);
+    await _tapVisible(tester, _unselectedConnect(_a));
+    expect(container.read(commissionProvider.notifier).heldPeerId, _a.id);
+    final card = tester.getRect(find.byKey(ValueKey('gateway-card-${_a.id}')));
+    final disconnectRect = tester.getRect(_disconnect);
+    final startRect = tester.getRect(_commission(_a));
+    for (final (finder, label) in [
+      (_disconnect, 'Disconnect'),
+      (_commission(_a), 'Start setup'),
+    ]) {
+      final paragraph = tester.renderObject<RenderParagraph>(
+        find.descendant(of: finder, matching: find.text(label)),
+      );
+      expect(paragraph.didExceedMaxLines, isFalse, reason: '$label cut');
+      expect(
+        paragraph.getMaxIntrinsicWidth(double.infinity),
+        lessThanOrEqualTo(paragraph.size.width + 0.5),
+        reason: '$label wrapped or broken',
+      );
+      final rect = tester.getRect(finder);
+      expect(rect.left, greaterThanOrEqualTo(card.left + 12 - 0.01));
+      expect(rect.right, lessThanOrEqualTo(card.right - 12 + 0.01));
+    }
+    expect(
+      startRect.top,
+      greaterThanOrEqualTo(disconnectRect.bottom + 8 - 0.01),
+      reason: 'Too narrow for both labels: Start under Disconnect.',
+    );
+    expect(disconnectRect.overlaps(startRect), isFalse);
+    final bulb = tester.getRect(_bulb(_a));
+    expect(bulb.overlaps(disconnectRect), isFalse);
+    expect(bulb.overlaps(startRect), isFalse);
+    _expectCardRightInset(tester, _a, selected: true);
+    _expectReadOnly(fake);
+    await _tapVisible(tester, _disconnect);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+    debugDefaultTargetPlatformOverride = null;
+  });
+
+  // 10-06 (iPhone at text scale 1.5, English): 「Site 81 · Gateway 1」 lost
+  // its gateway number to the ellipsis. A title too long for one line goes
+  // on two lines at a space, whole, the signal beside its first line.
+  // Measured with Roboto (Android: the iOS text theme names a font the test
+  // runner cannot load, so every glyph would be 1 em).
+  testWidgets('English at 390 dp @1.5: a long card title is whole on two '
+      'lines', (tester) async {
+    final fake = _TwoGateways();
+    await _openGatewayPage(
+      tester,
+      fake,
+      size: const Size(390, 844),
+      scale: 1.5,
+      language: AppLanguage.en,
+    );
+    final title = find.byKey(ValueKey('gateway-title-${_a.id}'));
+    expect(tester.widget<Text>(title).data, 'Unconfigured gateway');
+    final p = tester.renderObject<RenderParagraph>(title);
+    final width = p.getMaxIntrinsicWidth(double.infinity);
+    final where =
+        'title ${width.toStringAsFixed(1)} wide in '
+        '${p.size.width.toStringAsFixed(1)}';
+    expect(
+      width,
+      greaterThan(p.size.width + 0.5),
+      reason: '$where: the case needs a title too long for one line',
+    );
+    expect(p.didExceedMaxLines, isFalse, reason: '$where cut');
+    expect(tester.widget<Text>(title).maxLines, 2, reason: where);
+    final signal = tester.getRect(
+      find.byKey(ValueKey('gateway-signal-${_a.id}')),
+    );
+    expect(signal.left, greaterThanOrEqualTo(tester.getRect(title).right));
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
 
   testWidgets('cancel waits for cleanup; late A success cannot publish ready '
       'or unlock B before cleanup', (tester) async {

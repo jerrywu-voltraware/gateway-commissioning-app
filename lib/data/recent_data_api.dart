@@ -3,12 +3,13 @@
 /// or typing a key — the APP's own (low-privilege) session asks the
 /// read-only endpoint `GET /api/app/recent/{site}/{gateway}?limit=N`.
 ///
-/// Contract (dashboard-api, fields fixed):
+/// Contract (dashboard-api, additive receiver/error fields):
 /// ```
 /// {"site_id":80,"gateway_id":1,"count":2,
 ///  "items":[{"ts":"2026-09-28T13:00:00.123+08:00","seq":123,"device_id":1,
 ///            "ptu_mac":"90:5F:E8:9A:96:00","ptu_state":"POWER_TRANSFER",
-///            "input_mv":5000,"input_ma":120,"bus_mv":4980,"temp_c":31}],
+///            "input_mv":5000,"input_ma":120,"bus_mv":4980,"temp_c":31,
+///            "pru_iout":100,"pru_vrect":4800,"pru_Temp_degC":29,"error_num":0}],
 ///  "upload_interval_ms":300000}
 /// ```
 /// `count` 0 = nothing received yet; a non-2xx answer or no connection is
@@ -32,19 +33,45 @@ class RecentItem {
     this.seq,
     this.deviceId,
     this.ptuMac = '',
+    this.pruMac = '',
     this.ptuState = '',
     this.inputMv,
     this.inputMa,
     this.busMv,
     this.tempC,
+    this.pruIoutMa,
+    this.pruVrectMv,
+    this.pruTempC,
+    this.errorNum,
   });
 
   /// Local time ([DateTime.parse] then [DateTime.toLocal]); null when the
   /// backend sent no parsable `ts`.
   final DateTime? ts;
   final int? seq, deviceId;
-  final String ptuMac, ptuState;
+  final String ptuMac, pruMac, ptuState;
   final num? inputMv, inputMa, busMv, tempC;
+
+  /// Receiver measurements from the additive recent-data API contract.
+  /// Missing receiver data must never fall back to PTU input measurements.
+  final num? pruIoutMa, pruVrectMv, pruTempC;
+
+  /// Device error code, not a transport/upload failure. Null on older APIs.
+  final int? errorNum;
+
+  /// Same power ratio as the dashboard: PRU VRECT * IOUT / PTU VIN * IIN.
+  /// All four values must come from this same sample. Missing/invalid data
+  /// or zero input power is unknown; a measured zero output remains zero.
+  double? get efficiencyPercent {
+    final values = [inputMv, inputMa, pruVrectMv, pruIoutMa];
+    if (values.any((v) => v == null || !v.isFinite || v < 0)) return null;
+    final inputPower = inputMv! * inputMa!;
+    if (inputPower <= 0) return null;
+    final result = pruVrectMv! * pruIoutMa! / inputPower * 100;
+    return result.isFinite ? result : null;
+  }
+
+  String get efficiencyText => efficiencyPercent?.toStringAsFixed(1) ?? '--';
 
   /// The PTU's last 4 hex digits (`90:5F:E8:9A:96:00` → `9600`; widget
   /// keys).
@@ -57,6 +84,8 @@ class RecentItem {
   /// The PTU's whole MAC as `AA:BB:CC:DD:EE:FF` (empty when none).
   String get ptuMacText => ptuMacFull(ptuMac);
 
+  String get pruMacText => ptuMacFull(pruMac);
+
   /// `input_mv` in volts with two decimals, or `--`.
   String get inputVoltsText =>
       inputMv == null ? '--' : (inputMv! / 1000).toStringAsFixed(2);
@@ -66,11 +95,16 @@ class RecentItem {
     seq: (json['seq'] as num?)?.toInt(),
     deviceId: (json['device_id'] as num?)?.toInt(),
     ptuMac: json['ptu_mac']?.toString() ?? '',
+    pruMac: json['pru_mac']?.toString() ?? '',
     ptuState: json['ptu_state']?.toString() ?? '',
     inputMv: json['input_mv'] as num?,
     inputMa: json['input_ma'] as num?,
     busMv: json['bus_mv'] as num?,
     tempC: json['temp_c'] as num?,
+    pruIoutMa: json['pru_iout'] as num?,
+    pruVrectMv: json['pru_vrect'] as num?,
+    pruTempC: json['pru_Temp_degC'] as num?,
+    errorNum: (json['error_num'] as num?)?.toInt(),
   );
 }
 

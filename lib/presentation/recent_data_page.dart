@@ -1,3 +1,4 @@
+import 'recent_error.dart';
 import 'dart:math' show max;
 
 import 'package:flutter/material.dart';
@@ -131,7 +132,7 @@ String ptuStateShort(String state) {
 // Pure view helpers (tested without widgets)
 // ---------------------------------------------------------------------------
 
-/// `input_ma` in amps with two decimals, or `--`.
+/// A current in milliamps, displayed in amps with two decimals, or `--`.
 String recentAmpsText(num? ma) =>
     ma == null ? '--' : (ma / 1000).toStringAsFixed(2);
 
@@ -624,7 +625,8 @@ class _LatestCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
-    final fault = ptuStateIsFault(item.ptuState);
+    final fault =
+        ptuStateIsFault(item.ptuState) || recentErrorIsFault(item.errorNum);
     final key = big ? 'recent-latest' : 'recent-latest-${item.ptuTail}';
     return Card(
       key: Key(key),
@@ -651,14 +653,24 @@ class _LatestCard extends StatelessWidget {
                   context.l10n.recentDataPage_voltage,
                 ),
                 (
-                  recentAmpsText(item.inputMa),
+                  recentAmpsText(item.pruIoutMa),
                   'A',
                   context.l10n.recentDataPage_current,
                 ),
                 (
                   recentTempText(item.tempC),
                   '°C',
-                  context.l10n.recentDataPage_temperature,
+                  context.l10n.recentDataPage_ptuTemperature,
+                ),
+                (
+                  recentTempText(item.pruTempC),
+                  '°C',
+                  context.l10n.recentDataPage_pruTemperature,
+                ),
+                (
+                  item.efficiencyText,
+                  '%',
+                  context.l10n.recentDataPage_efficiency,
                 ),
               ],
             ),
@@ -668,10 +680,22 @@ class _LatestCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _LabeledValue(
-                  label: 'PTU',
+                  label: 'PTU MAC',
                   value: Text(
                     item.ptuMacText.isEmpty ? '--:--:--' : item.ptuMacText,
                     key: Key('$key-line-mac'),
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontFamily: 'monospace',
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                _LabeledValue(
+                  label: 'PRU MAC',
+                  value: Text(
+                    item.pruMacText.isEmpty ? '--:--:--' : item.pruMacText,
+                    key: Key('$key-line-pru-mac'),
                     style: theme.textTheme.bodyMedium?.copyWith(
                       fontFamily: 'monospace',
                       color: colors.onSurfaceVariant,
@@ -719,18 +743,26 @@ class _LatestCard extends StatelessWidget {
                 ),
               ],
             ),
-            if (fault) ...[
+            if (fault || item.errorNum != null) ...[
               const SizedBox(height: 6),
               Row(
                 children: [
-                  Icon(Icons.warning_amber, size: 18, color: colors.error),
+                  Icon(
+                    fault ? Icons.warning_amber : Icons.info_outline,
+                    size: 18,
+                    color: fault ? colors.error : colors.onSurfaceVariant,
+                  ),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      recentDataFaultText,
-                      key: Key('$key-fault'),
+                      [
+                        if (ptuStateIsFault(item.ptuState)) recentDataFaultText,
+                        if (item.errorNum != null)
+                          recentErrorText(item.errorNum),
+                      ].join(' · '),
+                      key: Key(fault ? '$key-fault' : '$key-notice'),
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        color: colors.error,
+                        color: fault ? colors.error : colors.onSurfaceVariant,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -888,11 +920,14 @@ class _RecentTable extends StatelessWidget {
     final scale = MediaQuery.textScalerOf(context).scale(size) / size;
     final columns = <_Col>[
       _Col(context.l10n.recentDataPage_time, 66),
-      if (!singlePtu) const _Col('PTU', 72),
+      if (!singlePtu) const _Col('PTU MAC', 80),
       const _Col('V', 42, numeric: true),
       const _Col('A', 42, numeric: true),
-      const _Col('°C', 30, numeric: true),
+      _Col(context.l10n.recentDataPage_ptuTemperature, 100, numeric: true),
+      _Col(context.l10n.recentDataPage_pruTemperature, 100, numeric: true),
+      _Col(context.l10n.recentDataPage_efficiency, 80, numeric: true),
       _Col(context.l10n.recentDataPage_stateLabel, 58),
+      _Col(context.l10n.recentDataPage_errorCode, 340),
     ];
     Widget text(String s, _Col col, TextStyle? style) => SizedBox(
       width: (col.width * scale).ceilToDouble(),
@@ -936,9 +971,12 @@ class _RecentTable extends StatelessWidget {
               if (!singlePtu)
                 item.ptuShort.isEmpty ? '--:--:--' : item.ptuShort,
               item.inputVoltsText,
-              recentAmpsText(item.inputMa),
+              recentAmpsText(item.pruIoutMa),
               recentTempText(item.tempC),
+              recentTempText(item.pruTempC),
+              item.efficiencyPercent == null ? '--' : '${item.efficiencyText}%',
               ptuStateShort(item.ptuState),
+              recentErrorText(item.errorNum),
             ],
             cell,
             key: ValueKey('recent-row-$i'),

@@ -10,6 +10,8 @@
 // 網路體檢與站點、PTU 清單、一對一選 PTU 與辨識後單行、資料驗證（離線等待）、
 // 完成頁與其詳細、請後台協助面板（紅框）、最近資料頁。
 // 中文版面由 layout_smoke_test.dart 等既有測試負責。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -20,6 +22,7 @@ import 'package:gateway_commissioning/application/field_report.dart';
 import 'package:gateway_commissioning/application/topology_settings.dart';
 import 'package:gateway_commissioning/core/app_theme.dart';
 import 'package:gateway_commissioning/core/gateway_topology.dart';
+import 'package:gateway_commissioning/core/mqtt_target.dart';
 import 'package:gateway_commissioning/core/protocol.dart' show GatewayFailure;
 import 'package:gateway_commissioning/data/contracts.dart';
 import 'package:gateway_commissioning/data/demo_system.dart';
@@ -28,6 +31,7 @@ import 'package:gateway_commissioning/l10n/l10n.dart';
 import 'package:gateway_commissioning/presentation/recent_data_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'link_loss_test.dart' show DroppingLink;
 import 'round15_direct_flow_test.dart' show PickGateway;
 import 'support/l10n.dart';
 import 'support/real_fonts.dart';
@@ -195,6 +199,30 @@ class _FailingGateway extends DemoSystem implements SessionInfo {
       return {'ok': true, 'duplicate': false};
     }
     return super.request(method, path, body);
+  }
+}
+
+/// The data check mid-run: /api/latest answers rows, and the third poll
+/// waits for [hold] so the page keeps its counts (verify_live_feed_test's
+/// _Scripted, reduced).
+class _HoldingVerify extends DroppingLink {
+  final hold = Completer<void>();
+  bool held = false;
+  int _polls = 0;
+
+  @override
+  Future<Map<String, dynamic>> request(
+    String method,
+    String path, [
+    Map<String, dynamic>? body,
+  ]) async {
+    final result = await super.request(method, path, body);
+    if (path.startsWith('/api/latest') && ++_polls == 3) {
+      held = true;
+      await hold.future;
+      held = false;
+    }
+    return result;
   }
 }
 
@@ -534,6 +562,124 @@ void main() {
     });
     expect(container.read(commissionProvider).step, 6);
     await _checkPage(tester, 'data check');
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  // The title gets its own row instead of shrinking beside secondary actions.
+  testWidgets('AppBar title whole on one line, not shrunk (start, '
+      'gateway list)', (tester) async {
+    final container = await _pumpApp(tester, _FailingGateway());
+    Future<void> check(String page) async {
+      for (final scale in [..._scales, 1.5]) {
+        tester.platformDispatcher.textScaleFactorTestValue = scale;
+        await _frames(tester);
+        final where = '$page @$scale';
+        final title = find.byKey(const Key('appbar-title'));
+        expect(tester.widget<Text>(title).data, 'GIOS Device Assistant');
+        final p = tester.renderObject<RenderParagraph>(title);
+        expect(p.didExceedMaxLines, isFalse, reason: '$where cut');
+        expect(p.maxLines, 1, reason: '$where: title must stay on one line');
+        final rect = tester.getRect(title);
+        expect(rect.right, lessThanOrEqualTo(_size.width), reason: where);
+        expect(rect.height / p.size.height, closeTo(1, 0.001),
+            reason: '$where: title must not shrink');
+        expect(
+          rect.right,
+          lessThanOrEqualTo(tester.getRect(find.byKey(const Key('topology-menu'))).left),
+        );
+        expect(
+          tester.getRect(find.byKey(const Key('appbar-secondary-actions'))).top,
+          greaterThanOrEqualTo(rect.bottom),
+        );
+        expect(tester.takeException(), isNull, reason: where);
+      }
+      tester.platformDispatcher.textScaleFactorTestValue = 1.0;
+      await _frames(tester);
+    }
+
+    await check('start');
+    await _run(tester, container, (c) async {
+      await c.prepare(container.read(backendEnvProvider).base, 'pw');
+      await c.scan();
+    });
+    expect(container.read(commissionProvider).step, 1);
+    expect(find.byKey(const Key('field-help-appbar')), findsOneWidget);
+    await check('gateway list');
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  // 10-06 (iPhone, English at a larger text size): on the data check page
+  // the MAC beside its trailing count broke inside itself (「…96:0」 / 「0」).
+  // One line beside the count, shrunk at most a little, on a 320 dp phone.
+  testWidgets('data check running at 320 dp @1.5: each MAC one line beside '
+      'its count', (tester) async {
+    final fake = _HoldingVerify();
+    final container = await _pumpApp(tester, fake);
+    await _run(tester, container, (c) async {
+      await _star(container);
+      await c.prepare('https://example.invalid', '', offline: true);
+      await c.scan();
+      await c.connect(container.read(commissionProvider).peers.first);
+      await c.configureWifi(80, 1, 'Office-2G', 'pw123456');
+      c.backendChanged('https://offline-fixture.invalid');
+      await c.online(skip: true);
+      await c.discover();
+      await c.configurePtus();
+    });
+    expect(container.read(commissionProvider).step, 6);
+    tester.view.physicalSize = const Size(320, 2400);
+    tester.platformDispatcher.textScaleFactorTestValue = 1.5;
+    await _frames(tester);
+    final controller = container.read(commissionProvider.notifier);
+    late Future<void> run;
+    await tester.runAsync(() async {
+      run = controller.verify(productionApiBase, 'pw');
+      for (var i = 0; i < 400 && !fake.held; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+      }
+    });
+    await tester.pump();
+    expect(fake.held, isTrue);
+    // 10-06: the flow's three icons are evenly spaced whatever their labels
+    // (「Back office」 is three times 「PTU」).
+    final flow = find.byKey(const Key('verify-flow'));
+    final centers = [
+      for (final icon in [
+        Icons.sensors,
+        Icons.router_outlined,
+        Icons.cloud_outlined,
+      ])
+        tester
+            .getCenter(find.descendant(of: flow, matching: find.byIcon(icon)))
+            .dx,
+    ];
+    expect(centers[1] - centers[0], closeTo(centers[2] - centers[1], 0.5));
+    final s = container.read(commissionProvider);
+    expect(s.verifyCounts, isNotEmpty);
+    for (final id in s.verifyCounts.keys) {
+      final count = find.byKey(Key('verify-count-$id'));
+      expect(tester.widget<Text>(count).data, '2/3');
+      final ptu = s.ptus.firstWhere(
+        (ptu) => (ptu['device_number'] as num?)?.toInt() == id,
+      );
+      final mac = find.byKey(Key('verify-mac-$id'));
+      final p = tester.renderObject<RenderParagraph>(mac);
+      expect(p.text.toPlainText(), ptu['mac'].toString());
+      expect(p.didExceedMaxLines, isFalse, reason: 'PTU #$id MAC cut');
+      final rect = tester.getRect(mac);
+      expect(rect.right, lessThanOrEqualTo(tester.getRect(count).left + 0.01));
+      if (_realFonts) {
+        expect(
+          rect.height / p.size.height,
+          greaterThanOrEqualTo(0.8),
+          reason: 'PTU #$id MAC shrunk more than a fifth',
+        );
+      }
+    }
+    expect(tester.takeException(), isNull);
+    fake.hold.complete();
+    await tester.runAsync(() => run);
+    await tester.pumpAndSettle();
     await tester.pumpWidget(const SizedBox());
   });
 

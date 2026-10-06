@@ -5195,6 +5195,15 @@
   },
   "recentDataPage_current": "Current",
   "recentDataPage_dataTime": "Data time",
+  "recentDataPage_deviceError": "Device error (code {code})",
+  "@recentDataPage_deviceError": {
+    "placeholders": {
+      "code": {
+        "type": "int"
+      }
+    }
+  },
+  "recentDataPage_efficiency": "Efficiency",
   "recentDataPage_empty": "The back office has no data from this gateway yet. Wait a moment, then refresh",
   "recentDataPage_emptyInterval": "The back office has no data from this gateway yet; it uploads about every {interval}. Refresh later",
   "@recentDataPage_emptyInterval": {
@@ -5205,6 +5214,27 @@
       }
     }
   },
+  "recentDataPage_errorChargeComplete": "Charging complete",
+  "recentDataPage_errorClearComplete": "Restarting charging",
+  "recentDataPage_errorCode": "Error code",
+  "recentDataPage_errorNone": "No error",
+  "recentDataPage_errorPruCharged": "PRU fully charged",
+  "recentDataPage_errorPruOc": "PRU overcurrent",
+  "recentDataPage_errorPruOt": "PRU overtemperature",
+  "recentDataPage_errorPruOv": "PRU overvoltage",
+  "recentDataPage_errorPtuComm": "PTU communication error",
+  "recentDataPage_errorPtuLpStuck": "PTU stuck in Low Power",
+  "recentDataPage_errorPtuOcBus": "PTU IBUS overcurrent",
+  "recentDataPage_errorPtuOcI1": "PTU I1 overcurrent",
+  "recentDataPage_errorPtuOcI3": "PTU I3 overcurrent",
+  "recentDataPage_errorPtuOcIn": "PTU Iin overcurrent",
+  "recentDataPage_errorPtuOtDcdc": "PTU DCDC overtemperature",
+  "recentDataPage_errorPtuOtIc": "PTU IC overtemperature",
+  "recentDataPage_errorPtuOtPa": "PTU PA overtemperature",
+  "recentDataPage_errorPtuPhase": "PTU I1/I3 phase fault",
+  "recentDataPage_errorPtuPtStuck": "PTU stuck in Power Transfer",
+  "recentDataPage_errorPtuTimeset": "PTU Timeset failed",
+  "recentDataPage_errorUnknown": "Unknown error",
   "recentDataPage_fault": "PTU reports a fault",
   "recentDataPage_label": "View recent data",
   "@recentDataPage_label": {
@@ -5238,6 +5268,9 @@
     }
   },
   "recentDataPage_ok": "Uploading OK",
+  "recentDataPage_pruCurrent": "Current",
+  "recentDataPage_pruTemperature": "Receiver temp",
+  "recentDataPage_ptuTemperature": "Transmitter temp",
   "recentDataPage_shortCharging": "Charging",
   "recentDataPage_shortConfiguration": "Config",
   "@recentDataPage_shortConfiguration": {

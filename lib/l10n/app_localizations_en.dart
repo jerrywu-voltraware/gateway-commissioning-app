@@ -5690,6 +5690,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get recentDataPage_dataTime => 'Data time';
 
   @override
+  String recentDataPage_deviceError(int code) {
+    return 'Device error (code $code)';
+  }
+
+  @override
+  String get recentDataPage_efficiency => 'Efficiency';
+
+  @override
   String get recentDataPage_empty =>
       'The back office has no data from this gateway yet. Wait a moment, then refresh';
 
@@ -5697,6 +5705,69 @@ class AppLocalizationsEn extends AppLocalizations {
   String recentDataPage_emptyInterval(String interval) {
     return 'The back office has no data from this gateway yet; it uploads about every $interval. Refresh later';
   }
+
+  @override
+  String get recentDataPage_errorChargeComplete => 'Charging complete';
+
+  @override
+  String get recentDataPage_errorClearComplete => 'Restarting charging';
+
+  @override
+  String get recentDataPage_errorCode => 'Error code';
+
+  @override
+  String get recentDataPage_errorNone => 'No error';
+
+  @override
+  String get recentDataPage_errorPruCharged => 'PRU fully charged';
+
+  @override
+  String get recentDataPage_errorPruOc => 'PRU overcurrent';
+
+  @override
+  String get recentDataPage_errorPruOt => 'PRU overtemperature';
+
+  @override
+  String get recentDataPage_errorPruOv => 'PRU overvoltage';
+
+  @override
+  String get recentDataPage_errorPtuComm => 'PTU communication error';
+
+  @override
+  String get recentDataPage_errorPtuLpStuck => 'PTU stuck in Low Power';
+
+  @override
+  String get recentDataPage_errorPtuOcBus => 'PTU IBUS overcurrent';
+
+  @override
+  String get recentDataPage_errorPtuOcI1 => 'PTU I1 overcurrent';
+
+  @override
+  String get recentDataPage_errorPtuOcI3 => 'PTU I3 overcurrent';
+
+  @override
+  String get recentDataPage_errorPtuOcIn => 'PTU Iin overcurrent';
+
+  @override
+  String get recentDataPage_errorPtuOtDcdc => 'PTU DCDC overtemperature';
+
+  @override
+  String get recentDataPage_errorPtuOtIc => 'PTU IC overtemperature';
+
+  @override
+  String get recentDataPage_errorPtuOtPa => 'PTU PA overtemperature';
+
+  @override
+  String get recentDataPage_errorPtuPhase => 'PTU I1/I3 phase fault';
+
+  @override
+  String get recentDataPage_errorPtuPtStuck => 'PTU stuck in Power Transfer';
+
+  @override
+  String get recentDataPage_errorPtuTimeset => 'PTU Timeset failed';
+
+  @override
+  String get recentDataPage_errorUnknown => 'Unknown error';
 
   @override
   String get recentDataPage_fault => 'PTU reports a fault';
@@ -5719,6 +5790,15 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get recentDataPage_ok => 'Uploading OK';
+
+  @override
+  String get recentDataPage_pruCurrent => 'Current';
+
+  @override
+  String get recentDataPage_pruTemperature => 'Receiver temp';
+
+  @override
+  String get recentDataPage_ptuTemperature => 'Transmitter temp';
 
   @override
   String get recentDataPage_shortCharging => 'Charging';

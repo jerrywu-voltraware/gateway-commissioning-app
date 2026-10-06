@@ -315,41 +315,79 @@ class _VerifyLiveHeaderState extends State<VerifyLiveHeader>
         },
       ),
     );
-    Widget node(int index) => Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 36,
-          height: 36,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: widget.passed
-                ? ok.withValues(alpha: 0.18)
-                : colors.primaryContainer,
+    // 10-06 (iPhone, English): a node was as wide as its label (「Back
+    // office」 three times 「PTU」), so the icons and arrows sat unevenly.
+    // Every node takes the widest label's width (at least the circle) and
+    // the two links share the rest: the three icons are evenly spaced. A
+    // label wider than a third of the row shrinks instead of widening it.
+    final labelStyle = theme.textTheme.labelMedium;
+    final scaler = MediaQuery.textScalerOf(context);
+    final direction = Directionality.of(context);
+    var labelWidth = 36.0;
+    for (final label in verifyFlowLabels) {
+      final painter = TextPainter(
+        text: TextSpan(text: label, style: labelStyle),
+        textDirection: direction,
+        textScaler: scaler,
+        maxLines: 1,
+      )..layout();
+      if (painter.width > labelWidth) labelWidth = painter.width;
+      painter.dispose();
+    }
+    Widget node(int index, double width) => SizedBox(
+      width: width,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: widget.passed
+                  ? ok.withValues(alpha: 0.18)
+                  : colors.primaryContainer,
+            ),
+            child: Icon(
+              icons[index],
+              size: 20,
+              color: widget.passed ? ok : colors.onPrimaryContainer,
+            ),
           ),
-          child: Icon(
-            icons[index],
-            size: 20,
-            color: widget.passed ? ok : colors.onPrimaryContainer,
+          const SizedBox(height: 2),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              verifyFlowLabels[index],
+              maxLines: 1,
+              softWrap: false,
+              style: labelStyle,
+            ),
           ),
-        ),
-        const SizedBox(height: 2),
-        Text(verifyFlowLabels[index], style: theme.textTheme.labelMedium),
-      ],
+        ],
+      ),
     );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          key: const Key('verify-flow'),
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            node(0),
-            Expanded(child: link(0)),
-            node(1),
-            Expanded(child: link(1)),
-            node(2),
-          ],
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final width = labelWidth
+                .ceilToDouble()
+                .clamp(36.0, constraints.maxWidth / 3)
+                .toDouble();
+            return Row(
+              key: const Key('verify-flow'),
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                node(0, width),
+                Expanded(child: link(0)),
+                node(1, width),
+                Expanded(child: link(1)),
+                node(2, width),
+              ],
+            );
+          },
         ),
         if (live != null)
           Padding(

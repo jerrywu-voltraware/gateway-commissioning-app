@@ -686,6 +686,10 @@ class DemoSystem implements GatewayLink, GatewayApi, ForeignAcks {
               'input_ma': 120,
               'bus_mv': 4980,
               'temp_c': 31,
+              'pru_iout': 100,
+              'pru_vrect': 4800,
+              'pru_Temp_degC': 29,
+              'error_num': 0,
             },
         ],
         // 1.0.0+20: the interval the page's limits follow.

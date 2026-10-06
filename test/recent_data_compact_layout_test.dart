@@ -33,6 +33,7 @@ Map<String, dynamic> _row({
   'ptu_state': state,
   'input_mv': voltage,
   'input_ma': current,
+  'pru_iout': current,
   'temp_c': temperature,
 };
 

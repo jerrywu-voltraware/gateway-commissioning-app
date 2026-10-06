@@ -524,19 +524,62 @@ class _SelectedMark extends StatelessWidget {
           // 1.0.0+22: one line height whatever the glyphs (「連線中…」's
           // ellipsis comes from another font): the card does not grow
           // while its explicit connection is pending.
-          Text(
-            text,
-            maxLines: 1,
-            softWrap: false,
-            style: style,
-            strutStyle: style == null
-                ? null
-                : StrutStyle.fromTextStyle(style, forceStrutHeight: true),
+          // 10-06 (iPhone, English at a larger text size): 「Not connected」
+          // ran 15 dp past a 320 dp card; shrunk a little to the width
+          // left instead of overflowing.
+          Flexible(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                text,
+                maxLines: 1,
+                softWrap: false,
+                style: style,
+                strutStyle: style == null
+                    ? null
+                    : StrutStyle.fromTextStyle(style, forceStrutHeight: true),
+              ),
+            ),
           ),
         ],
       ),
     );
   }
+}
+
+/// 10-06 (iPhone, English): whether [text] goes on two lines broken at
+/// spaces only — it does not fit one line of [width], has more than one
+/// word, every word fits, and two lines hold it all. The AppBar title and
+/// the gateway card's title (「Site 81 · Gateway 1」 at text scale 1.5 lost
+/// its gateway number to the ellipsis) wrap this way; a name without spaces
+/// keeps its one line and the caller's last resort.
+bool wrapsAtSpaces(
+  String text, {
+  required TextStyle? style,
+  required double width,
+  required BuildContext context,
+}) {
+  if (!width.isFinite) return false;
+  final direction = Directionality.of(context);
+  final scaler = MediaQuery.textScalerOf(context);
+  bool fits(String s, {int maxLines = 1}) {
+    final painter = TextPainter(
+      text: TextSpan(text: s, style: style),
+      textDirection: direction,
+      textScaler: scaler,
+      maxLines: maxLines,
+    )..layout(maxWidth: width);
+    final fits = !painter.didExceedMaxLines && painter.width <= width;
+    painter.dispose();
+    return fits;
+  }
+
+  final words = text.split(' ');
+  return !fits(text) &&
+      words.length > 1 &&
+      words.every(fits) &&
+      fits(text, maxLines: 2);
 }
 
 /// 1.0.0+11 (phone: 〔辨識〕 paused the scan 2–4 s and every row read
@@ -1871,15 +1914,33 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
                   textBaseline: TextBaseline.alphabetic,
                   children: [
                     Expanded(
-                      child: Text(
-                        cardTitle,
-                        key: ValueKey('gateway-title-${peer.id}'),
-                        maxLines: 1,
-                        softWrap: false,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          final style = theme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          );
+                          // 10-06 (iPhone, English at 1.5): 「Site 81 ·
+                          // Gateway 1」 lost its gateway number to the
+                          // ellipsis. Two lines at the spaces when one line
+                          // cannot hold it (「Site 81 ·」 / 「Gateway 1」);
+                          // a name without spaces keeps its ellipsis.
+                          final twoLines = wrapsAtSpaces(
+                            cardTitle,
+                            style: DefaultTextStyle.of(
+                              context,
+                            ).style.merge(style),
+                            width: constraints.maxWidth,
+                            context: context,
+                          );
+                          return Text(
+                            cardTitle,
+                            key: ValueKey('gateway-title-${peer.id}'),
+                            maxLines: twoLines ? 2 : 1,
+                            softWrap: twoLines,
+                            overflow: TextOverflow.ellipsis,
+                            style: style,
+                          );
+                        },
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -2071,7 +2132,12 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
                   }
                 : null,
             icon: const Icon(Icons.bluetooth_disabled, size: 20),
-            label: Text(bluetoothLabel),
+            label: Text(
+              bluetoothLabel,
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.ellipsis,
+            ),
           )
         : NextActionGuide.button(
             active: guideConnect,
@@ -2088,7 +2154,12 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
                   ? () => _holdFromCard(peer)
                   : null,
               icon: const Icon(Icons.bluetooth, size: 20),
-              label: Text(bluetoothLabel),
+              label: Text(
+                bluetoothLabel,
+                maxLines: 1,
+                softWrap: false,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           );
     final identify = widget.onIdentify == null || hold != _Hold.held
@@ -2118,7 +2189,12 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
         onPressed: _canStartPeer(peer, holdEpoch)
             ? () => _connect(peer, expectedHoldEpoch: holdEpoch)
             : null,
-        child: Text(l10n.gatewayDiscovery_startCommissioning),
+        child: Text(
+          l10n.gatewayDiscovery_startCommissioning,
+          maxLines: 1,
+          softWrap: false,
+          overflow: TextOverflow.ellipsis,
+        ),
       ),
     );
     double widthOf(String label) {
@@ -2137,10 +2213,9 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
     // needlessly splits the shorter Disconnect action from Start.
     final bluetoothWidth = widthOf(bluetoothLabel) + 20 + 8 + 20;
     final startWidth = widthOf(l10n.gatewayDiscovery_startCommissioning) + 20;
+    final pairWidth = bluetoothWidth + 8 + startWidth;
     final requiredWidth =
-        bluetoothWidth +
-        startWidth +
-        (identify == null ? 8 : gatewayBulbBox + 16);
+        pairWidth + (identify == null ? 0 : gatewayBulbBox + 8);
     return Padding(
       key: ValueKey('gateway-actions-${peer.id}'),
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
@@ -2183,14 +2258,25 @@ class _GatewayDiscoveryState extends ConsumerState<GatewayDiscovery>
                     Align(alignment: Alignment.centerRight, child: identify),
                     const SizedBox(height: 4),
                   ],
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Flexible(flex: bluetoothWidth.ceil(), child: bluetooth),
-                      const SizedBox(width: 8),
-                      Flexible(flex: startWidth.ceil(), child: start),
-                    ],
-                  ),
+                  // 10-06 (iPhone, English at a larger text size): a row
+                  // narrower than the two labels, shared in proportion, broke
+                  // 「Disconnect」 inside the word. The labels never wrap;
+                  // when the pair does not fit side by side the buttons
+                  // stack, each the card's width, Start last.
+                  if (constraints.maxWidth >= pairWidth)
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Flexible(flex: bluetoothWidth.ceil(), child: bluetooth),
+                        const SizedBox(width: 8),
+                        Flexible(flex: startWidth.ceil(), child: start),
+                      ],
+                    )
+                  else ...[
+                    bluetooth,
+                    const SizedBox(height: 8),
+                    start,
+                  ],
                 ],
               );
             },

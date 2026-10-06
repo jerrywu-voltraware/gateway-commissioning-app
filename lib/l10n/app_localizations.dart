@@ -8321,6 +8321,18 @@ abstract class AppLocalizations {
   /// **'資料時間'**
   String get recentDataPage_dataTime;
 
+  /// No description provided for @recentDataPage_deviceError.
+  ///
+  /// In zh, this message translates to:
+  /// **'裝置異常（錯誤碼 {code}）'**
+  String recentDataPage_deviceError(int code);
+
+  /// No description provided for @recentDataPage_efficiency.
+  ///
+  /// In zh, this message translates to:
+  /// **'效率'**
+  String get recentDataPage_efficiency;
+
   /// No description provided for @recentDataPage_empty.
   ///
   /// In zh, this message translates to:
@@ -8332,6 +8344,132 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'後台尚未收到這台閘道器的資料；閘道器約每 {interval}上傳一筆，請稍後再重新整理'**
   String recentDataPage_emptyInterval(String interval);
+
+  /// No description provided for @recentDataPage_errorChargeComplete.
+  ///
+  /// In zh, this message translates to:
+  /// **'充電完成'**
+  String get recentDataPage_errorChargeComplete;
+
+  /// No description provided for @recentDataPage_errorClearComplete.
+  ///
+  /// In zh, this message translates to:
+  /// **'重新啟動充電'**
+  String get recentDataPage_errorClearComplete;
+
+  /// No description provided for @recentDataPage_errorCode.
+  ///
+  /// In zh, this message translates to:
+  /// **'錯誤碼'**
+  String get recentDataPage_errorCode;
+
+  /// No description provided for @recentDataPage_errorNone.
+  ///
+  /// In zh, this message translates to:
+  /// **'無錯誤'**
+  String get recentDataPage_errorNone;
+
+  /// No description provided for @recentDataPage_errorPruCharged.
+  ///
+  /// In zh, this message translates to:
+  /// **'PRU 已充滿'**
+  String get recentDataPage_errorPruCharged;
+
+  /// No description provided for @recentDataPage_errorPruOc.
+  ///
+  /// In zh, this message translates to:
+  /// **'PRU 過流'**
+  String get recentDataPage_errorPruOc;
+
+  /// No description provided for @recentDataPage_errorPruOt.
+  ///
+  /// In zh, this message translates to:
+  /// **'PRU 過溫'**
+  String get recentDataPage_errorPruOt;
+
+  /// No description provided for @recentDataPage_errorPruOv.
+  ///
+  /// In zh, this message translates to:
+  /// **'PRU 過壓'**
+  String get recentDataPage_errorPruOv;
+
+  /// No description provided for @recentDataPage_errorPtuComm.
+  ///
+  /// In zh, this message translates to:
+  /// **'PTU 通訊錯誤'**
+  String get recentDataPage_errorPtuComm;
+
+  /// No description provided for @recentDataPage_errorPtuLpStuck.
+  ///
+  /// In zh, this message translates to:
+  /// **'PTU Low Power 卡住'**
+  String get recentDataPage_errorPtuLpStuck;
+
+  /// No description provided for @recentDataPage_errorPtuOcBus.
+  ///
+  /// In zh, this message translates to:
+  /// **'PTU IBUS 電流過流'**
+  String get recentDataPage_errorPtuOcBus;
+
+  /// No description provided for @recentDataPage_errorPtuOcI1.
+  ///
+  /// In zh, this message translates to:
+  /// **'PTU I1 電流過流'**
+  String get recentDataPage_errorPtuOcI1;
+
+  /// No description provided for @recentDataPage_errorPtuOcI3.
+  ///
+  /// In zh, this message translates to:
+  /// **'PTU I3 電流過流'**
+  String get recentDataPage_errorPtuOcI3;
+
+  /// No description provided for @recentDataPage_errorPtuOcIn.
+  ///
+  /// In zh, this message translates to:
+  /// **'PTU Iin 電流過流'**
+  String get recentDataPage_errorPtuOcIn;
+
+  /// No description provided for @recentDataPage_errorPtuOtDcdc.
+  ///
+  /// In zh, this message translates to:
+  /// **'PTU DCDC 過溫'**
+  String get recentDataPage_errorPtuOtDcdc;
+
+  /// No description provided for @recentDataPage_errorPtuOtIc.
+  ///
+  /// In zh, this message translates to:
+  /// **'PTU IC 過溫'**
+  String get recentDataPage_errorPtuOtIc;
+
+  /// No description provided for @recentDataPage_errorPtuOtPa.
+  ///
+  /// In zh, this message translates to:
+  /// **'PTU PA 過溫'**
+  String get recentDataPage_errorPtuOtPa;
+
+  /// No description provided for @recentDataPage_errorPtuPhase.
+  ///
+  /// In zh, this message translates to:
+  /// **'PTU I1/I3 相位異常'**
+  String get recentDataPage_errorPtuPhase;
+
+  /// No description provided for @recentDataPage_errorPtuPtStuck.
+  ///
+  /// In zh, this message translates to:
+  /// **'PTU Power Transfer 卡住'**
+  String get recentDataPage_errorPtuPtStuck;
+
+  /// No description provided for @recentDataPage_errorPtuTimeset.
+  ///
+  /// In zh, this message translates to:
+  /// **'PTU Timeset 失敗'**
+  String get recentDataPage_errorPtuTimeset;
+
+  /// No description provided for @recentDataPage_errorUnknown.
+  ///
+  /// In zh, this message translates to:
+  /// **'未知錯誤'**
+  String get recentDataPage_errorUnknown;
 
   /// No description provided for @recentDataPage_fault.
   ///
@@ -8368,6 +8506,24 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'上傳正常'**
   String get recentDataPage_ok;
+
+  /// No description provided for @recentDataPage_pruCurrent.
+  ///
+  /// In zh, this message translates to:
+  /// **'電流'**
+  String get recentDataPage_pruCurrent;
+
+  /// No description provided for @recentDataPage_pruTemperature.
+  ///
+  /// In zh, this message translates to:
+  /// **'接收端溫度'**
+  String get recentDataPage_pruTemperature;
+
+  /// No description provided for @recentDataPage_ptuTemperature.
+  ///
+  /// In zh, this message translates to:
+  /// **'發射端溫度'**
+  String get recentDataPage_ptuTemperature;
 
   /// No description provided for @recentDataPage_shortCharging.
   ///

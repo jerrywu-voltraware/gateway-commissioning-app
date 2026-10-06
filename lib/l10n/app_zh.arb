@@ -5195,6 +5195,15 @@
   },
   "recentDataPage_current": "電流",
   "recentDataPage_dataTime": "資料時間",
+  "recentDataPage_deviceError": "裝置異常（錯誤碼 {code}）",
+  "@recentDataPage_deviceError": {
+    "placeholders": {
+      "code": {
+        "type": "int"
+      }
+    }
+  },
+  "recentDataPage_efficiency": "效率",
   "recentDataPage_empty": "後台尚未收到這台閘道器的資料，請稍等一下再重新整理",
   "recentDataPage_emptyInterval": "後台尚未收到這台閘道器的資料；閘道器約每 {interval}上傳一筆，請稍後再重新整理",
   "@recentDataPage_emptyInterval": {
@@ -5205,6 +5214,27 @@
       }
     }
   },
+  "recentDataPage_errorChargeComplete": "充電完成",
+  "recentDataPage_errorClearComplete": "重新啟動充電",
+  "recentDataPage_errorCode": "錯誤碼",
+  "recentDataPage_errorNone": "無錯誤",
+  "recentDataPage_errorPruCharged": "PRU 已充滿",
+  "recentDataPage_errorPruOc": "PRU 過流",
+  "recentDataPage_errorPruOt": "PRU 過溫",
+  "recentDataPage_errorPruOv": "PRU 過壓",
+  "recentDataPage_errorPtuComm": "PTU 通訊錯誤",
+  "recentDataPage_errorPtuLpStuck": "PTU Low Power 卡住",
+  "recentDataPage_errorPtuOcBus": "PTU IBUS 電流過流",
+  "recentDataPage_errorPtuOcI1": "PTU I1 電流過流",
+  "recentDataPage_errorPtuOcI3": "PTU I3 電流過流",
+  "recentDataPage_errorPtuOcIn": "PTU Iin 電流過流",
+  "recentDataPage_errorPtuOtDcdc": "PTU DCDC 過溫",
+  "recentDataPage_errorPtuOtIc": "PTU IC 過溫",
+  "recentDataPage_errorPtuOtPa": "PTU PA 過溫",
+  "recentDataPage_errorPtuPhase": "PTU I1/I3 相位異常",
+  "recentDataPage_errorPtuPtStuck": "PTU Power Transfer 卡住",
+  "recentDataPage_errorPtuTimeset": "PTU Timeset 失敗",
+  "recentDataPage_errorUnknown": "未知錯誤",
   "recentDataPage_fault": "PTU 回報故障",
   "recentDataPage_label": "查看最近資料",
   "@recentDataPage_label": {
@@ -5238,6 +5268,9 @@
     }
   },
   "recentDataPage_ok": "上傳正常",
+  "recentDataPage_pruCurrent": "電流",
+  "recentDataPage_pruTemperature": "接收端溫度",
+  "recentDataPage_ptuTemperature": "發射端溫度",
   "recentDataPage_shortCharging": "充電",
   "recentDataPage_shortConfiguration": "設定",
   "@recentDataPage_shortConfiguration": {

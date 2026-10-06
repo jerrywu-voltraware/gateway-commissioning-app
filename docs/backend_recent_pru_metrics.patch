@@ -1,0 +1,24 @@
+--- a/dashboard-api/app_recent.py
++++ b/dashboard-api/app_recent.py
+@@ -34,7 +34,8 @@
+ 
+ _SQL = """
+ SELECT ts, seq, device_id, ptu_mac_addr, ptu_state,
+-       ptu_inputVoltage_mV, ptu_inputCurrent_mA, ptu_busVoltage_mV, ptu_ampTemp_degC
++       ptu_inputVoltage_mV, ptu_inputCurrent_mA, ptu_busVoltage_mV, ptu_ampTemp_degC,
++       pru_iout, pru_vrect, pru_Temp_degC, error_num, pru_mac
+ FROM IoTLogs
+ WHERE site_id = %s AND gateway_id = %s
+ ORDER BY ts DESC
+@@ -68,6 +69,11 @@
+         "input_ma": row.get("ptu_inputCurrent_mA"),
+         "bus_mv": row.get("ptu_busVoltage_mV"),
+         "temp_c": row.get("ptu_ampTemp_degC"),
++        "pru_iout": row.get("pru_iout"),
++        "pru_vrect": row.get("pru_vrect"),
++        "pru_Temp_degC": row.get("pru_Temp_degC"),
++        "error_num": row.get("error_num"),
++        "pru_mac": row.get("pru_mac"),
+     }
+ 
+ 

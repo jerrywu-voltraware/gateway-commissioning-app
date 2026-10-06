@@ -5266,12 +5266,83 @@ class AppLocalizationsZh extends AppLocalizations {
   String get recentDataPage_dataTime => '資料時間';
 
   @override
+  String recentDataPage_deviceError(int code) {
+    return '裝置異常（錯誤碼 $code）';
+  }
+
+  @override
+  String get recentDataPage_efficiency => '效率';
+
+  @override
   String get recentDataPage_empty => '後台尚未收到這台閘道器的資料，請稍等一下再重新整理';
 
   @override
   String recentDataPage_emptyInterval(String interval) {
     return '後台尚未收到這台閘道器的資料；閘道器約每 $interval上傳一筆，請稍後再重新整理';
   }
+
+  @override
+  String get recentDataPage_errorChargeComplete => '充電完成';
+
+  @override
+  String get recentDataPage_errorClearComplete => '重新啟動充電';
+
+  @override
+  String get recentDataPage_errorCode => '錯誤碼';
+
+  @override
+  String get recentDataPage_errorNone => '無錯誤';
+
+  @override
+  String get recentDataPage_errorPruCharged => 'PRU 已充滿';
+
+  @override
+  String get recentDataPage_errorPruOc => 'PRU 過流';
+
+  @override
+  String get recentDataPage_errorPruOt => 'PRU 過溫';
+
+  @override
+  String get recentDataPage_errorPruOv => 'PRU 過壓';
+
+  @override
+  String get recentDataPage_errorPtuComm => 'PTU 通訊錯誤';
+
+  @override
+  String get recentDataPage_errorPtuLpStuck => 'PTU Low Power 卡住';
+
+  @override
+  String get recentDataPage_errorPtuOcBus => 'PTU IBUS 電流過流';
+
+  @override
+  String get recentDataPage_errorPtuOcI1 => 'PTU I1 電流過流';
+
+  @override
+  String get recentDataPage_errorPtuOcI3 => 'PTU I3 電流過流';
+
+  @override
+  String get recentDataPage_errorPtuOcIn => 'PTU Iin 電流過流';
+
+  @override
+  String get recentDataPage_errorPtuOtDcdc => 'PTU DCDC 過溫';
+
+  @override
+  String get recentDataPage_errorPtuOtIc => 'PTU IC 過溫';
+
+  @override
+  String get recentDataPage_errorPtuOtPa => 'PTU PA 過溫';
+
+  @override
+  String get recentDataPage_errorPtuPhase => 'PTU I1/I3 相位異常';
+
+  @override
+  String get recentDataPage_errorPtuPtStuck => 'PTU Power Transfer 卡住';
+
+  @override
+  String get recentDataPage_errorPtuTimeset => 'PTU Timeset 失敗';
+
+  @override
+  String get recentDataPage_errorUnknown => '未知錯誤';
 
   @override
   String get recentDataPage_fault => 'PTU 回報故障';
@@ -5294,6 +5365,15 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get recentDataPage_ok => '上傳正常';
+
+  @override
+  String get recentDataPage_pruCurrent => '電流';
+
+  @override
+  String get recentDataPage_pruTemperature => '接收端溫度';
+
+  @override
+  String get recentDataPage_ptuTemperature => '發射端溫度';
 
   @override
   String get recentDataPage_shortCharging => '充電';

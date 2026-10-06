@@ -233,6 +233,160 @@ class _Reporting extends PickGateway implements SessionInfo {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  test(
+    'PRU metrics keep receiver current separate and handle missing power',
+    () {
+      final row = <String, dynamic>{
+        'input_mv': 50000,
+        'input_ma': 2000,
+        'temp_c': 49,
+        'pru_iout': 1500,
+        'pru_vrect': 48000,
+        'pru_Temp_degC': 37,
+        'error_num': 12,
+      };
+      final item = RecentItem.fromJson(row);
+      expect(item.inputMa, 2000);
+      expect(item.pruIoutMa, 1500);
+      expect(item.tempC, 49);
+      expect(item.pruTempC, 37);
+      expect(item.efficiencyPercent, 72);
+      expect(item.errorNum, 12);
+      expect(RecentItem.fromJson({...row, 'pru_iout': 0}).efficiencyPercent, 0);
+      expect(
+        RecentItem.fromJson({...row, 'input_ma': 0}).efficiencyPercent,
+        isNull,
+      );
+      expect(
+        RecentItem.fromJson({...row, 'pru_vrect': null}).efficiencyPercent,
+        isNull,
+      );
+      final old = RecentItem.fromJson({'input_ma': 1400, 'temp_c': 49});
+      expect(old.pruIoutMa, isNull);
+      expect(old.pruTempC, isNull);
+      expect(old.errorNum, isNull);
+      expect(old.efficiencyText, '--');
+    },
+  );
+
+  testWidgets('PRU metrics and raw error code appear in latest and history', (
+    tester,
+  ) async {
+    final now = DateTime(2026, 10, 6, 11, 26, 30);
+    final row = <String, dynamic>{
+      'ts': now.toIso8601String(),
+      'ptu_mac': 'DF:B0:25:F3:40:AC',
+      'pru_mac': '11:22:33:44:55:66',
+      'ptu_state': 'POWER_TRANSFER',
+      'input_mv': 50000,
+      'input_ma': 2000,
+      'temp_c': 49,
+      'pru_iout': 1500,
+      'pru_vrect': 48000,
+      'pru_Temp_degC': 37,
+      'error_num': 12,
+    };
+    final api = _Api('data')
+      ..answer = {
+        'count': 1,
+        'items': [row],
+      };
+    await _pumpPage(tester, api, now);
+    for (final (i, expected) in [
+      '50.0 V',
+      '1.50 A',
+      '49 °C',
+      '37 °C',
+      '72.0 %',
+    ].indexed) {
+      final value = tester.widget<Text>(
+        find.byKey(Key('recent-latest-value-$i')),
+      );
+      expect(value.textSpan!.toPlainText(), expected);
+    }
+    expect(find.text('電流'), findsOneWidget);
+    expect(find.text('發射端溫度'), findsOneWidget);
+    expect(find.text('接收端溫度'), findsOneWidget);
+    expect(find.text('PTU MAC'), findsOneWidget);
+    expect(find.text('PRU MAC'), findsOneWidget);
+    expect(find.text('DF:B0:25:F3:40:AC'), findsOneWidget);
+    expect(find.text('11:22:33:44:55:66'), findsOneWidget);
+    expect(find.text('PRU 電流'), findsNothing);
+    expect(find.text('未知錯誤 (0x0C)'), findsOneWidget);
+    expect(
+      find.text(recentDataOkText),
+      findsOneWidget,
+    ); // upload != device health
+    await tester.ensureVisible(find.byKey(const Key('recent-table-tile')));
+    await tester.tap(find.byKey(const Key('recent-table-tile')));
+    await tester.pumpAndSettle();
+    final history = find.byKey(const Key('recent-row-0'));
+    expect(
+      find.descendant(of: history, matching: find.text('1.50')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: history, matching: find.text('未知錯誤 (0x0C)')),
+      findsOneWidget,
+    );
+    for (final entry in {163: 'PRU 已充滿', 178: '充電完成', 179: '重新啟動充電'}.entries) {
+      api.answer = {
+        'count': 1,
+        'items': [
+          {...row, 'error_num': entry.key},
+        ],
+      };
+      await tester.tap(find.byKey(const Key('recent-refresh')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('recent-latest-fault')), findsNothing);
+      final notice = tester.widget<Text>(
+        find.byKey(const Key('recent-latest-notice')),
+      );
+      expect(notice.data, startsWith(entry.value));
+    }
+    // Newest sample clears the device warning; older APIs never show input current.
+    api.answer = {
+      'count': 1,
+      'items': [
+        {...row, 'error_num': 0, 'pru_iout': null},
+      ],
+    };
+    await tester.tap(find.byKey(const Key('recent-refresh')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('recent-latest-fault')), findsNothing);
+    final value = tester.widget<Text>(
+      find.byKey(const Key('recent-latest-value-1')),
+    );
+    expect(value.textSpan!.toPlainText(), '-- A');
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  test('PRU metrics match station 20 backend log from 2026-10-06', () {
+    final item = RecentItem.fromJson({
+      'ts': '2026-10-06T11:38:15+08:00',
+      'ptu_mac': 'DF:B0:25:F3:40:AC',
+      'pru_mac': '2F:F7:F6:24:00:A2',
+      'ptu_state': 'POWER_TRANSFER',
+      'input_mv': 53633,
+      'input_ma': 1403,
+      'bus_mv': 34918,
+      'temp_c': 59,
+      'pru_vrect': 43720,
+      'pru_iout': 1051,
+      'pru_Temp_degC': 20,
+      'error_num': 0,
+    });
+    expect(recentAmpsText(item.pruIoutMa), '1.05');
+    expect(recentAmpsText(item.inputMa), '1.40');
+    expect(item.tempC, 59);
+    expect(item.pruTempC, 20);
+    expect(item.ptuMacText, 'DF:B0:25:F3:40:AC');
+    expect(item.pruMacText, '2F:F7:F6:24:00:A2');
+    expect(item.errorNum, 0);
+    expect(item.efficiencyPercent, closeTo(61.06, 0.02));
+  });
+
   group('model', () {
     test('parses the contract; ts is local time', () {
       final data = RecentData.fromJson(Map<String, dynamic>.from(_sample));
@@ -574,8 +728,8 @@ void main() {
           .widgetList<RichText>(big)
           .map((r) => r.text.toPlainText())
           .toList();
-      expect(bigText, containsAll(['5.0 V', '1.61 A', '31 °C']));
-      for (final (i, value) in ['5.0 V', '1.61 A', '31 °C'].indexed) {
+      expect(bigText, containsAll(['5.0 V', '-- A', '31 °C']));
+      for (final (i, value) in ['5.0 V', '-- A', '31 °C'].indexed) {
         final number = find.byKey(Key('recent-latest-value-$i'));
         final text = tester.widget<Text>(number);
         expect(text.textSpan!.toPlainText(), value);
@@ -620,12 +774,12 @@ void main() {
       expect(find.text('12:59:45'), findsOneWidget);
       expect(find.text('充電'), findsNWidgets(2));
       expect(find.text('POWER_TRANSFER'), findsNothing);
-      // One PTU: no PTU column, no sideways scroll.
+      // One PTU: no repeated MAC column; error descriptions scroll horizontally.
       expect(
         find.descendant(of: table, matching: find.text('PTU')),
         findsNothing,
       );
-      expect(find.byKey(const Key('recent-table-scroll')), findsNothing);
+      expect(find.byKey(const Key('recent-table-scroll')), findsOneWidget);
       expect(find.byKey(const Key('recent-empty')), findsNothing);
       expect(find.byKey(const Key('recent-error')), findsNothing);
       expect(api.paths, ['GET /api/app/recent/80/1?limit=20']);
@@ -727,61 +881,52 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('table at 360 dp: every column visible, no overflow', (
-      tester,
-    ) async {
-      tester.view.physicalSize = const Size(360, 800);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      final now = DateTime(2026, 9, 28, 13, 0, 10);
-      final api = _Api('data')
-        ..answer = _rowsAt(
-          now,
-          const [
-            Duration(seconds: 1),
-            Duration(seconds: 2),
-            Duration(seconds: 3),
-            Duration(seconds: 4),
-          ],
-          states: const [
-            'POWER_TRANSFER',
-            'EXCEEDED_RANGE',
-            'LOW_POWER',
-            'LOCAL_FAULT',
-          ],
-          ma: const [1612, 12345, 0, 7],
+    testWidgets(
+      'table at 360 dp: extra telemetry columns scroll without overflow',
+      (tester) async {
+        tester.view.physicalSize = const Size(360, 800);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        final now = DateTime(2026, 9, 28, 13, 0, 10);
+        final api = _Api('data')
+          ..answer = _rowsAt(
+            now,
+            const [
+              Duration(seconds: 1),
+              Duration(seconds: 2),
+              Duration(seconds: 3),
+              Duration(seconds: 4),
+            ],
+            states: const [
+              'POWER_TRANSFER',
+              'EXCEEDED_RANGE',
+              'LOW_POWER',
+              'LOCAL_FAULT',
+            ],
+            ma: const [1612, 12345, 0, 7],
+          );
+        await _pumpPage(tester, api, now);
+        expect(tester.takeException(), isNull);
+        await tester.scrollUntilVisible(
+          find.byKey(const Key('recent-table-tile')),
+          200,
         );
-      await _pumpPage(tester, api, now);
-      expect(tester.takeException(), isNull);
-      await tester.scrollUntilVisible(
-        find.byKey(const Key('recent-table-tile')),
-        200,
-      );
-      await tester.tap(find.byKey(const Key('recent-table-tile')));
-      await tester.pumpAndSettle();
-      expect(tester.takeException(), isNull, reason: 'no overflow');
-      expect(find.byKey(const Key('recent-table')), findsOneWidget);
-      expect(find.byKey(const Key('recent-table-scroll')), findsNothing);
-      // The last column (狀態) ends inside the 360 dp screen, for the
-      // header and for every row.
-      for (final label in ['狀態', '充電', '超範圍', '低功率', '故障']) {
-        final rect = tester.getRect(
-          find.descendant(
-            of: find.byKey(const Key('recent-table')),
-            matching: find.text(label),
-          ),
+        await tester.tap(find.byKey(const Key('recent-table-tile')));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull, reason: 'no overflow');
+        expect(find.byKey(const Key('recent-table')), findsOneWidget);
+        expect(find.byKey(const Key('recent-table-scroll')), findsOneWidget);
+        await tester.drag(
+          find.byKey(const Key('recent-table-scroll')),
+          const Offset(-600, 0),
         );
-        expect(rect.right, lessThanOrEqualTo(360), reason: label);
-        expect(rect.left, greaterThanOrEqualTo(0), reason: label);
-      }
-      // A row's cells are one line: the state text is not wrapped.
-      final state = tester.widget<Text>(find.text('超範圍'));
-      expect(state.maxLines, 1);
-      expect(state.softWrap, isFalse);
-      expect(find.text('12.35'), findsOneWidget, reason: 'a wide A value');
-      expect(tester.takeException(), isNull);
-    });
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        final code = tester.getRect(find.text('錯誤碼'));
+        expect(code.right, lessThanOrEqualTo(360));
+      },
+    );
 
     testWidgets('count 0: grey banner, refresh then shows data', (
       tester,

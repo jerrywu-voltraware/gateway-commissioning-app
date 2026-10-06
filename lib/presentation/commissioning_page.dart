@@ -51,6 +51,22 @@ import '../l10n/l10n.dart';
 /// Same name as the Android label / iOS display name (appInfo_title).
 String get appBarTitle => L10n.current.appInfo_title;
 
+/// Keep the full app name readable; secondary controls have their own row.
+class _AppBarTitle extends StatelessWidget {
+  const _AppBarTitle();
+
+  @override
+  Widget build(BuildContext context) => MediaQuery.withClampedTextScaling(
+    maxScaleFactor: 1.3,
+    child: Text(
+      context.l10n.appInfo_title,
+      key: const Key('appbar-title'),
+      maxLines: 1,
+      softWrap: false,
+    ),
+  );
+}
+
 enum _AutomaticAction { wifiReset, networkCheck, online, verify }
 
 class CommissioningPage extends ConsumerStatefulWidget {
@@ -1655,30 +1671,31 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       },
       child: Scaffold(
         appBar: AppBar(
-          // Keep the full title beside help, environment and menu actions.
-          // Fit the actual platform font to the remaining toolbar width.
-          title: FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Text(
-              context.l10n.appInfo_title,
-              key: const Key('appbar-title'),
-              maxLines: 1,
-              softWrap: false,
+          title: const _AppBarTitle(),
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(48),
+            child: SizedBox(
+              key: const Key('appbar-secondary-actions'),
+              height: 48,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    if (state.step > 0 && !demo && controller.fieldHelpAvailable)
+                      IconButton(
+                        key: const Key('field-help-appbar'),
+                        icon: const Icon(Icons.support_agent),
+                        tooltip: fieldHelpLabel,
+                        onPressed: () => openFieldHelp(context, ref),
+                      ),
+                    EnvironmentChip(onPressed: _openEnvironmentSheet),
+                  ],
+                ),
+              ),
             ),
           ),
           actions: [
-            // Field rescue v1: no error, but the installer does not know
-            // what to do next.
-            if (state.step > 0 && !demo && controller.fieldHelpAvailable)
-              IconButton(
-                key: const Key('field-help-appbar'),
-                icon: const Icon(Icons.support_agent),
-                tooltip: fieldHelpLabel,
-                visualDensity: VisualDensity.compact,
-                onPressed: () => openFieldHelp(context, ref),
-              ),
-            EnvironmentChip(onPressed: _openEnvironmentSheet),
             // Keep the first menu short; mode and appearance choices open
             // separately so they do not cover the gateway list together.
             PopupMenuButton<String>(
@@ -3993,7 +4010,20 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(ptu['mac'].toString()),
+                  // 10-06 (iPhone, larger text): beside the trailing count
+                  // the MAC broke inside itself (「…96:0」 / 「0」). One line,
+                  // shrunk a little when the space is short — its tail is
+                  // what tells the PTUs apart.
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      ptu['mac'].toString(),
+                      key: Key('verify-mac-$id'),
+                      maxLines: 1,
+                      softWrap: false,
+                    ),
+                  ),
                   if (skip)
                     TextButton(
                       key: Key('verify-skip-$id'),
