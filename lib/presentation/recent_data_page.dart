@@ -1,4 +1,5 @@
 import 'recent_error.dart';
+import 'dart:async';
 import 'dart:math' show max;
 
 import 'package:flutter/material.dart';
@@ -303,7 +304,7 @@ String recentLatestLine(RecentItem item, DateTime now) {
 /// is the newest row, is the PTU fine. Top to bottom: the status banner
 /// followed by the newest measurements per PTU. Row counts and sampling
 /// statistics belong with the collapsed history table.
-/// No polling: 〔重新整理〕 at the top right, 〔重試〕 on an error.
+/// Refreshes every two seconds while visible and in the foreground.
 class RecentDataPage extends ConsumerStatefulWidget {
   const RecentDataPage({
     super.key,
@@ -329,26 +330,78 @@ class RecentDataPage extends ConsumerStatefulWidget {
   ConsumerState<RecentDataPage> createState() => _RecentDataPageState();
 }
 
-class _RecentDataPageState extends ConsumerState<RecentDataPage> {
+class _RecentDataPageState extends ConsumerState<RecentDataPage>
+    with WidgetsBindingObserver {
   RecentData? _data;
   Object? _error;
   bool _loading = false;
   int _generation = 0;
+  Timer? _refreshTimer;
+  Timer? _clockTimer;
+  bool _foreground = true;
+  bool _requestInFlight = false;
+
+  bool get _visible =>
+      mounted && _foreground && (ModalRoute.of(context)?.isCurrent ?? true);
+
+  void _startTimers() {
+    _stopTimers();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      if (_visible) _load(silent: true);
+    });
+    _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (_visible && _data != null) setState(() {});
+    });
+  }
+
+  void _stopTimers() {
+    _refreshTimer?.cancel();
+    _clockTimer?.cancel();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _foreground = state == AppLifecycleState.resumed;
+    if (_foreground) {
+      _startTimers();
+      if (_visible) _load(silent: true);
+    } else {
+      _stopTimers();
+      ++_generation;
+      _loading = false;
+    }
+  }
+
+  @override
+  void dispose() {
+    _stopTimers();
+    WidgetsBinding.instance.removeObserver(this);
+    ++_generation;
+    super.dispose();
+  }
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    _foreground = lifecycle == null || lifecycle == AppLifecycleState.resumed;
     // Field rescue: tell the back office the installer is checking the
     // data (skipped once the session ended on the done page).
     ref.read(fieldReporterProvider).noteRecentDataViewed();
-    _load();
+    if (_foreground) {
+      _load();
+      _startTimers();
+    }
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool silent = false}) async {
+    if (_requestInFlight || !_foreground) return;
+    _requestInFlight = true;
     final gen = ++_generation;
     setState(() {
-      _loading = true;
-      _error = null;
+      _loading = !silent || _data == null;
+      if (!silent) _error = null;
     });
     RecentData? data;
     Object? error;
@@ -365,6 +418,8 @@ class _RecentDataPageState extends ConsumerState<RecentDataPage> {
           );
     } catch (e) {
       error = e;
+    } finally {
+      _requestInFlight = false;
     }
     if (!mounted || gen != _generation) return;
     setState(() {
@@ -372,6 +427,7 @@ class _RecentDataPageState extends ConsumerState<RecentDataPage> {
       if (error != null) {
         _error = error;
       } else {
+        _error = null;
         _data = data;
       }
     });
