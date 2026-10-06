@@ -5703,6 +5703,12 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get recentDataPage_batteryVoltage => 'Battery Voltage';
+
+  @override
+  String get recentDataPage_chargingCurrent => 'Charging Current';
+
+  @override
   String get recentDataPage_current => 'Current';
 
   @override
@@ -5792,6 +5798,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get recentDataPage_fault => 'PTU reports a fault';
 
   @override
+  String get recentDataPage_faultCode => 'Fault Code';
+
+  @override
   String get recentDataPage_label => 'View recent data';
 
   @override
@@ -5811,10 +5820,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get recentDataPage_ok => 'Uploading OK';
 
   @override
+  String get recentDataPage_overallEfficiency => 'Overall Efficiency';
+
+  @override
   String get recentDataPage_pruCurrent => 'Current';
 
   @override
+  String get recentDataPage_pruOutputPower => 'PRU Output Power';
+
+  @override
   String get recentDataPage_pruTemperature => 'Receiver temp';
+
+  @override
+  String get recentDataPage_ptuInputPower => 'PTU Input Power';
 
   @override
   String get recentDataPage_ptuTemperature => 'Transmitter temp';
@@ -5872,6 +5890,21 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get recentDataPage_statePowerTransfer => 'Charging';
+
+  @override
+  String get recentDataPage_systemCharging => 'Charging';
+
+  @override
+  String get recentDataPage_systemFault => 'Fault';
+
+  @override
+  String get recentDataPage_systemNormal => 'Normal';
+
+  @override
+  String get recentDataPage_systemStatus => 'System Status / Fault';
+
+  @override
+  String get recentDataPage_systemWarning => 'Warning';
 
   @override
   String recentDataPage_tableTitleCount(String title, int count) {

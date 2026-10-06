@@ -66,5 +66,16 @@
   "recentDataPage_errorPtuPtStuck": "PTU stuck in Power Transfer",
   "recentDataPage_errorChargeComplete": "Charging complete",
   "recentDataPage_errorClearComplete": "Restarting charging",
-  "recentDataPage_errorUnknown": "Unknown error"
+  "recentDataPage_errorUnknown": "Unknown error",
+  "recentDataPage_ptuInputPower": "PTU Input Power",
+  "recentDataPage_pruOutputPower": "PRU Output Power",
+  "recentDataPage_overallEfficiency": "Overall Efficiency",
+  "recentDataPage_batteryVoltage": "Battery Voltage",
+  "recentDataPage_chargingCurrent": "Charging Current",
+  "recentDataPage_systemStatus": "System Status / Fault",
+  "recentDataPage_faultCode": "Fault Code",
+  "recentDataPage_systemNormal": "Normal",
+  "recentDataPage_systemCharging": "Charging",
+  "recentDataPage_systemWarning": "Warning",
+  "recentDataPage_systemFault": "Fault"
 }

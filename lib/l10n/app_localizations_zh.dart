@@ -5273,6 +5273,12 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String get recentDataPage_batteryVoltage => 'Battery Voltage';
+
+  @override
+  String get recentDataPage_chargingCurrent => 'Charging Current';
+
+  @override
   String get recentDataPage_current => '電流';
 
   @override
@@ -5361,6 +5367,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get recentDataPage_fault => 'PTU 回報故障';
 
   @override
+  String get recentDataPage_faultCode => 'Fault Code';
+
+  @override
   String get recentDataPage_label => '查看最近資料';
 
   @override
@@ -5380,10 +5389,19 @@ class AppLocalizationsZh extends AppLocalizations {
   String get recentDataPage_ok => '上傳正常';
 
   @override
+  String get recentDataPage_overallEfficiency => '????';
+
+  @override
   String get recentDataPage_pruCurrent => '電流';
 
   @override
+  String get recentDataPage_pruOutputPower => 'PRU ????';
+
+  @override
   String get recentDataPage_pruTemperature => '接收端溫度';
+
+  @override
+  String get recentDataPage_ptuInputPower => 'PTU ????';
 
   @override
   String get recentDataPage_ptuTemperature => '發射端溫度';
@@ -5441,6 +5459,21 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get recentDataPage_statePowerTransfer => '充電中';
+
+  @override
+  String get recentDataPage_systemCharging => 'Charging';
+
+  @override
+  String get recentDataPage_systemFault => 'Fault';
+
+  @override
+  String get recentDataPage_systemNormal => 'Normal';
+
+  @override
+  String get recentDataPage_systemStatus => 'System Status / Fault';
+
+  @override
+  String get recentDataPage_systemWarning => 'Warning';
 
   @override
   String recentDataPage_tableTitleCount(String title, int count) {

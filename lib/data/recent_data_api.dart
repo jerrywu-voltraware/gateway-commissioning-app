@@ -63,6 +63,28 @@ class RecentItem {
   /// Device error code, not a transport/upload failure. Null on older APIs.
   final int? errorNum;
 
+  /// Derived from this sample only; invalid/missing readings stay unknown.
+  static double? _scaledReading(num? value, double divisor) =>
+      value == null || !value.isFinite || value < 0 ? null : value / divisor;
+
+  static double? _powerWatts(num? mv, num? ma) {
+    final volts = _scaledReading(mv, 1000);
+    final amps = _scaledReading(ma, 1000);
+    if (volts == null || amps == null) return null;
+    final watts = volts * amps;
+    return watts.isFinite ? watts : null;
+  }
+
+  double? get ptuInputWatts => _powerWatts(inputMv, inputMa);
+  double? get pruOutputWatts =>
+      _powerWatts(pruVbatRaw == null ? null : pruVbatRaw! * 10, pruIoutMa);
+  double? get batteryVolts => _scaledReading(pruVbatRaw, 100);
+  double? get chargingAmps => _scaledReading(pruIoutMa, 1000);
+  String get ptuInputPowerText => ptuInputWatts?.toStringAsFixed(2) ?? '--';
+  String get pruOutputPowerText => pruOutputWatts?.toStringAsFixed(2) ?? '--';
+  String get batteryVoltageText => batteryVolts?.toStringAsFixed(2) ?? '--';
+  String get chargingCurrentText => chargingAmps?.toStringAsFixed(2) ?? '--';
+
   /// PRU (raw VBAT * 10) * IOUT / (PTU VIN * IIN), as a percentage.
   /// All four values must come from this same sample. Missing/invalid data
   /// or zero input power is unknown; a measured zero output remains zero.

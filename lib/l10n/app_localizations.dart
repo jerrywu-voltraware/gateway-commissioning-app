@@ -8327,6 +8327,18 @@ abstract class AppLocalizations {
   /// **'{age}前'**
   String recentDataPage_ago(String age);
 
+  /// No description provided for @recentDataPage_batteryVoltage.
+  ///
+  /// In zh, this message translates to:
+  /// **'Battery Voltage'**
+  String get recentDataPage_batteryVoltage;
+
+  /// No description provided for @recentDataPage_chargingCurrent.
+  ///
+  /// In zh, this message translates to:
+  /// **'Charging Current'**
+  String get recentDataPage_chargingCurrent;
+
   /// No description provided for @recentDataPage_current.
   ///
   /// In zh, this message translates to:
@@ -8495,6 +8507,12 @@ abstract class AppLocalizations {
   /// **'PTU 回報故障'**
   String get recentDataPage_fault;
 
+  /// No description provided for @recentDataPage_faultCode.
+  ///
+  /// In zh, this message translates to:
+  /// **'Fault Code'**
+  String get recentDataPage_faultCode;
+
   /// Button on the done page that opens the recent-data page.
   ///
   /// In zh, this message translates to:
@@ -8525,17 +8543,35 @@ abstract class AppLocalizations {
   /// **'上傳正常'**
   String get recentDataPage_ok;
 
+  /// No description provided for @recentDataPage_overallEfficiency.
+  ///
+  /// In zh, this message translates to:
+  /// **'????'**
+  String get recentDataPage_overallEfficiency;
+
   /// No description provided for @recentDataPage_pruCurrent.
   ///
   /// In zh, this message translates to:
   /// **'電流'**
   String get recentDataPage_pruCurrent;
 
+  /// No description provided for @recentDataPage_pruOutputPower.
+  ///
+  /// In zh, this message translates to:
+  /// **'PRU ????'**
+  String get recentDataPage_pruOutputPower;
+
   /// No description provided for @recentDataPage_pruTemperature.
   ///
   /// In zh, this message translates to:
   /// **'接收端溫度'**
   String get recentDataPage_pruTemperature;
+
+  /// No description provided for @recentDataPage_ptuInputPower.
+  ///
+  /// In zh, this message translates to:
+  /// **'PTU ????'**
+  String get recentDataPage_ptuInputPower;
 
   /// No description provided for @recentDataPage_ptuTemperature.
   ///
@@ -8650,6 +8686,36 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'充電中'**
   String get recentDataPage_statePowerTransfer;
+
+  /// No description provided for @recentDataPage_systemCharging.
+  ///
+  /// In zh, this message translates to:
+  /// **'Charging'**
+  String get recentDataPage_systemCharging;
+
+  /// No description provided for @recentDataPage_systemFault.
+  ///
+  /// In zh, this message translates to:
+  /// **'Fault'**
+  String get recentDataPage_systemFault;
+
+  /// No description provided for @recentDataPage_systemNormal.
+  ///
+  /// In zh, this message translates to:
+  /// **'Normal'**
+  String get recentDataPage_systemNormal;
+
+  /// No description provided for @recentDataPage_systemStatus.
+  ///
+  /// In zh, this message translates to:
+  /// **'System Status / Fault'**
+  String get recentDataPage_systemStatus;
+
+  /// No description provided for @recentDataPage_systemWarning.
+  ///
+  /// In zh, this message translates to:
+  /// **'Warning'**
+  String get recentDataPage_systemWarning;
 
   /// No description provided for @recentDataPage_tableTitleCount.
   ///

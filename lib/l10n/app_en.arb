@@ -5210,6 +5210,8 @@
       }
     }
   },
+  "recentDataPage_batteryVoltage": "Battery Voltage",
+  "recentDataPage_chargingCurrent": "Charging Current",
   "recentDataPage_current": "Current",
   "recentDataPage_dataTime": "Data time",
   "recentDataPage_deviceError": "Device error (code {code})",
@@ -5253,6 +5255,7 @@
   "recentDataPage_errorPtuTimeset": "PTU Timeset failed",
   "recentDataPage_errorUnknown": "Unknown error",
   "recentDataPage_fault": "PTU reports a fault",
+  "recentDataPage_faultCode": "Fault Code",
   "recentDataPage_label": "View recent data",
   "@recentDataPage_label": {
     "description": "Button on the done page that opens the recent-data page."
@@ -5285,8 +5288,11 @@
     }
   },
   "recentDataPage_ok": "Uploading OK",
+  "recentDataPage_overallEfficiency": "Overall Efficiency",
   "recentDataPage_pruCurrent": "Current",
+  "recentDataPage_pruOutputPower": "PRU Output Power",
   "recentDataPage_pruTemperature": "Receiver temp",
+  "recentDataPage_ptuInputPower": "PTU Input Power",
   "recentDataPage_ptuTemperature": "Transmitter temp",
   "recentDataPage_shortCharging": "Charging",
   "recentDataPage_shortConfiguration": "Config",
@@ -5312,6 +5318,11 @@
   "recentDataPage_stateOta": "OTA updating",
   "recentDataPage_statePowerSave": "Power save",
   "recentDataPage_statePowerTransfer": "Charging",
+  "recentDataPage_systemCharging": "Charging",
+  "recentDataPage_systemFault": "Fault",
+  "recentDataPage_systemNormal": "Normal",
+  "recentDataPage_systemStatus": "System Status / Fault",
+  "recentDataPage_systemWarning": "Warning",
   "recentDataPage_tableTitleCount": "{title} ({count, plural, =1{1 row} other{{count} rows}})",
   "@recentDataPage_tableTitleCount": {
     "placeholders": {

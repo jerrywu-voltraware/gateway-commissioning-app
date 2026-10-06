@@ -97,6 +97,38 @@ String ptuStateLabel(String state) {
 /// A fault state (`*_FAULT`).
 bool ptuStateIsFault(String state) => state.toUpperCase().contains('FAULT');
 
+/// Device status is independent of the upload freshness banner.
+bool recentSystemIsWarning(RecentItem item) => const {
+  'COOLING',
+  'EXCEEDED_RANGE',
+}.contains(item.ptuState.trim().toUpperCase());
+
+bool recentSystemIsFault(RecentItem item) =>
+    ptuStateIsFault(item.ptuState) || recentErrorIsFault(item.errorNum);
+
+String recentSystemStatus(RecentItem item) {
+  final l10n = L10n.current;
+  if (recentSystemIsFault(item)) return l10n.recentDataPage_systemFault;
+  if (recentSystemIsWarning(item)) return l10n.recentDataPage_systemWarning;
+  final state = item.ptuState.trim().toUpperCase();
+  if (state == 'POWER_TRANSFER') return l10n.recentDataPage_systemCharging;
+  if (const {
+    'CONFIGURATION',
+    'POWER_SAVE',
+    'LOW_POWER',
+    'IDLE',
+    'OTA_MODE',
+  }.contains(state)) {
+    return l10n.recentDataPage_systemNormal;
+  }
+  return '--';
+}
+
+String recentFaultCodeText(RecentItem item) =>
+    recentSystemIsFault(item) || recentSystemIsWarning(item)
+    ? recentErrorText(item.errorNum)
+    : '--';
+
 /// 1.0.0+5: the table's short state words (the 「狀態」 column must fit
 /// a 360 dp phone with the other columns). Same keys as [ptuStateLabels];
 /// `IDLE` reads 「待機」; any other `*_FAULT` 「故障」; the rest as sent,
@@ -681,8 +713,13 @@ class _LatestCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
-    final fault =
-        ptuStateIsFault(item.ptuState) || recentErrorIsFault(item.errorNum);
+    final fault = recentSystemIsFault(item);
+    final warning = recentSystemIsWarning(item);
+    final statusColor = fault
+        ? colors.error
+        : warning
+        ? Colors.orange.shade800
+        : colors.onSurface;
     final key = big ? 'recent-latest' : 'recent-latest-${item.ptuTail}';
     return Card(
       key: Key(key),
@@ -704,32 +741,57 @@ class _LatestCard extends StatelessWidget {
               big: big,
               values: [
                 (
-                  recentVoltsBigText(item.inputMv),
-                  'V',
-                  context.l10n.recentDataPage_voltage,
+                  item.ptuInputPowerText,
+                  'W',
+                  context.l10n.recentDataPage_ptuInputPower,
                 ),
                 (
-                  recentAmpsText(item.pruIoutMa),
-                  'A',
-                  context.l10n.recentDataPage_current,
-                ),
-                (
-                  recentTempText(item.tempC),
-                  '°C',
-                  context.l10n.recentDataPage_ptuTemperature,
-                ),
-                (
-                  recentTempText(item.pruTempC),
-                  '°C',
-                  context.l10n.recentDataPage_pruTemperature,
+                  item.pruOutputPowerText,
+                  'W',
+                  context.l10n.recentDataPage_pruOutputPower,
                 ),
                 (
                   item.efficiencyText,
                   '%',
-                  context.l10n.recentDataPage_efficiency,
+                  context.l10n.recentDataPage_overallEfficiency,
+                ),
+                (
+                  item.batteryVoltageText,
+                  'V',
+                  context.l10n.recentDataPage_batteryVoltage,
+                ),
+                (
+                  item.chargingCurrentText,
+                  'A',
+                  context.l10n.recentDataPage_chargingCurrent,
                 ),
               ],
             ),
+            const SizedBox(height: 12),
+            _LabeledValue(
+              label: context.l10n.recentDataPage_systemStatus,
+              value: Text(
+                recentSystemStatus(item),
+                key: Key('$key-line-state'),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: statusColor,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            if (fault || warning) ...[
+              const SizedBox(height: 8),
+              _LabeledValue(
+                label: context.l10n.recentDataPage_faultCode,
+                value: Text(
+                  recentFaultCodeText(item),
+                  key: Key('$key-fault'),
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: statusColor,
+                  ),
+                ),
+              ),
+            ],
             const Divider(height: 24),
             Column(
               key: Key('$key-line'),
@@ -755,18 +817,6 @@ class _LatestCard extends StatelessWidget {
                     style: theme.textTheme.bodyMedium?.copyWith(
                       fontFamily: 'monospace',
                       color: colors.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                _LabeledValue(
-                  label: context.l10n.recentDataPage_stateLabel,
-                  value: Text(
-                    ptuStateLabel(item.ptuState),
-                    key: Key('$key-line-state'),
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: fault ? colors.error : colors.onSurface,
-                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
@@ -799,33 +849,6 @@ class _LatestCard extends StatelessWidget {
                 ),
               ],
             ),
-            if (fault || item.errorNum != null) ...[
-              const SizedBox(height: 6),
-              Row(
-                children: [
-                  Icon(
-                    fault ? Icons.warning_amber : Icons.info_outline,
-                    size: 18,
-                    color: fault ? colors.error : colors.onSurfaceVariant,
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      [
-                        if (ptuStateIsFault(item.ptuState)) recentDataFaultText,
-                        if (item.errorNum != null)
-                          recentErrorText(item.errorNum),
-                      ].join(' · '),
-                      key: Key(fault ? '$key-fault' : '$key-notice'),
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: fault ? colors.error : colors.onSurfaceVariant,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
           ],
         ),
       ),
@@ -950,16 +973,8 @@ class _LatestGrid extends StatelessWidget {
 // 3. Recent rows table (collapsed)
 // ---------------------------------------------------------------------------
 
-/// 1.0.0+5: fixed column widths, one line per row, no wrapping. One PTU
-/// (the direct mode): 時間｜V｜A｜°C｜狀態, 286 dp with the margins — it fits
-/// a 360 dp phone without a horizontal scroll (the 「狀態」 column was cut
-/// off before). Several PTUs: a 「PTU」 column (MAC's last 3 groups) is
-/// added and the table scrolls sideways.
-///
-/// 1.0.0+10 (review: at text scale 1.3 the fixed widths silently clipped
-/// the digits): the widths grow with the text scale, a cell too long ends
-/// in 「…」, and one PTU's table scrolls sideways too once it no longer
-/// fits the width.
+/// Charging measurements use the same units and status mapping as the cards.
+/// The history scrolls horizontally; column widths grow with text scaling.
 class _RecentTable extends StatelessWidget {
   const _RecentTable({required this.data, required this.singlePtu});
   final RecentData data;
@@ -977,13 +992,33 @@ class _RecentTable extends StatelessWidget {
     final columns = <_Col>[
       _Col(context.l10n.recentDataPage_time, 66),
       if (!singlePtu) const _Col('PTU MAC', 80),
-      const _Col('V', 42, numeric: true),
-      const _Col('A', 42, numeric: true),
-      _Col(context.l10n.recentDataPage_ptuTemperature, 100, numeric: true),
-      _Col(context.l10n.recentDataPage_pruTemperature, 100, numeric: true),
-      _Col(context.l10n.recentDataPage_efficiency, 80, numeric: true),
-      _Col(context.l10n.recentDataPage_stateLabel, 58),
-      _Col(context.l10n.recentDataPage_errorCode, 340),
+      _Col(
+        '${context.l10n.recentDataPage_ptuInputPower} (W)',
+        170,
+        numeric: true,
+      ),
+      _Col(
+        '${context.l10n.recentDataPage_pruOutputPower} (W)',
+        180,
+        numeric: true,
+      ),
+      _Col(
+        '${context.l10n.recentDataPage_overallEfficiency} (%)',
+        180,
+        numeric: true,
+      ),
+      _Col(
+        '${context.l10n.recentDataPage_batteryVoltage} (V)',
+        170,
+        numeric: true,
+      ),
+      _Col(
+        '${context.l10n.recentDataPage_chargingCurrent} (A)',
+        190,
+        numeric: true,
+      ),
+      _Col(context.l10n.recentDataPage_systemStatus, 170),
+      _Col(context.l10n.recentDataPage_faultCode, 340),
     ];
     Widget text(String s, _Col col, TextStyle? style) => SizedBox(
       width: (col.width * scale).ceilToDouble(),
@@ -1026,13 +1061,13 @@ class _RecentTable extends StatelessWidget {
               recentClockText(item.ts),
               if (!singlePtu)
                 item.ptuShort.isEmpty ? '--:--:--' : item.ptuShort,
-              item.inputVoltsText,
-              recentAmpsText(item.pruIoutMa),
-              recentTempText(item.tempC),
-              recentTempText(item.pruTempC),
-              item.efficiencyPercent == null ? '--' : '${item.efficiencyText}%',
-              ptuStateShort(item.ptuState),
-              recentErrorText(item.errorNum),
+              item.ptuInputPowerText,
+              item.pruOutputPowerText,
+              item.efficiencyText,
+              item.batteryVoltageText,
+              item.chargingCurrentText,
+              recentSystemStatus(item),
+              recentFaultCodeText(item),
             ],
             cell,
             key: ValueKey('recent-row-$i'),

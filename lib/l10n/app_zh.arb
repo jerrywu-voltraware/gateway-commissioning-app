@@ -5210,6 +5210,8 @@
       }
     }
   },
+  "recentDataPage_batteryVoltage": "Battery Voltage",
+  "recentDataPage_chargingCurrent": "Charging Current",
   "recentDataPage_current": "電流",
   "recentDataPage_dataTime": "資料時間",
   "recentDataPage_deviceError": "裝置異常（錯誤碼 {code}）",
@@ -5253,6 +5255,7 @@
   "recentDataPage_errorPtuTimeset": "PTU Timeset 失敗",
   "recentDataPage_errorUnknown": "未知錯誤",
   "recentDataPage_fault": "PTU 回報故障",
+  "recentDataPage_faultCode": "Fault Code",
   "recentDataPage_label": "查看最近資料",
   "@recentDataPage_label": {
     "description": "Button on the done page that opens the recent-data page."
@@ -5285,8 +5288,11 @@
     }
   },
   "recentDataPage_ok": "上傳正常",
+  "recentDataPage_overallEfficiency": "????",
   "recentDataPage_pruCurrent": "電流",
+  "recentDataPage_pruOutputPower": "PRU ????",
   "recentDataPage_pruTemperature": "接收端溫度",
+  "recentDataPage_ptuInputPower": "PTU ????",
   "recentDataPage_ptuTemperature": "發射端溫度",
   "recentDataPage_shortCharging": "充電",
   "recentDataPage_shortConfiguration": "設定",
@@ -5312,6 +5318,11 @@
   "recentDataPage_stateOta": "OTA 更新中",
   "recentDataPage_statePowerSave": "省電",
   "recentDataPage_statePowerTransfer": "充電中",
+  "recentDataPage_systemCharging": "Charging",
+  "recentDataPage_systemFault": "Fault",
+  "recentDataPage_systemNormal": "Normal",
+  "recentDataPage_systemStatus": "System Status / Fault",
+  "recentDataPage_systemWarning": "Warning",
   "recentDataPage_tableTitleCount": "{title}（{count} 筆）",
   "@recentDataPage_tableTitleCount": {
     "placeholders": {

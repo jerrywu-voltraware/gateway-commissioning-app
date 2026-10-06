@@ -145,5 +145,16 @@
   "recentDataPage_errorPtuPtStuck": "PTU Power Transfer 卡住",
   "recentDataPage_errorChargeComplete": "充電完成",
   "recentDataPage_errorClearComplete": "重新啟動充電",
-  "recentDataPage_errorUnknown": "未知錯誤"
+  "recentDataPage_errorUnknown": "未知錯誤",
+  "recentDataPage_ptuInputPower": "PTU ????",
+  "recentDataPage_pruOutputPower": "PRU ????",
+  "recentDataPage_overallEfficiency": "????",
+  "recentDataPage_batteryVoltage": "Battery Voltage",
+  "recentDataPage_chargingCurrent": "Charging Current",
+  "recentDataPage_systemStatus": "System Status / Fault",
+  "recentDataPage_faultCode": "Fault Code",
+  "recentDataPage_systemNormal": "Normal",
+  "recentDataPage_systemCharging": "Charging",
+  "recentDataPage_systemWarning": "Warning",
+  "recentDataPage_systemFault": "Fault"
 }
