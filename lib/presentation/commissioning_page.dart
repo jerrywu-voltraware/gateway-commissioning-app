@@ -2907,7 +2907,19 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   /// shown is taken and the Wi-Fi page opens.
   Future<void> _otherWifi(CommissioningController c) async {
     final s = ref.read(commissionProvider);
-    if (s.busy) return;
+    if (s.busy || _stationWorking) return;
+    if (_stationInput(s) && _typedSite == null) {
+      FocusScope.of(context).unfocus();
+      c.changeWifiBeforeStation();
+      setState(() {
+        _ssid.text = s.config['wifi_ssid']?.toString() ?? '';
+        _wifi.clear();
+        _customWifi = false;
+        _wifiStage = false;
+      });
+      _toTop();
+      return;
+    }
     final current = _stationCurrent(s);
     final newStation = s.config['new_station'] == true;
     if ((s.config['choose_station'] == true || newStation) &&

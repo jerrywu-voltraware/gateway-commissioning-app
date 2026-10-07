@@ -5068,6 +5068,16 @@ class CommissioningController extends Notifier<CommissionState> {
       if (!ref.mounted || state.error != null || state.step != 2) return;
     }
     if (!_atCheck) return;
+    _openWifiFixForm();
+  }
+
+  /// Change Wi-Fi before a site has been selected, without assigning identity.
+  void changeWifiBeforeStation() {
+    if (state.busy || state.step != 2 || !state.checkPassed) return;
+    _openWifiFixForm();
+  }
+
+  void _openWifiFixForm() {
     final station = state.config['fleet_joined'] == true;
     state = state.copy(
       checkPassed: true,
