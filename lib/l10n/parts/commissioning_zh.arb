@@ -1,4 +1,8 @@
 {
+  "commissioning_wifiConfirmTitle": "請先確認這台閘道器使用的 Wi-Fi",
+  "commissioning_wifiConfirmHint": "請確認現場要使用的網路。沿用或更換 Wi-Fi，並確認網路正常後，才能選擇站點。",
+  "commissioning_wifiConfirmKeep": "確認沿用此 Wi-Fi",
+  "commissioning_wifiConfirmBack": "返回 Wi-Fi 確認",
   "@@locale": "zh",
   "commissioning_updateLatest": "目前已是最新版本",
   "commissioning_updateCheckFailed": "暫時無法檢查更新，請確認網路後重試",
@@ -741,5 +745,6 @@
     }
   },
   "commissioning_rejoinLabel": "重新加入",
-  "commissioning_rejoinHintText": "這台閘道器在後台被移除（封存），心跳不會被記錄。按下方「重新加入」後會繼續確認上線。"
+  "commissioning_rejoinHintText": "這台閘道器在後台被移除（封存），心跳不會被記錄。按下方「重新加入」後會繼續確認上線。",
+  "commissioning_wifiConfirmUnsupported": "此韌體無法確認目前 Wi-Fi 連線，請先更新閘道器韌體，再重新開始配置。"
 }

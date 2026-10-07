@@ -210,6 +210,17 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   /// 「確定是新站？」 lookup runs (one tap, one action).
   bool _otherSite = false;
   bool _wifiStage = false;
+  String? _confirmedWifiSsid;
+
+  bool _wifiConfirmed(CommissionState s) =>
+      _confirmedWifiSsid != null && _confirmedWifiSsid == s.net['ssid'];
+
+  bool _wifiReadyForStation(CommissionState s, NetworkCheck check) =>
+      s.netCheckSupported &&
+      check.wifiOk &&
+      check.targetOk &&
+      !s.testMode &&
+      (s.config['fleet_joined'] != true || check.uploadOk);
   bool _stationWorking = false;
 
   /// r33: 〔取代舊機〕 chosen for this (site, gateway) on the 「閘道器編號
@@ -274,6 +285,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   /// Leaving the station / Wi-Fi pages (another step, the check again,
   /// another gateway) closes their page-only choices.
   void _resetStationPages(CommissionState? previous, CommissionState next) {
+    if (previous?.peer != next.peer || next.step < 2) {
+      _confirmedWifiSsid = null;
+    }
     final open = next.step == 2 && next.checkPassed;
     if (!open ||
         previous?.peer != next.peer ||
@@ -940,7 +954,10 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     if (s.step == 2 &&
         !s.checkPassed &&
         !_autoCheckPaused &&
-        networkCheck(state: s, env: ref.read(backendEnvProvider)).ready) {
+        _wifiReadyForStation(
+          s,
+          networkCheck(state: s, env: ref.read(backendEnvProvider)),
+        )) {
       return _AutomaticAction.networkCheck;
     }
     if (s.step == 3 && !_autoOnlineStarted && s.loggedIn && !s.offline) {
@@ -1030,6 +1047,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         }
         if (_waitingForWifiUpload(s, networkCheck(state: s, env: env))) {
           return context.l10n.commissioning_wifiUploadWaitTitle;
+        }
+        if (!_wifiConfirmed(s)) {
+          return context.l10n.commissioning_wifiConfirmTitle;
         }
         final current = _stationCurrent(s);
         return current != null && !_stationInput(s)
@@ -1632,7 +1652,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     final topologySettings = ref.watch(topologyProvider);
     final topology = topologySettings.topology;
     final targetPtuCount = topologySettings.targetCount;
-    final shown = displayStep(state, env);
+    final shown = state.step == 2 && state.checkPassed && !_wifiConfirmed(state)
+        ? 2
+        : displayStep(state, env);
     final selectingPtus = state.step == 4 || state.step == 5;
     // Round 15: direct flow step 7 — the gateway's own pick with
     // 「辨識此樁」/「是這台，開始監控」; a link loss or a resume keeps the
@@ -2573,7 +2595,6 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
     final current = _stationCurrent(s);
     final input = _stationInput(s);
     final typed = _typedSite;
-    final kept = keptWifiSsid(s);
     // Keeping the station in service needs its upload working.
     final reason = inService && (!input || typed == current)
         ? check.reuseBlockedReason
@@ -2629,11 +2650,6 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         if (typed != null && !(inService && typed == current))
           _gatewayAssignment(enabled: enabled, swap: true),
       ],
-      if (kept != null)
-        _markedText(
-          CheckLine('✓', wifiKeptText(kept), StatusTone.ok),
-          key: const Key('wifi-keep'),
-        ),
       if (reason != null)
         Padding(
           padding: const EdgeInsets.only(top: 8),
@@ -2717,12 +2733,13 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
               : null,
           child: Text(context.l10n.commissioning_backToSite(current)),
         ),
-      if ((inService && !input) || kept != null)
-        TextButton(
-          key: const Key('wifi-change'),
-          onPressed: enabled && !_stationWorking ? () => _otherWifi(c) : null,
-          child: Text(otherWifiLabel),
-        ),
+      TextButton(
+        key: const Key('wifi-review'),
+        onPressed: enabled && !_stationWorking
+            ? () => setState(() => _confirmedWifiSsid = null)
+            : null,
+        child: Text(context.l10n.commissioning_wifiConfirmBack),
+      ),
       if (reason != null)
         TextButton(
           key: const Key('station-review-check'),
@@ -2765,7 +2782,11 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       enabled: enabled,
       canSave: wifiOnly || !_gatewaySubmitBlocked,
       onSave: () async {
+        final peer = s.peer;
         final verified = await _saveWifi(wifiOnly);
+        if (mounted && verified && ref.read(commissionProvider).peer == peer) {
+          setState(() => _confirmedWifiSsid = _ssid.text);
+        }
         if (mounted) _toTop();
         return verified;
       },
@@ -2808,6 +2829,14 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   }) async {
     final s = ref.read(commissionProvider);
     if (s.busy || _stationWorking) return;
+    if (!_wifiConfirmed(s) ||
+        !_wifiReadyForStation(
+          s,
+          networkCheck(state: s, env: ref.read(backendEnvProvider)),
+        )) {
+      setState(() => _confirmedWifiSsid = null);
+      return;
+    }
     final newStation = s.config['new_station'] == true;
     final inService = s.config['choose_station'] == true || newStation;
     final current = _stationCurrent(s);
@@ -2908,43 +2937,62 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
   Future<void> _otherWifi(CommissioningController c) async {
     final s = ref.read(commissionProvider);
     if (s.busy || _stationWorking) return;
-    if (_stationInput(s) && _typedSite == null) {
-      FocusScope.of(context).unfocus();
-      c.changeWifiBeforeStation();
-      setState(() {
-        if (s.config['fleet_joined'] == true) {
-          _otherSite = false;
-          _site.text = '${s.config['site_id']}';
-          _gateway.text = '${s.config['gateway_id']}';
-          _clearSwap();
-        }
-        _ssid.text = s.config['wifi_ssid']?.toString() ?? '';
-        _wifi.clear();
-        _customWifi = false;
-        _wifiStage = false;
-      });
-      _toTop();
-      return;
-    }
-    final current = _stationCurrent(s);
-    final newStation = s.config['new_station'] == true;
-    if ((s.config['choose_station'] == true || newStation) &&
-        (!_stationInput(s) || _typedSite == current)) {
-      if (newStation) c.cancelNewStation();
-      await c.chooseStation(newStation: false, wifiOnly: true);
-      if (!mounted) return;
-      setState(() {
+    FocusScope.of(context).unfocus();
+    c.changeWifiBeforeStation();
+    setState(() {
+      _confirmedWifiSsid = null;
+      if (s.config['fleet_joined'] == true) {
         _otherSite = false;
         _site.text = '${s.config['site_id']}';
         _gateway.text = '${s.config['gateway_id']}';
         _clearSwap();
-        _ssid.text = s.config['wifi_ssid']?.toString() ?? '';
-        _wifi.clear();
-        _customWifi = false;
-      });
-      return;
+      }
+      _ssid.text = s.config['wifi_ssid']?.toString() ?? '';
+      _wifi.clear();
+      _customWifi = false;
+      _wifiStage = false;
+    });
+    _toTop();
+  }
+
+  List<Widget> _wifiDecision(
+    CommissionState s,
+    CommissioningController c,
+    NetworkCheck check,
+    bool enabled,
+  ) {
+    if (!s.netCheckSupported) {
+      return [Text(context.l10n.commissioning_wifiConfirmUnsupported)];
     }
-    await _useStation(c, otherWifi: true);
+    final ssid = s.net['ssid'] is String && (s.net['ssid'] as String).isNotEmpty
+        ? s.net['ssid'] as String
+        : null;
+    return [
+      Text(context.l10n.commissioning_wifiConfirmHint),
+      const SizedBox(height: 12),
+      Text(ssid ?? s.config['wifi_ssid']?.toString() ?? '--'),
+      const SizedBox(height: 16),
+      FilledButton(
+        key: const Key('wifi-confirm-keep'),
+        onPressed: enabled && ssid != null && _wifiReadyForStation(s, check)
+            ? () {
+                c.confirmWifiForStation();
+                setState(() => _confirmedWifiSsid = ssid);
+              }
+            : null,
+        child: Text(context.l10n.commissioning_wifiConfirmKeep),
+      ),
+      OutlinedButton(
+        key: const Key('wifi-confirm-change'),
+        onPressed: enabled ? () => _otherWifi(c) : null,
+        child: Text(otherWifiLabel),
+      ),
+      if (!_wifiReadyForStation(s, check))
+        TextButton(
+          onPressed: enabled ? _reviewNetworkCheck : null,
+          child: Text(context.l10n.commissioning_backToNetworkCheck),
+        ),
+    ];
   }
 
   /// 「改回站號 N」: the station proposed before 「改用其他站號」.
@@ -3696,6 +3744,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
         }
         if (_wifiStage && s.config['choose_station'] != true) {
           return _wifiPage(s, enabled, wifiOnly: false);
+        }
+        if (!_wifiConfirmed(s) || !_wifiReadyForStation(s, check)) {
+          return _wifiDecision(s, c, check, enabled);
         }
         return _stationPage(s, c, check, enabled);
       case 3:

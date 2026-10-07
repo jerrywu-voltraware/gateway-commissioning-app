@@ -1049,6 +1049,23 @@ class AppLocalizationsZh extends AppLocalizations {
   String get commissioning_wifiBackSite => '返回修改站號';
 
   @override
+  String get commissioning_wifiConfirmBack => '返回 Wi-Fi 確認';
+
+  @override
+  String get commissioning_wifiConfirmHint =>
+      '請確認現場要使用的網路。沿用或更換 Wi-Fi，並確認網路正常後，才能選擇站點。';
+
+  @override
+  String get commissioning_wifiConfirmKeep => '確認沿用此 Wi-Fi';
+
+  @override
+  String get commissioning_wifiConfirmTitle => '請先確認這台閘道器使用的 Wi-Fi';
+
+  @override
+  String get commissioning_wifiConfirmUnsupported =>
+      '此韌體無法確認目前 Wi-Fi 連線，請先更新閘道器韌體，再重新開始配置。';
+
+  @override
   String get commissioning_wifiFirstPageText => '先讓閘道器連上 Wi-Fi，網路正常後再設定站號。';
 
   @override

@@ -1001,6 +1001,11 @@
   "commissioning_wifi24Only": "The gateway works with 2.4 GHz Wi-Fi only; 5 GHz networks do not connect.",
   "commissioning_wifiBackKeep": "Keep Wi-Fi, go back",
   "commissioning_wifiBackSite": "Back to edit site ID",
+  "commissioning_wifiConfirmBack": "Back to Wi-Fi confirmation",
+  "commissioning_wifiConfirmHint": "Confirm the network to use at this site. Keep or change Wi-Fi and verify connectivity before choosing a site.",
+  "commissioning_wifiConfirmKeep": "Confirm and keep this Wi-Fi",
+  "commissioning_wifiConfirmTitle": "Confirm the gateway Wi-Fi first",
+  "commissioning_wifiConfirmUnsupported": "This firmware cannot verify the current Wi-Fi connection. Update the gateway firmware, then restart commissioning.",
   "commissioning_wifiFirstPageText": "Connect the gateway to Wi-Fi first; set the site ID once the network works.",
   "commissioning_wifiOnlyKeep": "Keep site {site} / gateway {gateway}; update Wi-Fi only.",
   "@commissioning_wifiOnlyKeep": {

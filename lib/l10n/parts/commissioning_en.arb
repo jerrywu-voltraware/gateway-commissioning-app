@@ -1,4 +1,8 @@
 {
+  "commissioning_wifiConfirmTitle": "Confirm the gateway Wi-Fi first",
+  "commissioning_wifiConfirmHint": "Confirm the network to use at this site. Keep or change Wi-Fi and verify connectivity before choosing a site.",
+  "commissioning_wifiConfirmKeep": "Confirm and keep this Wi-Fi",
+  "commissioning_wifiConfirmBack": "Back to Wi-Fi confirmation",
   "@@locale": "en",
   "commissioning_updateLatest": "You have the latest version",
   "commissioning_updateCheckFailed": "Cannot check for updates now. Check the network and retry",
@@ -225,5 +229,6 @@
   "commissioning_topologyChangeToDirect": "Change to one-to-one",
   "commissioning_topologyKeptText": "The app now uses {mode}; the gateway keeps its mode",
   "commissioning_rejoinLabel": "Rejoin",
-  "commissioning_rejoinHintText": "This gateway was removed (archived) in the back office, so its heartbeats are not recorded. Tap [Rejoin] below to continue the online check."
+  "commissioning_rejoinHintText": "This gateway was removed (archived) in the back office, so its heartbeats are not recorded. Tap [Rejoin] below to continue the online check.",
+  "commissioning_wifiConfirmUnsupported": "This firmware cannot verify the current Wi-Fi connection. Update the gateway firmware, then restart commissioning."
 }

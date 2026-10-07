@@ -1776,6 +1776,36 @@ abstract class AppLocalizations {
   /// **'返回修改站號'**
   String get commissioning_wifiBackSite;
 
+  /// No description provided for @commissioning_wifiConfirmBack.
+  ///
+  /// In zh, this message translates to:
+  /// **'返回 Wi-Fi 確認'**
+  String get commissioning_wifiConfirmBack;
+
+  /// No description provided for @commissioning_wifiConfirmHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'請確認現場要使用的網路。沿用或更換 Wi-Fi，並確認網路正常後，才能選擇站點。'**
+  String get commissioning_wifiConfirmHint;
+
+  /// No description provided for @commissioning_wifiConfirmKeep.
+  ///
+  /// In zh, this message translates to:
+  /// **'確認沿用此 Wi-Fi'**
+  String get commissioning_wifiConfirmKeep;
+
+  /// No description provided for @commissioning_wifiConfirmTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'請先確認這台閘道器使用的 Wi-Fi'**
+  String get commissioning_wifiConfirmTitle;
+
+  /// No description provided for @commissioning_wifiConfirmUnsupported.
+  ///
+  /// In zh, this message translates to:
+  /// **'此韌體無法確認目前 Wi-Fi 連線，請先更新閘道器韌體，再重新開始配置。'**
+  String get commissioning_wifiConfirmUnsupported;
+
   /// No description provided for @commissioning_wifiFirstPageText.
   ///
   /// In zh, this message translates to:

@@ -1127,6 +1127,24 @@ class AppLocalizationsEn extends AppLocalizations {
   String get commissioning_wifiBackSite => 'Back to edit site ID';
 
   @override
+  String get commissioning_wifiConfirmBack => 'Back to Wi-Fi confirmation';
+
+  @override
+  String get commissioning_wifiConfirmHint =>
+      'Confirm the network to use at this site. Keep or change Wi-Fi and verify connectivity before choosing a site.';
+
+  @override
+  String get commissioning_wifiConfirmKeep => 'Confirm and keep this Wi-Fi';
+
+  @override
+  String get commissioning_wifiConfirmTitle =>
+      'Confirm the gateway Wi-Fi first';
+
+  @override
+  String get commissioning_wifiConfirmUnsupported =>
+      'This firmware cannot verify the current Wi-Fi connection. Update the gateway firmware, then restart commissioning.';
+
+  @override
   String get commissioning_wifiFirstPageText =>
       'Connect the gateway to Wi-Fi first; set the site ID once the network works.';
 

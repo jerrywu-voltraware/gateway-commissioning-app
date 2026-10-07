@@ -5077,6 +5077,23 @@ class CommissioningController extends Notifier<CommissionState> {
     _openWifiFixForm();
   }
 
+  /// Record the operator's explicit Wi-Fi choice without changing identity.
+  /// A new gateway obtains its MQTT account only after choosing a site.
+  void confirmWifiForStation() {
+    if (state.busy || state.step != 2 || !state.checkPassed) return;
+    final check = networkCheck(state: state, env: ref.read(backendEnvProvider));
+    final ssid = state.net['ssid'];
+    if (!check.wifiOk ||
+        !check.targetOk ||
+        state.testMode ||
+        ssid is! String ||
+        ssid.isEmpty ||
+        (state.config['fleet_joined'] == true && !check.uploadOk)) {
+      return;
+    }
+    state = state.copy(config: {...state.config, wifiFirstSsidKey: ssid});
+  }
+
   void _openWifiFixForm() {
     final station = state.config['fleet_joined'] == true;
     state = state.copy(
@@ -11598,7 +11615,8 @@ class CommissioningController extends Notifier<CommissionState> {
       now: DateTime.now(),
       // connect_log 上傳 field 診斷，維持中文（docs/i18n.md §6）。
       connectLog: [
-        for (final (attempt, type) in _connectLog?.$2 ?? const <(int, String)>[])
+        for (final (attempt, type)
+            in _connectLog?.$2 ?? const <(int, String)>[])
           connectLogLine(attempt, type, l10n: L10n.zh),
       ],
       firstConnectFailure: link is ConnectDiagnostics
