@@ -1,0 +1,67 @@
+{
+  "passed": true,
+  "checked_at_utc": "2026-10-07T06:33:39.154602+00:00",
+  "source_commit": "fb659c709f5c60efd6ab60d1bb5f94be9f389f97",
+  "build_tree_clean": true,
+  "apk_path": "F:\\iot_gateway\\APP_build66\\build\\dist\\app_fb659c7_b66_prod.apk",
+  "size_bytes": 61243812,
+  "sha256": "6ad5569aa145b9384a1ffc2a7d9a8cc3f2a082dcb21797a13584b74bcfd63825",
+  "package": "com.voltraware.gateway_commissioning",
+  "version_name": "1.0.11",
+  "version_code": 66,
+  "metadata_verified_with": "aapt2 dump badging",
+  "signer_sha256": "2ae194573a906afd0a4e3ce347a275551e3e5b27a6d4a2644d36d07d102f4b64",
+  "apksigner_v2": true,
+  "apksigner_v3": true,
+  "zipalign_16k_exit_code": 0,
+  "abis": {
+    "lib/arm64-v8a/libapp.so": {
+      "production_https_endpoint_present": true,
+      "localized_strings": {
+        "zh:commissioning_wifiConfirmTitle": true,
+        "zh:commissioning_wifiConfirmHint": true,
+        "zh:commissioning_wifiConfirmKeep": true,
+        "zh:commissioning_wifiConfirmBack": true,
+        "zh:commissioning_wifiConfirmUnsupported": true,
+        "en:commissioning_wifiConfirmTitle": true,
+        "en:commissioning_wifiConfirmHint": true,
+        "en:commissioning_wifiConfirmKeep": true,
+        "en:commissioning_wifiConfirmBack": true,
+        "en:commissioning_wifiConfirmUnsupported": true
+      }
+    },
+    "lib/armeabi-v7a/libapp.so": {
+      "production_https_endpoint_present": true,
+      "localized_strings": {
+        "zh:commissioning_wifiConfirmTitle": true,
+        "zh:commissioning_wifiConfirmHint": true,
+        "zh:commissioning_wifiConfirmKeep": true,
+        "zh:commissioning_wifiConfirmBack": true,
+        "zh:commissioning_wifiConfirmUnsupported": true,
+        "en:commissioning_wifiConfirmTitle": true,
+        "en:commissioning_wifiConfirmHint": true,
+        "en:commissioning_wifiConfirmKeep": true,
+        "en:commissioning_wifiConfirmBack": true,
+        "en:commissioning_wifiConfirmUnsupported": true
+      }
+    },
+    "lib/x86_64/libapp.so": {
+      "production_https_endpoint_present": true,
+      "localized_strings": {
+        "zh:commissioning_wifiConfirmTitle": true,
+        "zh:commissioning_wifiConfirmHint": true,
+        "zh:commissioning_wifiConfirmKeep": true,
+        "zh:commissioning_wifiConfirmBack": true,
+        "zh:commissioning_wifiConfirmUnsupported": true,
+        "en:commissioning_wifiConfirmTitle": true,
+        "en:commissioning_wifiConfirmHint": true,
+        "en:commissioning_wifiConfirmKeep": true,
+        "en:commissioning_wifiConfirmBack": true,
+        "en:commissioning_wifiConfirmUnsupported": true
+      }
+    }
+  },
+  "functional_tests": "not run per user request",
+  "phone_operations": "none",
+  "publication": "not performed; local installation scope only"
+}
