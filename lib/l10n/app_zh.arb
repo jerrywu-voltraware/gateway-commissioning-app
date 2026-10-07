@@ -1928,8 +1928,8 @@
       }
     }
   },
-  "controller_leaveListConfirmTitle": "結束這次配置並回首頁？",
-  "controller_leaveListLabel": "結束配置",
+  "controller_leaveListConfirmTitle": "離開閘道器清單，返回首頁？",
+  "controller_leaveListLabel": "返回首頁",
   "controller_linkConfirming": "藍牙已連線，正在確認閘道器回應與設定…",
   "controller_listNotWritten": "名單沒有寫入，指派照常進行",
   "controller_loginRun": "登入後端",

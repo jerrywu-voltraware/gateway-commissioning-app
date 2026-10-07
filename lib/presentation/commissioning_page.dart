@@ -2059,7 +2059,11 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
             ? _doneBar(state, controller)
             // Scanning stays at the bottom; commissioning is on its ready card.
             : state.step == 1
-            ? GatewayScanBar(choice: _gatewayChoice, enabled: !state.busy)
+            ? GatewayScanBar(
+                choice: _gatewayChoice,
+                enabled: !state.busy,
+                onHome: () => _leaveList(controller),
+              )
             : null,
         body: _showHome
             ? HomeEntryPanel(
@@ -2477,10 +2481,9 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                         // bottom bar's more menu ([DirectPickActions]), where
                         // the card above can no longer move its entry point.
                         // Round 29: not on the done page (〔完成〕／〔配置下一台〕).
-                        // 09-29: on the gateway list it is 〔結束配置〕 — back to
-                        // the start page ([_leaveList]); 「結束並重新選擇閘道器」
-                        // there only wrote 「已取消」 in place.
-                        if (state.step > 0 &&
+                        // The gateway list has a separate home action in its
+                        // fixed scan bar, not a commissioning completion action.
+                        if (state.step > 1 &&
                             !done &&
                             !directPicking &&
                             !(selectingPtus && state.busy))
@@ -2492,14 +2495,10 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
                                 ? controller.backToSelection
                                 : state.busy
                                 ? () => controller.cancel()
-                                : state.step == 1
-                                ? () => _leaveList(controller)
                                 : () => _endFlow(controller),
                             child: Text(
                               state.busy
                                   ? context.l10n.commissioning_cancelAction
-                                  : state.step == 1
-                                  ? leaveListLabel
                                   : endFlowLabel,
                             ),
                           ),
@@ -3419,7 +3418,7 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
           FilledButton(
             key: const Key('leave-confirm-end'),
             onPressed: () => Navigator.pop(context, true),
-            child: Text(context.l10n.commissioning_end),
+            child: Text(leaveListLabel),
           ),
         ],
       ),

@@ -331,9 +331,15 @@ class GatewayChoice extends ChangeNotifier {
 /// Discovery's fixed scan control. Scaffold reserves its height below the
 /// scrolling cards, and SafeArea keeps the action above system navigation.
 class GatewayScanBar extends StatelessWidget {
-  const GatewayScanBar({super.key, required this.choice, this.enabled = true});
+  const GatewayScanBar({
+    super.key,
+    required this.choice,
+    this.enabled = true,
+    this.onHome,
+  });
   final GatewayChoice choice;
   final bool enabled;
+  final VoidCallback? onHome;
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
@@ -346,18 +352,31 @@ class GatewayScanBar extends StatelessWidget {
         color: Theme.of(context).colorScheme.surface,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-          child: FilledButton.icon(
-            key: const Key('gateway-scan-toggle'),
-            style: FilledButton.styleFrom(
-              minimumSize: const Size.fromHeight(48),
-            ),
-            onPressed: enabled && choice.scanAllowed ? choice.scan : null,
-            icon: Icon(choice.scanStoppable ? Icons.stop : Icons.search),
-            label: Text(
-              choice.scanStoppable
-                  ? context.l10n.gatewayDiscovery_stopSearch
-                  : context.l10n.gatewayDiscovery_searchAgain,
-            ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              FilledButton.icon(
+                key: const Key('gateway-scan-toggle'),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48),
+                ),
+                onPressed: enabled && choice.scanAllowed ? choice.scan : null,
+                icon: Icon(choice.scanStoppable ? Icons.stop : Icons.search),
+                label: Text(
+                  choice.scanStoppable
+                      ? context.l10n.gatewayDiscovery_stopSearch
+                      : context.l10n.gatewayDiscovery_searchAgain,
+                ),
+              ),
+              if (onHome != null)
+                TextButton.icon(
+                  key: const Key('page-cancel'),
+                  onPressed: enabled && !choice.busy ? onHome : null,
+                  icon: const Icon(Icons.home_outlined),
+                  label: Text(context.l10n.controller_leaveListLabel),
+                ),
+            ],
           ),
         ),
       ),

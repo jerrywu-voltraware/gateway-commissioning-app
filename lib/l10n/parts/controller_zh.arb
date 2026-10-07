@@ -314,8 +314,8 @@
   "controller_directPicking": "閘道器正在選擇最近的 PTU，請稍候",
   "controller_directFreshWindow": "閘道器正在重新收集附近的 PTU，請稍候",
   "controller_endFlowLabel": "結束並重新選擇閘道器",
-  "controller_leaveListLabel": "結束配置",
-  "controller_leaveListConfirmTitle": "結束這次配置並回首頁？",
+  "controller_leaveListLabel": "返回首頁",
+  "controller_leaveListConfirmTitle": "離開閘道器清單，返回首頁？",
   "controller_endFlowConfirmTitle": "結束目前配置？",
   "controller_endFlowRestoreDone": "{count, plural, other{結束後會把閘道器的 PTU 綁定還原為改選前的狀態；已完成的 {count} 台保留。}}",
   "@controller_endFlowRestoreDone": {

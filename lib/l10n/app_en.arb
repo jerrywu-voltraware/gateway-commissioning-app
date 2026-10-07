@@ -1928,8 +1928,8 @@
       }
     }
   },
-  "controller_leaveListConfirmTitle": "End this setup and go to the home page?",
-  "controller_leaveListLabel": "End setup",
+  "controller_leaveListConfirmTitle": "Leave the gateway list and return home?",
+  "controller_leaveListLabel": "Back to home",
   "controller_linkConfirming": "Bluetooth connected. Checking the gateway's replies and settings…",
   "controller_listNotWritten": "List not written; assignment continues",
   "controller_loginRun": "Logging in to the backend",

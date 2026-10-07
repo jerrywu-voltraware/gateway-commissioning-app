@@ -3205,13 +3205,13 @@ abstract class AppLocalizations {
   /// No description provided for @controller_leaveListConfirmTitle.
   ///
   /// In zh, this message translates to:
-  /// **'結束這次配置並回首頁？'**
+  /// **'離開閘道器清單，返回首頁？'**
   String get controller_leaveListConfirmTitle;
 
   /// No description provided for @controller_leaveListLabel.
   ///
   /// In zh, this message translates to:
-  /// **'結束配置'**
+  /// **'返回首頁'**
   String get controller_leaveListLabel;
 
   /// No description provided for @controller_linkConfirming.

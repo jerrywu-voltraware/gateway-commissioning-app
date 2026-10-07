@@ -2129,10 +2129,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get controller_leaveListConfirmTitle =>
-      'End this setup and go to the home page?';
+      'Leave the gateway list and return home?';
 
   @override
-  String get controller_leaveListLabel => 'End setup';
+  String get controller_leaveListLabel => 'Back to home';
 
   @override
   String get controller_linkConfirming =>
