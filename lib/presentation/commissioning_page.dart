@@ -2912,6 +2912,12 @@ class _CommissioningPageState extends ConsumerState<CommissioningPage>
       FocusScope.of(context).unfocus();
       c.changeWifiBeforeStation();
       setState(() {
+        if (s.config['fleet_joined'] == true) {
+          _otherSite = false;
+          _site.text = '${s.config['site_id']}';
+          _gateway.text = '${s.config['gateway_id']}';
+          _clearSwap();
+        }
         _ssid.text = s.config['wifi_ssid']?.toString() ?? '';
         _wifi.clear();
         _customWifi = false;
